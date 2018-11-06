@@ -1180,7 +1180,7 @@ class ImageDistGitRepo(DistGitRepo):
                             self.logger.info('Last Dockerfile commiter: {}'.format(ae))
                             author_email = ae
                         else:
-                            err = 'Last commiter email found, but is not @redhat.com address: {}'.format(ae)
+                            err = 'Last committer email found, but is not @redhat.com address: {}'.format(ae)
                 if err:
                     self.logger.info('Unable to get author email for last {} commit: {}'.format(dockerfile_name, err))
 
@@ -1227,6 +1227,15 @@ class ImageDistGitRepo(DistGitRepo):
                 self.logger.debug(
                     "Performed string replace '%s' -> '%s':\n%s\n" %
                     (match, replacement, dockerfile_data))
+
+            elif modification.action == "command":
+                # add build data modifications dir to path; we *could* add more
+                # specific paths for the group and the individual config but
+                # expect most scripts to apply across multiple groups.
+                metadata_scripts_path = self.runtime.metadata_dir + "/modifications"
+                path = ":".join([os.environ['PATH'], metadata_scripts_path])
+                exectools.cmd_assert(modification.command, set_env=dict(PATH=path))
+
             else:
                 raise IOError("Don't know how to perform modification action: %s" % modification.action)
 

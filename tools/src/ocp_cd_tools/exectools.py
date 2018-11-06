@@ -9,6 +9,7 @@ from __future__ import print_function
 import subprocess
 import time
 import shlex
+import os
 
 import logutil
 import pushd
@@ -45,7 +46,7 @@ def retry(retries, task_f, check_f=bool, wait_f=None):
     raise RetryException("Giving up after {} failed attempt(s)".format(retries))
 
 
-def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None):
+def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None, set_env=None):
     """
     Run a command, logging (using exec_cmd) and raise an exception if the
     return code of the command indicates failure.
@@ -55,6 +56,7 @@ def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None):
     :param retries int: The number of times to try before declaring failure
     :param pollrate int: how long to sleep between tries
     :param on_retry <string|list>: A shell command to run before retrying a failure
+    :param set_env: Dict of env vars to set for command (overriding existing)
     :return: (stdout,stderr) if exit code is zero
     """
 
@@ -65,9 +67,9 @@ def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None):
                 format(try_num, pollrate, cmd))
             time.sleep(pollrate)
             if on_retry is not None:
-                cmd_gather(on_retry)  # no real use for the result though
+                cmd_gather(on_retry, set_env)  # no real use for the result though
 
-        result, stdout, stderr = cmd_gather(cmd)
+        result, stdout, stderr = cmd_gather(cmd, set_env)
         if result == SUCCESS:
             break
 
@@ -81,7 +83,7 @@ def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None):
     return stdout, stderr
 
 
-def cmd_gather(cmd):
+def cmd_gather(cmd, set_env=None):
     """
     Runs a command and returns rc,stdout,stderr as a tuple.
 
@@ -90,6 +92,7 @@ def cmd_gather(cmd):
     directory of the process (i.e. it is thread-safe).
 
     :param cmd: The command and arguments to execute
+    :param set_env: Dict of env vars to set for command (overriding existing)
     :return: (rc,stdout,stderr)
     """
 
@@ -101,9 +104,13 @@ def cmd_gather(cmd):
     cwd = pushd.Dir.getcwd()
     cmd_info = '[cwd={}]: {}'.format(cwd, cmd_list)
 
+    env = os.environ.copy()
+    if set_env:
+        cmd_info = '[env={}] {}'.format(set_env, cmd_info)
+        env.update(set_env)
     logger.debug("Executing:cmd_gather {}".format(cmd_info))
     proc = subprocess.Popen(
-        cmd_list, cwd=cwd,
+        cmd_list, cwd=cwd, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = proc.communicate()
     rc = proc.returncode
