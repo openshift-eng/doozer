@@ -45,6 +45,7 @@ class ImageMetadata(Metadata):
 
     def __init__(self, runtime, base_dir, config_filename):
         super(ImageMetadata, self).__init__('image', runtime, base_dir, config_filename)
+        self.image_name = self.config.name
 
     @property
     def base_only(self):

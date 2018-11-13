@@ -1,0 +1,26 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from setuptools import setup
+
+with open('./requirements.txt') as f:
+    INSTALL_REQUIRES = f.read().splitlines()
+
+setup(
+    name="doozer",
+    author="AOS ART Team",
+    author_email="aos-team-art@redhat.com",
+    version="0.1",
+    description="CLI tool for managing and automating Red Hat software releases",
+    url="https://github.com/openshift/doozer",
+    license="Red Hat Internal",
+    packages=["doozerlib"],
+    include_package_data=True,
+    scripts=[
+        'doozer'
+    ],
+
+    install_requires=INSTALL_REQUIRES,
+
+    dependency_links=[]
+)

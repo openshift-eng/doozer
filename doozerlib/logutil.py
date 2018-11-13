@@ -8,10 +8,10 @@ class EntityLoggingAdapter(logging.LoggerAdapter):
 
 def getLogger(module_name=None):
     """
-    Returns a logger appropriate for use in the ocp_cd_tools
-    module. Modules should request a logger using their __name__
+    Returns a logger appropriate for use in the doozer modules.
+    Modules should request a logger using their __name__
     """
-    logger_name = 'ocp_cd_tools'
+    logger_name = 'doozer'
 
     if module_name:
         logger_name = '{}.{}'.format(logger_name, module_name)

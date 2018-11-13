@@ -841,26 +841,28 @@ class ImageDistGitRepo(DistGitRepo):
         # will be prefix by the OIT_COMMENT_PREFIX and followed by newlines in the Dockerfile.
         oit_comments = []
 
-        if not self.runtime.no_oit_comment and not self.config.get('no_oit_comments', False):
-            oit_comments.extend([
-                "This file is managed by the OpenShift Image Tool: https://github.com/openshift/enterprise-images",
-                "by the OpenShift Continuous Delivery team (#aos-cd-team on IRC).",
-                "",
-                "Any yum repos listed in this file will effectively be ignored during CD builds.",
-                "Yum repos must be enabled in the oit configuration files.",
-            ])
+        # ahaile - Nov 14, 2018
+        # OIT Comments are ART specific and should die in doozer. Commenting out for now.
+        # if not self.runtime.no_comment and not self.config.get('no_oit_comments', False):
+        #     oit_comments.extend([
+        #         "This file is managed by the OpenShift Image Tool: https://github.com/openshift/enterprise-images",
+        #         "by the OpenShift Continuous Delivery team (#aos-cd-team on IRC).",
+        #         "",
+        #         "Any yum repos listed in this file will effectively be ignored during CD builds.",
+        #         "Yum repos must be enabled in the oit configuration files.",
+        #     ])
 
-            if self.config.content.source is not Missing:
-                oit_comments.extend(["The content of this file is managed from an external source.",
-                                     "Changes made directly in distgit will be lost during the next",
-                                     "reconciliation process.",
-                                     ""])
-            else:
-                oit_comments.extend([
-                    "Some aspects of this file may be managed programmatically. For example, the image name, labels (version,",
-                    "release, and other), and the base FROM. Changes made directly in distgit may be lost during the next",
-                    "reconciliation.",
-                    ""])
+        #     if self.config.content.source is not Missing:
+        #         oit_comments.extend(["The content of this file is managed from an external source.",
+        #                              "Changes made directly in distgit will be lost during the next",
+        #                              "reconciliation process.",
+        #                              ""])
+        #     else:
+        #         oit_comments.extend([
+        #             "Some aspects of this file may be managed programmatically. For example, the image name, labels (version,",
+        #             "release, and other), and the base FROM. Changes made directly in distgit may be lost during the next",
+        #             "reconciliation.",
+        #             ""])
 
         with Dir(self.distgit_dir):
             # Source or not, we should find a Dockerfile in the root at this point or something is wrong
@@ -1232,7 +1234,7 @@ class ImageDistGitRepo(DistGitRepo):
                 # add build data modifications dir to path; we *could* add more
                 # specific paths for the group and the individual config but
                 # expect most scripts to apply across multiple groups.
-                metadata_scripts_path = self.runtime.metadata_dir + "/modifications"
+                metadata_scripts_path = self.runtime.data_path + "/modifications"
                 path = ":".join([os.environ['PATH'], metadata_scripts_path])
                 exectools.cmd_assert(modification.command, set_env=dict(PATH=path))
 

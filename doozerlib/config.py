@@ -127,7 +127,7 @@ class MetaDataConfig(object):
         Commit outstanding metadata config changes
         """
         self.runtime.logger.info('Commit config: {}'.format(msg))
-        with Dir(self.runtime.metadata_dir):
+        with Dir(self.runtime.data_path):
             exectools.cmd_assert(["git", "add", "."])
             exectools.cmd_assert(["git", "commit", "--allow-empty", "-m", msg])
 
@@ -137,7 +137,7 @@ class MetaDataConfig(object):
         Will of course fail if user does not have write access.
         """
         self.runtime.logger.info('Pushing config...')
-        with Dir(self.runtime.metadata_dir):
+        with Dir(self.runtime.data_path):
             exectools.cmd_assert(["git", "push"])
 
     def new(self, new_type, name):
@@ -151,7 +151,7 @@ class MetaDataConfig(object):
             raise ValueError('Type must be one of {}'.format(','.join(valid_types)))
 
         new_type = new_type + 's'
-        template = os.path.join(self.runtime.metadata_dir, 'example', new_type, 'template.yml')
+        template = os.path.join(self.runtime.data_path, 'example', new_type, 'template.yml')
         new_config = os.path.join(self.runtime.group_dir, new_type, '{}.yml'.format(name))
 
         if os.path.exists(new_config):
