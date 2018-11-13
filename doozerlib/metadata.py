@@ -35,8 +35,8 @@ def tag_exists(registry, name, tag, fetch_f=None):
 
 
 CONFIG_MODES = [
-    'enable',  # business as usual
-    'disable',  # manually disabled from automatically building
+    'enabled',  # business as usual
+    'disabled',  # manually disabled from automatically building
     'wip',  # Work in Progress, do not build
 ]
 

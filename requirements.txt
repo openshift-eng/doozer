@@ -2,8 +2,8 @@ pykwalify
 pyyaml
 click
 dockerfile-parse
-# Requests used for REST API calls and HTTPKerberosAuth
 requests
 requests_kerberos
 koji
 bashlex
+pydotconfig
