@@ -10,6 +10,9 @@ class Repo(object):
     """Represents a single yum repository and provides sane ways to
     access each property based on the arch or repo type."""
 
+    # class var that increases monotonically to enhance repo id uniqueness
+    repos_nonce = 0
+
     def __init__(self, name, data, valid_arches):
         self.name = name
         self._valid_arches = valid_arches
@@ -110,7 +113,8 @@ class Repo(object):
             if not cs and self.name == 'rhel-server-ose-rpms':
                 cs = 'rhel-server-ose-rpms-{}'.format(arch)
             if cs:
-                result += '[{}]\n'.format(cs)
+                Repo.repos_nonce += 1
+                result += '[{}-{}]\n'.format(cs, Repo.repos_nonce)
                 for k, v in self._data.conf.iteritems():
                     line = '{} = {}\n'
                     if k == 'baseurl':
