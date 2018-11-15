@@ -5,6 +5,14 @@ This repository is an in-progress migration from the older https://github.com/op
 
 ## Installation
 
+To install the latest released version of doozer, run:
+
+```
+pip install https://github.com/openshift/doozer/archive/released.zip
+```
+
+If instead, you would like to run with the latest and greatest, but potential unstable, run:
+
 ```
 pip install https://github.com/openshift/doozer/archive/master.zip
 ```
