@@ -39,11 +39,11 @@ class MetaDataConfig(object):
 
     def _load_config_log(self):
         """
-        <working_dir>/.config file holds details of the current
+        <working_dir>/config_log.yaml file holds details of the current
         config management session
         Load that file into a dict
         """
-        config_path = os.path.join(self.runtime.working_dir, '.config')
+        config_path = os.path.join(self.runtime.working_dir, 'config_log.yaml')
         if not os.path.isfile(config_path):
             return {}
         with open(config_path, 'r') as f:
@@ -52,11 +52,11 @@ class MetaDataConfig(object):
 
     def _save_config_log(self, data):
         """
-        <working_dir>/.config file holds details of the current
+        <working_dir>/config_log.yaml file holds details of the current
         config management session
         Save that file
         """
-        config_path = os.path.join(self.runtime.working_dir, '.config')
+        config_path = os.path.join(self.runtime.working_dir, 'config_log.yaml')
         with open(config_path, 'w') as f:
             yaml.safe_dump(data, f, default_flow_style=False)
 
