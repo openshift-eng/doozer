@@ -1179,7 +1179,7 @@ class ImageDistGitRepo(DistGitRepo):
                     rc, ae, err = exectools.cmd_gather('git show -s --pretty=format:%ae {}'.format(sha))
                     if rc == 0:
                         if ae.lower().endswith('@redhat.com'):
-                            self.logger.info('Last Dockerfile commiter: {}'.format(ae))
+                            self.logger.info('Last Dockerfile committer: {}'.format(ae))
                             author_email = ae
                         else:
                             err = 'Last committer email found, but is not @redhat.com address: {}'.format(ae)

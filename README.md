@@ -77,3 +77,8 @@ yum install tito
 
 - RHEL: https://docs.docker.com/install/linux/docker-ee/rhel/
 - Fedora: https://docs.docker.com/install/linux/docker-ce/fedora/
+
+### **repoquery** (from yum, not dnf) and **rsync**
+
+`[yum|dnf] install yum-utils rsync`
+
