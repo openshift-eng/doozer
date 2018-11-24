@@ -109,9 +109,15 @@ def cmd_gather(cmd, set_env=None):
         cmd_info = '[env={}] {}'.format(set_env, cmd_info)
         env.update(set_env)
     logger.debug("Executing:cmd_gather {}".format(cmd_info))
-    proc = subprocess.Popen(
-        cmd_list, cwd=cwd, env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        proc = subprocess.Popen(
+            cmd_list, cwd=cwd, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as exc:
+        logger.error("Subprocess errored running:\n{}\nWith error:\n{}\nIs {} installed?".format(
+            cmd_info, exc, cmd_list[0]
+        ))
+        return exc.errno, "", "See previous error description."
     out, err = proc.communicate()
     rc = proc.returncode
     logger.debug(
