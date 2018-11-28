@@ -37,34 +37,11 @@ class MetaDataConfig(object):
             print('config:* options require a non-temporary working space. Must run with --working-dir')
             sys.exit(1)
 
-    def _load_config_log(self):
-        """
-        <working_dir>/config_log.yaml file holds details of the current
-        config management session
-        Load that file into a dict
-        """
-        config_path = os.path.join(self.runtime.working_dir, 'config_log.yaml')
-        if not os.path.isfile(config_path):
-            return {}
-        with open(config_path, 'r') as f:
-            data = yaml.load(f)
-        return data
-
-    def _save_config_log(self, data):
-        """
-        <working_dir>/config_log.yaml file holds details of the current
-        config management session
-        Save that file
-        """
-        config_path = os.path.join(self.runtime.working_dir, 'config_log.yaml')
-        with open(config_path, 'w') as f:
-            yaml.safe_dump(data, f, default_flow_style=False)
-
     def _do_update(self, meta, k, v):
         """
         Convenience function for setting meta keys
         """
-        self.runtime.logger.info('{}: [{}] -> {}'.format(meta.in_group_config_path, k, v))
+        self.runtime.logger.info('{}: [{}] -> {}'.format(meta.config_filename, k, v))
         meta.config[k] = v
         meta.save()
 
@@ -94,7 +71,7 @@ class MetaDataConfig(object):
         """
         def _do_print(meta, k):
             if name_only:
-                print(meta.in_group_config_path)
+                print(meta.config_filename)
             else:
                 if k:
                     val = meta.config.get(k, None)
@@ -103,7 +80,7 @@ class MetaDataConfig(object):
 
                 val = yaml.safe_dump(val, default_flow_style=False)
 
-                print("*****" + meta.in_group_config_path + "*****")
+                print("*****" + meta.config_filename + "*****")
                 print(val)
                 print('')
 
@@ -139,48 +116,3 @@ class MetaDataConfig(object):
         self.runtime.logger.info('Pushing config...')
         with Dir(self.runtime.data_path):
             exectools.cmd_assert(["git", "push"])
-
-    def new(self, new_type, name):
-        """
-        Given type and name, copy template config into correct place
-        and report that new config file path for editing.
-        """
-        valid_types = ['image', 'rpm']
-        new_type = new_type.lower()
-        if new_type not in valid_types:
-            raise ValueError('Type must be one of {}'.format(','.join(valid_types)))
-
-        new_type = new_type + 's'
-        template = os.path.join(self.runtime.data_path, 'example', new_type, 'template.yml')
-        new_config = os.path.join(self.runtime.group_dir, new_type, '{}.yml'.format(name))
-
-        if os.path.exists(new_config):
-            raise ValueError('{} already exists!'.format(new_config))
-
-        shutil.copyfile(template, new_config)
-
-        config_log = self._load_config_log()
-        config_log.setdefault('new', []).append(new_config)
-
-        self._save_config_log(config_log)
-
-        self.runtime.logger.info("New config template created: \n{}".format(new_config))
-
-    def sanitize_new_config(self):
-        """
-        Configs created with new() will be filled with template comments.
-        We do not want those cluttering the final configs, so remove them
-        by parsing and rewriting the file.
-        """
-        config_log = self._load_config_log()
-        if 'new' in config_log:
-            for cfg in config_log['new']:
-                with open(cfg, 'r+') as f:
-                    data = yaml.load(f)
-                    f.seek(0)
-                    yaml.safe_dump(data, f, default_flow_style=False)
-                    f.truncate()
-            del config_log['new']
-
-        self._save_config_log(config_log)
-
