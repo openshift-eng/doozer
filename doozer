@@ -10,7 +10,7 @@ from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.config import valid_updates
 from doozerlib import cli_opts
 from doozerlib.exceptions import DoozerFatalError
-from doozerlib.util import green_prefix, red_prefix, green_print, red_print
+from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix
 import datetime
 import click
 import os
@@ -73,6 +73,13 @@ def cli(ctx, **kwargs):
                            template=cli_opts.CLI_CONFIG_TEMPLATE,
                            envvars=cli_opts.CLI_ENV_VARS,
                            cli_args=kwargs)
+    if cli_opts.config_is_empty(cfg.full_path):
+        msg = (
+            "It appears you may be using Doozer for the first time.\n"
+            "Be sure to setup Doozer using the user config file:\n"
+            "{}\n"
+        ).format(cfg.full_path)
+        yellow_print(msg)
     ctx.obj = Runtime(cfg_obj=cfg, **cfg.to_dict())
 
 
@@ -1065,7 +1072,6 @@ def config_commit(runtime, message, push):
     _fix_runtime_mode(runtime)
     runtime.initialize(no_group=True, **CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)
-    config.sanitize_new_config()
     config.commit(message)
     if push:
         config.push()
@@ -1082,6 +1088,18 @@ def config_push(runtime):
     runtime.initialize(no_group=True, **CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)
     config.push()
+
+
+@cli.command("config:get", short_help="Pull latest config data into working directory")
+@pass_runtime
+def config_get(runtime):
+    """
+    Pull latest config data into working directory.
+    This function exists as a convenience for working with the
+    config manually.
+    """
+    _fix_runtime_mode(runtime)
+    runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
 
 
 @cli.command("config:update-mode", short_help="Update config(s) mode. enabled|disabled|wip")
@@ -1162,38 +1180,6 @@ def config_print(runtime, key, name_only):
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)
     config.config_print(key, name_only)
-
-
-@cli.command("config:new", short_help="Add new config. Follow up with config:commit")
-@click.argument("new_type", nargs=1, metavar="TYPE", type=click.Choice(['image', 'rpm']))
-@click.argument("name", nargs=1, metavar="NAME")
-@pass_runtime
-def config_new(runtime, new_type, name):
-    """Copy a TYPE kind of template config (one of 'image' or 'rpm') into correct place naming the
-    new component config after NAME. Report that new config file path
-    for later editing.
-
-    Filtering of configs is based on usage of the following global options:
-    --group, --images/-i, --rpms/-r
-
-    See `oit.py --help` for more.
-
-    Examples:
-
-    Add a new 'image' TYPE of config with the NAME 'megafrobber'
-
-        $ oit.py --group=openshift-4.0 config:new image megafrobber
-
-    Commit that new change to git:
-
-        $ oit.py --group=openshift-4.0 config:commit
-    """
-
-    runtime.initialize(**CONFIG_RUNTIME_OPTS)
-    config = mdc(runtime)
-    config.new(new_type, name)
-
-    click.echo('Remember to use config:commit after the new config is complete')
 
 
 def main():
