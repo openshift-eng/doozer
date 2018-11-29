@@ -195,7 +195,7 @@ class Runtime(object):
             self.remove_tmp_working_dir = True
             atexit.register(remove_tmp_working_dir, self)
         else:
-            self.working_dir = os.path.abspath(self.working_dir)
+            self.working_dir = os.path.abspath(os.path.expanduser(self.working_dir))
             if not os.path.isdir(self.working_dir):
                 os.makedirs(self.working_dir)
 
