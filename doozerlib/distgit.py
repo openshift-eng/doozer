@@ -777,7 +777,7 @@ class ImageDistGitRepo(DistGitRepo):
             # rhpkg will create but not push tags :(
             # Not asserting this exec since this is non-fatal if a tag already exists,
             # and tags in dist-git can't be --force overwritten
-            exectools.cmd_gather(['git', 'push', '--tags'])
+            exectools.cmd_gather(['timeout', '60', 'git', 'push', '--tags'])
 
     def __clean_repos(self, dfp):
         """
