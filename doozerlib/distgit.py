@@ -1234,7 +1234,7 @@ class ImageDistGitRepo(DistGitRepo):
                 # add build data modifications dir to path; we *could* add more
                 # specific paths for the group and the individual config but
                 # expect most scripts to apply across multiple groups.
-                metadata_scripts_path = self.runtime.data_path + "/modifications"
+                metadata_scripts_path = self.runtime.data_dir + "/modifications"
                 path = ":".join([os.environ['PATH'], metadata_scripts_path])
                 exectools.cmd_assert(modification.command, set_env=dict(PATH=path))
 

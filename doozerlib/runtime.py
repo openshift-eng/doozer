@@ -99,6 +99,7 @@ class Runtime(object):
         self.load_wip = False
         self.load_disabled = False
         self.data_path = None
+        self.data_dir = None
 
         for key, val in kwargs.items():
             self.__dict__[key] = val
@@ -307,7 +308,7 @@ class Runtime(object):
             try:
                 rpm_data = self.gitdata.load_data(path='rpms', keys=rpm_keys,
                                                   exclude=exclude_keys,
-                                                  filter_funcs=None if len(image_keys) else filter_func)
+                                                  filter_funcs=None if len(rpm_keys) else filter_func)
             except gitdata.GitDataPathException:
                 # some older versions have no RPMs, that's ok.
                 rpm_data = {}
@@ -774,6 +775,7 @@ class Runtime(object):
         try:
             self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
                                            branch='master', sub_dir=self.group, logger=self.logger)
+            self.data_dir = self.gitdata.data_dir
 
             # Use this when switching to branch based data
             # self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,

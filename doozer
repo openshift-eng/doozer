@@ -452,7 +452,7 @@ def images_foreach(runtime, cmd, message, push):
                                     "doozer_image_name": dfp.labels["name"],
                                     "doozer_image_version": dfp.labels["version"],
                                     "doozer_group": runtime.group,
-                                    "doozer_data_path": runtime.data_path,
+                                    "doozer_data_path": runtime.data_dir,
                                     "doozer_working_dir": runtime.working_dir,
                                     "doozer_config_filename": image.config_filename,
                                     "doozer_distgit_key": image.distgit_key,

@@ -103,16 +103,11 @@ class MetaDataConfig(object):
         """
         Commit outstanding metadata config changes
         """
-        self.runtime.logger.info('Commit config: {}'.format(msg))
-        with Dir(self.runtime.data_path):
-            exectools.cmd_assert(["git", "add", "."])
-            exectools.cmd_assert(["git", "commit", "--allow-empty", "-m", msg])
+        self.gitdata.commit()
 
     def push(self):
         """
         Push changes back to config repo.
         Will of course fail if user does not have write access.
         """
-        self.runtime.logger.info('Pushing config...')
-        with Dir(self.runtime.data_path):
-            exectools.cmd_assert(["git", "push"])
+        self.gitdata.push()
