@@ -10,7 +10,7 @@ setup(
     name="doozer",
     author="AOS ART Team",
     author_email="aos-team-art@redhat.com",
-    version="0.2.2",
+    version="0.2.3",
     description="CLI tool for managing and automating Red Hat software releases",
     url="https://github.com/openshift/doozer",
     license="Red Hat Internal",

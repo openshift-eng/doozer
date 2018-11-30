@@ -300,8 +300,6 @@ class Runtime(object):
             else:
                 filter_func = filter_enabled
 
-            print(filter_func)
-
             image_data = self.gitdata.load_data(path='images', keys=image_keys,
                                                 exclude=exclude_keys,
                                                 filter_funcs=None if len(image_keys) else filter_func)
