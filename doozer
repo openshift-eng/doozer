@@ -1132,7 +1132,7 @@ def config_mode(runtime, mode, push, message):
     """
     _fix_runtime_mode(runtime)
     if not runtime.wip and CONFIG_RUNTIME_OPTS['mode'] == 'both':
-        click.echo('Updating all mode for all configs in group is not allowed! Please specifiy configs directly.')
+        red_print('Updating all mode for all configs in group is not allowed! Please specifiy configs directly.')
         sys.exit(1)
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)

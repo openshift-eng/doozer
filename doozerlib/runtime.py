@@ -278,7 +278,7 @@ class Runtime(object):
                 return list(set([y for x in result for y in x]))
 
             def filter_wip(n, d):
-                return d.get('mode', None) == 'wip'
+                return d.get('mode', 'enabled') in ['wip', 'enabled']
 
             def filter_enabled(n, d):
                 return d.get('mode', 'enabled') == 'enabled'
@@ -297,6 +297,10 @@ class Runtime(object):
                 filter_func = filter_wip
             elif self.load_disabled:
                 filter_func = filter_disabled
+            else:
+                filter_func = filter_enabled
+
+            print(filter_func)
 
             image_data = self.gitdata.load_data(path='images', keys=image_keys,
                                                 exclude=exclude_keys,
@@ -323,7 +327,7 @@ class Runtime(object):
 
             if mode in ['rpms', 'both']:
                 for r in rpm_data.itervalues():
-                    metadata = RPMMetadata(self, r)
+                    metadata = RPMMetadata(self, r, clone_source=clone_source)
                     self.rpm_map[metadata.distgit_key] = metadata
                 if not self.rpm_map:
                     self.logger.warning("No rpm metadata directories found for given options within: {}".format(self.group_dir))
