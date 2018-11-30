@@ -830,6 +830,7 @@ def images_print(runtime, short, show_non_release, show_base, output, pattern):
     {type} - The type of the distgit (e.g. rpms)
     {name} - The name of the distgit repository (e.g. openshift-enterprise)
     {image_name} - The container registry image name (e.g. openshift3/ose-ansible)
+    {image_name_short} - The container image name without the registry (e.g. ose-ansible)
     {component} - The component identified in the Dockerfile
     {image} - The image name in the Dockerfile
     {version} - The version field in the Dockerfile
@@ -889,6 +890,7 @@ def images_print(runtime, short, show_non_release, show_base, output, pattern):
         s = s.replace("{namespace}", image.namespace)
         s = s.replace("{name}", image.name)
         s = s.replace("{image_name}", image.image_name)
+        s = s.replace("{image_name_short}", image.image_name_short)
         s = s.replace("{component}", image.get_component_name())
         s = s.replace("{image}", dfp.labels["name"])
         s = s.replace("{version}", version)
