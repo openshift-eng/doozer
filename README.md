@@ -3,6 +3,26 @@
 Doozer is a build management utility that currently has the capability to build RPMs and Container Images via OSBS/Brew
 This repository is an in-progress migration from the older https://github.com/openshift/enterprise-images
 
+## Deployment
+
+For local development pull the code and run:
+
+`python setup.py develop`
+
+For new releases, once `master` is decided to be good:
+
+- Bump the version number in `setup.py`
+- rebase `master` onto the `released` branch so that they are even.
+    - `git clone git@github.com:openshift/doozer.git`
+    - `cd doozer`
+    - `git fetch`
+    - `git checkout released`
+    - `git rebase master`
+    - `git push origin released`
+- Cut a new github release with the same version string as given in `setup.py`
+- On your system run `pip install -U https://github.com/openshift/doozer/archive/released.zip`
+
+
 ## Installation
 
 To install the latest released version of doozer, run:
@@ -17,7 +37,11 @@ If instead, you would like to run with the latest and greatest, but potential un
 pip install https://github.com/openshift/doozer/archive/master.zip
 ```
 
-The Doozer installation will of course automatically pull in the required python modules but it is dependent on the following CLI tools already being installed on your system:
+The Doozer installation will of course automatically pull in the required python modules but it is dependent on the following packages and CLI tools already being installed on your system:
+
+### **devel packages***
+
+`[dnf|yum] install krb5-devel python2-devel`
 
 ### **git**
 
