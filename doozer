@@ -35,6 +35,7 @@ context_settings = dict(help_option_names=['-h', '--help'])
 # GLOBAL OPTIONS: parameters for all commands
 # ============================================================================
 @click.group(context_settings=context_settings)
+@click.version_option(version="v0.2")
 @click.option("--data-path", metavar='PATH', default=None,
               help="Git repo or directory containing groups metadata")
 @click.option("--working-dir", metavar='PATH', default=None,
