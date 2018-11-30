@@ -338,7 +338,9 @@ class Runtime(object):
             no_collide_check[key] = meta
 
         # Read in the streams definite for this group if one exists
-        self.streams = Model(self.gitdata.load_data(key='streams').data)
+        streams = self.gitdata.load_data(key='streams')
+        if streams:
+            self.streams = Model(self.gitdata.load_data(key='streams').data)
 
         if clone_distgits:
             self.clone_distgits()
