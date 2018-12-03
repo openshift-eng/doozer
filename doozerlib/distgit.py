@@ -154,12 +154,8 @@ class DistGitRepo(object):
         """
         :return: Returns the directory containing the source which should be used to populate distgit.
         """
-        alias = self.config.content.source.alias
 
-        if alias is Missing:
-            raise IOError("Can't find any source alias in config: %s" % self.metadata.config_filename)
-
-        source_root = self.runtime.resolve_source(alias)
+        source_root = self.runtime.resolve_source(self.name, self.config.content.source)
         sub_path = self.config.content.source.path
 
         path = source_root

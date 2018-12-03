@@ -163,6 +163,7 @@ class Runtime(object):
             except KeyError as e:
                 raise
                 raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
+
         return tmp_config
 
     def initialize(self, mode='images', clone_distgits=True,
@@ -301,13 +302,19 @@ class Runtime(object):
             else:
                 filter_func = filter_enabled
 
+            replace_vars = {}
+            if self.group_config.vars:
+                replace_vars = self.group_config.vars.primitive()
+
             image_data = self.gitdata.load_data(path='images', keys=image_keys,
                                                 exclude=exclude_keys,
+                                                replace_vars=replace_vars,
                                                 filter_funcs=None if len(image_keys) else filter_func)
 
             try:
                 rpm_data = self.gitdata.load_data(path='rpms', keys=rpm_keys,
                                                   exclude=exclude_keys,
+                                                  replace_vars=replace_vars,
                                                   filter_funcs=None if len(rpm_keys) else filter_func)
             except gitdata.GitDataPathException:
                 # some older versions have no RPMs, that's ok.
@@ -527,7 +534,7 @@ class Runtime(object):
 
         return self.streams[stream_name]
 
-    def resolve_source(self, alias, required=True):
+    def resolve_source(self, parent, source):
         """
         Looks up a source alias and returns a path to the directory containing
         that source. Sources can be specified on the command line, or, failing
@@ -535,10 +542,21 @@ class Runtime(object):
         If a source specified in group.yaml has not be resolved before,
         this method will clone that source to checkout the group's desired
         branch before returning a path to the cloned repo.
-        :param alias: The source alias to resolve
-        :param required: If True, thrown an exception if not found
-        :return: Returns the source path or None (if required=False)
+        :param parent: Name of parent the source belongs to
+        :param source: The source object to resolve
+        :return: Returns the source path
         """
+
+        source_details = None
+        if 'git' in source:
+            git_url = urlparse.urlparse(source.git.url)
+            name = os.path.splitext(os.path.basename(git_url.path))[0]
+            alias = '{}_{}'.format(parent, name)
+            source_details = dict(source.git)
+        elif 'alias' in source:
+            alias = source.alias
+        else:
+            raise DoozerFatalError('Error while processing source for {}'.format(parent))
 
         self.logger.debug("Resolving local source directory for alias {}".
                           format(alias))
@@ -548,16 +566,15 @@ class Runtime(object):
                 format(alias, self.source_paths[alias]))
             return self.source_paths[alias]
 
-        # Check if the group config specs the "alias" for the source location
-        if (self.group_config.sources is Missing or
-            alias not in self.group_config.sources):
-            if required:
-                raise IOError("Source alias not found in specified sources or in the current group: %s" % alias)
-            else:
-                return None
+        # Where the source will land, check early so we know if old or new style
+        sub_path = '{}{}'.format('global_' if source_details is None else '', alias)
+        source_dir = os.path.join(self.sources_dir, sub_path)
 
-        # Where the source will land
-        source_dir = os.path.join(self.sources_dir, alias)
+        if not source_details:  # old style alias was given
+            if (self.group_config.sources is Missing or alias not in self.group_config.sources):
+                raise DoozerFatalError("Source alias not found in specified sources or in the current group: %s" % alias)
+            source_details = self.group_config.sources[alias]
+
         self.logger.debug("checking for source directory in source_dir: {}".
                           format(source_dir))
 
@@ -570,9 +587,8 @@ class Runtime(object):
                 format(alias, source_dir))
             return source_dir
 
-        source_config = self.group_config.sources[alias]
-        url = source_config["url"]
-        branches = source_config['branch']
+        url = source_details["url"]
+        branches = source_details['branch']
         self.logger.info("Cloning source '%s' from %s as specified by group into: %s" % (alias, url, source_dir))
         exectools.cmd_assert(
             cmd=["git", "clone", url, source_dir],
@@ -599,7 +615,7 @@ class Runtime(object):
                 found = True
             else:
                 if self.stage and stage_branch:
-                    raise IOError('--stage option specified and no stage branch named "{}" exists for {}|{}'.format(stage_branch, alias, url))
+                    raise DoozerFatalError('--stage option specified and no stage branch named "{}" exists for {}|{}'.format(stage_branch, alias, url))
                 elif fallback_branch is not None:
                     self.logger.info("Unable to checkout branch %s ; trying fallback %s" % (branch, fallback_branch))
                     self.logger.info("Attempting to checkout source '%s' fallback-branch %s in: %s" % (alias, fallback_branch, source_dir))
@@ -622,20 +638,18 @@ class Runtime(object):
                 self.register_source_alias(alias, source_dir)
                 return source_dir
             else:
-                if required:
-                    raise IOError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
-                else:
-                    return None
+                raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
 
-    def resolve_source_head(self, alias, required=True):
+    def resolve_source_head(self, parent, source):
         """
         Attempts to resolve the branch a given source alias has checked out. If not on a branch
         returns SHA of head.
-        :param alias: The source alias to analyze
+        :param parent: Name of parent requesting the source
+        :param source: The source object to analyze
         :param required: Whether an error should be thrown or None returned if it cannot be determined
         :return: The name of the checked out branch or None (if required=False)
         """
-        source_dir = self.resolve_source(alias, required)
+        source_dir = self.resolve_source(parent, source)
 
         if not source_dir:
             return None
@@ -773,12 +787,12 @@ class Runtime(object):
                  ).format(self.cfg_obj.full_path))
 
         try:
-            self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
-                                           branch='master', sub_dir=self.group, logger=self.logger)
-            self.data_dir = self.gitdata.data_dir
+            # self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
+            #                                branch='master', sub_dir=self.group, logger=self.logger)
+            # self.data_dir = self.gitdata.data_dir
 
             # Use this when switching to branch based data
-            # self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
-            #                                branch=self.group, logger=self.logger)
+            self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
+                                           branch=self.group, logger=self.logger)
         except gitdata.GitDataException as ex:
             raise DoozerFatalError(ex.message)

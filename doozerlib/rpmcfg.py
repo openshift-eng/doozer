@@ -42,8 +42,8 @@ class RPMMetadata(Metadata):
         self.build_status = False
 
         if clone_source:
-            self.source_path = self.runtime.resolve_source(self.source.alias)
-            self.source_head = self.runtime.resolve_source_head(self.source.alias)
+            self.source_path = self.runtime.resolve_source('rpm_{}'.format(self.rpm_name), self.source)
+            self.source_head = self.runtime.resolve_source_head('rpm_{}'.format(self.rpm_name), self.source)
             if self.source.specfile:
                 self.specfile = os.path.join(self.source_path, self.source.specfile)
                 if not os.path.isfile(self.specfile):
