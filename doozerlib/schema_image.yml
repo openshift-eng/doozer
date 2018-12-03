@@ -54,8 +54,25 @@ mapping:
         type: map
         mapping:
           "alias":
-            required: true
+            required: false
             type: str
+          "git":
+            type: map
+            mapping:
+              "url":
+                required: true
+                type: str
+              "branch":
+                required: true
+                type: map
+                mapping:
+                  "target":
+                    required: true
+                    type: str
+                  "fallback":
+                    type: str
+                  "stage":
+                    type: str
           "dockerfile":
             type: str
           "path":

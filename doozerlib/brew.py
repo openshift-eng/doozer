@@ -53,7 +53,7 @@ def watch_task(log_f, task_id, terminate_event):
     end = time.time() + 4 * 60 * 60
     watcher = koji_cli.lib.TaskWatcher(
         task_id,
-        koji.ClientSession(constants.BREW_HUB),
+        koji.ClientSession(constants.BREW_HUB, opts={'serverca': '/etc/pki/brew/legacy.crt'}),
         quiet=True)
     error = None
     except_count = 0
@@ -114,6 +114,7 @@ def get_brew_build(nvr, product_version='', session=None):
                           auth=HTTPKerberosAuth())
     else:
         res = requests.get(constants.errata_get_build_url.format(id=nvr),
+                           verify=ssl.get_default_verify_paths().openssl_cafile,
                            auth=HTTPKerberosAuth())
     if res.status_code == 200:
         return Build(nvr=nvr, body=res.json(), product_version=product_version)
