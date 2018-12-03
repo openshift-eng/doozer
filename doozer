@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from doozerlib import version
 from doozerlib import Runtime, Dir
 from doozerlib.image import pull_image, create_image_verify_repo_file, Image
 from doozerlib.model import Missing
@@ -31,10 +32,29 @@ pass_runtime = click.make_pass_decorator(Runtime)
 context_settings = dict(help_option_names=['-h', '--help'])
 
 
+VERSION_QUOTE = """
+The Doozers don't mind their buildings being eaten;
+if the Fraggles didn't eat the constructions,
+the Doozers would run out of building space,
+and if they ran out of building space,
+they would have to move away from Fraggle Rock
+or else they would die.
+"""
+
+
+def print_version(ctx, param, value):
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo('Doozer v{}'.format(version()))
+    click.echo(VERSION_QUOTE)
+    ctx.exit()
+
 # ============================================================================
 # GLOBAL OPTIONS: parameters for all commands
 # ============================================================================
 @click.group(context_settings=context_settings)
+@click.option('--version', is_flag=True, callback=print_version,
+              expose_value=False, is_eager=True)
 @click.option("--data-path", metavar='PATH', default=None,
               help="Git repo or directory containing groups metadata")
 @click.option("--working-dir", metavar='PATH', default=None,
