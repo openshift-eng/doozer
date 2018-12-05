@@ -1,10 +1,10 @@
-pykwalify
-pyyaml
-click
-dockerfile-parse
+pykwalify >= 1.7.0
+pyyaml >= 3.12
+click >= 6.7
+dockerfile-parse >= 0.0.13
 requests
 requests_kerberos
-koji
+koji >= 1.16.0
 bashlex
 pydotconfig
-pygitdata
+pygitdata >= 0.2.0
