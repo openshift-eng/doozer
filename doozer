@@ -899,8 +899,7 @@ def images_print(runtime, short, show_non_release, show_base, output, pattern):
         try:
             dfp.content = image.fetch_cgit_file("Dockerfile")
         except Exception:
-            click.echo("Error reading Dockerfile from distgit: {}".format(image.distgit_key))
-            raise
+            raise DoozerFatalError("Error reading Dockerfile from distgit: {}".format(image.distgit_key))
 
         version = dfp.labels["version"]
 
@@ -1202,6 +1201,159 @@ def config_print(runtime, key, name_only):
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)
     config.config_print(key, name_only)
+
+
+@cli.command("beta:release-gen", short_help="Generate input files for release mirroring")
+@click.option("--src-dest", "--sd", default="img-mirror.txt",
+              help="The SRC=DEST file to write to\ndefault=img-mirror.txt")
+@click.option("--image-stream", "--is", default="release-is.yaml",
+              help="The ImageStream object YAML file to write to\ndefault=release-is.yaml")
+@click.option("--is-base", "--isb", default=None,
+              help="The base ImageStream YAML file up to an empty '.spec.tags' array\n(see --help for an example)")
+@click.argument("pattern")
+@pass_runtime
+def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
+    """Generates input for `oc` commands to mirror content and publish
+    image streams. One output is a SRC=DEST input for `oc image
+    mirror`, the other is an ImageStream YAML file used by `oc apply`.
+
+    Prints to STDOUT everything that is written to the output
+    files. This functions similar to how the `images:print` command
+    works. You MUST provide a format string for the SRC=DEST image
+    mirror PATTERN parameter. Multiple '=' characters are not allowed.
+
+    Allowed formatting keywords for PATTERN:
+
+    \b
+    {build} - Shorthand for {component}-{version}-{release} (e.g. container-engine-v3.6.173.0.25-1)
+    {component} - The component identified in the Dockerfile
+    {image_name_short} - The container image name without the registry (e.g. ose-ansible)
+    {image_name} - The container registry image name (e.g. openshift3/ose-ansible)
+    {image} - The image name in the Dockerfile
+    {name} - The name of the distgit repository (e.g. openshift-enterprise)
+    {namespace} - The image namespace ('containers' or 'rpms')
+    {release} - The release field in the Dockerfile
+    {repository} - Shorthand for {image}:{version}-{release}
+    {type} - The type of the distgit (e.g. rpms)
+    {version} - The version field in the Dockerfile
+
+    The output SRC=DEST file is simply a new line separated file where
+    the LHS is a source image and the RHS is the destination to mirror
+    the image to. For example:
+
+    \b
+        registry.reg-aws.openshift.com:443/{repository}=quay.io/openshift-release-dev/ocp-v4.0-art-dev:{version}-{release}-{image_name_short}
+
+    Eample base ImageStream YAML:
+
+    \b
+        kind: ImageStream
+        apiVersion: image.openshift.io/v1
+        metadata:
+          name: 4.0-art-latest
+          namespace: ocp
+        spec:
+          tags: []
+
+    """
+    runtime.initialize(clone_distgits=False)
+    images = [i for i in runtime.image_metas()]
+
+    # Load the ImageStream stub file
+    with open(is_base) as fp:
+        isb = yaml.safe_load(fp)
+
+    # All the items we will put in the image mirror input
+    src_dest_items = []
+
+    for image in images:
+        dfp = DockerfileParser(path=runtime.working_dir)
+        try:
+            dfp.content = image.fetch_cgit_file("Dockerfile")
+        except Exception:
+            raise DoozerFatalError("Error reading Dockerfile from distgit: {}".format(image.distgit_key))
+
+        version = dfp.labels["version"]
+
+        s = pattern
+        s = s.replace("{build}", "{component}-{version}-{release}")
+        s = s.replace("{repository}", "{image}:{version}-{release}")
+        s = s.replace("{namespace}", image.namespace)
+        s = s.replace("{name}", image.name)
+        s = s.replace("{image_name}", image.image_name)
+        s = s.replace("{image_name_short}", image.image_name_short)
+        s = s.replace("{component}", image.get_component_name())
+        s = s.replace("{image}", dfp.labels["name"])
+        s = s.replace("{version}", version)
+
+        release_query_needed = '{release}' in s or '{pushes}' in s
+
+        # Since querying release takes time, check before executing replace
+        release = ''
+        if release_query_needed:
+            try:
+                _, _, release = image.get_latest_build_info()
+            except IOError as err:
+                red_prefix("Error looking up build info (skipping): ")
+                click.echo(str(err))
+                continue
+
+        s = s.replace("{release}", release)
+
+        pushes_formatted = ''
+        for push_name in image.get_default_push_names():
+            pushes_formatted += '\t{} : [{}]\n'.format(push_name, ', '.join(image.get_default_push_tags(version, release)))
+
+        if pushes_formatted is '':
+            pushes_formatted = "(None)"
+
+        s = s.replace("{pushes}", '{}\n'.format(pushes_formatted))
+
+        if "{" in s:
+            raise IOError("Unrecognized fields remaining in pattern: %s" % s)
+
+        # Per clayton:
+        """Tim Bielawa: note to self: is only for `ose-` prefixed images
+        Clayton Coleman: Yes, Get with the naming system or get out of town
+        """
+        if 'ose' in image.image_name_short and '666' not in release:
+            # Do not include test builds in the image stream. Only
+            # include 'ose-' prefixed images in the stream.
+            green_prefix("ADDING to IS: ")
+            print(s)
+
+            # dest, it's what we're publishing in the ImageStream
+            dest = s.split('=')[-1]
+
+            # Add a tag spec to the image stream. The name of each tag
+            # spec does not include the 'ose-' prefix. This keeps them
+            # consistent between OKD and OCP
+            isb['spec']['tags'].append({
+                'name': image.image_name_short.replace('ose-', ''),
+                'from': {
+                    'kind': 'DockerImage',
+                    'name': dest
+                }
+            })
+        else:
+            red_prefix("NOT adding to IS: ")
+            print(s)
+
+        # This indicates this is an ART test build, it has not been
+        # mirrored yet. Don't try to sync it across registries.
+        if '666' not in release:
+            src_dest_items.append(s)
+
+        # End 'for image in images' loop
+        #############################################################
+
+    # Save the SRC=DEST 'oc image mirror' input to a file for later
+    with open(src_dest, 'w+') as out_file:
+        out_file.write("{}\n".format('\n'.join(src_dest_items)))
+
+    # Save our image stream object
+    with open(image_stream, 'w') as is_out:
+        yaml.safe_dump(isb, is_out, indent=2, default_flow_style=False)
 
 
 def main():
