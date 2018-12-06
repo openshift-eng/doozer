@@ -912,6 +912,8 @@ class ImageDistGitRepo(DistGitRepo):
                     raise IOError("Dockerfile parent images not matched by configured parent images for {}. '{}' vs '{}'".format(self.config.name, dfp.parent_images, parent_images))
                 mapped_images = []
 
+                orignal_parents = dfp.parent_images
+                count = 0
                 for image in parent_images:
                     # Does this image inherit from an image defined in a different distgit?
                     if image.member is not Missing:
@@ -927,6 +929,8 @@ class ImageDistGitRepo(DistGitRepo):
                                 _, v, r = base_meta.get_latest_build_info()
                                 mapped_images.append("{}:{}-{}".format(base_meta.config.name, v, r))
                             # Otherwise, the user is not expecting the FROM field to be updated in this Dockerfile.
+                            else:
+                                mapped_images.append(orignal_parents[count])
                         else:
                             # Everything in the group is going to be built with the uuid tag, so we must
                             # assume that it will exist for our parent.
@@ -943,6 +947,8 @@ class ImageDistGitRepo(DistGitRepo):
 
                     else:
                         raise IOError("Image in 'from' for [%s] is missing its definition." % base)
+
+                    count += 1
 
                 dfp.parent_images = mapped_images
 
@@ -1116,7 +1122,7 @@ class ImageDistGitRepo(DistGitRepo):
                 continue
 
             # Otherwise, clean up the entry
-            if os.path.isfile(ent):
+            if os.path.isfile(ent) or os.path.islink(ent):
                 os.remove(ent)
             else:
                 shutil.rmtree(ent)
