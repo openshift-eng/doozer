@@ -19,7 +19,8 @@ For new releases, once `master` is decided to be good:
     - `git checkout released`
     - `git rebase master`
     - `git push origin released`
-- Cut a new github release with the same version string as given in `setup.py`
+- Cut a new github release with the same version string as given in `doozerlib/VERSION`
+    - Use `released` for the `Target` parameter
 - On your system run `pip install -U https://github.com/openshift/doozer/archive/released.zip`
 
 
