@@ -11,7 +11,7 @@ For local development pull the code and run:
 
 For new releases, once `master` is decided to be good:
 
-- Bump the version number in `setup.py`
+- Bump the version number in `doozerlib/VERSION`
 - rebase `master` onto the `released` branch so that they are even.
     - `git clone git@github.com:openshift/doozer.git`
     - `cd doozer`
@@ -81,4 +81,3 @@ yum install tito
 ### **repoquery** (from yum, not dnf) and **rsync**
 
 `[yum|dnf] install yum-utils rsync`
-
