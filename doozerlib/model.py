@@ -47,6 +47,9 @@ class MissingModel(dict):
     def __delitem__(self, key):
         raise ModelException("Invalid attempt to delete key(%s) in missing branch of model" % key)
 
+    def __bool__(self):
+        return False
+
     def __str__(self):
         return "(MissingModel)"
 

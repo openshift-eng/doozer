@@ -161,7 +161,6 @@ class Runtime(object):
                 group_yml = yaml.safe_dump(tmp_config.primitive(), default_flow_style=False)
                 tmp_config = Model(yaml.load(group_yml.format(**replace_vars)))
             except KeyError as e:
-                raise
                 raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
 
         return tmp_config
@@ -266,6 +265,20 @@ class Runtime(object):
                     self.logger.info("No branch specified either in group.yml or on the command line; all included images will need to specify their own.")
             else:
                 self.logger.info("Using branch from command line: %s" % self.branch)
+
+            scanner = self.group_config.image_build_log_scanner
+            if scanner is not Missing:
+                # compile regexen and fail early if they don't
+                regexen = []
+                for val in scanner.matches:
+                    try:
+                        regexen.append(re.compile(val))
+                    except Exception as e:
+                        raise ValueError(
+                            "could not compile image build log regex for group:\n{}\n{}"
+                            .format(val, e)
+                        )
+                scanner.matches = regexen
 
             # Flattens a list like like [ 'x', 'y,z' ] into [ 'x.yml', 'y.yml', 'z.yml' ]
             # for later checking we need to remove from the lists, but they are tuples. Clone to list

@@ -198,8 +198,8 @@ class DistGitRepo(object):
 
 
 class ImageDistGitRepo(DistGitRepo):
-    def __init__(self, metadata):
-        super(ImageDistGitRepo, self).__init__(metadata)
+    def __init__(self, metadata, autoclone=True):
+        super(ImageDistGitRepo, self).__init__(metadata, autoclone)
         self.build_lock = Lock()
         self.build_lock.acquire()
         self.logger = metadata.logger
@@ -628,6 +628,13 @@ class ImageDistGitRepo(DistGitRepo):
 
                 def wait(n):
                     self.logger.info("Async error in image build thread [attempt #{}]".format(n + 1))
+                    # No need to retry if the failure will just recur
+                    error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
+                    if error is not None:
+                        raise exectools.RetryException(
+                            "Saw permanent error in build logs:\n{}\nWill not retry after {} failed attempt(s)"
+                            .format(error, n + 1)
+                        )
                     # Brew does not handle an immediate retry correctly, wait
                     # before trying another build, terminating if interrupted.
                     if terminate_event.wait(timeout=5 * 60):
@@ -752,11 +759,13 @@ class ImageDistGitRepo(DistGitRepo):
             error = None
 
         # Gather brew-logs
-        logs_dir = "%s/%s" % (self.runtime.brew_logs_dir, self.metadata.name)
-        logs_rc, _, logs_err = exectools.cmd_gather(["brew", "download-logs", "-d", logs_dir, task_id])
+        logs_rc, _, logs_err = exectools.cmd_gather(["brew", "download-logs", "-d", self._logs_dir(), task_id])
 
         if logs_rc != 0:
             self.logger.info("Error downloading build logs from brew for task %s: %s" % (task_id, logs_err))
+        elif error is None:
+            # even if the build completed without error, check the logs for problems
+            error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
 
         if error is not None:
             # An error occurred. We don't have a viable build.
@@ -765,6 +774,46 @@ class ImageDistGitRepo(DistGitRepo):
 
         self.logger.info("Successfully built image: {} ; {}".format(target_image, task_url))
         return True
+
+    def _logs_dir(self):
+        return "%s/%s" % (self.runtime.brew_logs_dir, self.metadata.name)
+
+    def _detect_permanent_build_failures(self, scanner):
+        """
+        check logs to determine if this container build failed for a known non-flake reason
+        :param scanner: Model object with fields
+                        "files" (list of log files to search)
+                        "matches" (list of compiled regexen for matching a line in the log)
+        """
+        if not scanner or not scanner.matches or not scanner.files:
+            self.logger.debug("Log file scanning not specified; skipping")
+            return None
+        logs_dir = self._logs_dir()
+        try:
+            # find the most recent subdir, which should contain logs for the latest build task
+            task_dirs = [os.path.join(logs_dir, d) for d in os.listdir(logs_dir)]
+            task_dirs = [d for d in task_dirs if os.path.isdir(d)]
+            if not task_dirs:
+                self.logger.info("No task logs found under {}; cannot analyze logs".format(logs_dir))
+                return None
+            latest_dir = max(task_dirs, key=os.path.getmtime)
+
+            # check the log files for recognizable problems
+            found_problems = []
+            for log_file in os.listdir(latest_dir):
+                if log_file not in scanner.files:
+                    continue
+                with open(os.path.join(latest_dir, log_file)) as log:
+                    for line in log:
+                        for regex in scanner.matches:
+                            match = regex.search(line)
+                            if match:
+                                found_problems.append(log_file + ": " + match.group(0))
+            if found_problems:
+                found_problems.insert(0, "Problem indicators found in logs under " + latest_dir)
+                return "\n".join(found_problems)
+        except OSError as e:
+            self.logger.warning("Exception while trying to analyze build logs in {}: {}".format(logs_dir, e))
 
     def push(self):
         with Dir(self.distgit_dir):
