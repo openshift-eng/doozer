@@ -14,7 +14,7 @@ def _get_version():
 
 
 setup(
-    name="doozer",
+    name="rh-doozer",
     author="AOS ART Team",
     author_email="aos-team-art@redhat.com",
     version=_get_version(),
