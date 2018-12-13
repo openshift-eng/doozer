@@ -1135,8 +1135,15 @@ class ImageDistGitRepo(DistGitRepo):
             if os.path.isfile("Dockerfile"):
                 os.remove("Dockerfile")
 
-            # Rename our distgit source Dockerfile appropriately
-            os.rename(dockerfile_name, "Dockerfile")
+            try:
+                # Rename our distgit source Dockerfile appropriately
+                os.rename(dockerfile_name, "Dockerfile")
+            except OSError as err:
+                print("TODO: Print out what dang image this is and a link to the source on github, if that's not too hard.")
+                print("Expected dockerfile '{}' does not exist, but these do!")
+                dir_contents = os.listdir('.')
+                print("\n".join(dir_contents))
+                raise err
 
         # Clean up any extraneous Dockerfile.* that might be distractions (e.g. Dockerfile.centos)
         for ent in os.listdir("."):
