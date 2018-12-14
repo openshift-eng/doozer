@@ -1,16 +1,15 @@
 language: python
 python:
 - '2.7'
-deploy:
-  matrix:
-  - provider: pypi
-    skip_cleanup: true
-    user: OpenShiftART
-    password:
-      secure: DoV4ja22s7aKrzc79F/Rs/Y6D76apEyGyK/fO+zETXtvtaxou5OgCFnyBSWOWPUVGmP1mDJra07jhpjWq695c1H8bGxLQ77U4G5d4Q91SfOFQceTsTWb6IFTxcKgmWb+jeOIoZbxPQUinhG1D2U9RK9CLLunJ/H6oHF4mpRqIhHyug5gNxMk/+mS4XGEqWpB5R/h3os6pt+gSLyHFfK3AuuKNHPAu58SIYIeywXkYnWYHZ+mI8wp/pMmM/Ta0EEizgjdWUjHJ3B0RgYnyLYsLD8xAcEYesGrwSzG4W8SjknEwA5yn5eAwbgSK5HkqroywfMCwpnfi+gnJV5tlgMHZxLQsadoNqr9y605+luj+Xl4ahYop1++wuoXdg+3wnmMqL6MFJZ9hkE1IzMjsCdPqTI0XUUxFQK1hkBMu8CTP4xcDC++ScVoC0dp219upzxVF+2FMIhe2dUuTR5twuYD98nBHeeTxS7U3SE+dF1J6Dydsp3X3TjchSkJHladOMC57etshus3riiQx+a1mLCyyVyC+pDGWl7radVokOJEK7xqJM3OpQkkn6HxkOmMZB+0Jjoa2SAp85kFlCL0AOaLOyTT3OtLLtfO7dvEksMimmeSFrKWt8IrQZ6lJ9cspEFoXvqet1oK0Q294FTnsq/ZWYcnFFt0Usu7tTjPTzCx1CM=
-    on:
-      python: 2.7
-      tags: true
-
+install:
+- echo "Disabling requirements.txt install. Will not work on Travis."
 script:
-- python setup.py install
+- echo "We should run tests here"
+deploy:
+  provider: pypi
+  skip_cleanup: true
+  on:
+    python: 2.7
+  user: OpenShiftART
+  password:
+    secure: WjhFex6P24/1YHdtkwbY0rCWaGg8Oov5stYVxmn6KMFztnoYCW8sO8bZRGcFwhGsGvttIUHaxGfgV0sVeOypkFyyPb+gH+IymPhTcoUoBLs3MM4VbXMdxtVLw2GaFwCorvwNBff0RsvGJZvBhPa9Tm+E+urtv7JjeFlq34Y55lkF+WbOgjQ0Nl769XsZel5PX1ujTWikx3koEF1LOY9NdKooj71dQHAUKSOMxEA3c7z5FXRNFTTb4AGI6PQRaWEn0TtGkxxUSd9S4ffuyxWnlu7Ca7hMiK1H4/PuUpLBSbPvDaK7xFLI5v+n26j7txgFEX/5w2f+KjNZpncEhxNU674GDY7SYE6Wdri1U3h4AwQfc0MN+UGRZ7quflHl2DyIQfdrCN9cec54Gq0ETX4y3SCaWcKbmud813n5xLokvo3fB9i7LYpkZ74zh5+2QkZCfhyndRjbyx5GNA3H6tIud70ddpg1ClREKExGheb2bjtzF13TnDikiDk5iolwNBwqE+upcOCs5G0pxoL70zGR0OIknH0+dJznLTYgP4pJejMM1/h1UqiXEwPHQsKLG/KYpHogK0Lrkvr6cqh1m0PWw2zNI6sHFUOy39WzYbMurhmbqR4rEX5T8H3hGvpN+i8v2h573YvV8iKB2EPBre3ZaQkROc1gUhVmrIIOYunV5FI=
