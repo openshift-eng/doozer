@@ -9,19 +9,13 @@ For local development pull the code and run:
 
 `python setup.py develop`
 
-For new releases, once `master` is decided to be good:
+For new releases, Travis-CI is already setup and deployment to PyPi is easy:
 
-- Bump the version number in `doozerlib/VERSION`
-- rebase `master` onto the `released` branch so that they are even.
-    - `git clone git@github.com:openshift/doozer.git`
-    - `cd doozer`
-    - `git fetch`
-    - `git checkout released`
-    - `git rebase master`
-    - `git push origin released`
-- Cut a new github release with the same version string as given in `doozerlib/VERSION`
-    - Use `released` for the `Target` parameter
-- On your system run `pip install -U https://github.com/openshift/doozer/archive/released.zip`
+- Bump the version in `./doozerlib/VERSION`
+- Push the change to `master`
+- Create a new GitHub release: https://github.com/openshift/doozer/releases/new
+
+That's it. Travis CI will do the rest automatically.
 
 
 ## Installation
@@ -29,10 +23,10 @@ For new releases, once `master` is decided to be good:
 To install the latest released version of doozer, run:
 
 ```
-pip install https://github.com/openshift/doozer/archive/released.zip
+pip install -U rh-doozer
 ```
 
-If instead, you would like to run with the latest and greatest, but potential unstable, run:
+If instead, you would like to run with the latest and greatest from source, but potential unstable, run:
 
 ```
 pip install https://github.com/openshift/doozer/archive/master.zip
