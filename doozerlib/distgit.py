@@ -9,6 +9,7 @@ from multiprocessing import Lock
 import yaml
 import logging
 import bashlex
+import glob
 
 from dockerfile_parse import DockerfileParser
 
@@ -19,6 +20,7 @@ import exectools
 from pushd import Dir
 from brew import watch_task, check_rpm_buildroot
 from model import Model, Missing
+from . exceptions import DoozerFatalError
 
 OIT_COMMENT_PREFIX = '#oit##'
 OIT_BEGIN = '##OIT_BEGIN'
@@ -1184,8 +1186,25 @@ class ImageDistGitRepo(DistGitRepo):
             if os.path.isfile("Dockerfile"):
                 os.remove("Dockerfile")
 
-            # Rename our distgit source Dockerfile appropriately
-            os.rename(dockerfile_name, "Dockerfile")
+            try:
+                # Rename our distgit source Dockerfile appropriately
+                if not os.path.isfile(dockerfile_name):
+                    options = glob.glob('Dockerfile*')
+                    if options:
+                        options = '\nTry one of these{}\n'.format(options)
+                    else:
+                        options = ''
+
+                    url = self.source_url
+                    if self.config.content.source.path is not Missing:
+                        rc, out, err = exectools.cmd_gather(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+                        branch = out.strip()
+                        url = '{}/tree/{}/{}'.format(url, branch, self.config.content.source.path)
+                    raise DoozerFatalError('{}:{} does not exist in @ {}{}'
+                                           .format(self.name, dockerfile_name, url, options))
+                os.rename(dockerfile_name, "Dockerfile")
+            except OSError as err:
+                raise DoozerFatalError(err.message)
 
         # Clean up any extraneous Dockerfile.* that might be distractions (e.g. Dockerfile.centos)
         for ent in os.listdir("."):
@@ -1275,8 +1294,8 @@ class ImageDistGitRepo(DistGitRepo):
                 pre = dockerfile_data
                 dockerfile_data = pre.replace(match, replacement)
                 if dockerfile_data == pre:
-                    raise IOError("Replace (%s->%s) modification did not make a change to the Dockerfile content" % (
-                        match, replacement))
+                    raise DoozerFatalError("{}: Replace ({}->{}) modification did not make a change to the Dockerfile content"
+                                           .format(self.name, match, replacement))
                 self.logger.debug(
                     "Performed string replace '%s' -> '%s':\n%s\n" %
                     (match, replacement, dockerfile_data))

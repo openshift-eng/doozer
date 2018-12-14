@@ -1364,7 +1364,7 @@ def main():
         # nicely instead of a gross stack-trace.
         # All internal errors that should simply cause the app
         # to exit with an error code should use DoozerFatalError
-        red_print(ex.message)
+        red_print('\nDoozer Failed With Error:\n' + ex.message)
         sys.exit(1)
 
 

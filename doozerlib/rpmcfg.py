@@ -8,6 +8,7 @@ from brew import watch_task
 
 from metadata import Metadata
 from model import Missing
+from . exceptions import DoozerFatalError
 
 RELEASERS_CONF = """
 [aos]
@@ -48,7 +49,7 @@ class RPMMetadata(Metadata):
                 self.specfile = os.path.join(self.source_path, self.source.specfile)
                 if not os.path.isfile(self.specfile):
                     raise ValueError('{} config specified a spec file that does not exist: {}'.format(
-                        config_filename, self.specfile
+                        self.config_filename, self.specfile
                     ))
             else:
                 with Dir(self.source_path):
@@ -125,8 +126,8 @@ class RPMMetadata(Metadata):
                 pre = specfile_data
                 specfile_data = pre.replace(match, replacement)
                 if specfile_data == pre:
-                    raise IOError("Replace (%s->%s) modification did not make a change to the Dockerfile content" % (
-                        match, replacement))
+                    raise DoozerFatalError("{}: Replace ({}->{}) modification did not make a change to the spec file content"
+                                           .format(self.name, match, replacement))
                 self.logger.debug(
                     "Performed string replace '%s' -> '%s':\n%s\n" %
                     (match, replacement, specfile_data))
