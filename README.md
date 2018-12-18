@@ -78,3 +78,17 @@ yum install tito
 ### **repoquery** (from yum, not dnf) and **rsync**
 
 `[yum|dnf] install yum-utils rsync`
+
+
+# Local Image Builds
+
+Because many images require resources on internal registries is it important to setup your local docker to search for images in the right place.
+Note: This is just one example and your mileage may vary depending on your system and tool versions
+
+- Add the following entry to your `/etc/docker/daemon.json`:
+
+    `"insecure-registries": ["http://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/"]`
+
+- In `/etc/containers/registries.conf ` add `http://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888` to both `[registries.search:registries]` and `[registries.insecure:registries]`. We recommend adding it to the beginning of the list if possible so that docker does not pull public versions of an image.
+
+- Restart docker

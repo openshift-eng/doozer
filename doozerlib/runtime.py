@@ -29,7 +29,6 @@ from model import Model, Missing
 from multiprocessing import Lock
 from repos import Repos
 import brew
-import constants
 from exceptions import DoozerFatalError
 
 
@@ -149,6 +148,10 @@ class Runtime(object):
         self.rpm_list = None
         self.rpm_search_tree = None
 
+        # Used for image build ordering
+        self.image_tree = {}
+        self.image_order = []
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
@@ -210,10 +213,10 @@ class Runtime(object):
 
         self.initialize_logging()
 
-        self.resolve_metadata()
-
         if no_group:
             return  # nothing past here should be run without a group
+
+        self.resolve_metadata()
 
         self.record_log_path = os.path.join(self.working_dir, "record.log")
         self.record_log = open(self.record_log_path, 'a')
@@ -344,6 +347,32 @@ class Runtime(object):
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
 
+                for image in self.image_map.itervalues():
+                    image.resolve_parent()
+
+                self.image_tree = {}
+                image_lists = {0: []}
+
+                def add_child_branch(child, branch, level=1):
+                    if level not in image_lists:
+                        image_lists[level] = []
+                    for sub_child in child.children:
+                        branch[sub_child.distgit_key] = {}
+                        image_lists[level].append(sub_child.distgit_key)
+                        add_child_branch(sub_child, branch[sub_child.distgit_key], level + 1)
+
+                for image in self.image_map.itervalues():
+                    if not image.parent:
+                        self.image_tree[image.distgit_key] = {}
+                        image_lists[0].append(image.distgit_key)
+                        add_child_branch(image, self.image_tree[image.distgit_key])
+
+                levels = image_lists.keys()
+                levels.sort()
+                self.image_order = []
+                for l in levels:
+                    self.image_order.extend(image_lists[l])
+
             if mode in ['rpms', 'both']:
                 for r in rpm_data.itervalues():
                     metadata = RPMMetadata(self, r, clone_source=clone_source)
@@ -423,6 +452,9 @@ class Runtime(object):
 
     def image_metas(self):
         return self.image_map.values()
+
+    def ordered_image_metas(self):
+        return [self.image_map[dg] for dg in self.image_order]
 
     def rpm_metas(self):
         return self.rpm_map.values()
@@ -525,14 +557,14 @@ class Runtime(object):
         if distgit_name not in self.image_map:
             if not required:
                 return None
-            raise IOError("Unable to find image metadata in group / included images: %s" % distgit_name)
+            raise DoozerFatalError("Unable to find image metadata in group / included images: %s" % distgit_name)
         return self.image_map[distgit_name]
 
-    def late_resolve_image(self, distgit_key):
+    def late_resolve_image(self, distgit_name):
         """Resolve image and retrive meta without adding to image_map.
         Mainly for looking up parent image info."""
 
-        data_obj = self.gitdata.load_data(path='images', key=distgit_key)
+        data_obj = self.gitdata.load_data(path='images', key=distgit_name)
         meta = ImageMetadata(self, data_obj)
         return meta
 
@@ -547,7 +579,7 @@ class Runtime(object):
 
         return self.streams[stream_name]
 
-    def resolve_source(self, parent, source):
+    def resolve_source(self, parent, meta):
         """
         Looks up a source alias and returns a path to the directory containing
         that source. Sources can be specified on the command line, or, failing
@@ -556,9 +588,19 @@ class Runtime(object):
         this method will clone that source to checkout the group's desired
         branch before returning a path to the cloned repo.
         :param parent: Name of parent the source belongs to
-        :param source: The source object to resolve
+        :param meta: The MetaData object to resolve source for
         :return: Returns the source path
         """
+
+        source = meta.config.content.source
+
+        # This allows passing `--source <distgit_key> path` to
+        # override any source to something local without it
+        # having been configured for an alias
+        if self.local and meta.distgit_key in self.source_paths:
+            source['alias'] = meta.distgit_key
+            if 'git' in source:
+                del source['git']
 
         source_details = None
         if 'git' in source:
@@ -653,16 +695,16 @@ class Runtime(object):
             else:
                 raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
 
-    def resolve_source_head(self, parent, source):
+    def resolve_source_head(self, parent, meta):
         """
         Attempts to resolve the branch a given source alias has checked out. If not on a branch
         returns SHA of head.
         :param parent: Name of parent requesting the source
-        :param source: The source object to analyze
+        :param meta: The MetaData object to resolve source for
         :param required: Whether an error should be thrown or None returned if it cannot be determined
         :return: The name of the checked out branch or None (if required=False)
         """
-        source_dir = self.resolve_source(parent, source)
+        source_dir = self.resolve_source(parent, meta)
 
         if not source_dir:
             return None

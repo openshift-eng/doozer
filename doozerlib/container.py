@@ -1,7 +1,6 @@
 import shlex
 import exectools
 import logutil
-import constants
 
 logger = logutil.getLogger(__name__)
 
