@@ -8,7 +8,6 @@ from model import Missing
 from pushd import Dir
 
 import assertion
-import constants
 import logutil
 import exectools
 import container
@@ -47,6 +46,23 @@ class ImageMetadata(Metadata):
         super(ImageMetadata, self).__init__('image', runtime, data_obj)
         self.image_name = self.config.name
         self.image_name_short = self.image_name.split('/')[-1]
+        self.parent = None
+        self.children = []
+
+    def resolve_parent(self):
+        if 'from' in self.config:
+            if 'member' in self.config['from']:
+                base = self.config['from']['member']
+                try:
+                    self.parent = self.runtime.resolve_image(base)
+                except:
+                    self.parent = None
+
+                if self.parent:
+                    self.parent.add_child(self)
+
+    def add_child(self, child):
+        self.children.append(child)
 
     @property
     def base_only(self):
@@ -171,7 +187,7 @@ class ImageMetadata(Metadata):
         # Query brew to find the most recently built release for this component version.
         _, version, release = self.get_latest_build_info()
         return "{host}/{name}:{version}-{release}".format(
-            host=constants.BREW_IMAGE_HOST, name=self.config.name, version=version, release=release)
+            host=self.runtime.group_config.urls.brew_image_host, name=self.config.name, version=version, release=release)
 
     def pull_image(self):
         pull_image(self.pull_url())

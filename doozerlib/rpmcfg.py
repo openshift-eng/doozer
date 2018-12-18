@@ -43,8 +43,8 @@ class RPMMetadata(Metadata):
         self.build_status = False
 
         if clone_source:
-            self.source_path = self.runtime.resolve_source('rpm_{}'.format(self.rpm_name), self.source)
-            self.source_head = self.runtime.resolve_source_head('rpm_{}'.format(self.rpm_name), self.source)
+            self.source_path = self.runtime.resolve_source('rpm_{}'.format(self.rpm_name), self)
+            self.source_head = self.runtime.resolve_source_head('rpm_{}'.format(self.rpm_name), self)
             if self.source.specfile:
                 self.specfile = os.path.join(self.source_path, self.source.specfile)
                 if not os.path.isfile(self.specfile):
@@ -226,7 +226,7 @@ class RPMMetadata(Metadata):
             record["task_url"] = task_url
 
             # Now that we have the basics about the task, wait for it to complete
-            error = watch_task(self.logger.info, task_id, terminate_event)
+            error = watch_task(self.runtime.group_config.urls.brewhub, self.logger.info, task_id, terminate_event)
 
             # Gather brew-logs
             logs_dir = "%s/%s" % (self.runtime.brew_logs_dir, self.name)

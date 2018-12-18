@@ -1,17 +1,18 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 from doozerlib import version
 from doozerlib import Runtime, Dir
 from doozerlib.image import pull_image, create_image_verify_repo_file, Image
 from doozerlib.model import Missing
 from doozerlib.brew import get_watch_task_info_copy
-from doozerlib import constants
 from doozerlib import metadata
 from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.config import valid_updates
 from doozerlib import cli_opts
 from doozerlib.exceptions import DoozerFatalError
-from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix
+from doozerlib import exectools
+from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print
 import datetime
 import click
 import os
@@ -40,6 +41,29 @@ and if they ran out of building space,
 they would have to move away from Fraggle Rock
 or else they would die.
 """
+
+
+class RemoteRequired(click.Option):
+    """
+    Option wrapper class for items that aren't needed for local
+    builds. Automatically handles them being required for remote
+    but ignored when building local.
+    When specified, options are assumed to be required for remote.
+    There is no need to include `required=True` in the click.Option init.
+    """
+    def __init__(self, *args, **kwargs):
+        kwargs['help'] = (
+            kwargs.get('help', '') +
+            '\nNOTE: This argument is ignored with the global option --local'
+        ).strip()
+        super(RemoteRequired, self).__init__(*args, **kwargs)
+
+    def handle_parse_result(self, ctx, opts, args):
+        if not ctx.obj.local and not (self.name in opts):
+            self.required = True
+
+        return super(RemoteRequired, self).handle_parse_result(
+            ctx, opts, args)
 
 
 def print_version(ctx, param, value):
@@ -87,6 +111,7 @@ def print_version(ctx, param, value):
               help='Process Dockerfiles in ODCS mode. HACK for the time being.')
 @click.option('--load-disabled', default=False, is_flag=True,
               help='Treat disabled images/rpms as if they were enabled')
+@click.option('--local/--osbs', default=False, is_flag=True, help='--local to run in local-only mode, --osbs to run on build cluster (default)')
 @click.pass_context
 def cli(ctx, **kwargs):
     cfg = dotconfig.Config('doozer', 'settings',
@@ -100,11 +125,10 @@ def cli(ctx, **kwargs):
             "{}\n"
         ).format(cfg.full_path)
         yellow_print(msg)
-    ctx.obj = Runtime(cfg_obj=cfg, **cfg.to_dict())
+    ctx.obj = Runtime(cfg_obj=cfg, command=ctx.invoked_subcommand, **cfg.to_dict())
 
 
-option_commit_message = click.option("--message", "-m", metavar='MSG', help="Commit message for dist-git.",
-                                     required=True)
+option_commit_message = click.option("--message", "-m", cls=RemoteRequired, metavar='MSG', help="Commit message for dist-git.")
 option_push = click.option('--push/--no-push', default=False, is_flag=True,
                            help='Pushes to distgit after local changes (--no-push by default).')
 
@@ -229,6 +253,11 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
     - If '+', the current release will be bumped.
     - Else, the literal value will be set in the Dockerfile.
     """
+
+    if runtime.local:
+        yellow_print('images:update-dockerfile is not valid when using --local, use images:rebase instead')
+        sys.exit(1)
+
     runtime.initialize(validate_content_sets=True)
 
     # If not pushing, do not clean up our work
@@ -255,7 +284,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
         dgr.commit(message)
         dgr.tag(real_version, real_release)
 
-    if push:
+    if not local and push:
         runtime.push_distgits()
 
 
@@ -405,7 +434,7 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
     if version == "auto":
         version = runtime.auto_version(repo_type)
 
-    if not runtime.valid_version(version):
+    if version and not runtime.valid_version(version):
         raise ValueError(
             "invalid version string: {}, expecting like v3.4 or v1.2.3".format(version)
         )
@@ -664,7 +693,7 @@ def print_build_metrics(runtime):
 @click.option("--odcs", default=None, metavar="ODCS",
               help="ODCS signing intent (e.g. signed, unsigned).")
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
-              default=None,
+              default='unsigned',
               help="Repo type (e.g. signed, unsigned).")
 @click.option("--repo", default=[], metavar="REPO_URL",
               multiple=True, help="Custom repo URL to supply to brew build.")
@@ -673,8 +702,10 @@ def print_build_metrics(runtime):
 @click.option("--push-to", default=[], metavar="REGISTRY", multiple=True,
               help="Specific registries to push to when image build completes.  [multiple]")
 @click.option('--scratch', default=False, is_flag=True, help='Perform a scratch build.')
+@click.option("--threads", default=1, metavar="NUM_THREADS",
+              help="Number of concurrent builds to execute. Only valid for --local builds.")
 @pass_runtime
-def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to, scratch):
+def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to, scratch, threads):
     """
     Attempts to build container images for all of the distgit repositories
     in a group. If an image has already been built, it will be treated as
@@ -697,7 +728,32 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
     # clarity in the logs.
     runtime.initialize(clone_distgits=True)
 
-    items = [m.distgit_repo() for m in runtime.image_metas()]
+    # AMH - Good idea but needs rethinking. Leaving for reference.
+    # if runtime.local:
+    #     docker_config = '/etc/docker/daemon.json'
+    #     brew_image_host = runtime.group_config.urls.brew_image_host
+    #     show_error = False
+    #     if os.path.isfile(docker_config):
+    #         with open(docker_config, 'r') as f:
+    #             if brew_image_host not in f.read():
+    #                 show_error = True
+    #     else:
+    #         show_error = True
+
+    #     if show_error:
+    #         msg = (
+    #             'Your group is configured to use {} \n'
+    #             'as a docker registry but docker is not configured to use it\n'
+    #             'as a search path. Also, it may need to be configured for insecure access.\n\n'
+    #             'Please add the following to /etc/docker/daemon.json (create if does not exist).\n\n'
+    #             '{{ "insecure-registries":["{}"] }}\n\n'
+    #             'Then restart docker: sudo systemctl restart docker\n\n'
+    #             'Note: your setup may be different, this is only an example.'
+    #         )
+
+    #         yellow_print(msg.format(brew_image_host, brew_image_host))
+
+    items = [m.distgit_repo() for m in runtime.ordered_image_metas()]
     if not items:
         runtime.logger.info("No images found. Check the arguments.")
         exit(1)
@@ -707,19 +763,23 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
         runtime.logger.info("No repos specified. --repo-type or --repo is required.")
         exit(1)
 
+    if not runtime.local:
+        threads = None
+
     results = runtime.parallel_exec(
         lambda (dgr, terminate_event): dgr.build_container(
             odcs, repo_type, repo, push_to_defaults, additional_registries=push_to,
-            terminate_event=terminate_event, scratch=scratch),
-        items)
+            terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1)),
+        items, n_threads=threads)
     results = results.get()
 
-    try:
-        print_build_metrics(runtime)
-    except:
-        # Never kill a build because of bad logic in metrics
-        traceback.print_exc()
-        runtime.logger.error("Error trying to show build metrics")
+    if not runtime.local:  # not needed for local builds
+        try:
+            print_build_metrics(runtime)
+        except:
+            # Never kill a build because of bad logic in metrics
+            traceback.print_exc()
+            runtime.logger.error("Error trying to show build metrics")
 
     failed = [m.distgit_key for m, r in zip(runtime.image_metas(), results) if not r]
     if failed:
@@ -827,6 +887,52 @@ def images_scan_for_cves(runtime):
     for image_url in image_urls:
         pull_image(image_url, runtime.logger)
     subprocess.check_call(["atomic", "scan"] + image_urls)
+
+
+@cli.command("images:show-tree", short_help="Display the image relationship tree")
+@click.option(
+    "--imagename", default=False, is_flag=True,
+    help="Use the image name instead of the dist-git name")
+@click.option(
+    "--yml", default=False, is_flag=True,
+    help="Ouput to yaml formatted text, otherwise generate a tree view")
+@pass_runtime
+def images_show_tree(runtime, imagename, yml):
+    """
+    Displays the parent/child relationship of all images or just those given.
+    This can be helpful to determine build order and dependencies.
+    """
+    runtime.initialize(clone_distgits=False)
+
+    images = list(runtime.image_metas())
+
+    print_colors = ['green', 'cyan', 'blue', 'yellow', 'magenta']
+
+    def name(image):
+        return image.image_name if imagename else image.distgit_key
+
+    if yml:
+        color_print(yaml.safe_dump(runtime.image_tree, indent=2, default_flow_style=False), 'cyan')
+    else:
+        def print_branch(image, indent=0):
+            num_child = len(image.children)
+            for i in range(num_child):
+                child = image.children[i]
+                if i == (num_child - 1):
+                    tree_char = '└─'
+                else:
+                    tree_char = '├─'
+                tree_char += ('┐' if len(child.children) else ' ')
+
+                line = '{} {} {}'.format(('  ' * indent), tree_char, name(child))
+                color_print(line, print_colors[(indent + 1) % len(print_colors)])
+                print_branch(child, indent + 1)
+
+        for image in images:
+            if not image.parent:
+                line = name(image)
+                color_print(line, print_colors[0])
+                print_branch(image)
 
 
 @cli.command("images:print", short_help="Print data from each distgit")
@@ -1039,20 +1145,21 @@ def query_rpm_version(runtime, repo_type):
     click.echo("version: {}".format(version))
 
 
-@cli.command("cleanup", short_help="Cleanup the OIT environment")
-@pass_runtime
-def cleanup(runtime):
-    """
-    Cleanup the OIT working environment.
-    Currently this just clears out the working dir content
-    """
+# AMH - 2019-01-15
+# Cleanup doesn't seem to always work
+# @cli.command("cleanup", short_help="Cleanup the OIT environment")
+# @pass_runtime
+# def cleanup(runtime):
+#     """
+#     Cleanup the OIT working environment.
+#     Currently this just clears out the working dir content
+#     """
 
-    runtime.initialize(no_group=True)
+#     runtime.initialize(no_group=True)
 
-    runtime.logger.info('Clearing out {}'.format(runtime.working_dir))
-    if os.path.isdir(runtime.working_dir):
-        shutil.rmtree(runtime.working_dir, ignore_errors=True)
-        os.makedirs(runtime.working_dir)  # rmtree deletes the directory itself. recreate
+#     runtime.logger.info('Clearing out {}'.format(runtime.working_dir))
+#     if os.path.isdir(runtime.working_dir):
+#         exectools.cmd_assert('rm -rf {}/*'.format(runtime.working_dir))
 
 
 option_config_commit_msg = click.option("--message", "-m", metavar='MSG', help="Commit message for config change.", default=None)
@@ -1091,7 +1198,7 @@ def config_commit(runtime, message, push):
     Commit outstanding metadata config changes
     """
     _fix_runtime_mode(runtime)
-    runtime.initialize(no_group=True, **CONFIG_RUNTIME_OPTS)
+    runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)
     config.commit(message)
     if push:
@@ -1106,7 +1213,7 @@ def config_push(runtime):
     Will of course fail if user does not have write access.
     """
     _fix_runtime_mode(runtime)
-    runtime.initialize(no_group=True, **CONFIG_RUNTIME_OPTS)
+    runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)
     config.push()
 

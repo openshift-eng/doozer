@@ -38,3 +38,8 @@ def yellow_print(msg):
 def cprint(msg):
     """Wrapper for click.echo"""
     click.echo(msg)
+
+
+def color_print(msg, color='white', nl=True):
+    """Print out a message in given color"""
+    click.secho(msg, nl=nl, bold=False, fg=color)

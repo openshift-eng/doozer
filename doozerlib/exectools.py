@@ -11,9 +11,13 @@ import time
 import shlex
 import os
 
+from fcntl import fcntl, F_GETFL, F_SETFL
+from os import O_NONBLOCK, read
+
 import logutil
 import pushd
 import assertion
+from util import red_print, green_print, yellow_print
 
 SUCCESS = 0
 
@@ -83,7 +87,7 @@ def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None, set_env=None):
     return stdout, stderr
 
 
-def cmd_gather(cmd, set_env=None):
+def cmd_gather(cmd, set_env=None, realtime=False):
     """
     Runs a command and returns rc,stdout,stderr as a tuple.
 
@@ -93,6 +97,7 @@ def cmd_gather(cmd, set_env=None):
 
     :param cmd: The command and arguments to execute
     :param set_env: Dict of env vars to set for command (overriding existing)
+    :param realtime: If True, output stdout and stderr in realtime instead of all at once.
     :return: (rc,stdout,stderr)
     """
 
@@ -118,9 +123,45 @@ def cmd_gather(cmd, set_env=None):
             cmd_info, exc, cmd_list[0]
         ))
         return exc.errno, "", "See previous error description."
-    out, err = proc.communicate()
-    rc = proc.returncode
+
+    if not realtime:
+        out, err = proc.communicate()
+        rc = proc.returncode
+    else:
+        out = ""
+        err = ""
+
+        # Many thanks to http://eyalarubas.com/python-subproc-nonblock.html
+        # setup non-blocking read
+        # set the O_NONBLOCK flag of proc.stdout file descriptor:
+        flags = fcntl(proc.stdout, F_GETFL)  # get current proc.stdout flags
+        fcntl(proc.stdout, F_SETFL, flags | O_NONBLOCK)
+        # set the O_NONBLOCK flag of proc.stderr file descriptor:
+        flags = fcntl(proc.stderr, F_GETFL)  # get current proc.stderr flags
+        fcntl(proc.stderr, F_SETFL, flags | O_NONBLOCK)
+
+        rc = None
+        while rc is None:
+            output = None
+            try:
+                output = read(proc.stdout.fileno(), 256)
+                green_print(output.rstrip())
+                out += output
+            except OSError:
+                pass
+
+            error = None
+            try:
+                error = read(proc.stderr.fileno(), 256)
+                yellow_print(error.rstrip())
+                out += error
+            except OSError:
+                pass
+
+            rc = proc.poll()
+
     logger.debug(
         "Process {}: exited with: {}\nstdout>>{}<<\nstderr>>{}<<\n".
         format(cmd_info, rc, out, err))
     return rc, out, err
+

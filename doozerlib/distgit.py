@@ -16,12 +16,12 @@ from dockerfile_parse import DockerfileParser
 
 import logutil
 import assertion
-import constants
 import exectools
 from pushd import Dir
 from brew import watch_task, check_rpm_buildroot
 from model import Model, Missing
 from . exceptions import DoozerFatalError
+from . util import yellow_print
 
 OIT_COMMENT_PREFIX = '#oit##'
 OIT_BEGIN = '##OIT_BEGIN'
@@ -103,6 +103,10 @@ class DistGitRepo(object):
             # don't conflict by stomping on the same git directory.
             self.distgit_dir = os.path.join(namespace_dir, self.metadata.distgit_key)
 
+            fake_distgit = (self.runtime.local and
+                            self.runtime.command != 'images:build' and
+                            'content' in self.metadata.config)
+
             if os.path.isdir(self.distgit_dir):
                 self.logger.info("Distgit directory already exists; skipping clone: %s" % self.distgit_dir)
             else:
@@ -114,28 +118,38 @@ class DistGitRepo(object):
                     if e.errno != errno.EEXIST:
                         raise
 
-                cmd_list = ["rhpkg"]
+                if fake_distgit:
+                    cmd_list = ['mkdir', '-p', self.distgit_dir]
+                    self.logger.info("Creating local build dir: {}".format(self.distgit_dir))
+                else:
+                    if self.runtime.command == 'images:build':
+                        yellow_print('Warning: images:rebase was skipped and therefore your '
+                                     'local build will be sourced from the current dist-git '
+                                     'contents and not the typical GitHub source. '
+                                     )
+                    cmd_list = ["rhpkg"]
 
-                if self.runtime.user is not None:
-                    cmd_list.append("--user=%s" % self.runtime.user)
+                    if self.runtime.user is not None:
+                        cmd_list.append("--user=%s" % self.runtime.user)
 
-                cmd_list.extend(["clone", self.metadata.qualified_name, self.distgit_dir])
+                    cmd_list.extend(["clone", self.metadata.qualified_name, self.distgit_dir])
 
-                self.logger.info("Cloning distgit repository [branch:%s] into: %s" % (distgit_branch, self.distgit_dir))
+                    self.logger.info("Cloning distgit repository [branch:%s] into: %s" % (distgit_branch, self.distgit_dir))
 
                 # Clone the distgit repository. Occasional flakes in clone, so use retry.
                 exectools.cmd_assert(cmd_list, retries=3)
 
-            with Dir(self.distgit_dir):
+            if not fake_distgit:
+                with Dir(self.distgit_dir):
 
-                rc, out, err = exectools.cmd_gather(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-                out = out.strip()
+                    rc, out, err = exectools.cmd_gather(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+                    out = out.strip()
 
-                # Only switch if we are not already in the branch. This allows us to work in
-                # working directories with uncommited changes.
-                if out != distgit_branch:
-                    # Switch to the target branch; all git changes should retry for flakes
-                    exectools.cmd_assert(["rhpkg", "switch-branch", distgit_branch], retries=3)
+                    # Only switch if we are not already in the branch. This allows us to work in
+                    # working directories with uncommited changes.
+                    if out != distgit_branch:
+                        # Switch to the target branch; all git changes should retry for flakes
+                        exectools.cmd_assert(["rhpkg", "switch-branch", distgit_branch], retries=3)
 
             self._read_master_data()
 
@@ -158,7 +172,7 @@ class DistGitRepo(object):
         :return: Returns the directory containing the source which should be used to populate distgit.
         """
 
-        source_root = self.runtime.resolve_source(self.name, self.config.content.source)
+        source_root = self.runtime.resolve_source(self.name, self.metadata)
         sub_path = self.config.content.source.path
 
         path = source_root
@@ -169,16 +183,21 @@ class DistGitRepo(object):
         return path
 
     def commit(self, commit_message, log_diff=False):
+        if self.runtime.local:
+            return ''  # no commits if local
+
         with Dir(self.distgit_dir):
             self.logger.info("Adding commit to local repo: {}".format(commit_message))
             if log_diff:
                 rc, out, err = exectools.cmd_gather(["git", "diff", "Dockerfile"])
                 assertion.success(rc, 'Failed fetching distgit diff')
                 self.runtime.add_distgits_diff(self.metadata.name, out)
+            print(self.source_sha)
+            print(commit_message)
             if self.source_sha:
                 # add short sha of source for audit trail
                 commit_message += " - {}".format(self.source_sha)
-            commit_message += "\n- MaxFileSize: {}".format(constants.DISTGIT_MAX_FILESIZE)  # set dist-git size limit to 50MB
+            commit_message += "\n- MaxFileSize: {}".format(50000000)  # set dist-git size limit to 50MB
             # commit changes; if these flake there is probably not much we can do about it
             exectools.cmd_assert(["git", "add", "-A", "."])
             exectools.cmd_assert(["git", "commit", "--allow-empty", "-m", commit_message])
@@ -187,6 +206,9 @@ class DistGitRepo(object):
         return sha.strip()
 
     def tag(self, version, release):
+        if self.runtime.local:
+            return ''  # no tags if local
+
         if version is None:
             return
 
@@ -207,11 +229,8 @@ class ImageDistGitRepo(DistGitRepo):
         self.build_lock.acquire()
         self.logger = metadata.logger
 
-    def _manage_container_config(self):
-
-        # Determine which image build method to use in OSBS.
-        # By default, specify nothing. use the OSBS default.
-        # If the group file config specifies a default, use that.
+    @property
+    def image_build_method(self):
         build_method = self.runtime.group_config.default_image_build_method
         # If the build is multistage, override with 'imagebuilder' as required for multistage.
         if 'builder' in self.config.get('from', {}):
@@ -219,6 +238,15 @@ class ImageDistGitRepo(DistGitRepo):
         # If our config specifies something, override with that.
         if self.config.image_build_method is not Missing:
             build_method = self.config.image_build_method
+
+        return build_method
+
+    def _manage_container_config(self):
+        # Determine which image build method to use in OSBS.
+        # By default, specify nothing. use the OSBS default.
+        # If the group file config specifies a default, use that.
+
+        build_method = self.image_build_method
 
         container_config = self._generate_odcs_config() or {}
         if build_method is not Missing:
@@ -465,7 +493,7 @@ class ImageDistGitRepo(DistGitRepo):
 
                 # pull just the main image name first
                 image_name_and_version = "%s:%s-%s" % (self.config.name, version, release)
-                brew_image_url = "/".join((constants.BREW_IMAGE_HOST, image_name_and_version))
+                brew_image_url = "/".join((self.runtime.group_config.urls.brew_image_host, image_name_and_version))
                 pull_image(brew_image_url)
                 record['message'] = "Successfully pulled image"
                 record['status'] = 0
@@ -569,7 +597,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     def build_container(
             self, odcs, repo_type, repo, push_to_defaults, additional_registries, terminate_event,
-            scratch=False, retries=3):
+            scratch=False, retries=3, realtime=False):
         """
         This method is designed to be thread-safe. Multiple builds should take place in brew
         at the same time. After a build, images are pushed serially to all mirrors.
@@ -607,11 +635,14 @@ class ImageDistGitRepo(DistGitRepo):
             # Status defaults to failure until explicitly set by success. This handles raised exceptions.
         }
 
-        target_tag = "-".join((self.org_version, release))
+        if self.runtime.local and release is '?':
+            target_tag = self.org_version
+        else:
+            target_tag = "{}-{}".format(self.org_version, release)
         target_image = ":".join((self.org_image_name, target_tag))
 
         try:
-            if not scratch and self.org_release is not None \
+            if not self.runtime.local and not scratch and self.org_release is not None \
                     and self.metadata.tag_exists(target_tag):
                 self.logger.info("Image already built for: {}".format(target_image))
             else:
@@ -629,30 +660,34 @@ class ImageDistGitRepo(DistGitRepo):
                 if self.config.wait_for is not Missing:
                     self._set_wait_for(self.config.wait_for, terminate_event)
 
-                def wait(n):
-                    self.logger.info("Async error in image build thread [attempt #{}]".format(n + 1))
-                    # No need to retry if the failure will just recur
-                    error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
-                    if error is not None:
-                        raise exectools.RetryException(
-                            "Saw permanent error in build logs:\n{}\nWill not retry after {} failed attempt(s)"
-                            .format(error, n + 1)
-                        )
-                    # Brew does not handle an immediate retry correctly, wait
-                    # before trying another build, terminating if interrupted.
-                    if terminate_event.wait(timeout=5 * 60):
-                        raise KeyboardInterrupt()
+                if self.runtime.local:
+                    self.build_status = self._build_container_local(target_image, repo_type, realtime)
+                    return self.build_status  # do nothing more since it's local only
+                else:
+                    def wait(n):
+                        self.logger.info("Async error in image build thread [attempt #{}]".format(n + 1))
+                        # No need to retry if the failure will just recur
+                        error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
+                        if error is not None:
+                            raise exectools.RetryException(
+                                "Saw permanent error in build logs:\n{}\nWill not retry after {} failed attempt(s)"
+                                .format(error, n + 1)
+                            )
+                        # Brew does not handle an immediate retry correctly, wait
+                        # before trying another build, terminating if interrupted.
+                        if terminate_event.wait(timeout=5 * 60):
+                            raise KeyboardInterrupt()
 
-                exectools.retry(
-                    retries=3, wait_f=wait,
-                    task_f=lambda: self._build_container(
-                        target_image, odcs, repo_type, repo, terminate_event,
-                        scratch, record))
+                    exectools.retry(
+                        retries=(1 if self.runtime.local else retries), wait_f=wait,
+                        task_f=lambda: self._build_container(
+                            target_image, odcs, repo_type, repo, terminate_event,
+                            scratch, record))
 
             # Just in case someone else is building an image, go ahead and find what was just
             # built so that push_image will have a fixed point of reference and not detect any
             # subsequent builds.
-            push_version, push_release = ('','')
+            push_version, push_release = ('', '')
             if not scratch:
                 _, push_version, push_release = self.metadata.get_latest_build_info()
             record["message"] = "Success"
@@ -691,12 +726,55 @@ class ImageDistGitRepo(DistGitRepo):
         self.runtime.add_record(action, **record)
         return self.build_status and self.push_status
 
+    def _build_container_local(self, target_image, repo_type, realtime=False):
+        """
+        The part of `build_container` which actually starts the build,
+        separated for clarity. Local build version.
+        """
+
+        if self.image_build_method == 'imagebuilder':
+            builder = 'imagebuilder -mount '
+        else:
+            builder = 'docker build -v '
+
+        cmd = builder
+        self.logger.info("Building image: %s" % target_image)
+        cmd += '{dir}/.oit/{repo_type}.repo:/etc/yum.repos.d/{repo_type}.repo -t {name}{tag} -t {name}:latest .'
+
+        name_split = target_image.split(':')
+        name = name_split[0]
+        tag = None
+        if len(name_split) > 1:
+            tag = name_split[1]
+
+        args = {
+            'dir': self.distgit_dir,
+            'repo_type': repo_type,
+            'name': name,
+            'tag': ':{}'.format(tag) if tag else ''
+        }
+
+        cmd = cmd.format(**args)
+
+        with Dir(self.distgit_dir):
+            self.logger.info(cmd)
+            rc, out, err = exectools.cmd_gather(cmd, realtime=True)
+
+            if rc != 0:
+                self.logger.error("Error running {}: out={}  ; err={}".format(builder, out, err))
+                return False
+
+            self.logger.debug(out + '\n\n' + err)
+
+            self.logger.info("Successfully built image: {}".format(target_image))
+        return True
+
     def _build_container(
             self, target_image, odcs, repo_type, repo_list, terminate_event,
             scratch, record):
         """
         The part of `build_container` which actually starts the build,
-        separated for clarity.
+        separated for clarity. Brew build version.
         """
         self.logger.info("Building image: %s" % target_image)
         cmd_list = ["rhpkg", "--path=%s" % self.distgit_dir]
@@ -753,7 +831,7 @@ class ImageDistGitRepo(DistGitRepo):
         record["task_url"] = task_url
 
         # Now that we have the basics about the task, wait for it to complete
-        error = watch_task(self.logger.info, task_id, terminate_event)
+        error = watch_task(self.runtime.group_config.urls.brewhub, self.logger.info, task_id, terminate_event)
 
         # Looking for something like the following to conclude the image has already been built:
         # BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
@@ -905,29 +983,6 @@ class ImageDistGitRepo(DistGitRepo):
         # will be prefix by the OIT_COMMENT_PREFIX and followed by newlines in the Dockerfile.
         oit_comments = []
 
-        # ahaile - Nov 14, 2018
-        # OIT Comments are ART specific and should die in doozer. Commenting out for now.
-        # if not self.runtime.no_comment and not self.config.get('no_oit_comments', False):
-        #     oit_comments.extend([
-        #         "This file is managed by the OpenShift Image Tool: https://github.com/openshift/enterprise-images",
-        #         "by the OpenShift Continuous Delivery team (#aos-cd-team on IRC).",
-        #         "",
-        #         "Any yum repos listed in this file will effectively be ignored during CD builds.",
-        #         "Yum repos must be enabled in the oit configuration files.",
-        #     ])
-
-        #     if self.config.content.source is not Missing:
-        #         oit_comments.extend(["The content of this file is managed from an external source.",
-        #                              "Changes made directly in distgit will be lost during the next",
-        #                              "reconciliation process.",
-        #                              ""])
-        #     else:
-        #         oit_comments.extend([
-        #             "Some aspects of this file may be managed programmatically. For example, the image name, labels (version,",
-        #             "release, and other), and the base FROM. Changes made directly in distgit may be lost during the next",
-        #             "reconciliation.",
-        #             ""])
-
         with Dir(self.distgit_dir):
             # Source or not, we should find a Dockerfile in the root at this point or something is wrong
             assertion.isfile("Dockerfile", "Unable to find Dockerfile in distgit root")
@@ -943,17 +998,23 @@ class ImageDistGitRepo(DistGitRepo):
             # If no version has been specified, we will leave the version in the Dockerfile. Extract it.
             if version is None:
                 version = dfp.labels.get("version", dfp.labels.get("Version", None))
+
                 if version is None:
-                    raise IOError("No version found in Dockerfile for %s" % self.metadata.qualified_name)
+                    if self.runtime.local:
+                        # fallback so the logic doesn't fall over
+                        # but we can still build
+                        version = "v0.0.0"
+                    else:
+                        DoozerFatalError("No version found in Dockerfile for %s" % self.metadata.qualified_name)
 
             uuid_tag = "%s.%s" % (version, self.runtime.uuid)
 
-            with open('additional-tags', 'w') as at:
-                at.write("%s\n" % uuid_tag)  # The uuid which we ensure we get the right FROM tag
-                # at.write("%s\n" % version)  # Removed for https://projects.engineering.redhat.com/browse/OSBS-5638?focusedCommentId=837662&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-837662
-                vsplit = version.split(".")
-                if len(vsplit) > 1:
-                    at.write("%s.%s\n" % (vsplit[0], vsplit[1]))  # e.g. "v3.7.0" -> "v3.7"
+            if not self.runtime.local:
+                with open('additional-tags', 'w') as at:
+                    at.write("%s\n" % uuid_tag)  # The uuid which we ensure we get the right
+                    vsplit = version.split(".")
+                    if len(vsplit) > 1:
+                        at.write("%s.%s\n" % (vsplit[0], vsplit[1]))  # e.g. "v3.7.0" -> "v3.7"
 
             self.logger.debug("Dockerfile contains the following labels:")
             for k, v in dfp.labels.iteritems():
@@ -1000,9 +1061,12 @@ class ImageDistGitRepo(DistGitRepo):
                             else:
                                 mapped_images.append(orignal_parents[count])
                         else:
-                            # Everything in the group is going to be built with the uuid tag, so we must
-                            # assume that it will exist for our parent.
-                            mapped_images.append("%s:%s" % (from_image_metadata.config.name, uuid_tag))
+                            if self.runtime.local:
+                                mapped_images.append('{}:latest'.format(from_image_metadata.config.name))
+                            else:
+                                # Everything in the group is going to be built with the uuid tag, so we must
+                                # assume that it will exist for our parent.
+                                mapped_images.append("{}:{}".format(from_image_metadata.config.name, uuid_tag))
 
                     # Is this image FROM another literal image name:tag?
                     elif image.image is not Missing:
@@ -1340,7 +1404,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         with Dir(self.distgit_dir):
 
-            if version is None:
+            if version is None and not self.runtime.local:
                 # Extract the current version in order to preserve it
                 dfp = DockerfileParser("Dockerfile")
                 version = dfp.labels["version"]

@@ -3,7 +3,6 @@ import os
 import urllib
 
 import assertion
-import constants
 from distgit import ImageDistGitRepo, RPMDistGitRepo
 import exectools
 import logutil
@@ -17,13 +16,6 @@ DISTGIT_TYPES = {
     'image': ImageDistGitRepo,
     'rpm': RPMDistGitRepo
 }
-
-
-def cgit_url(name, filename, rev=None):
-    ret = "/".join((constants.CGIT_URL, name, "plain", filename))
-    if rev is not None:
-        ret = "{}?h={}".format(ret, rev)
-    return ret
 
 
 def tag_exists(registry, name, tag, fetch_f=None):
@@ -114,7 +106,11 @@ class Metadata(object):
         return self.runtime.branch
 
     def cgit_url(self, filename):
-        return cgit_url(self.qualified_name, filename, self.branch())
+        rev = self.branch()
+        ret = "/".join((self.runtime.group_config.urls.cgit, self.qualified_name, "plain", filename))
+        if rev is not None:
+            ret = "{}?h={}".format(ret, rev)
+        return ret
 
     def fetch_cgit_file(self, filename):
         url = self.cgit_url(filename)
@@ -124,7 +120,7 @@ class Metadata(object):
         return req.read()
 
     def tag_exists(self, tag):
-        return tag_exists("http://" + constants.BREW_IMAGE_HOST, self.config.name, tag)
+        return tag_exists("http://" + self.runtime.group_config.urls.brew_image_host, self.config.name, tag)
 
     def get_component_name(self):
         # By default, the bugzilla component is the name of the distgit,
