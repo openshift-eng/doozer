@@ -1,6 +1,8 @@
 #!/usr/bin/env
 """
 Test the management of distgit repositories for RPM and image builds
+
+$ python -m doozerlib.distgit_test
 """
 import unittest
 
@@ -10,24 +12,25 @@ import tempfile
 import shutil
 import re
 
+from dockerfile_parse import DockerfileParser
 import distgit
 
 class MockDistgit(object):
     def __init__(self):
         self.branch = None
-        
+
 class MockConfig(object):
 
     def __init__(self):
         self.distgit = MockDistgit()
-        
+
 class MockRuntime(object):
-    
+
     def __init__(self, logger):
         self.branch = None
         self.distgits_dir = "distgits_dir"
         self.logger = logger
-        
+
 class MockMetadata(object):
 
     def __init__(self, runtime):
@@ -37,7 +40,7 @@ class MockMetadata(object):
         self.name = "test"
         self.namespace = "namespace"
         self.distgit_key = "distgit_key"
-        
+
 class MockScanner(object):
 
     def __init__(self):
@@ -138,6 +141,50 @@ class TestDistgit(unittest.TestCase):
         output = self.stream.getvalue()
         self.assertIn("Exception while trying to analyze build logs", output)
 
-        
+    def test_mangle_yum_cmds_unchanged(self):
+        unchanging = [
+            "yum install foo",
+            "ignore yum-config-manager here",
+            "foo && yum install && bar",
+        ]
+        for cmd in unchanging:
+            self.assertFalse(distgit.ImageDistGitRepo._mangle_yum(cmd)[0])
+
+    def test_mangle_yum_cmds_changed(self):
+        # note: adjacent spaces are not removed, so removals may result in redundant spaces
+        changes = {
+            "yum-config-manager foo bar baz": ": 'removed yum-config-manager'",
+            "yum --enablerepo=bar install foo --disablerepo baz": "yum  install foo  ",
+
+            "yum-config-manager foo bar baz && yum --enablerepo=bar install foo && build stuff":
+                ": 'removed yum-config-manager' \\\n && yum  install foo \\\n && build stuff",
+
+            """yum repolist && yum-config-manager\
+               --enable blah\
+               && yum install 'foo < 42' >& whatever\
+               && build some stuff""":
+            """yum repolist \\\n && : 'removed yum-config-manager'\
+               \\\n && yum install 'foo < 42' >& whatever\
+               \\\n && build some stuff""",
+
+            """yum repolist && \
+               ( foo || yum-config-manager --enable blah && verify-something )""":
+            """yum repolist \\\n && \
+               ( foo \\\n || : 'removed yum-config-manager' \\\n && verify-something )"""
+        }
+        for cmd, expect in changes.items():
+            changed, result = distgit.ImageDistGitRepo._mangle_yum(cmd)
+            self.assertTrue(changed)
+            self.assertEquals(result, expect)
+
+    def test_mangle_yum_parse_err(self):
+        try:
+            distgit.ImageDistGitRepo._mangle_yum("! ( && || $ ) totally broken")
+        except IOError as e:
+            self.assertIn("totally broken", str(e))
+            return
+        self.assertFalse("failed to catch a parsing error")
+
+
 if __name__ == "__main__":
     unittest.main()

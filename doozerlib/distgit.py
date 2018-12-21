@@ -10,6 +10,7 @@ import yaml
 import logging
 import bashlex
 import glob
+import re
 
 from dockerfile_parse import DockerfileParser
 
@@ -826,61 +827,77 @@ class ImageDistGitRepo(DistGitRepo):
             # and tags in dist-git can't be --force overwritten
             exectools.cmd_gather(['timeout', '60', 'git', 'push', '--tags'])
 
-    def __clean_repos(self, dfp):
+    @staticmethod
+    def _mangle_yum(cmd):
+        # alter the arg by splicing its content
+        splice = lambda pos, replacement: cmd[:pos[0]] + replacement + cmd[pos[1]:]
+        changed = False  # were there changes aside from whitespace?
+
+        # build a list of nodes we may want to alter from the AST
+        cmd_nodes = []
+        def append_nodes_from(node):
+            if node.kind in ["list", "compound"]:
+                sublist = node.parts if node.kind == "list" else node.list
+                for subnode in sublist:
+                    append_nodes_from(subnode)
+            elif node.kind in ["operator", "command"]:
+                cmd_nodes.append(node)
+
+        try:
+            append_nodes_from(bashlex.parse(cmd)[0])
+        except bashlex.errors.ParsingError as e:
+            raise IOError("Error while parsing Dockerfile RUN command:\n{}\n{}".format(cmd, e))
+
+        # note: make changes working back from the end so that positions to splice don't change
+        for subcmd in reversed(cmd_nodes):
+
+            if subcmd.kind == "operator":
+                # we lose the line breaks in the original dockerfile,
+                # so try to format nicely around operators -- more readable git diffs.
+                cmd = splice(subcmd.pos, "\\\n " + subcmd.op)
+                continue  # not "changed" logically however
+
+            # replace yum-config-manager with a no-op
+            if re.search(r'(^|/)yum-config-manager$', subcmd.parts[0].word):
+                cmd = splice(subcmd.pos, ": 'removed yum-config-manager'")
+                changed = True
+                continue
+
+            # clear repo options from yum commands
+            if not re.search(r'(^|/)yum$', subcmd.parts[0].word):
+                continue
+            next_word = None
+            for word in reversed(subcmd.parts):
+                if word.kind != "word":
+                    next_word = None
+                    continue
+
+                # seek e.g. "--enablerepo=foo" or "--disablerepo bar"
+                match = re.match(r'--(en|dis)ablerepo(=|$)', word.word)
+                if match:
+                    if next_word and match.group(2) != "=":
+                        # no "=", next word is the repo so remove it too
+                        cmd = splice(next_word.pos, "")
+                    cmd = splice(word.pos, "")
+                    changed = True
+                next_word = word
+
+            # note: there are a number of ways to defeat this logic, for instance by
+            # wrapping commands/args in quotes, or with commands that aren't valid
+            # to begin with. let's not worry about that; it need not be invulnerable.
+
+        return changed, cmd
+
+    def _clean_repos(self, dfp):
         """
         Remove any calls to yum --enable-repo or
         yum-config-manager in RUN instructions
         """
-        runs = []
-        # dfp.structure will give us all instructions and what lines they are on
-        for entry in dfp.structure:
+        for entry in reversed(dfp.structure):
             if entry['instruction'] == 'RUN':
-                val = entry['value']
-                cmds = []
-                # parse the lines for multi-command or multi-line options
-                for x in val.split("&"):
-                    if x:  # filter out empty values (because of double &&)
-                        cmds.append(x)
-
-                new_val = []
-                for c in cmds:
-                    split = list(bashlex.split(c))
-                    if split and split[0] == 'yum':
-                        res = []
-                        i = 0
-                        while i < len(split):
-                            if not split[i].startswith('--enablerepo') and not split[i].startswith('--disable'):
-                                res.append(split[i])
-                            elif '=' not in split[i]:
-                                i += 1  # no = used, skip extra value
-                            i += 1
-                        new_val.append(' '.join(res))
-                    elif split and split[0] == 'yum-config-manager':
-                        continue  # just skip any yum-config-manager
-                    else:
-                        new_val.append(c.strip())
-
-                entry['value'] = ' \\\n  && '.join(new_val)
-                runs.append(entry)
-
-        lines = dfp.lines
-        for run in runs:
-            if run['value']:
-                lines[run['startline']] = ("RUN " + run['value'] + '\n')
-            else:
-                lines[run['startline']] = '##REMOVE##'
-
-            # overwrite no longer needed lines for easier removal later
-            for i in range(run['startline'] + 1, run['endline'] + 1, 1):
-                lines[i] = '##REMOVE##'
-
-        # Go back and get rid of bogus lines
-        new_lines = []
-        for line in lines:
-            if line != '##REMOVE##':
-                new_lines.append(line)
-
-        dfp.lines = new_lines
+                changed, new_value = self._mangle_yum(entry['value'])
+                if changed:
+                    dfp.add_lines_at(entry, "RUN " + new_value, replace=True)
 
     def update_distgit_dir(self, version, release):
         ignore_missing_base = self.runtime.ignore_missing_base
@@ -921,7 +938,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             dfp = DockerfileParser(path="Dockerfile")
 
-            self.__clean_repos(dfp)
+            self._clean_repos(dfp)
 
             # If no version has been specified, we will leave the version in the Dockerfile. Extract it.
             if version is None:
