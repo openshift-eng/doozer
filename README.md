@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/openshift/doozer.svg?branch=master)](https://travis-ci.com/openshift/doozer)
+
 ## Doozer
 
 Doozer is a build management utility that currently has the capability to build RPMs and Container Images via OSBS/Brew
