@@ -1267,6 +1267,7 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
     src_dest_items = []
 
     for image in images:
+        click.echo("###############################################################")
         dfp = DockerfileParser(path=runtime.working_dir)
         try:
             dfp.content = image.fetch_cgit_file("Dockerfile")
@@ -1319,11 +1320,26 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
         if 'ose' in image.image_name_short and '666' not in release:
             # Do not include test builds in the image stream. Only
             # include 'ose-' prefixed images in the stream.
-            green_prefix("ADDING to IS: ")
-            print(s)
 
             # dest, it's what we're publishing in the ImageStream
-            dest = s.split('=')[-1]
+            (src, dest) = s.split('=')
+
+            # Don't try to mirror things that don't exist # --tls-verify=false
+            try:
+                if subprocess.call("/bin/skopeo inspect docker://{} >/dev/null".format(src),
+                                   shell=True) == 0:
+                    green_prefix("Verified source image exists: ")
+                    click.echo(src)
+                else:
+                    red_prefix("NOT adding to IS (source image does not exist): ")
+                    click.echo(src)
+                    continue
+            except OSError as e:
+                click.echo("Error! {}".format(str(e)))
+                raise e
+
+            green_prefix("ADDING to IS: ")
+            print(s)
 
             # Add a tag spec to the image stream. The name of each tag
             # spec does not include the 'ose-' prefix. This keeps them
@@ -1336,7 +1352,7 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
                 }
             })
         else:
-            red_prefix("NOT adding to IS: ")
+            red_prefix("NOT adding to IS (does not meet name/version specs): ")
             print(s)
 
         # This indicates this is an ART test build, it has not been
@@ -1350,6 +1366,8 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
     # Save the SRC=DEST 'oc image mirror' input to a file for later
     with open(src_dest, 'w+') as out_file:
         out_file.write("{}\n".format('\n'.join(src_dest_items)))
+
+    isb['spec']['tags'] = sorted(isb['spec']['tags'], key=lambda k: k['name'])
 
     # Save our image stream object
     with open(image_stream, 'w') as is_out:
