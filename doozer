@@ -1265,6 +1265,8 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
 
     # All the items we will put in the image mirror input
     src_dest_items = []
+    missing_source_items = []
+    invalid_name_items = []
 
     for image in images:
         click.echo("###############################################################")
@@ -1307,7 +1309,6 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
 
         if pushes_formatted is '':
             pushes_formatted = "(None)"
-
         s = s.replace("{pushes}", '{}\n'.format(pushes_formatted))
 
         if "{" in s:
@@ -1333,6 +1334,7 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
                 else:
                     red_prefix("NOT adding to IS (source image does not exist): ")
                     click.echo(src)
+                    missing_source_items.append(src)
                     continue
             except OSError as e:
                 click.echo("Error! {}".format(str(e)))
@@ -1354,6 +1356,7 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
         else:
             red_prefix("NOT adding to IS (does not meet name/version specs): ")
             print(s)
+            invalid_name_items.append(s)
 
         # This indicates this is an ART test build, it has not been
         # mirrored yet. Don't try to sync it across registries.
@@ -1372,6 +1375,16 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
     # Save our image stream object
     with open(image_stream, 'w') as is_out:
         yaml.safe_dump(isb, is_out, indent=2, default_flow_style=False)
+
+    yellow_prefix("Images skipped due to invalid naming:\n")
+    for img in sorted(invalid_name_items):
+	click.echo(" {}".format(img))
+	click.echo()
+
+    yellow_prefix("Images skipped due to missing source:\n")
+    for img in sorted(missing_source_items):
+	click.echo(" {}".format(img))
+	click.echo()
 
 
 def main():
