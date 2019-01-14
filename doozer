@@ -1329,7 +1329,7 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
             try:
                 if subprocess.call("/bin/skopeo inspect docker://{} >/dev/null".format(src),
                                    shell=True) == 0:
-                    green_prefix("Verified source image exists: ")
+                    green_prefix("Verified source image exists and complies with naming conventions: ")
                     click.echo(src)
                 else:
                     red_prefix("NOT adding to IS (source image does not exist): ")
@@ -1353,15 +1353,13 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
                     'name': dest
                 }
             })
+
+            # Add src=dest line to 'oc image mirror' input file
+            src_dest_items.append(s)
         else:
-            red_prefix("NOT adding to IS (does not meet name/version specs): ")
+            red_prefix("NOT adding to IS (does not meet name/version conventions): ")
             print(s)
             invalid_name_items.append(s)
-
-        # This indicates this is an ART test build, it has not been
-        # mirrored yet. Don't try to sync it across registries.
-        if '666' not in release:
-            src_dest_items.append(s)
 
         # End 'for image in images' loop
         #############################################################
