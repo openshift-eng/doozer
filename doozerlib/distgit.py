@@ -1101,12 +1101,17 @@ class ImageDistGitRepo(DistGitRepo):
                     df.write("%s %s\n" % (OIT_COMMENT_PREFIX, comment))
                 df.write(df_content)
 
-            sha_label = 'io.openshift.source-repo-commit'
-            source_label = 'io.openshift.source-repo-url'
-            source_commit_label = 'io.openshift.source-commit-url'
+            old_sha_label = 'io.openshift.source-repo-commit'
+            old_source_label = 'io.openshift.source-repo-url'
+            old_source_commit_label = 'io.openshift.source-commit-url'
+
+            sha_label = 'io.openshift.build.commit.id'
+            source_label = 'io.openshift.build.source-location'
+            source_commit_label = 'io.openshift.build.commit.url'
 
             # just always delete so it's either correct or not available
-            for label in (sha_label, source_label, source_commit_label):
+            for label in (old_sha_label, old_source_label, old_source_commit_label,
+                          sha_label, source_label, source_commit_label):
                 if label in dfp.labels:
                     del dfp.labels[label]
 
