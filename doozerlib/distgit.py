@@ -103,9 +103,7 @@ class DistGitRepo(object):
             # don't conflict by stomping on the same git directory.
             self.distgit_dir = os.path.join(namespace_dir, self.metadata.distgit_key)
 
-            fake_distgit = (self.runtime.local and
-                            self.runtime.command != 'images:build' and
-                            'content' in self.metadata.config)
+            fake_distgit = (self.runtime.local and 'content' in self.metadata.config)
 
             if os.path.isdir(self.distgit_dir):
                 self.logger.info("Distgit directory already exists; skipping clone: %s" % self.distgit_dir)
@@ -118,7 +116,7 @@ class DistGitRepo(object):
                     if e.errno != errno.EEXIST:
                         raise
 
-                if fake_distgit:
+                if fake_distgit and self.runtime.command in ['images:rebase', 'images:update-dockerfile']:
                     cmd_list = ['mkdir', '-p', self.distgit_dir]
                     self.logger.info("Creating local build dir: {}".format(self.distgit_dir))
                 else:
