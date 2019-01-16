@@ -644,56 +644,62 @@ class Runtime(object):
 
         url = source_details["url"]
         branches = source_details['branch']
-        self.logger.info("Cloning source '%s' from %s as specified by group into: %s" % (alias, url, source_dir))
-        exectools.cmd_assert(
-            cmd=["git", "clone", url, source_dir],
-            retries=3,
-            on_retry=["rm", "-rf", source_dir],
-        )
+
         stage_branch = branches.get('stage', None)
         fallback_branch = branches.get("fallback", None)
         found = False
-        with Dir(source_dir):
-            if self.stage and stage_branch:
-                self.logger.info('Normal branch overridden by --stage option, using "{}"'.format(stage_branch))
-                branch = stage_branch
-            else:
-                branch = branches["target"]
-            self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (alias, branch, source_dir))
 
-            if branch != "master":
-                rc, out, err = exectools.cmd_gather(["git", "checkout", "-b", branch, "origin/%s" % branch])
-            else:
-                rc = 0
+        if self.stage and stage_branch:
+            self.logger.info('Normal branch overridden by --stage option, using "{}"'.format(stage_branch))
+            branch = stage_branch
+        else:
+            branch = branches["target"]
 
-            if rc == 0:
-                found = True
+        clone_branch = None
+
+        branch_check = 'git ls-remote --heads {} {}'
+        for _ in range(3):
+            self.logger.info('Checking if target branch {} exists in {}'.format(branch, url))
+            rc, out, err = exectools.cmd_gather(branch_check.format(url, branch))
+            if rc:
+                self.logger.error('Unable to check if target branch {} exists: {}'.format(branch, err))
+                continue  # retry
+            if out.strip():  # any result means the branch is found
+                clone_branch = branch
+                break
+            elif not fallback_branch:
+                raise DoozerFatalError('Requested target branch {} does not exist and no fallback provided'.format(branch))
             else:
                 if self.stage and stage_branch:
                     raise DoozerFatalError('--stage option specified and no stage branch named "{}" exists for {}|{}'.format(stage_branch, alias, url))
-                elif fallback_branch is not None:
-                    self.logger.info("Unable to checkout branch %s ; trying fallback %s" % (branch, fallback_branch))
-                    self.logger.info("Attempting to checkout source '%s' fallback-branch %s in: %s" % (alias, fallback_branch, source_dir))
-                    if fallback_branch != "master":
-                        rc2, out, err = exectools.cmd_gather(
-                            ["git", "checkout", "-b", fallback_branch, "origin/%s" % fallback_branch],
-                        )
-                    else:
-                        rc2 = 0
 
-                    if rc2 == 0:
-                        found = True
-                    else:
-                        self.logger.error("Failed checking out fallback-branch %s: %s" % (branch, err))
-                else:
-                    self.logger.error("Failed checking out branch %s: %s" % (branch, err))
+                self.logger.info('Target branch does not exist in {}, checking fallback branch {}'.format(url, fallback_branch))
+                rc, out, err = exectools.cmd_gather(branch_check.format(url, fallback_branch))
+                if rc:
+                    self.logger.error('Unable to check if fallback branch {} exists: {}'.format(fallback_branch, err))
+                    continue  # retry
+                if out.strip():
+                    clone_branch = fallback_branch
+                    break
 
-            if found:
-                # Store so that the next attempt to resolve the source hits the map
-                self.register_source_alias(alias, source_dir)
-                return source_dir
-            else:
-                raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
+        try:
+            self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
+            exectools.cmd_assert(
+                "git clone -b {} --single-branch {} --depth 1 {}".format(clone_branch, url, source_dir),
+                retries=3,
+                on_retry=["rm", "-rf", source_dir],
+            )
+
+            found = True
+        except IOError as e:
+            self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, e.message))
+
+        if found:
+            # Store so that the next attempt to resolve the source hits the map
+            self.register_source_alias(alias, source_dir)
+            return source_dir
+        else:
+            raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
 
     def resolve_source_head(self, parent, meta):
         """
