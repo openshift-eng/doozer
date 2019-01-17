@@ -4,11 +4,9 @@ The main purpose of doozer is to run brew builds based on upstream sources. This
 
 # How to get doozer
 
-Installing doozer is easy, just run `pip install rh-doozer` in the Python 2 environment of your choosing. We highly recommend using a virtual environment.
+Installing doozer is easy, just run `pip install rh-doozer` in the Python 2 environment of your choosing. We highly recommend using a virtual environment. You will likely need various devel libs for pip to build and install, as well as various tools that doozer runs. Refer to [the README](README.md#installation).
 
-You will also need to install various tools used by doozer. Refer to [README.md#installation|the README].
-
-Finally, you'll need a private ssh key with access to clone sources from github.com, and probably a kerberos ticket for use with dist-git.
+You'll need a private ssh key with access to clone sources from github.com (or any other source where you are using an ssh key; test that you can do this before running doozer). You'll also likely need a kerberos ticket for use with dist-git, although local builds can be performed without this.
 
 # Doozer setup
 
@@ -25,12 +23,8 @@ data_path: https://github.com/openshift/ocp-build-data.git
 group: openshift-4.0
 ```
 
-Note, all three options above can be set at the CLI with `doozer --working-dir <path> --data-path <url> --group <group>` but we highly recommend setting them in `settings.yaml` to save typing evertime you run.
+Note, all three options above can be set at the CLI with `doozer --working-dir <path> --data-path <url> --group <group>` but we highly recommend setting them in `settings.yaml` to save typing every time you run.
 Also, please note that `group` in `settings.yaml` only makes sense if you only ever work on that one version, otherwise specify it on the CLI at runtime.
-
-# Dependencies
-
-You will also need to make sure that you have `imagebuilder` installed and that `docker` is properly configured to point to the internal registry. Please follow the instructions on the [Doozer Setup doc](https://github.com/openshift/doozer/blob/master/README.md#local-image-builds).
 
 # Image Configuration
 
@@ -43,25 +37,33 @@ If you have questions about the layout and format of `ocp-build-data` please rea
 
 # Running a Local Build
 
+For local builds you will need to make sure that you have `imagebuilder` installed and that you can access a properly-configured `docker`. Please follow the instructions on the [Doozer Setup doc](https://github.com/openshift/doozer/blob/master/README.md#local-image-builds).
+
 Once all the above is ready, you can build your image! 
 
-*Please note that yes, you need to refer to your image to `doozer` with the **distgit** name which is different than the common name for the image. In the near future ART will likely update `doozer` to take either name, but for the time being this is a historical usage quirk that's held over. So, for example, if you were to build `openshift/ose-ansible` you would need to specify `aos3-installation` which is defined by the yaml config [with the same name](https://github.com/openshift/ocp-build-data/blob/openshift-4.0/images/aos3-installation.yml) on `ocp-build-data`. All image config files in `ocp-build-data` have names that match their dist-git repo name, without exception.*
+*Please note that yes, you need to refer to your image to `doozer` with the **dist-git** name which is different than the common name for the image. In the near future ART will likely update `doozer` to take either name, but for the time being this is a historical usage quirk that's held over. So, for example, if you were to build `openshift/ose-ansible` you would need to specify `aos3-installation` which is defined by the yaml config [with the same name](https://github.com/openshift/ocp-build-data/blob/openshift-4.0/images/aos3-installation.yml) on `ocp-build-data`. All image config files in `ocp-build-data` have names that match their dist-git repo name, without exception.*
 
-It requires 2 steps:
+It requires 2 steps.
+
+## Rebasing (copying from source)
 
 First, run:
 
 `doozer --local --latest-parent-version --group openshift-4.0 -i <distgit_name> images:rebase`
 
-There are options available for `images:rebase` like the version and release strings, but they are not strictly necessary for a local build. This command will clone down your image source from the configured repo and copy the necessary files to a build directory while applying a few modifications required for the OCP build process.
+There are options available for `images:rebase` like the version and release strings, but they are not strictly necessary for a local build. This command will clone your image source from the configured repo and copy the necessary files to a build directory while applying a few modifications required for the OCP build process.
 
-Note: `--latest-parent-version` works around the assumption that doozer makes about parent-child relationships of images, which is that parent and child will be built at the same version in a single run. You will need this option almost all the time unless you are building a base image or all of the images at once.
+Note: `--latest-parent-version` works around the assumption that doozer makes about parent-child relationships of images for official builds; you will need this option for most local builds.
 
-Note that it will only pull from the configured repo and branch which is typically the released code, which for obvious reasons may be undesireable for the sake of testing. If you already have the repo with test code locally you can override that remote clone by running:
+Note that it will only pull from the configured repo and branch, typically already-merged code, while you may need a different fork and/or branch testing. If you already have the repo with test code checked out locally you can override that remote clone by running:
 
 `doozer --local --latest-parent-version --group openshift-4.0 --source <distgit_name> <path_to_repo> -i <distgit_name> images:rebase`
 
-This will then only use the local code for running the build. This operation will in no way modify the given repo, only copy the files into the `doozer` working directory.
+Then doozer uses the local code for running the build. This operation will in no way modify the given repo, only copy the files into the `doozer` working directory.
+
+Important: after a source is cloned, doozer never updates it. If you make changes to the source in github, rebase will not pull in those changes. You can either update it manually or just delete it so it is cloned again.
+
+## Building
 
 Next, to build the image run:
 
@@ -69,8 +71,8 @@ Next, to build the image run:
 
 It will now build the image using either `imagebuilder` or `docker build` as configured in the image's config yaml. The stdout of the build process will be written out to the console in realtime so that you can monitor the progress.
 
-That's it. Once done, the image will be available to docker locally.
+That's it. Once successful, the image is available in docker locally.
 
 # Cleaning the Workspace
 
-Please note that the given working directory (as noted above) is intended to be persistent between `doozer` steps. You can even run subequent builds of the same or other images with the same persistent working directory. However, if you switch versions of OCP you are testing against you will need to delete the contents of the directory before running `doozer`. 
+Please note that the given working directory is intended to be persistent between `doozer` steps. You can run subequent builds of the same or other images with the same persistent working directory; previously cloned repos will remain. If you switch versions of OCP you are testing against, or want to pull updates to repos already cloned, it is best to delete the contents of the working directory before running `doozer`. 
