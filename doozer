@@ -284,7 +284,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
         dgr.commit(message)
         dgr.tag(real_version, real_release)
 
-    if not local and push:
+    if not runtime.local and push:
         runtime.push_distgits()
 
 
