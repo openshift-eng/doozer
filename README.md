@@ -38,7 +38,7 @@ The Doozer installation will of course automatically pull in the required python
 
 ### **devel packages***
 
-`[dnf|yum] install krb5-devel python2-devel`
+`[dnf|yum] install krb5-devel python2-devel libffi`
 
 ### **git**
 
