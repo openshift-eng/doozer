@@ -82,6 +82,16 @@ yum install tito
 
 # Local Image Builds
 
+### Install ImageBuilder
+
+Some images are built with `imagebuilder` instead of `docker build` (this is configured in the image's config yaml) and therefore you need to install `imagebuilder`:
+
+ `go get -u github.com/openshift/imagebuilder/cmd/imagebuilder`
+
+*Note*: by default go "gets" binaries into $GOPATH/bin, which you may want to put in your $PATH. If there is no $GOPATH golang defaults to $HOME/go
+
+### Registry Setup
+
 Because many images require resources on internal registries is it important to setup your local docker to search for images in the right place.
 Note: This is just one example and your mileage may vary depending on your system and tool versions
 
