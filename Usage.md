@@ -4,11 +4,9 @@ The main purpose of doozer is to run brew builds based on upstream sources. This
 
 # How to get doozer
 
-Installing doozer is easy, just run `pip install rh-doozer` in the Python 2 environment of your choosing. We highly recommend using a virtual environment. You will likely need various devel libs for pip to build and install, as well as various tools that doozer runs. Refer to [the README](README.md#installation).
+Follow the [Installation Instructions](https://github.com/openshift/doozer/blob/master/Installation.md)
 
-You'll need a private ssh key with access to clone sources from github.com (or any other source where you are using an ssh key; test that you can do this before running doozer). You'll also likely need a kerberos ticket for use with dist-git, although local builds can be performed without this.
-
-# Doozer setup
+# Doozer Configuration
 
 After installing you will need to setup your doozer config, by adding the file `~/.config/doozer/settings.yaml` with the following contents:
 
@@ -39,7 +37,7 @@ If you have questions about the layout and format of `ocp-build-data` please rea
 
 For local builds you will need to make sure that you have `imagebuilder` installed and that you can access a properly-configured `docker`. Please follow the instructions on the [Doozer Setup doc](https://github.com/openshift/doozer/blob/master/README.md#local-image-builds).
 
-Once all the above is ready, you can build your image! 
+Once all the above is ready, you can build your image!
 
 *Please note that yes, you need to refer to your image to `doozer` with the **dist-git** name which is different than the common name for the image. In the near future ART will likely update `doozer` to take either name, but for the time being this is a historical usage quirk that's held over. So, for example, if you were to build `openshift/ose-ansible` you would need to specify `aos3-installation` which is defined by the yaml config [with the same name](https://github.com/openshift/ocp-build-data/blob/openshift-4.0/images/aos3-installation.yml) on `ocp-build-data`. All image config files in `ocp-build-data` have names that match their dist-git repo name, without exception.*
 
@@ -75,4 +73,4 @@ That's it. Once successful, the image is available in docker locally.
 
 # Cleaning the Workspace
 
-Please note that the given working directory is intended to be persistent between `doozer` steps. You can run subequent builds of the same or other images with the same persistent working directory; previously cloned repos will remain. If you switch versions of OCP you are testing against, or want to pull updates to repos already cloned, it is best to delete the contents of the working directory before running `doozer`. 
+Please note that the given working directory is intended to be persistent between `doozer` steps. You can run subequent builds of the same or other images with the same persistent working directory; previously cloned repos will remain. If you switch versions of OCP you are testing against, or want to pull updates to repos already cloned, it is best to delete the contents of the working directory before running `doozer`.
