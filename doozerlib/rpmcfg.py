@@ -8,7 +8,7 @@ from brew import watch_task
 
 from metadata import Metadata
 from model import Missing
-from . exceptions import DoozerFatalError
+from doozerlib.exceptions import DoozerFatalError
 
 RELEASERS_CONF = """
 [aos]

@@ -20,8 +20,8 @@ import exectools
 from pushd import Dir
 from brew import watch_task, check_rpm_buildroot
 from model import Model, Missing
-from . exceptions import DoozerFatalError
-from . util import yellow_print
+from doozerlib.exceptions import DoozerFatalError
+from doozerlib.util import yellow_print
 
 OIT_COMMENT_PREFIX = '#oit##'
 OIT_BEGIN = '##OIT_BEGIN'
