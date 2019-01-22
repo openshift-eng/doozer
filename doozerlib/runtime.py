@@ -642,46 +642,9 @@ class Runtime(object):
                 format(alias, source_dir))
             return source_dir
 
+        clone_branch, _ = self.detect_remote_source_branch(source_details)
+
         url = source_details["url"]
-        branches = source_details['branch']
-
-        stage_branch = branches.get('stage', None)
-        fallback_branch = branches.get("fallback", None)
-        found = False
-
-        if self.stage and stage_branch:
-            self.logger.info('Normal branch overridden by --stage option, using "{}"'.format(stage_branch))
-            branch = stage_branch
-        else:
-            branch = branches["target"]
-
-        clone_branch = None
-
-        branch_check = 'git ls-remote --heads {} {}'
-        for _ in range(3):
-            self.logger.info('Checking if target branch {} exists in {}'.format(branch, url))
-            rc, out, err = exectools.cmd_gather(branch_check.format(url, branch))
-            if rc:
-                self.logger.error('Unable to check if target branch {} exists: {}'.format(branch, err))
-                continue  # retry
-            if out.strip():  # any result means the branch is found
-                clone_branch = branch
-                break
-            elif not fallback_branch:
-                raise DoozerFatalError('Requested target branch {} does not exist and no fallback provided'.format(branch))
-            else:
-                if self.stage and stage_branch:
-                    raise DoozerFatalError('--stage option specified and no stage branch named "{}" exists for {}|{}'.format(stage_branch, alias, url))
-
-                self.logger.info('Target branch does not exist in {}, checking fallback branch {}'.format(url, fallback_branch))
-                rc, out, err = exectools.cmd_gather(branch_check.format(url, fallback_branch))
-                if rc:
-                    self.logger.error('Unable to check if fallback branch {} exists: {}'.format(fallback_branch, err))
-                    continue  # retry
-                if out.strip():
-                    clone_branch = fallback_branch
-                    break
-
         try:
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             exectools.cmd_assert(
@@ -689,17 +652,52 @@ class Runtime(object):
                 retries=3,
                 on_retry=["rm", "-rf", source_dir],
             )
-
-            found = True
         except IOError as e:
             self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, e.message))
-
-        if found:
-            # Store so that the next attempt to resolve the source hits the map
-            self.register_source_alias(alias, source_dir)
-            return source_dir
-        else:
             raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
+
+        # Store so that the next attempt to resolve the source hits the map
+        self.register_source_alias(alias, source_dir)
+        return source_dir
+
+    def detect_remote_source_branch(self, source_details):
+        """Find a configured source branch that exists, or raise DoozerFatalError. Returns branch name and git hash"""
+        git_url = source_details["url"]
+        branches = source_details["branch"]
+
+        branch = branches["target"]
+        fallback_branch = branches.get("fallback", None)
+        stage_branch = branches.get("stage", None) if self.stage else None
+
+        if stage_branch:
+            self.logger.info('Normal branch overridden by --stage option, using "{}"'.format(stage_branch))
+            result = self._get_remote_branch_ref(git_url, stage_branch)
+            if result:
+                return stage_branch, result
+            raise DoozerFatalError('--stage option specified and no stage branch named "{}" exists for {}'.format(stage_branch, git_url))
+
+        result = self._get_remote_branch_ref(git_url, branch)
+        if result:
+            return branch, result
+        elif not fallback_branch:
+            raise DoozerFatalError('Requested target branch {} does not exist and no fallback provided'.format(branch))
+
+        self.logger.info('Target branch does not exist in {}, checking fallback branch {}'.format(git_url, fallback_branch))
+        result = self._get_remote_branch_ref(git_url, fallback_branch)
+        if result:
+            return fallback_branch, result
+        raise DoozerFatalError('Requested fallback branch {} does not exist'.format(branch))
+
+    def _get_remote_branch_ref(self, git_url, branch):
+        """Detect whether a single branch exists on a remote repo; returns git hash if found"""
+        self.logger.info('Checking if target branch {} exists in {}'.format(branch, git_url))
+        try:
+            out, _ = exectools.cmd_assert('git ls-remote --heads {} {}'.format(git_url, branch), retries=3)
+        except Exception as err:
+            self.logger.error('Unable to check if target branch {} exists: {}'.format(branch, err))
+            return None
+        result = out.strip()  # any result means the branch is found
+        return result.split()[0] if result else None
 
     def resolve_source_head(self, parent, meta):
         """
