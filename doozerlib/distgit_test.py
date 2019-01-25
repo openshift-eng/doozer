@@ -5,6 +5,7 @@ Test the management of distgit repositories for RPM and image builds
 $ python -m doozerlib.distgit_test
 """
 import unittest
+import flexmock
 
 import StringIO
 import logging
@@ -14,8 +15,13 @@ import re
 
 from dockerfile_parse import DockerfileParser
 import distgit
+from model import Model
 
 class MockDistgit(object):
+    def __init__(self):
+        self.branch = None
+
+class MockContent(object):
     def __init__(self):
         self.branch = None
 
@@ -23,6 +29,7 @@ class MockConfig(object):
 
     def __init__(self):
         self.distgit = MockDistgit()
+        self.content = Model()
 
 class MockRuntime(object):
 
@@ -30,6 +37,9 @@ class MockRuntime(object):
         self.branch = None
         self.distgits_dir = "distgits_dir"
         self.logger = logger
+
+    def detect_remote_source_branch(self, _):
+        pass
 
 class MockMetadata(object):
 
@@ -40,6 +50,10 @@ class MockMetadata(object):
         self.name = "test"
         self.namespace = "namespace"
         self.distgit_key = "distgit_key"
+
+    def fetch_cgit_file(self, file):
+        pass
+
 
 class MockScanner(object):
 
@@ -178,12 +192,78 @@ class TestDistgit(unittest.TestCase):
             self.assertEquals(result, expect)
 
     def test_mangle_yum_parse_err(self):
-        try:
+        with self.assertRaises(IOError) as e:
             distgit.ImageDistGitRepo._mangle_yum("! ( && || $ ) totally broken")
-        except IOError as e:
-            self.assertIn("totally broken", str(e))
-            return
-        self.assertFalse("failed to catch a parsing error")
+        self.assertIn("totally broken", str(e.exception))
+
+    def test_image_distgit_matches_commit(self):
+        """
+        Check the logic for matching a commit from cgit
+        """
+        md = MockMetadata(MockRuntime(self.logger))
+        d = distgit.ImageDistGitRepo(md, autoclone=False)
+
+        test_file = u"""
+            from foo
+            label "{}"="spam"
+        """.format(distgit.ImageDistGitRepo.source_labels['now']['sha'])
+        flexmock(md).should_receive("fetch_cgit_file").and_return(test_file)
+
+        self.assertTrue(d._matches_commit("spam"))
+        self.assertNotIn("ERROR", self.stream.getvalue())
+        self.assertFalse(d._matches_commit("eggs"))
+
+        flexmock(md).should_receive("fetch_cgit_file").and_raise(Exception("bogus!!"))
+        self.assertFalse(d._matches_commit("bacon"))
+        self.assertIn("bogus", self.stream.getvalue())
+
+    def test_image_distgit_matches_source(self):
+        """
+        Check the logic for matching a commit from source repo
+        """
+        md = MockMetadata(MockRuntime(self.logger))
+        d = distgit.ImageDistGitRepo(md, autoclone=False)
+        d.config.content = Model()
+
+        # no source, dist-git only; should be considered a match
+        self.assertTrue(d.matches_source_commit())
+
+        # source specified and matches Dockerfile in dist-git
+        d.config.content.source = Model()
+        d.config.content.source.git = dict()
+        test_file = u"""
+            from foo
+            label "{}"="spam"
+        """.format(distgit.ImageDistGitRepo.source_labels['now']['sha'])
+        flexmock(md).should_receive("fetch_cgit_file").and_return(test_file)
+        flexmock(d.runtime).should_receive("detect_remote_source_branch").and_return(("branch", "spam"))
+        self.assertTrue(d.matches_source_commit())
+
+        # source specified and doesn't match Dockerfile in dist-git
+        flexmock(d.runtime).should_receive("detect_remote_source_branch").and_return(("branch", "eggs"))
+        self.assertFalse(d.matches_source_commit())
+
+    def test_pkg_distgit_matches_commit(self):
+        """
+        Check the logic for matching a commit from cgit
+        """
+        md = MockMetadata(MockRuntime(self.logger))
+        source = md.config.content.source = Model()
+        source.specfile = "foo.spec"
+        d = distgit.RPMDistGitRepo(md, autoclone=False)
+
+        test_file = u"""
+            Version: 42
+            Source0: something-42.00spam0.tar.gz
+        """
+        flexmock(md).should_receive("fetch_cgit_file").once().and_return(test_file)
+
+        self.assertTrue(d._matches_commit("00spam00"))
+        self.assertFalse(d._matches_commit("11eggs11"))
+
+        flexmock(md).should_receive("fetch_cgit_file").once().and_return("nothing")
+        self.assertFalse(d._matches_commit("nothing"))
+        self.assertIn("No Source0 found", self.stream.getvalue())
 
 
 if __name__ == "__main__":

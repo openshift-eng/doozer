@@ -219,8 +219,36 @@ class DistGitRepo(object):
             self.logger.info("Adding tag to local repo: {}".format(tag))
             exectools.cmd_gather(["git", "tag", "-f", tag, "-m", tag])
 
+    def matches_source_commit(self):
+        """
+        Check whether the commit that we recorded in the distgit content (according to cgit)
+        matches the commit of the source (according to git ls-remote). Nothing is cloned
+        and no local clones are consulted.
+        Returns: bool
+        """
+        source_details = self.config.content.source.git
+        if source_details is Missing:
+            # no git source configured, so distgit always matches itself
+            return True
+        _, commit_hash = self.runtime.detect_remote_source_branch(dict(source_details))
+        return self._matches_commit(commit_hash) if commit_hash else False
+
 
 class ImageDistGitRepo(DistGitRepo):
+
+    source_labels = dict(
+        old=dict(
+            sha='io.openshift.source-repo-commit',
+            source='io.openshift.source-repo-url',
+            source_commit='io.openshift.source-commit-url',
+        ),
+        now=dict(
+            sha='io.openshift.build.commit.id',
+            source='io.openshift.build.source-location',
+            source_commit='io.openshift.build.commit.url',
+        ),
+    )
+
     def __init__(self, metadata, autoclone=True):
         super(ImageDistGitRepo, self).__init__(metadata, autoclone)
         self.build_lock = Lock()
@@ -1163,26 +1191,19 @@ class ImageDistGitRepo(DistGitRepo):
                     df.write("%s %s\n" % (OIT_COMMENT_PREFIX, comment))
                 df.write(df_content)
 
-            old_sha_label = 'io.openshift.source-repo-commit'
-            old_source_label = 'io.openshift.source-repo-url'
-            old_source_commit_label = 'io.openshift.source-commit-url'
 
-            sha_label = 'io.openshift.build.commit.id'
-            source_label = 'io.openshift.build.source-location'
-            source_commit_label = 'io.openshift.build.commit.url'
-
-            # just always delete so it's either correct or not available
-            for label in (old_sha_label, old_source_label, old_source_commit_label,
-                          sha_label, source_label, source_commit_label):
+            # remove old labels from dist-git
+            for label in self.source_labels['old']:
                 if label in dfp.labels:
                     del dfp.labels[label]
 
+            # set with new source if known, otherwise leave alone for a refresh
+            srclab = self.source_labels['now']
             if self.full_source_sha:
-                dfp.labels[sha_label] = self.full_source_sha
-            if self.source_url:
-                dfp.labels[source_label] = self.source_url
-                if self.full_source_sha:
-                    dfp.labels[source_commit_label] = '{}/commit/{}'.format(self.source_url, self.full_source_sha)
+                dfp.labels[srclab['sha']] = self.full_source_sha
+                if self.source_url:
+                    dfp.labels[srclab['source']] = self.source_url
+                    dfp.labels[srclab['source_commit']] = '{}/commit/{}'.format(self.source_url, self.full_source_sha)
 
             self._reflow_labels()
 
@@ -1419,10 +1440,29 @@ class ImageDistGitRepo(DistGitRepo):
 
         return (real_version, real_release)
 
+    def _matches_commit(self, commit_hash):
+        """
+        Given a source repo git hash, checks to see if the most recent Dockerfile
+        claims that hash as its source via the label.
+        Returns: bool
+        """
+        dfp = DockerfileParser()
+        dfp.cache_content = True  # set after init, or it tries to preload content
+        try:
+            content = self.metadata.fetch_cgit_file("Dockerfile")
+            dfp.cached_content = content.decode('utf-8') if content else None
+        except Exception as e:
+            self.logger.error("failed to retrieve valid Dockerfile to compare: {}".format(e))
+            return False
+
+        df_hash = dfp.labels.get(self.source_labels['now']['sha'])
+        self.logger.debug('Comparing distgit Dockerfile label "%s" to source hash "%s"', df_hash, commit_hash)
+        return commit_hash == df_hash
+
 
 class RPMDistGitRepo(DistGitRepo):
-    def __init__(self, metadata):
-        super(RPMDistGitRepo, self).__init__(metadata)
+    def __init__(self, metadata, autoclone=True):
+        super(RPMDistGitRepo, self).__init__(metadata, autoclone)
         self.source = self.config.content.source
         if self.source.specfile is Missing:
             raise ValueError('Must specify spec file name for RPMs.')
@@ -1431,3 +1471,26 @@ class RPMDistGitRepo(DistGitRepo):
         with Dir(self.distgit_dir):
             # Read in information about the rpm we are about to build
             pass  # placeholder for now. nothing to read
+
+    def _matches_commit(self, commit_hash):
+        """
+        Given a source repo git hash, checks to see if the most recent distgit specfile
+        includes that hash in its Source0
+        Returns: bool
+        """
+        commit_hash = commit_hash[:7]  # we only store the short hash
+        try:
+            specfile = self.source.specfile
+            content = self.metadata.fetch_cgit_file(self.source.specfile)
+        except Exception as e:
+            self.logger.error("failed to retrieve valid specfile '{}' to compare: {}".format(specfile, e))
+            return False
+
+        match = re.search(r'^%global.*OS_GIT_COMMIT=(\w+)', content, re.MULTILINE)
+        if not match:
+            self.logger.error("No OS_GIT_COMMIT found in specfile '{}'".format(specfile))
+            return False
+        srcname = match.group(1)
+
+        self.logger.debug('Looking for source hash %s in distgit source "%s"', commit_hash, srcname)
+        return commit_hash in srcname
