@@ -95,9 +95,9 @@ class Metadata(object):
     def save(self):
         self.data_obj.save()
 
-    def distgit_repo(self):
+    def distgit_repo(self, autoclone=True):
         if self._distgit_repo is None:
-            self._distgit_repo = DISTGIT_TYPES[self.meta_type](self)
+            self._distgit_repo = DISTGIT_TYPES[self.meta_type](self, autoclone=autoclone)
         return self._distgit_repo
 
     def branch(self):
