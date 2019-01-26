@@ -828,6 +828,13 @@ class Runtime(object):
         pool.join()
         return ret
 
+    def scan_distgit_sources(self):
+        return self.parallel_exec(
+            lambda m: (m[0], m[0].distgit_repo(autoclone=False).matches_source_commit()),
+            self.image_metas() + self.rpm_metas(),
+            n_threads=100,
+        ).get()
+
     def resolve_metadata(self):
         """
         The group control data can be on a local filesystem, in a git

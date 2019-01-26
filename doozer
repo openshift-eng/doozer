@@ -393,6 +393,36 @@ def images_verify(runtime, image, no_pull, repo_type, **kwargs):
     exit(failed_images_count)
 
 
+@cli.command("config:scan-sources", short_help="Determine if source repo differs from distgit content")
+@click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
+@pass_runtime
+def config_scan_source_changes(runtime, as_yaml):
+    """
+    Determine if source repo differs from distgit content, according to source git hash.
+    May be used for images and/or rpms.
+    Print a list of configs that were scanned and whether the source differs from the distgit.
+    """
+    _fix_runtime_mode(runtime)
+    runtime.initialize(**CONFIG_RUNTIME_OPTS)
+    results = dict(rpms=[], images=[])
+    for meta, matches in runtime.scan_distgit_sources():
+        results['rpms' if meta.meta_type == 'rpm' else 'images'].append(
+            dict(name=meta.distgit_key, changed=not matches)
+        )
+
+    if as_yaml:
+        print '---'
+        print yaml.safe_dump(results, indent=4)
+        return
+
+    for kind, items in results.items():
+        if not items:
+            continue
+        print kind.upper() + ":"
+        for item in items:
+            print '  {} is {}'.format(item['name'], 'changed' if item['changed'] else 'the same')
+
+
 @cli.command("images:rebase", short_help="Refresh a group's distgit content from source content.")
 @click.option("--stream", metavar="ALIAS REPO/NAME:TAG", nargs=2, multiple=True,
               help="Associate an image name with a given stream alias.  [multiple]")
