@@ -318,16 +318,16 @@ def images_verify(runtime, image, no_pull, repo_type, **kwargs):
 
     * Run all checks on all the lastest openshift-3.9 group images:
 
-      $ oit.py --group openshift-3.9 images:verify
+      $ doozer --group openshift-3.9 images:verify
 
     * ONLY the package signature check:
 
-      $ oit.py --group openshift-3.9 images:verify --check-sigs
+      $ doozer --group openshift-3.9 images:verify --check-sigs
 
     * All tests on a SPECIFIC image:
 
       \b
-      $ oit.py --group openshift-3.4 images:verify --image reg.rh.com:8888/openshift3/ose:v3.4.1.44.38-12
+      $ doozer --group openshift-3.4 images:verify --image reg.rh.com:8888/openshift3/ose:v3.4.1.44.38-12
 
     Exit code is the number of images that failed the image check
 
@@ -476,7 +476,7 @@ def images_foreach(runtime, cmd, message, push):
     doozer_image_name : The name of the image from Dockerfile
     doozer_image_version : The current version found in the Dockerfile
     doozer_group: The group for this invocation
-    doozer_data_path: The directory containing the oit metadata
+    doozer_data_path: The directory containing the doozer metadata
     doozer_working_dir: The current working directory
     """
     runtime.initialize(clone_distgits=True)
@@ -1086,7 +1086,7 @@ def distgit_config_template(url):
     elif "cgit/apbs/" in url:
         type = "apbs"
     else:
-        raise IOError("oit does not yet support that distgit repo type")
+        raise IOError("doozer does not yet support that distgit repo type")
 
     config = {
         "repo": {
@@ -1245,11 +1245,11 @@ def config_mode(runtime, mode, push, message):
     Filtering of configs is based on usage of the following global options:
     --group, --images/-i, --rpms/-r
 
-    See `oit.py --help` for more.
+    See `doozer --help` for more.
 
     Usage:
 
-    $ oit.py --group=openshift-4.0 -i aos3-installation config:mode [MODE]
+    $ doozer --group=openshift-4.0 -i aos3-installation config:mode [MODE]
 
     Where [MODE] is one of enable, disable, or wip.
 
@@ -1284,25 +1284,25 @@ def config_print(runtime, key, name_only):
     Filtering of configs is based on usage of the following global options:
     --group, --images/-i, --rpms/-r
 
-    See `oit.py --help` for more.
+    See `doozer --help` for more.
 
     Examples:
 
     Print all configs in group:
 
-        $ oit.py --group=openshift-4.0 config:print
+        $ doozer --group=openshift-4.0 config:print
 
     Print single config in group:
 
-        $ oit.py --group=openshift-4.0 -i aos3-installation config:print
+        $ doozer --group=openshift-4.0 -i aos3-installation config:print
 
     Print `owners` key from all configs in group:
 
-        $ oit.py --group=openshift-4.0 config:print --key owners
+        $ doozer --group=openshift-4.0 config:print --key owners
 
     Print only names of configs in group:
 
-        $ oit.py --group=openshift-4.0 config:print --name-only
+        $ doozer --group=openshift-4.0 config:print --name-only
     """
     _fix_runtime_mode(runtime)
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
