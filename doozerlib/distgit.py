@@ -1247,13 +1247,7 @@ class ImageDistGitRepo(DistGitRepo):
         # Clean up any files not special to the distgit repo
         for ent in os.listdir("."):
 
-            # Do not delete anything that is hidden
-            # protects .oit, .gitignore, others
-            if ent.startswith("."):
-                continue
-
-            # Skip special files that aren't hidden
-            if ent in ["additional-tags"]:
+            if ent in [".git", ".oit", ".gitignore", "additional-tags"]:
                 continue
 
             # Otherwise, clean up the entry
