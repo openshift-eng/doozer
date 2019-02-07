@@ -25,6 +25,7 @@ from pushd import Dir
 
 from image import ImageMetadata
 from rpmcfg import RPMMetadata
+from doozerlib import state
 from model import Model, Missing
 from multiprocessing import Lock
 from repos import Repos
@@ -152,6 +153,8 @@ class Runtime(object):
         self.image_tree = {}
         self.image_order = []
 
+        self.init_state()
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
@@ -167,6 +170,18 @@ class Runtime(object):
                 raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
 
         return tmp_config
+
+    def init_state(self):
+        self.state_file = os.path.join(self.working_dir, 'state.yaml')
+        self.state = dict(state.TEMPLATE_BASE_STATE)
+        if os.path.isfile(self.state_file):
+            with open(self.state_file, 'r') as f:
+                self.state = yaml.load(f)
+            self.state.update(state.TEMPLATE_BASE_STATE)
+
+    def save_state(self):
+        with open(self.state_file, 'w') as f:
+            yaml.safe_dump(self.state, f, default_flow_style=False)
 
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
@@ -491,6 +506,13 @@ class Runtime(object):
             else:
                 self.logger.error("Failed acquiring origin branch for source alias %s: %s" % (alias, err_branch))
 
+            if 'source_alias' not in self.state:
+                self.state['source_alias'] = {}
+            self.state['source_alias'][alias] = {
+                'url': origin_url,
+                'branch': branch,
+                'path': path
+            }
             self.add_record("source_alias", alias=alias, origin_url=origin_url, branch=branch, path=path)
 
     def register_stream_alias(self, alias, image):

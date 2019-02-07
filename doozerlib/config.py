@@ -37,12 +37,23 @@ class MetaDataConfig(object):
             print('config:* options require a non-temporary working space. Must run with --working-dir')
             sys.exit(1)
 
-    def _do_update(self, meta, k, v):
+    def update_meta(self, meta, k, v):
         """
         Convenience function for setting meta keys
         """
         self.runtime.logger.info('{}: [{}] -> {}'.format(meta.config_filename, k, v))
         meta.config[k] = v
+        print(meta.config)
+        print(meta.data_obj.data)
+        meta.save()
+
+    def delete_key(self, meta, k):
+        """
+        Convenience function for deleting meta keys
+        """
+
+        self.runtime.logger.info('{}: Delete [{}]'.format(meta.config_filename, k, ))
+        meta.config.pop(k, None)
         meta.save()
 
     def update(self, key, val):
@@ -60,10 +71,10 @@ class MetaDataConfig(object):
                 raise ValueError(msg)
 
         for img in self.runtime.image_metas():
-            self._do_update(img, key, val)
+            self.update_meta(img, key, val)
 
         for rpm in self.runtime.rpm_metas():
-            self._do_update(rpm, key, val)
+            self.update_meta(rpm, key, val)
 
     def config_print(self, key=None, name_only=False):
         """

@@ -93,6 +93,7 @@ class Metadata(object):
         self._distgit_repo = None
 
     def save(self):
+        self.data_obj.data = self.config.primitive()
         self.data_obj.save()
 
     def distgit_repo(self, autoclone=True):

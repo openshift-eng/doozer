@@ -22,6 +22,7 @@ from brew import watch_task, check_rpm_buildroot
 from model import Model, Missing
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import yellow_print
+from doozerlib import state
 
 OIT_COMMENT_PREFIX = '#oit##'
 OIT_BEGIN = '##OIT_BEGIN'
@@ -190,8 +191,6 @@ class DistGitRepo(object):
                 rc, out, err = exectools.cmd_gather(["git", "diff", "Dockerfile"])
                 assertion.success(rc, 'Failed fetching distgit diff')
                 self.runtime.add_distgits_diff(self.metadata.name, out)
-            print(self.source_sha)
-            print(commit_message)
             if self.source_sha:
                 # add short sha of source for audit trail
                 commit_message += " - {}".format(self.source_sha)
@@ -639,10 +638,13 @@ class ImageDistGitRepo(DistGitRepo):
         """
         if self.org_image_name is None or self.org_version is None:
             if not os.path.isfile(os.path.join(self.distgit_dir, 'Dockerfile')):
-                self.logger.info('No Dockerfile found in {}'.format(self.distgit_dir))
+                msg = ('No Dockerfile found in {}'.format(self.distgit_dir))
             else:
-                self.logger.info('Unknown error loading Dockerfile information')
-            return False
+                msg = ('Unknown error loading Dockerfile information')
+
+            self.logger.info(msg)
+            state.record_image_fail(self.runtime.state[self.runtime.command], self.metadata, msg)
+            return (self.metadata.distgit_key, False)
 
         action = "build"
         release = self.org_release if self.org_release is not None else '?'
@@ -688,7 +690,11 @@ class ImageDistGitRepo(DistGitRepo):
 
                 if self.runtime.local:
                     self.build_status = self._build_container_local(target_image, repo_type, realtime)
-                    return self.build_status  # do nothing more since it's local only
+                    if not self.build_status:
+                        state.record_image_fail(self.runtime.state[self.runtime.command], self.metadata, 'Build failure')
+                    else:
+                        state.record_image_success(self.runtime.state[self.runtime.command], self.metadata)
+                    return (self.metadata.distgit_key, self.build_status)  # do nothing more since it's local only
                 else:
                     def wait(n):
                         self.logger.info("Async error in image build thread [attempt #{}]".format(n + 1))
@@ -750,6 +756,11 @@ class ImageDistGitRepo(DistGitRepo):
         record['push_status'] = '0' if self.push_status else '-1'
 
         self.runtime.add_record(action, **record)
+        lstate = self.runtime.state[self.runtime.command]
+        if not (self.build_status and self.push_status):
+            state.record_image_fail(lstate, self.metadata, 'Build failure')
+        else:
+            state.record_image_success(lstate, self.metadata)
         return (self.metadata.distgit_key, self.build_status and self.push_status)
 
     def _build_container_local(self, target_image, repo_type, realtime=False):

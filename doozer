@@ -3,6 +3,7 @@
 
 from doozerlib import version
 from doozerlib import Runtime, Dir
+from doozerlib import state
 from doozerlib.image import pull_image, create_image_verify_repo_file, Image
 from doozerlib.model import Missing
 from doozerlib.brew import get_watch_task_info_copy
@@ -30,6 +31,8 @@ from multiprocessing import cpu_count
 from dockerfile_parse import DockerfileParser
 import dotconfig
 
+CTX_GLOBAL = None
+
 pass_runtime = click.make_pass_decorator(Runtime)
 context_settings = dict(help_option_names=['-h', '--help'])
 
@@ -54,8 +57,7 @@ class RemoteRequired(click.Option):
     """
     def __init__(self, *args, **kwargs):
         kwargs['help'] = (
-            kwargs.get('help', '') +
-            '\nNOTE: This argument is ignored with the global option --local'
+            kwargs.get('help', '') + '\nNOTE: This argument is ignored with the global option --local'
         ).strip()
         super(RemoteRequired, self).__init__(*args, **kwargs)
 
@@ -115,10 +117,12 @@ def print_version(ctx, param, value):
 @click.option('--local/--osbs', default=False, is_flag=True, help='--local to run in local-only mode, --osbs to run on build cluster (default)')
 @click.pass_context
 def cli(ctx, **kwargs):
+    global CTX_GLOBAL
     cfg = dotconfig.Config('doozer', 'settings',
                            template=cli_opts.CLI_CONFIG_TEMPLATE,
                            envvars=cli_opts.CLI_ENV_VARS,
                            cli_args=kwargs)
+
     if cli_opts.config_is_empty(cfg.full_path):
         msg = (
             "It appears you may be using Doozer for the first time.\n"
@@ -126,7 +130,10 @@ def cli(ctx, **kwargs):
             "{}\n"
         ).format(cfg.full_path)
         yellow_print(msg)
+
     ctx.obj = Runtime(cfg_obj=cfg, command=ctx.invoked_subcommand, **cfg.to_dict())
+    CTX_GLOBAL = ctx
+    return ctx
 
 
 option_commit_message = click.option("--message", "-m", cls=RemoteRequired, metavar='MSG', help="Commit message for dist-git.")
@@ -138,6 +145,7 @@ option_push = click.option('--push/--no-push', default=False, is_flag=True,
 # CLI Commands
 #
 # =============================================================================
+
 
 @cli.command("images:clone", help="Clone a group's image distgit repos locally.")
 @pass_runtime
@@ -261,6 +269,11 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
 
     runtime.initialize(validate_content_sets=True)
 
+    cmd = runtime.command
+    runtime.state.pop('images:rebase', None)
+    runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
+    lstate = runtime.state[cmd]  # get local convenience copy
+
     # If not pushing, do not clean up our work
     runtime.remove_tmp_working_dir = push
 
@@ -279,15 +292,41 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
         )
 
     runtime.clone_distgits()
-    for image in runtime.image_metas():
-        dgr = image.distgit_repo()
-        (real_version, real_release) = dgr.update_distgit_dir(version, release)
-        dgr.commit(message)
-        dgr.tag(real_version, real_release)
+    metas = runtime.image_metas()
+    lstate['total'] = len(metas)
 
-    if not runtime.local and push:
-        runtime.push_distgits()
+    for image in metas:
+        try:
+            dgr = image.distgit_repo()
+            (real_version, real_release) = dgr.update_distgit_dir(version, release)
+            dgr.commit(message)
+            dgr.tag(real_version, real_release)
+            state.record_image_success(lstate, image)
+        except Exception as ex:
+            state.record_image_fail(lstate, image, ex.message)
 
+    try:
+        if push:
+            runtime.push_distgits()
+
+        state.record_image_finish(lstate)
+    except Exception as ex:
+        lstate['status'] = state.STATE_FAIL
+        raise DoozerFatalError(ex.message)
+
+    failed = []
+    for img, status in lstate['images'].iteritems():
+        if isinstance(status, str):
+            failed.append(img)
+
+    if lstate['status'] == state.STATE_FAIL:
+        raise DoozerFatalError('One or more required images failed. See state.yaml')
+    elif lstate['success'] == 0:
+        raise DoozerFatalError('No required images were specified, but all images failed.')
+
+    if failed:
+        msg = "The following non-critical images failed to update:\n{}".format('\n'.join(failed))
+        yellow_print(msg)
 
 @cli.command("images:verify", short_help="Run some smoke tests to verify produced images")
 @click.option("--image", "-i", metavar="REPO/NAME:TAG", multiple=True,
@@ -411,16 +450,16 @@ def config_scan_source_changes(runtime, as_yaml):
         )
 
     if as_yaml:
-        print '---'
-        print yaml.safe_dump(results, indent=4)
+        click.echo('---')
+        click.echo(yaml.safe_dump(results, indent=4))
         return
 
     for kind, items in results.items():
         if not items:
             continue
-        print kind.upper() + ":"
+        click.echo(kind.upper() + ":")
         for item in items:
-            print '  {} is {}'.format(item['name'], 'changed' if item['changed'] else 'the same')
+            click.echo('  {} is {}'.format(item['name'], 'changed' if item['changed'] else 'the same'))
 
 
 @cli.command("images:rebase", short_help="Refresh a group's distgit content from source content.")
@@ -453,6 +492,11 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
     """
     runtime.initialize(validate_content_sets=True)
 
+    cmd = runtime.command
+    runtime.state.pop('images:update-dockerfile', None)
+    runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
+    lstate = runtime.state[cmd]  # get local convenience copy
+
     # If not pushing, do not clean up our work
     runtime.remove_tmp_working_dir = push
 
@@ -471,19 +515,45 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
         )
 
     runtime.clone_distgits()
-    for image in runtime.image_metas():
-        dgr = image.distgit_repo()
-        (real_version, real_release) = dgr.rebase_dir(version, release)
-        sha = dgr.commit(message, log_diff=True)
-        dgr.tag(real_version, real_release)
-        runtime.add_record(
-            "distgit_commit",
-            distgit=dgr.metadata.qualified_name,
-            image=dgr.config.name,
-            sha=sha)
+    metas = runtime.image_metas()
+    lstate['total'] = len(metas)
+    for image in metas:
+        try:
+            dgr = image.distgit_repo()
+            (real_version, real_release) = dgr.rebase_dir(version, release)
+            sha = dgr.commit(message, log_diff=True)
+            dgr.tag(real_version, real_release)
+            runtime.add_record(
+                "distgit_commit",
+                distgit=dgr.metadata.qualified_name,
+                image=dgr.config.name,
+                sha=sha)
+            state.record_image_success(lstate, image)
+        except Exception as ex:
+            state.record_image_fail(lstate, image, ex.message)
 
-    if push:
-        runtime.push_distgits()
+    try:
+        if push:
+            runtime.push_distgits()
+
+        state.record_image_finish(lstate)
+    except Exception as ex:
+        lstate['status'] = state.STATE_FAIL
+        raise DoozerFatalError(ex.message)
+
+    failed = []
+    for img, status in lstate['images'].iteritems():
+        if isinstance(status, str):
+            failed.append(img)
+
+    if lstate['status'] == state.STATE_FAIL:
+        raise DoozerFatalError('One or more required images failed. See state.yaml')
+    elif lstate['success'] == 0:
+        raise DoozerFatalError('No required images were specified, but all images failed.')
+
+    if failed:
+        msg = "The following non-critical images failed to rebase:\n{}".format('\n'.join(failed))
+        yellow_print(msg)
 
 
 @cli.command("images:foreach", short_help="Run a command relative to each distgit dir.")
@@ -759,32 +829,47 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
     # clarity in the logs.
     runtime.initialize(clone_distgits=True)
 
-    # AMH - Good idea but needs rethinking. Leaving for reference.
-    # if runtime.local:
-    #     docker_config = '/etc/docker/daemon.json'
-    #     brew_image_host = runtime.group_config.urls.brew_image_host
-    #     show_error = False
-    #     if os.path.isfile(docker_config):
-    #         with open(docker_config, 'r') as f:
-    #             if brew_image_host not in f.read():
-    #                 show_error = True
-    #     else:
-    #         show_error = True
+    cmd = runtime.command
 
-    #     if show_error:
-    #         msg = (
-    #             'Your group is configured to use {} \n'
-    #             'as a docker registry but docker is not configured to use it\n'
-    #             'as a search path. Also, it may need to be configured for insecure access.\n\n'
-    #             'Please add the following to /etc/docker/daemon.json (create if does not exist).\n\n'
-    #             '{{ "insecure-registries":["{}"] }}\n\n'
-    #             'Then restart docker: sudo systemctl restart docker\n\n'
-    #             'Note: your setup may be different, this is only an example.'
-    #         )
+    runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
+    lstate = runtime.state[cmd]  # get local convenience copy
 
-    #         yellow_print(msg.format(brew_image_host, brew_image_host))
+    pre_steps = ['images:update-dockerfile', 'images:rebase']
+    pre_step = None
+    for ps in pre_steps:
+        if ps in runtime.state:
+            pre_step = runtime.state[ps]
+
+    required = []
+    failed = []
+
+    if pre_step:
+        for img, status in pre_step['images'].iteritems():
+            if isinstance(status, str):
+                img_obj = runtime.image_map[img]
+                failed.append(img)
+                if img_obj.required:
+                    required.append[img]
 
     items = [m.distgit_repo() for m in runtime.ordered_image_metas()]
+
+    lstate['total'] = len(items)
+
+    if required:
+        msg = 'The following images failed during the previous step and are required:\n{}'.format('\n'.join(required))
+        lstate['status'] = state.STATE_FAIL
+        lstate['msg'] = 'The following images failed during the previous step and are required:\n{}'.format('\n'.join(required))
+        raise DoozerFatalError(msg)
+    elif failed:
+        yellow_print('The following images failed the last step and will be skipped:\n{}'.format('\n'.join(failed)))
+
+        # filter out the failed images from previous step
+        new_items = []
+        for i in items:
+            if i.name not in failed:
+                new_items.append(i)
+        items = new_items
+
     if not items:
         runtime.logger.info("No images found. Check the arguments.")
         exit(1)
@@ -820,6 +905,8 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
     # Push all late images
     for image in runtime.image_metas():
         image.distgit_repo().push_image([], push_to_defaults, additional_registries=push_to, push_late=True)
+
+    state.record_image_finish(lstate)
 
 
 @cli.command("images:push", short_help="Push the most recently built images to mirrors.")
@@ -1528,7 +1615,7 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
         click.echo()
 
 
-@cli.command("beta:reposync", short_help="Generate .repo file from group data")
+@cli.command("beta:reposync", short_help="Sync yum repos listed in group.yaml to local directory.")
 @click.option("-o", "--output", help="Output directory to sync to", required=True)
 @click.option("-c", "--cachedir", help="Cache directory for yum", required=True)
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
@@ -1536,16 +1623,14 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
               help="Repo group type to use for repo file generation (e.g. signed, unsigned).")
 @pass_runtime
 def beta_reposync(runtime, output, cachedir, repo_type):
-    """Generate a yum.conf compatible file from group data
-    All repos will be disabled in the file.
-
+    """Sync yum repos listed in group.yaml to local directory.
     See `doozer --help` for more.
 
     Examples:
 
     Write unsigned.repo:
 
-        $ doozer --group=openshift-4.0 beta:reposync -o yum.conf --repo-type unsigned
+        $ doozer --group=openshift-4.0 beta:reposync -o /tmp/repo_sync -c /tmp/cache/ --repo-type unsigned
 
     """
     runtime.initialize(clone_distgits=False)
@@ -1609,6 +1694,62 @@ installonly_limit=3
         green_print('All repos synced to {}'.format(output))
 
 
+@cli.command("config:update-required", short_help="Update images that are required")
+@click.option("--image-list", help="File with list of images, one per line.", required=True)
+@pass_runtime
+def config_update_required(runtime, image_list):
+    """Ingest list of images and update data repo
+    with which images are required and which are not.
+    """
+    _fix_runtime_mode(runtime)
+    runtime.initialize(**CONFIG_RUNTIME_OPTS)
+
+    with open(image_list, 'r') as il:
+        image_list = [i.strip() for i in il.readlines() if i.strip()]
+
+    resolved = []
+    required = []
+    optional = []
+    for img in runtime.image_metas():
+        name = img.image_name
+        slash = img.image_name.find('/')
+        if slash >= 0:
+            name = name[slash + 1:]
+        found = False
+        for i in image_list:
+            if i == name or i == name.replace('ose-', ''):
+                required.append(img)
+                resolved.append(i)
+                found = True
+                green_print('{} -> {}'.format(img.distgit_key, i))
+                break
+        if not found:
+            optional.append(img)
+
+    missing = list(set(image_list) - set(resolved))
+    if missing:
+        yellow_print('\nThe following images in the data set could not be resolved:')
+        yellow_print('\n'.join(missing))
+
+    for img in required:
+        msg = 'Updating {} to be required'.format(img.distgit_key)
+        color_print(msg, color='blue')
+
+        data_obj = runtime.gitdata.load_data(path='images', key=img.distgit_key)
+        data_obj.data['required'] = True
+        data_obj.save()
+
+    for img in optional:
+        msg = 'Updating {} to be optional'.format(img.distgit_key)
+        color_print(msg, color='blue')
+
+        data_obj = runtime.gitdata.load_data(path='images', key=img.distgit_key)
+        data_obj.data.pop('required', None)
+        data_obj.save()
+
+    green_print('\nComplete! Remember to commit and push the changes!')
+
+
 def main():
     try:
         cli(obj={})
@@ -1618,7 +1759,15 @@ def main():
         # All internal errors that should simply cause the app
         # to exit with an error code should use DoozerFatalError
         red_print('\nDoozer Failed With Error:\n' + ex.message)
+
+        if CTX_GLOBAL and CTX_GLOBAL.obj:
+            CTX_GLOBAL.obj.state['status'] = state.STATE_FAIL
+            CTX_GLOBAL.obj.state['msg'] = ex.message
+
         sys.exit(1)
+    finally:
+        if CTX_GLOBAL and CTX_GLOBAL.obj and CTX_GLOBAL.obj.initialized:
+            CTX_GLOBAL.obj.save_state()
 
 
 if __name__ == '__main__':
