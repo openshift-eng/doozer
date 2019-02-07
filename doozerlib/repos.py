@@ -27,7 +27,7 @@ class Repo(object):
         # fill out default conf values
         conf = self._data.conf
         conf.name = conf.get('name', name)
-        conf.enabled = conf.get('enabled', 0)
+        conf.enabled = conf.get('enabled', None)
         self.enabled = conf.enabled == 1
         conf.gpgcheck = conf.get('gpgcheck', 0)
         self.cs_optional = self._data.content_set.get('optional', False)
@@ -97,31 +97,40 @@ class Repo(object):
         else:
             return self._data.content_set[arch]
 
-    def conf_section(self, repotype, enabled=None):
+    def conf_section(self, repotype, enabled=None, use_config_name=False):
         """Generates and returns the yum .repo section for this repo,
         based on given type and enabled state"""
-
         if not repotype:
             repotype = 'unsigned'
 
         result = ''
 
         for arch in self._valid_arches:
-            cs = self.content_set(arch)
+            if use_config_name:
+                cs = self.name
+            else:
+                cs = self.content_set(arch)
             # This may not be valid yet if not released
             # but ALWAYS emit this repo
             if not cs and self.name == 'rhel-server-ose-rpms':
                 cs = 'rhel-server-ose-rpms-{}'.format(arch)
             if cs:
                 Repo.repos_nonce += 1
-                result += '[{}-{}]\n'.format(cs, Repo.repos_nonce)
+                if use_config_name:
+                    result += '[{}]\n'.format(cs)
+                else:
+                    result += '[{}-{}]\n'.format(cs, Repo.repos_nonce)
                 for k, v in self._data.conf.iteritems():
                     line = '{} = {}\n'
                     if k == 'baseurl':
                         line = line.format('baseurl', self.baseurl(repotype, arch))
                     else:
-                        if k is 'enabled' and enabled is not None:
-                            v = 1 if enabled else 0
+                        if k == 'enabled':
+                            if enabled is None:  # forcible disabled
+                                v = 0
+                            elif v is None or v == 0:  # v is None if `enabled` not in group config
+                                v = 1 if enabled else 0
+
                         line = line.format(k, v)
                     result += line
                 result += '\n'
@@ -185,11 +194,14 @@ class Repos(object):
     def iteritems(self):
         return self._repos.iteritems()
 
+    def itervalues(self):
+        return self._repos.itervalues()
+
     def __repr__(self):
         """Mainly for debugging to dump a dict representation of the collection"""
         return str(self._repos)
 
-    def repo_file(self, repo_type, enabled_repos=[], empty_repos=[]):
+    def repo_file(self, repo_type, enabled_repos=[], empty_repos=[], use_config_name=False):
         """Returns the string contents of a yum .repo file for the given
         type, enabled repos, and dummy 'emtpy' repos. Contents written to file
         by external accessor.
@@ -197,7 +209,8 @@ class Repos(object):
 
         result = ''
         for r in self._repos.itervalues():
-            result += r.conf_section(repo_type, enabled=(r.name in enabled_repos))
+            en = None if enabled_repos is None else (r.name in enabled_repos)
+            result += r.conf_section(repo_type, enabled=en, use_config_name=use_config_name)
         for er in empty_repos:
             result += EMPTY_REPO.format(er)
         return result
