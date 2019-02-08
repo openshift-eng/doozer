@@ -46,7 +46,7 @@ def recursive_overwrite(src, dest, ignore=set()):
     """
     Use rsync to copy one file tree to a new location
     """
-    exclude = ''
+    exclude = ' --exclude .git/ '
     for i in ignore:
         exclude += ' --exclude="{}" '.format(i)
     cmd = 'rsync -av {} {}/ {}/'.format(exclude, src, dest)
