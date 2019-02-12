@@ -471,7 +471,7 @@ class ImageDistGitRepo(DistGitRepo):
             is_late_push = self.config.push.late
 
         if push_late != is_late_push:
-            return True
+            return (self.metadata.distgit_key, True)
 
         push_names = []
 
@@ -482,7 +482,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         # Nothing to push to? We are done.
         if not push_names:
-            return True
+            return (self.metadata.distgit_key, True)
 
         with Dir(self.distgit_dir):
 
@@ -574,7 +574,7 @@ class ImageDistGitRepo(DistGitRepo):
                                 rc, out, err = exectools.cmd_gather(["docker", "push", push_url])
                                 if rc == 0:
                                     break
-                                self.logger.info("Error pushing image -- retrying in 60 seconds")
+                                self.logger.info("Error pushing image -- retrying in 60 seconds.\n{}".format(err))
                                 time.sleep(60)
 
                         if rc != 0:
@@ -592,7 +592,7 @@ class ImageDistGitRepo(DistGitRepo):
                 finally:
                     self.runtime.add_record(action, **record)
 
-            return True
+            return (self.metadata.distgit_key, True)
 
     def wait_for_build(self, who_is_waiting):
         """
@@ -750,7 +750,7 @@ class ImageDistGitRepo(DistGitRepo):
         record['push_status'] = '0' if self.push_status else '-1'
 
         self.runtime.add_record(action, **record)
-        return self.build_status and self.push_status
+        return (self.metadata.distgit_key, self.build_status and self.push_status)
 
     def _build_container_local(self, target_image, repo_type, realtime=False):
         """

@@ -206,7 +206,7 @@ class RPMMetadata(Metadata):
             if rc != 0:
                 # Probably no point in continuing.. can't contact brew?
                 self.logger.info("Unable to create brew task: out={}  ; err={}".format(out, err))
-                return False
+                return (self.metadata.distgit_key, False)
 
             # Otherwise, we should have a brew task we can monitor listed in the stdout.
             out_lines = out.splitlines()
@@ -239,10 +239,10 @@ class RPMMetadata(Metadata):
             if error is not None:
                 # An error occurred. We don't have a viable build.
                 self.logger.info("Error building rpm: {}, {}".format(task_url, error))
-                return False
+                return (self.metadata.distgit_key, False)
 
             self.logger.info("Successfully built rpm: {} ; {}".format(self.rpm_name, task_url))
-        return True
+        return (self.metadata.distgit_key, True)
 
     def build_rpm(
             self, version, release, terminate_event, scratch=False, retries=3):
