@@ -1067,7 +1067,7 @@ class ImageDistGitRepo(DistGitRepo):
                     raise IOError("Dockerfile parent images not matched by configured parent images for {}. '{}' vs '{}'".format(self.config.name, dfp.parent_images, parent_images))
                 mapped_images = []
 
-                orignal_parents = dfp.parent_images
+                original_parents = dfp.parent_images
                 count = 0
                 for image in parent_images:
                     # Does this image inherit from an image defined in a different distgit?
@@ -1085,7 +1085,7 @@ class ImageDistGitRepo(DistGitRepo):
                                 mapped_images.append("{}:{}-{}".format(base_meta.config.name, v, r))
                             # Otherwise, the user is not expecting the FROM field to be updated in this Dockerfile.
                             else:
-                                mapped_images.append(orignal_parents[count])
+                                mapped_images.append(original_parents[count])
                         else:
                             if self.runtime.local:
                                 mapped_images.append('{}:latest'.format(from_image_metadata.config.name))
