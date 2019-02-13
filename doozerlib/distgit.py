@@ -1003,7 +1003,7 @@ class ImageDistGitRepo(DistGitRepo):
                 if changed:
                     dfp.add_lines_at(entry, "RUN " + new_value, replace=True)
 
-    def update_distgit_dir(self, version, release):
+    def update_distgit_dir(self, version, release, prev_release=None):
         ignore_missing_base = self.runtime.ignore_missing_base
         # A collection of comment lines that will be included in the generated Dockerfile. They
         # will be prefix by the OIT_COMMENT_PREFIX and followed by newlines in the Dockerfile.
@@ -1120,8 +1120,8 @@ class ImageDistGitRepo(DistGitRepo):
             # If the release is specified as "+", this means the user wants to bump the release.
             if release == "+":
 
-                # If release label is not present, default to 0, which will bump to 1
-                release = dfp.labels.get("release", dfp.labels.get("Release", None))
+                # increment the release that was in the Dockerfile
+                release = prev_release
 
                 if release:
                     self.logger.info("Bumping release field in Dockerfile")
@@ -1417,10 +1417,15 @@ class ImageDistGitRepo(DistGitRepo):
 
         with Dir(self.distgit_dir):
 
-            if version is None and not self.runtime.local:
-                # Extract the current version in order to preserve it
+            prev_release = None
+            if os.path.isfile("Dockerfile"):
                 dfp = DockerfileParser("Dockerfile")
-                version = dfp.labels["version"]
+                # extract previous release to enable incrementing it
+                prev_release = dfp.labels.get("release")
+
+                if version is None and not self.runtime.local:
+                    # Extract the previous version and use that
+                    version = dfp.labels["version"]
 
             # Make our metadata directory if it does not exist
             if not os.path.isdir(".oit"):
@@ -1436,7 +1441,7 @@ class ImageDistGitRepo(DistGitRepo):
             if self.config.content.source.modifications is not Missing:
                 self._run_modifications()
 
-        (real_version, real_release) = self.update_distgit_dir(version, release)
+        (real_version, real_release) = self.update_distgit_dir(version, release, prev_release)
 
         return (real_version, real_release)
 
