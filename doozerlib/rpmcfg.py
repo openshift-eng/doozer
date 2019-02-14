@@ -206,7 +206,7 @@ class RPMMetadata(Metadata):
             if rc != 0:
                 # Probably no point in continuing.. can't contact brew?
                 self.logger.info("Unable to create brew task: out={}  ; err={}".format(out, err))
-                return (self.metadata.distgit_key, False)
+                return False
 
             # Otherwise, we should have a brew task we can monitor listed in the stdout.
             out_lines = out.splitlines()
@@ -239,10 +239,10 @@ class RPMMetadata(Metadata):
             if error is not None:
                 # An error occurred. We don't have a viable build.
                 self.logger.info("Error building rpm: {}, {}".format(task_url, error))
-                return (self.metadata.distgit_key, False)
+                return False
 
             self.logger.info("Successfully built rpm: {} ; {}".format(self.rpm_name, task_url))
-        return (self.metadata.distgit_key, True)
+        return True
 
     def build_rpm(
             self, version, release, terminate_event, scratch=False, retries=3):
@@ -278,7 +278,7 @@ class RPMMetadata(Metadata):
                         scratch, record, terminate_event))
             except exectools.RetryException as err:
                 self.logger.error(str(err))
-                return False
+                return (self.distgit_key, False)
 
             record["message"] = "Success"
             record["status"] = 0
@@ -299,4 +299,4 @@ class RPMMetadata(Metadata):
             except Exception:
                 raise RuntimeError('Build succeeded but failure pushing RPM tag for {}'.format(self.qualified_name))
 
-        return self.build_status
+        return (self.distgit_key, self.build_status)
