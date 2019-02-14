@@ -976,9 +976,11 @@ def images_show_tree(runtime, imagename, yml):
               help='Include images which have been marked as base images.')
 @click.option("--output", "-o", default=None,
               help="Write data to FILE instead of STDOUT")
+@click.option("--label", "-l", default=None,
+              help="The label you want to print if it exists. Empty string if n/a")
 @click.argument("pattern", default="{build}", nargs=1)
 @pass_runtime
-def images_print(runtime, short, show_non_release, show_base, output, pattern):
+def images_print(runtime, short, show_non_release, show_base, output, label, pattern):
     """
     Prints data from each distgit. The pattern specified should be a string
     with replacement fields:
@@ -994,6 +996,7 @@ def images_print(runtime, short, show_non_release, show_base, output, pattern):
     {release} - The release field in the Dockerfile
     {build} - Shorthand for {component}-{version}-{release} (e.g. container-engine-v3.6.173.0.25-1)
     {repository} - Shorthand for {image}:{version}-{release}
+    {label} - The label you want to print from the Dockerfile (Empty string if n/a)
     {lf} - Line feed
 
     If pattern contains no braces, it will be wrapped with them automatically. For example:
@@ -1050,6 +1053,8 @@ def images_print(runtime, short, show_non_release, show_base, output, pattern):
         s = s.replace("{component}", image.get_component_name())
         s = s.replace("{image}", dfp.labels["name"])
         s = s.replace("{version}", version)
+        if label is not None:
+            s = s.replace("{label}", dfp.labels.get(label, ''))
         s = s.replace("{lf}", "\n")
 
         release_query_needed = '{release}' in s or '{pushes}' in s
