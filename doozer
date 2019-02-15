@@ -1525,11 +1525,12 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
 
 @cli.command("beta:reposync", short_help="Generate .repo file from group data")
 @click.option("-o", "--output", help="Output directory to sync to", required=True)
+@click.option("-c", "--cachedir", help="Cache directory for yum", required=True)
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for repo file generation (e.g. signed, unsigned).")
 @pass_runtime
-def beta_reposync(runtime, output, repo_type):
+def beta_reposync(runtime, output, cachedir, repo_type):
     """Generate a yum.conf compatible file from group data
     All repos will be disabled in the file.
 
@@ -1547,17 +1548,22 @@ def beta_reposync(runtime, output, repo_type):
 
     yum_conf = """
 [main]
-cachedir=/tmp/cache/yum/$basearch/$releasever
+cachedir={}/$basearch/$releasever
 keepcache=0
 debuglevel=2
-logfile=/tmp/yum.log
+logfile={}/yum.log
 exactarch=1
 obsoletes=1
 gpgcheck=1
 plugins=1
 installonly_limit=3
-"""
+""".format(cachedir, runtime.working_dir)
+
     optional_fails = []
+
+    if not os.path.isdir(cachedir):
+        yellow_print('Creating cachedir: {}'.format(cachedir))
+        exectools.cmd_assert('mkdir -p {}'.format(cachedir))
 
     try:
         yc_file = tempfile.NamedTemporaryFile()
