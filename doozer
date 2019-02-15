@@ -1587,11 +1587,19 @@ installonly_limit=3
                 else:
                     runtime.logger.warning('Failed to sync repo {} but marked as optional: {}'.format(repo.name, err))
                     optional_fails.append(repo.name)
+            else:
+                rc, out, err = exectools.cmd_gather('createrepo {}'.format(os.path.join(output, repo.name)))
+                if rc != 0:
+                    if not repo.cs_optional:
+                        raise DoozerFatalError(err)
+                    else:
+                        runtime.logger.warning('Failed to run createrepo on {} but marked as optional: {}'.format(repo.name, err))
+                        optional_fails.append(repo.name)
     finally:
         yc_file.close()
 
     if optional_fails:
-        yellow_print('Completed with the following optional repos skipped due to failure, see log.:\n{}'.format('\n'.join(optional_fails)))
+        yellow_print('Completed with the following optional repos skipped or partial due to failure, see log.:\n{}'.format('\n'.join(optional_fails)))
     else:
         green_print('All repos synced to {}'.format(output))
 
