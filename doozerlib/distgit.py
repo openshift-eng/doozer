@@ -504,30 +504,8 @@ class ImageDistGitRepo(DistGitRepo):
                 # Read in version information from the Distgit dockerfile
                 _, version, release = self.metadata.get_latest_build_info()
 
-            try:
-                record = {
-                    "distgit_key": self.metadata.distgit_key,
-                    "distgit": '{}/{}'.format(self.metadata.namespace, self.metadata.name),
-                    "image": self.config.name,
-                    "version": version,
-                    "release": release,
-                    "message": "Unknown failure",
-                    "status": -1,
-                    # Status defaults to failure until explicitly set by success. This handles raised exceptions.
-                }
-
-                # pull just the main image name first
-                image_name_and_version = "%s:%s-%s" % (self.config.name, version, release)
-                brew_image_url = "/".join((self.runtime.group_config.urls.brew_image_host, image_name_and_version))
-                pull_image(brew_image_url)
-                record['message'] = "Successfully pulled image"
-                record['status'] = 0
-            except Exception as err:
-                record["message"] = "Exception occurred: %s" % str(err)
-                self.logger.info("Error pulling %s: %s" % (self.metadata.name, err))
-                raise
-            finally:
-                self.runtime.add_record('pull', **record)
+            image_name_and_version = "%s:%s-%s" % (self.config.name, version, release)
+            brew_image_url = "/".join((self.runtime.group_config.urls.brew_image_host, image_name_and_version))
 
             push_tags = list(tag_list)
 
@@ -535,9 +513,10 @@ class ImageDistGitRepo(DistGitRepo):
             if not push_tags:
                 push_tags = self.metadata.get_default_push_tags(version, release)
 
+            all_push_urls = []
+
             for image_name in push_names:
                 try:
-
                     repo = image_name.split('/', 1)
 
                     action = "push"
@@ -555,37 +534,52 @@ class ImageDistGitRepo(DistGitRepo):
                     }
 
                     for push_tag in push_tags:
-                        push_url = '{}:{}'.format(image_name, push_tag)
+                        # Collect next SRC=DEST input
+                        url = '{}:{}'.format(image_name, push_tag)
+                        self.logger.info("Adding '{}' to push list".format(url))
+                        all_push_urls.append("{}={}".format(brew_image_url, url))
 
-                        if dry_run:
-                            rc = 0
-                            self.logger.info('Would have tagged {} as {}'.format(brew_image_url, push_url))
-                            self.logger.info('Would have pushed {}'.format(push_url))
-                        else:
-                            rc, out, err = exectools.cmd_gather(["docker", "tag", brew_image_url, push_url])
+                    if dry_run:
+                        for push_url in all_push_urls:
+                            self.logger.info('Would have tagged {} as {}'.format(brew_image_url, push_url.split('=')[1]))
+                        dr = "--dry-run=true"
+                    else:
+                        dr = ""
 
-                            if rc != 0:
-                                # Unable to tag the image
-                                raise IOError("Error tagging image as: %s" % push_url)
+                    if self.runtime.group_config.insecure_source:
+                        insecure = "--insecure=true"
+                    else:
+                        insecure = ""
 
-                            for r in range(10):
-                                self.logger.info("Pushing image to mirror [retry=%d]: %s" % (r, push_url))
-                                rc, out, err = exectools.cmd_gather(["docker", "push", push_url])
-                                if rc == 0:
-                                    break
-                                self.logger.info("Error pushing image -- retrying in 60 seconds.\n{}".format(err))
-                                time.sleep(60)
+                    push_config_dir = os.path.join(self.runtime.working_dir, 'push')
+                    if not os.path.isdir(push_config_dir):
+                        os.mkdir(push_config_dir)
 
-                        if rc != 0:
-                            # Unable to push to registry
-                            raise IOError("Error pushing image: %s" % push_url)
+                    push_config = os.path.join(push_config_dir, self.metadata.distgit_key)
+
+                    if os.path.isfile(push_config):
+                        # just delete it to ease creating new config
+                        os.remove(push_config)
+
+                    with open(push_config, 'w') as pc:
+                        pc.write('\n'.join(all_push_urls))
+
+                    mirror_cmd = 'oc image mirror {} {} --filename={}'.format(dr, insecure, push_config)
+
+                    self.logger.info('Mirroring image...')
+                    rc, out, err = exectools.cmd_gather(mirror_cmd)
+                    if rc != 0:
+                        # Unable to push to registry
+                        raise IOError('Error pushing image: {}'.format(err))
+                    else:
+                        self.logger.info('Success mirroring image')
 
                     record["message"] = "Successfully pushed all tags"
                     record["status"] = 0
 
-                except Exception as err:
-                    record["message"] = "Exception occurred: %s" % str(err)
-                    self.logger.info("Error pushing %s: %s" % (self.metadata.name, err))
+                except Exception as ex:
+                    record["message"] = "Exception occurred: %s" % str(ex)
+                    self.logger.info("Error pushing %s: %s" % (self.metadata.name, ex))
                     raise
 
                 finally:

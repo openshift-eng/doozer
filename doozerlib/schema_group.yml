@@ -10,6 +10,9 @@ mapping:
       '=':
         type: text
 
+  "insecure_source":
+    type: bool
+
   "branch":
     type: str
 
