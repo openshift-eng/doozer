@@ -159,6 +159,7 @@ def cmd_gather(cmd, set_env=None, realtime=False):
                 pass
 
             rc = proc.poll()
+            time.sleep(0.0001)  # reduce busy-wait
 
     logger.debug(
         "Process {}: exited with: {}\nstdout>>{}<<\nstderr>>{}<<\n".
