@@ -938,6 +938,10 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
 
     runtime.initialize()
 
+    cmd = runtime.command
+    runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
+    lstate = runtime.state[cmd]  # get local convenience copy
+
     version_release_tuple = None
 
     if version_release:
