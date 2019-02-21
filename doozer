@@ -303,7 +303,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
             dgr.tag(real_version, real_release)
             state.record_image_success(lstate, image)
         except Exception as ex:
-            state.record_image_fail(lstate, image, ex.message)
+            state.record_image_fail(lstate, image, ex.message, runtime.logger)
 
     try:
         if push:
@@ -530,7 +530,7 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
                 sha=sha)
             state.record_image_success(lstate, image)
         except Exception as ex:
-            state.record_image_fail(lstate, image, ex.message)
+            state.record_image_fail(lstate, image, ex.message, runtime.logger)
 
     try:
         if push:
