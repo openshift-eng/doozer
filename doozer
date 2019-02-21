@@ -1757,7 +1757,6 @@ def config_update_required(runtime, image_list):
 def main():
     try:
         cli(obj={})
-        color_print(yaml.dump(CTX_GLOBAL.obj.state, default_flow_style=False), color='red')
     except DoozerFatalError as ex:
         # Allow capturing actual tool errors and print them
         # nicely instead of a gross stack-trace.
@@ -1769,12 +1768,9 @@ def main():
             CTX_GLOBAL.obj.state['status'] = state.STATE_FAIL
             CTX_GLOBAL.obj.state['msg'] = ex.message
 
-            color_print(yaml.dump(CTX_GLOBAL.obj.state, default_flow_style=False), color='red')
-
         sys.exit(1)
     finally:
         if CTX_GLOBAL and CTX_GLOBAL.obj and CTX_GLOBAL.obj.initialized:
-            color_print(yaml.dump(CTX_GLOBAL.obj.state, default_flow_style=False), color='red')
             CTX_GLOBAL.obj.save_state()
 
 
