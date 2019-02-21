@@ -637,7 +637,7 @@ class ImageDistGitRepo(DistGitRepo):
                 msg = ('Unknown error loading Dockerfile information')
 
             self.logger.info(msg)
-            state.record_image_fail(self.runtime.state[self.runtime.command], self.metadata, msg)
+            state.record_image_fail(self.runtime.state[self.runtime.command], self.metadata, msg, self.runtime.logger)
             return (self.metadata.distgit_key, False)
 
         action = "build"
@@ -685,7 +685,7 @@ class ImageDistGitRepo(DistGitRepo):
                 if self.runtime.local:
                     self.build_status = self._build_container_local(target_image, repo_type, realtime)
                     if not self.build_status:
-                        state.record_image_fail(self.runtime.state[self.runtime.command], self.metadata, 'Build failure')
+                        state.record_image_fail(self.runtime.state[self.runtime.command], self.metadata, 'Build failure', self.runtime.logger)
                     else:
                         state.record_image_success(self.runtime.state[self.runtime.command], self.metadata)
                     return (self.metadata.distgit_key, self.build_status)  # do nothing more since it's local only
@@ -752,7 +752,7 @@ class ImageDistGitRepo(DistGitRepo):
         self.runtime.add_record(action, **record)
         lstate = self.runtime.state[self.runtime.command]
         if not (self.build_status and self.push_status):
-            state.record_image_fail(lstate, self.metadata, 'Build failure')
+            state.record_image_fail(lstate, self.metadata, 'Build failure', self.runtime.logger)
         else:
             state.record_image_success(lstate, self.metadata)
         return (self.metadata.distgit_key, self.build_status and self.push_status)
