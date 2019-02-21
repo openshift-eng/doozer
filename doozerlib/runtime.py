@@ -153,8 +153,6 @@ class Runtime(object):
         self.image_tree = {}
         self.image_order = []
 
-        self.init_state()
-
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
@@ -227,6 +225,8 @@ class Runtime(object):
             self.load_disabled = disabled
 
         self.initialize_logging()
+
+        self.init_state()
 
         if no_group:
             return  # nothing past here should be run without a group
@@ -411,6 +411,8 @@ class Runtime(object):
 
         if clone_distgits:
             self.clone_distgits()
+
+        self.initialized = True
 
     def initialize_logging(self):
 
