@@ -120,6 +120,7 @@ class DistGitRepo(object):
                 if fake_distgit and self.runtime.command in ['images:rebase', 'images:update-dockerfile']:
                     cmd_list = ['mkdir', '-p', self.distgit_dir]
                     self.logger.info("Creating local build dir: {}".format(self.distgit_dir))
+                    exectools.cmd_assert(cmd_list)
                 else:
                     if self.runtime.command == 'images:build':
                         yellow_print('Warning: images:rebase was skipped and therefore your '
@@ -135,20 +136,18 @@ class DistGitRepo(object):
 
                     self.logger.info("Cloning distgit repository [branch:%s] into: %s" % (distgit_branch, self.distgit_dir))
 
-                # Clone the distgit repository. Occasional flakes in clone, so use retry.
-                exectools.cmd_assert(cmd_list, retries=3)
+                    # Clone the distgit repository. Occasional flakes in clone, so use retry.
+                    exectools.cmd_assert(cmd_list, retries=3)
 
-            if not fake_distgit:
-                with Dir(self.distgit_dir):
+                    with Dir(self.distgit_dir):
+                        rc, out, err = exectools.cmd_gather(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+                        out = out.strip()
 
-                    rc, out, err = exectools.cmd_gather(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-                    out = out.strip()
-
-                    # Only switch if we are not already in the branch. This allows us to work in
-                    # working directories with uncommited changes.
-                    if out != distgit_branch:
-                        # Switch to the target branch; all git changes should retry for flakes
-                        exectools.cmd_assert(["rhpkg", "switch-branch", distgit_branch], retries=3)
+                        # Only switch if we are not already in the branch. This allows us to work in
+                        # working directories with uncommited changes.
+                        if out != distgit_branch:
+                            # Switch to the target branch; all git changes should retry for flakes
+                            exectools.cmd_assert(["rhpkg", "switch-branch", distgit_branch], retries=3)
 
             self._read_master_data()
 
@@ -566,18 +565,34 @@ class ImageDistGitRepo(DistGitRepo):
 
                     mirror_cmd = 'oc image mirror {} {} --filename={}'.format(dr, insecure, push_config)
 
-                    self.logger.info('Mirroring image...')
-                    rc, out, err = exectools.cmd_gather(mirror_cmd)
+                    for r in range(10):
+                        self.logger.info("Mirroring image [retry={}]".format(r))
+                        rc, out, err = exectools.cmd_gather(mirror_cmd)
+                        if rc == 0:
+                            break
+                        self.logger.info("Error mirroring image -- retrying in 60 seconds.\n{}".format(err))
+                        time.sleep(60)
+
+                    lstate = self.runtime.state[self.runtime.command] if self.runtime.command == 'images:push' else None
+
                     if rc != 0:
+                        if lstate:
+                            state.record_image_fail(lstate, self.metadata, 'Build failure', self.runtime.logger)
                         # Unable to push to registry
                         raise IOError('Error pushing image: {}'.format(err))
                     else:
+                        if lstate:
+                            state.record_image_success(lstate, self.metadata)
                         self.logger.info('Success mirroring image')
 
                     record["message"] = "Successfully pushed all tags"
                     record["status"] = 0
 
                 except Exception as ex:
+                    lstate = self.runtime.state[self.runtime.command] if self.runtime.command == 'images:push' else None
+                    if lstate:
+                        state.record_image_fail(lstate, self.metadata, str(ex), self.runtime.logger)
+
                     record["message"] = "Exception occurred: %s" % str(ex)
                     self.logger.info("Error pushing %s: %s" % (self.metadata.name, ex))
                     raise

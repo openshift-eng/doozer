@@ -849,7 +849,7 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
                 img_obj = runtime.image_map[img]
                 failed.append(img)
                 if img_obj.required:
-                    required.append[img]
+                    required.append(img)
 
     items = [m.distgit_repo() for m in runtime.ordered_image_metas()]
 
@@ -858,7 +858,7 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
     if required:
         msg = 'The following images failed during the previous step and are required:\n{}'.format('\n'.join(required))
         lstate['status'] = state.STATE_FAIL
-        lstate['msg'] = 'The following images failed during the previous step and are required:\n{}'.format('\n'.join(required))
+        lstate['msg'] = msg
         raise DoozerFatalError(msg)
     elif failed:
         yellow_print('The following images failed the last step and will be skipped:\n{}'.format('\n'.join(failed)))
@@ -942,11 +942,41 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
     lstate = runtime.state[cmd]  # get local convenience copy
 
+    runtime.state.get('images:build', None)
+
+    required = []
+    pre_failed = []
+
+    if pre_step:
+        for img, status in pre_step['images'].iteritems():
+            if isinstance(status, str):
+                img_obj = runtime.image_map[img]
+                pre_failed.append(img)
+                if img_obj.required:
+                    required.append(img)
+
     version_release_tuple = None
 
     if version_release:
         version_release_tuple = version_release.split('-')
         click.echo('Setting up to push: version={} release={}'.format(version_release_tuple[0], version_release_tuple[1]))
+
+    items = runtime.image_metas()
+
+    if required:
+        msg = 'The following images failed during the previous step and are required:\n{}'.format('\n'.join(required))
+        lstate['status'] = state.STATE_FAIL
+        lstate['msg'] = msg
+        raise DoozerFatalError(msg)
+    elif pre_failed:
+        yellow_print('The following images failed the last step and will be skipped:\n{}'.format('\n'.join(pre_failed)))
+
+        # filter out the failed images from previous step
+        new_items = []
+        for i in items:
+            if i.name not in pre_failed:
+                new_items.append(i)
+        items = new_items
 
     # late-only is useful if we are resuming a partial build in which not all images
     # can be built/pushed. Calling images:push can end up hitting the same
@@ -962,7 +992,6 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
         failed = []
         # Push early images
 
-        items = runtime.image_metas()
         results = runtime.parallel_exec(
             lambda (img, terminate_event):
                 img.distgit_repo().push_image(tag, to_defaults, additional_registries,
@@ -978,12 +1007,14 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
             exit(1)
 
     # Push all late images
-    for image in runtime.image_metas():
+    for image in items:
         # Check if actually a late image to prevent cloning all distgit on --late-only
         if image.config.push.late is True:
             image.distgit_repo().push_image(tag, to_defaults, additional_registries,
                                             version_release_tuple=version_release_tuple,
                                             push_late=True, dry_run=dry_run)
+
+    state.record_image_finish(lstate)
 
 
 @cli.command("images:pull", short_help="Pull latest images from pulp")
