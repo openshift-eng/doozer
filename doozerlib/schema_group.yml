@@ -13,6 +13,11 @@ mapping:
   "insecure_source":
     type: bool
 
+  "dist_git_ignore":
+    type: seq
+    sequence:
+      - type: str
+
   "branch":
     type: str
 

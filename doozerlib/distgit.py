@@ -40,6 +40,10 @@ CONTAINER_YAML_HEADER = """
 ---
 """
 
+# Always ignore these files/folders when rebasing into distgit
+# May be added to based on group/image config
+BASE_IGNORE = [".git", ".oit", ".gitignore", "additional-tags"]
+
 logger = logutil.getLogger(__name__)
 
 
@@ -1286,9 +1290,13 @@ class ImageDistGitRepo(DistGitRepo):
         source_dockerfile_path = os.path.join(self.source_path(), dockerfile_name)
 
         # Clean up any files not special to the distgit repo
+        ignore_list = BASE_IGNORE
+        ignore_list.extend(self.runtime.group_config.get('dist_git_ignore', []))
+        ignore_list.extend(self.config.get('dist_git_ignore', []))
+
         for ent in os.listdir("."):
 
-            if ent in [".git", ".oit", ".gitignore", "additional-tags"]:
+            if ent in ignore_list:
                 continue
 
             # Otherwise, clean up the entry
