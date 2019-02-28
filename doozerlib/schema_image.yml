@@ -10,6 +10,11 @@ mapping:
   "required":
     type: bool
 
+  "dist_git_ignore":
+    type: seq
+    sequence:
+      - type: str
+
   "distgit":
     type: map
     mapping:
