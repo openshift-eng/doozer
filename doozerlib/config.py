@@ -76,39 +76,45 @@ class MetaDataConfig(object):
         for rpm in self.runtime.rpm_metas():
             self.update_meta(rpm, key, val)
 
-    def config_print(self, key=None, name_only=False):
+    def config_print(self, key=None, name_only=False, as_yaml=False):
         """
         Print name, sub-key, or entire config
         """
-        def _do_print(meta, k):
-            if name_only:
-                print(meta.config_filename)
-            else:
-                if k:
-                    val = meta.config.get(k, None)
+
+        data = dict(images={}, rpms={})
+
+        def _collect_data(metas, output):
+            for meta in metas:
+                if name_only:
+                    entry = meta.config_filename
+                elif key:
+                    entry = meta.config.get(key, None)
                 else:
-                    val = meta.config.primitive()
+                    entry = meta.config.primitive()
+                output[meta.config_filename.replace('.yml', '')] = entry
 
-                val = yaml.safe_dump(val, default_flow_style=False)
+        _collect_data(self.runtime.image_metas(), data["images"])
+        _collect_data(self.runtime.rpm_metas(), data["rpms"])
 
-                print("*****" + meta.config_filename + "*****")
-                print(val)
-                print('')
+        if as_yaml:
+            print(yaml.safe_dump(data, default_flow_style=False))
+            return
 
-        image_metas = self.runtime.image_metas()
-        rpm_metas = self.runtime.rpm_metas()
-
-        if image_metas:
+        def _do_print(kind, output):
+            if not output:
+                return
             print('')
-            print('********* Images *********')
-            for img in image_metas:
-                _do_print(img, key)
+            print('********* {} *********'.format(kind))
+            for name, entry in output.iteritems():
+                if name_only:
+                    print(entry)
+                else:
+                    print("*****{}.yml*****".format(name))
+                    print(yaml.safe_dump(entry, default_flow_style=False))
+                    print('')
 
-        if rpm_metas:
-            print('')
-            print('*********  RPMs  *********')
-            for rpm in rpm_metas:
-                _do_print(rpm, key)
+        _do_print("Images", data['images'])
+        _do_print(" RPMS ", data['rpms'])
 
     def commit(self, msg):
         """

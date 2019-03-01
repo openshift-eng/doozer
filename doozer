@@ -1435,8 +1435,9 @@ def config_mode(runtime, mode, push, message):
 @click.option("-n", "--name-only", default=False, is_flag=True, multiple=True,
               help="Just print name of matched configs. Overrides --key")
 @click.option("--key", help="Specific key in config to print", default=None)
+@click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
 @pass_runtime
-def config_print(runtime, key, name_only):
+def config_print(runtime, key, name_only, as_yaml):
     """Print name, sub-key, or entire config
 
     Filtering of configs is based on usage of the following global options:
@@ -1465,7 +1466,7 @@ def config_print(runtime, key, name_only):
     _fix_runtime_mode(runtime)
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)
-    config.config_print(key, name_only)
+    config.config_print(key, name_only, as_yaml)
 
 
 @cli.command("beta:release-gen", short_help="Generate input files for release mirroring")
