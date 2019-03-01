@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+version=`podman inspect --format '{{ index .Config.Labels "version"}}' doozer:latest`
+
+podman tag localhost/doozer docker-registry.engineering.redhat.com/aos-team-art/doozer:latest
+podman tag localhost/doozer docker-registry.engineering.redhat.com/aos-team-art/doozer:${version}
+podman push docker-registry.engineering.redhat.com/aos-team-art/doozer:latest
+podman push docker-registry.engineering.redhat.com/aos-team-art/doozer:${version}

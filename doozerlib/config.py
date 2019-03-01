@@ -43,8 +43,6 @@ class MetaDataConfig(object):
         """
         self.runtime.logger.info('{}: [{}] -> {}'.format(meta.config_filename, k, v))
         meta.config[k] = v
-        print(meta.config)
-        print(meta.data_obj.data)
         meta.save()
 
     def delete_key(self, meta, k):
@@ -120,11 +118,11 @@ class MetaDataConfig(object):
         """
         Commit outstanding metadata config changes
         """
-        self.gitdata.commit()
+        self.runtime.gitdata.commit(msg)
 
     def push(self):
         """
         Push changes back to config repo.
         Will of course fail if user does not have write access.
         """
-        self.gitdata.push()
+        self.runtime.gitdata.push()

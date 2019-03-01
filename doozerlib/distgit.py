@@ -67,7 +67,7 @@ def pull_image(url):
 
     exectools.retry(
         3, wait_f=wait,
-        task_f=lambda: exectools.cmd_gather(["docker", "pull", url])[0] == 0)
+        task_f=lambda: exectools.cmd_gather(["podman", "pull", url])[0] == 0)
 
 
 class DistGitRepo(object):
@@ -780,7 +780,7 @@ class ImageDistGitRepo(DistGitRepo):
         if self.image_build_method == 'imagebuilder':
             builder = 'imagebuilder -mount '
         else:
-            builder = 'docker build -v '
+            builder = 'podman build -v '
 
         cmd = builder
         self.logger.info("Building image: %s" % target_image)

@@ -4,7 +4,7 @@
 from doozerlib import version
 from doozerlib import Runtime, Dir
 from doozerlib import state
-from doozerlib.image import pull_image, create_image_verify_repo_file, Image
+from doozerlib.image import pull_image
 from doozerlib.model import Missing
 from doozerlib.brew import get_watch_task_info_copy
 from doozerlib import metadata
@@ -120,10 +120,34 @@ def cli(ctx, **kwargs):
     global CTX_GLOBAL
     kwargs['global_opts'] = None  # can only be set in settings.yaml, add manually
 
+    # This section mostly for containerizing doozer
+    # It allows the user to simply place settings.yaml into their working dir
+    # and then mount that working dir into the container.
+    # The container automatically sets DOOZER_WORKING_DIR
+    # Having settings.yaml in the user directory would overcomplicate this
+    # Note: This means that having working_dir in that config would override everything
+    wd = None
+    wd_env = cli_opts.CLI_OPTS['working_dir']['env']
+    config_path_override = None
+
+    # regardless of the container using the ENV var, always respect
+    # --working-dir above all else
+    if kwargs['working_dir']:
+        wd = kwargs['working_dir']
+    elif wd_env in os.environ:
+        wd = os.environ[wd_env]
+
+    # only if settings.yaml exists in the workspace force dotconfig
+    # to override the usual flow. Otherwise this will fall back to
+    # potentially getting working-dir from ~/.config/doozer/settings.yaml
+    if wd and os.path.isfile(os.path.join(wd, 'settings.yaml')):
+        config_path_override = wd
+
     cfg = dotconfig.Config('doozer', 'settings',
                            template=cli_opts.CLI_CONFIG_TEMPLATE,
                            envvars=cli_opts.CLI_ENV_VARS,
-                           cli_args=kwargs)
+                           cli_args=kwargs,
+                           path_override=config_path_override)
 
     if cli_opts.config_is_empty(cfg.full_path):
         msg = (
@@ -343,110 +367,6 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
     if failed:
         msg = "The following non-critical images failed to update:\n{}".format('\n'.join(failed))
         yellow_print(msg)
-
-
-@cli.command("images:verify", short_help="Run some smoke tests to verify produced images")
-@click.option("--image", "-i", metavar="REPO/NAME:TAG", multiple=True,
-              help="Run a manual scan of one or more specific images [multiple]")
-@click.option("--no-pull", is_flag=True,
-              help="Assume image has already been pulled (Just-in-time pulling)")
-@click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGE_REPO_TYPE",
-              default='unsigned',
-              help="Repo type (e.g. signed, unsigned). Use 'unsigned' for newer releases like 3.9 until they're GA")
-@click.option('--check-orphans', default=None, is_flag=True,
-              help="Verify no packages are orphaned (installed without a source repo) [SLOW]")
-@click.option('--check-sigs', default=None, is_flag=True,
-              help="Verify that all installed packages are signed with a valid key")
-@click.option('--check-versions', default=None, is_flag=True,
-              help="Verify that installed package versions match the target release")
-@pass_runtime
-def images_verify(runtime, image, no_pull, repo_type, **kwargs):
-    """Catches mistakes in images (see the --check-FOO options) before we
-    ship them on to QE for further verification. This command roughly
-    approximates the image check job ran on the QE Jenkins.
-
-    Ensure you provide a `--working-dir` if you want to retain the
-    test reports. Some useful artifacts are produced in the
-    `working-dir`: debug.log: The full verbose log of all
-    operations. verify_fail_log.yml: Failed images check
-    details. verify_full_log.yml: Full image check details.
-
-    EXAMPLES
-
-    * Run all checks on all the lastest openshift-3.9 group images:
-
-      $ doozer --group openshift-3.9 images:verify
-
-    * ONLY the package signature check:
-
-      $ doozer --group openshift-3.9 images:verify --check-sigs
-
-    * All tests on a SPECIFIC image:
-
-      \b
-      $ doozer --group openshift-3.4 images:verify --image reg.rh.com:8888/openshift3/ose:v3.4.1.44.38-12
-
-    Exit code is the number of images that failed the image check
-
-    """
-    # * Job: https://openshift-qe-jenkins.rhev-ci-vms.eng.rdu2.redhat.com/job/v3-errata-image-test/
-    # * Source: git://git.app.eng.bos.redhat.com/openshift-misc.git/openshift-misc/v3-errata-image-test/v3-errata-image-test.sh
-    runtime.initialize(clone_distgits=False)
-    # Parse those check options. All None indicates we run everything,
-    # True then we only run the True checks.
-    if not any(kwargs.values()):
-        enabled_checks = kwargs.keys()
-    else:
-        enabled_checks = list(k for k, v in kwargs.items() if v)
-
-    repo_file = create_image_verify_repo_file(runtime, repo_type=repo_type)
-
-    # Doing this manually, or automatic on a group?
-    if len(image) == 0:
-        images = [Image(runtime, x.pull_url(), repo_file, enabled_checks, distgit=x.name) for x in runtime.image_metas()]
-    else:
-        images = [Image(runtime, img, repo_file, enabled_checks) for img in image]
-
-    # Don't pre-pull images, useful during development iteration. If
-    # --no-pull isn't given, then we will pre-pull all images.
-    if not no_pull:
-        for image in images:
-            pull_image(image.pull_url)
-
-    count_images = len(images)
-    runtime.logger.info("[Verify] Running verification checks on {count} images: {chks}".format(count=count_images, chks=", ".join(enabled_checks)))
-
-    pool = ThreadPool(cpu_count())
-    results = pool.map(
-        lambda img: img.verify_image(),
-        images)
-    # Wait for results
-    pool.close()
-    pool.join()
-
-    ######################################################################
-    # Done! Let's begin accounting and recording
-    failed_images = [img for img in results if img['status'] == 'failed']
-    failed_images_count = len(failed_images)
-
-    fail_log = os.path.join(runtime.working_dir, 'verify_fail_log.yml')
-
-    runtime.logger.info("[Verify] Checks finished. {fail_count} failed".format(fail_count=failed_images_count))
-
-    if failed_images_count > 0:
-        runtime.remove_tmp_working_dir = False
-        fail_log_data = {
-            'test_date': str(datetime.datetime.now()),
-            'data': failed_images
-        }
-
-        with open(fail_log, 'w') as fp:
-            verbose_fail = yaml.safe_dump(fail_log_data, indent=4, default_flow_style=False)
-            fp.write(verbose_fail)
-            runtime.logger.info("[Verify] Failed images check details: {fail_log}".format(fail_log=fail_log))
-            runtime.logger.info("[Verify] Verbose failure: {vfail}".format(vfail=verbose_fail))
-
-    exit(failed_images_count)
 
 
 @cli.command("config:scan-sources", short_help="Determine if source repo differs from distgit content")
@@ -1059,20 +979,6 @@ def images_pull_image(runtime):
     for image in runtime.image_metas():
         image.pull_image()
 
-
-@cli.command("images:scan-for-cves", short_help="Scan images with openscap")
-@pass_runtime
-def images_scan_for_cves(runtime):
-    """
-    Pulls images and scans them for CVEs using `atomic scan` and `openscap`.
-    """
-    runtime.initialize(clone_distgits=True)
-    image_urls = [x.pull_url() for x in runtime.image_metas()]
-    for image_url in image_urls:
-        pull_image(image_url, runtime.logger)
-    subprocess.check_call(["atomic", "scan"] + image_urls)
-
-
 @cli.command("images:show-tree", short_help="Display the image relationship tree")
 @click.option(
     "--imagename", default=False, is_flag=True,
@@ -1334,21 +1240,30 @@ def query_rpm_version(runtime, repo_type):
     click.echo("version: {}".format(version))
 
 
-# AMH - 2019-01-15
-# Cleanup doesn't seem to always work
-# @cli.command("cleanup", short_help="Cleanup the OIT environment")
-# @pass_runtime
-# def cleanup(runtime):
-#     """
-#     Cleanup the OIT working environment.
-#     Currently this just clears out the working dir content
-#     """
+@cli.command("cleanup", short_help="Cleanup the Doozer environment")
+@pass_runtime
+def cleanup(runtime):
+    """
+    Cleanup the OIT working environment.
+    Currently this just clears out the working dir content
+    """
 
-#     runtime.initialize(no_group=True)
+    runtime.initialize(no_group=True)
 
-#     runtime.logger.info('Clearing out {}'.format(runtime.working_dir))
-#     if os.path.isdir(runtime.working_dir):
-#         exectools.cmd_assert('rm -rf {}/*'.format(runtime.working_dir))
+    runtime.logger.info('Clearing out {}'.format(runtime.working_dir))
+
+    ignore_list = ['settings.yaml']
+    with Dir(runtime.working_dir):
+        for ent in os.listdir("."):
+            if ent in ignore_list:
+                continue
+
+            yellow_print(ent)
+            # Otherwise, remove
+            if os.path.isfile(ent) or os.path.islink(ent):
+                os.remove(ent)
+            else:
+                shutil.rmtree(ent)
 
 
 option_config_commit_msg = click.option("--message", "-m", metavar='MSG', help="Commit message for config change.", default=None)
@@ -1448,7 +1363,7 @@ def config_mode(runtime, mode, push, message):
     If --push not given must use config:push after.
     """
     _fix_runtime_mode(runtime)
-    if not runtime.wip and CONFIG_RUNTIME_OPTS['mode'] == 'both':
+    if not runtime.load_wip and CONFIG_RUNTIME_OPTS['mode'] == 'both':
         red_print('Updating all mode for all configs in group is not allowed! Please specifiy configs directly.')
         sys.exit(1)
     runtime.initialize(**CONFIG_RUNTIME_OPTS)

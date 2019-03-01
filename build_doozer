@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+version=`cat ./doozerlib/VERSION`
+
+# build image
+podman build --label "version=${version}" --no-cache -t doozer:latest -t doozer:${version} . 2>&1 | tee ../container.log
+
+# podman seems to need to rest a bit otherwise
+# the delete below may fail
+# sleep 3
+
+# remove dangling images
+# podman rmi -f $(podman images -f "dangling=true" -q)
