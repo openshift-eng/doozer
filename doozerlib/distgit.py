@@ -895,6 +895,7 @@ class ImageDistGitRepo(DistGitRepo):
         if logs_rc != 0:
             self.logger.info("Error downloading build logs from brew for task %s: %s" % (task_id, logs_err))
         elif error is None:
+            self._extract_container_build_logs(task_id)
             # even if the build completed without error, check the logs for problems
             error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
 
@@ -906,8 +907,37 @@ class ImageDistGitRepo(DistGitRepo):
         self.logger.info("Successfully built image: {} ; {}".format(target_image, task_url))
         return True
 
-    def _logs_dir(self):
-        return "%s/%s" % (self.runtime.brew_logs_dir, self.metadata.name)
+    def _logs_dir(self, task_id=None):
+        segments = [self.runtime.brew_logs_dir, self.metadata.name]
+        if task_id is not None:
+            segments.append("noarch-" + task_id)
+        return os.path.join(*segments)
+
+    def _extract_container_build_logs(self, task_id):
+        """
+        Look through build logs and extract the part that's just the actual docker or imagebuilder build
+        so that devs do not have to wade through the full atomic_reactor logs.
+        If found in a log, the extracted text is written to the same filename with prefix "container-build-"
+
+        :param task_id: string with the build task so we can find the downloaded logs
+        """
+        logs_dir = self._logs_dir(task_id)
+        try:
+            for filename in os.listdir(logs_dir):
+                rc, output, _ = exectools.cmd_gather([
+                    "sed", "-nEe",
+                    # look in logs for either of the build plugins to start,
+                    # and look for the plugin runner to declare the plugin done to end.
+                    # strip off all the noise at the front of log lines.
+                    "/plugins.(imagebuilder|docker_api)/,/atomic_reactor.plugin / { s/^.*?- (DEBUG|INFO) - //; p }",
+                    os.path.join(logs_dir, filename)
+                ])
+                if rc == 0 and output:
+                    extracted = os.path.join(logs_dir, "container-build-" + filename)
+                    with open(extracted, "w") as extracted_file:
+                        extracted_file.write(output)
+        except OSError as e:
+            self.logger.warning("Exception while trying to extract build logs in {}: {}".format(logs_dir, e))
 
     def _detect_permanent_build_failures(self, scanner):
         """
