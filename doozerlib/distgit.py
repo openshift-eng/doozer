@@ -666,6 +666,7 @@ class ImageDistGitRepo(DistGitRepo):
             "dockerfile": "%s/Dockerfile" % self.distgit_dir,
             "distgit": self.metadata.name,
             "image": self.org_image_name,
+            "owners": ",".join(list(self.config.owners) if self.config.owners is not Missing else []),
             "version": self.org_version,
             "release": release,
             "message": "Unknown failure",
