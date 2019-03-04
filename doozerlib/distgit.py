@@ -981,7 +981,7 @@ class ImageDistGitRepo(DistGitRepo):
     def push(self):
         with Dir(self.distgit_dir):
             self.logger.info("Pushing repository")
-            exectools.cmd_assert("timeout 300 rhpkg push", retries=3)
+            exectools.cmd_assert("timeout 1200 rhpkg push", retries=3)
             # rhpkg will create but not push tags :(
             # Not asserting this exec since this is non-fatal if a tag already exists,
             # and tags in dist-git can't be --force overwritten
