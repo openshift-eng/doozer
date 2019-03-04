@@ -895,10 +895,11 @@ class ImageDistGitRepo(DistGitRepo):
 
         if logs_rc != 0:
             self.logger.info("Error downloading build logs from brew for task %s: %s" % (task_id, logs_err))
-        elif error is None:
+        else:
             self._extract_container_build_logs(task_id)
-            # even if the build completed without error, check the logs for problems
-            error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
+            if error is None:
+                # even if the build completed without error, check the logs for problems
+                error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
 
         if error is not None:
             # An error occurred. We don't have a viable build.
