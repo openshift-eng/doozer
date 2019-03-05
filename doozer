@@ -942,7 +942,7 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
     lstate = runtime.state[cmd]  # get local convenience copy
 
-    runtime.state.get('images:build', None)
+    pre_step = runtime.state.get('images:build', None)
 
     required = []
     pre_failed = []
