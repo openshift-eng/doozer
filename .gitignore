@@ -17,3 +17,6 @@ cover
 
 # Ignore emacs backup files
 *~
+
+# Ignore idea backup files
+.idea

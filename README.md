@@ -48,7 +48,7 @@ Likely already on your system. If not:
 
 ### **brew & rhpkg**
 
-Enable the following repos on your syste:
+Enable the following repos on your system:
 
 - https://gitlab.cee.redhat.com/platform-eng-core-services/internal-repos/raw/master/rhel/rhel-7.repo
 - http://download.devel.redhat.com/rel-eng/RCMTOOLS/rcm-tools-rhel-7-server.repo
@@ -92,7 +92,7 @@ Some images are built with `imagebuilder` instead of `docker build` (this is con
 
 ### Registry Setup
 
-Because many images require resources on internal registries is it important to setup your local docker to search for images in the right place.
+Because many images require resources on internal registries, it is important to setup your local docker to search for images in the right place.
 Note: This is just one example and your mileage may vary depending on your system and tool versions
 
 - Add the following entry to your `/etc/docker/daemon.json`:
