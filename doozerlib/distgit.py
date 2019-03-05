@@ -42,7 +42,7 @@ CONTAINER_YAML_HEADER = """
 
 # Always ignore these files/folders when rebasing into distgit
 # May be added to based on group/image config
-BASE_IGNORE = [".git", ".oit", ".gitignore", "additional-tags"]
+BASE_IGNORE = [".git", ".oit", "additional-tags"]
 
 logger = logutil.getLogger(__name__)
 
@@ -1373,6 +1373,12 @@ class ImageDistGitRepo(DistGitRepo):
         for ent in os.listdir("."):
             if ent.startswith("Dockerfile."):
                 os.remove(ent)
+
+        # Delete .gitignore since it may block full sync and is not needed here
+        try:
+            os.remove("./.gitignore")
+        except OSError:
+            pass
 
         notify_owner = False
 
