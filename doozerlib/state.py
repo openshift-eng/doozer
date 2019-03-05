@@ -24,7 +24,7 @@ def record_image_success(state, image):
     state['images'][image.name] = True
 
 
-def record_image_fail(state, image, msg, logger):
+def record_image_fail(state, image, msg, logger=None):
     state['required_fail' if image.required else 'optional_fail'] += 1
     state['images'][image.name] = msg
     if logger:

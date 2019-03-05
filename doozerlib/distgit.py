@@ -981,11 +981,15 @@ class ImageDistGitRepo(DistGitRepo):
     def push(self):
         with Dir(self.distgit_dir):
             self.logger.info("Pushing repository")
-            exectools.cmd_assert("timeout 1200 rhpkg push", retries=3)
-            # rhpkg will create but not push tags :(
-            # Not asserting this exec since this is non-fatal if a tag already exists,
-            # and tags in dist-git can't be --force overwritten
-            exectools.cmd_gather(['timeout', '60', 'git', 'push', '--tags'])
+            try:
+                exectools.cmd_assert("timeout 1200 rhpkg push", retries=3)
+                # rhpkg will create but not push tags :(
+                # Not asserting this exec since this is non-fatal if a tag already exists,
+                # and tags in dist-git can't be --force overwritten
+                exectools.cmd_gather(['timeout', '60', 'git', 'push', '--tags'])
+            except IOError as e:
+                return (self.metadata, repr(e))
+            return (self.metadata, True)
 
     @staticmethod
     def _mangle_yum(cmd):

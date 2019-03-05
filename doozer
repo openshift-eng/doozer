@@ -307,12 +307,16 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
 
     try:
         if push:
-            runtime.push_distgits()
+            res = runtime.push_distgits()
 
-        state.record_image_finish(lstate)
+            for name, r in res:
+                if r is not True:
+                    state.record_image_fail(lstate, name, r)
     except Exception as ex:
         lstate['status'] = state.STATE_FAIL
-        raise DoozerFatalError(ex.message)
+        raise DoozerFatalError(getattr(ex, 'message', repr(ex)))
+
+    state.record_image_finish(lstate)
 
     failed = []
     for img, status in lstate['images'].iteritems():
@@ -327,6 +331,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
     if failed:
         msg = "The following non-critical images failed to update:\n{}".format('\n'.join(failed))
         yellow_print(msg)
+
 
 @cli.command("images:verify", short_help="Run some smoke tests to verify produced images")
 @click.option("--image", "-i", metavar="REPO/NAME:TAG", multiple=True,
@@ -534,12 +539,16 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
 
     try:
         if push:
-            runtime.push_distgits()
+            res = runtime.push_distgits()
 
-        state.record_image_finish(lstate)
+            for name, r in res:
+                if r is not True:
+                    state.record_image_fail(lstate, name, r)
     except Exception as ex:
         lstate['status'] = state.STATE_FAIL
-        raise DoozerFatalError(ex.message)
+        raise DoozerFatalError(repr(ex))
+
+    state.record_image_finish(lstate)
 
     failed = []
     for img, status in lstate['images'].iteritems():
