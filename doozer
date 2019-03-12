@@ -530,11 +530,21 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
             dgr.tag(real_version, real_release)
             runtime.add_record(
                 "distgit_commit",
-                distgit=dgr.metadata.qualified_name,
-                image=dgr.config.name,
-                sha=sha)
+                distgit=image.qualified_name,
+                image=image.config.name,
+                sha=sha,
+            )
             state.record_image_success(lstate, image)
         except Exception as ex:
+            owners = image.config.owners
+            owners = ",".join(list(owners) if owners is not Missing else [])
+            runtime.add_record(
+                "distgit_commit_failure",
+                distgit=image.qualified_name,
+                image=image.config.name,
+                owners=owners,
+                message=ex.message.replace("|", ""),
+            )
             state.record_image_fail(lstate, image, ex.message, runtime.logger)
 
     try:
