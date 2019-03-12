@@ -672,7 +672,8 @@ class Runtime(object):
         try:
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             exectools.cmd_assert(
-                "git clone -b {} --single-branch {} --depth 1 {}".format(clone_branch, url, source_dir),
+                # get a little history to enable finding a recent Dockerfile change, but not too much.
+                "git clone -b {} --single-branch {} --depth 50 {}".format(clone_branch, url, source_dir),
                 retries=3,
                 on_retry=["rm", "-rf", source_dir],
             )

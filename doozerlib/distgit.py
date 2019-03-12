@@ -1413,7 +1413,12 @@ class ImageDistGitRepo(DistGitRepo):
             with Dir(self.source_path()):
                 author_email = None
                 err = None
-                rc, sha, err = exectools.cmd_gather('git log -n 1 --pretty=format:%H {}'.format(dockerfile_name))
+                rc, sha, err = exectools.cmd_gather(
+                    # --no-merges because the merge bot is not the real author
+                    # --diff-filter=a to omit the "first" commit in a shallow clone which may not be the author
+                    #   (though this means when the only commit is the initial add, that is omitted)
+                    'git log --no-merges --diff-filter=a -n 1 --pretty=format:%H {}'.format(dockerfile_name)
+                )
                 if rc == 0:
                     rc, ae, err = exectools.cmd_gather('git show -s --pretty=format:%ae {}'.format(sha))
                     if rc == 0:
