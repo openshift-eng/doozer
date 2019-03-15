@@ -137,21 +137,12 @@ class DistGitRepo(object):
                         cmd_list.append("--user=%s" % self.runtime.user)
 
                     cmd_list.extend(["clone", self.metadata.qualified_name, self.distgit_dir])
+                    cmd_list.extend(["--branch", distgit_branch])
 
                     self.logger.info("Cloning distgit repository [branch:%s] into: %s" % (distgit_branch, self.distgit_dir))
 
                     # Clone the distgit repository. Occasional flakes in clone, so use retry.
                     exectools.cmd_assert(cmd_list, retries=3)
-
-                    with Dir(self.distgit_dir):
-                        rc, out, err = exectools.cmd_gather(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-                        out = out.strip()
-
-                        # Only switch if we are not already in the branch. This allows us to work in
-                        # working directories with uncommited changes.
-                        if out != distgit_branch:
-                            # Switch to the target branch; all git changes should retry for flakes
-                            exectools.cmd_assert(["rhpkg", "switch-branch", distgit_branch], retries=3)
 
             self._read_master_data()
 
