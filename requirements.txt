@@ -6,5 +6,5 @@ requests
 requests_kerberos
 koji >= 1.16.0
 bashlex
-pydotconfig
-pygitdata >= 0.2.0
+pydotconfig >= 0.1.4
+pygitdata >= 0.2.2
