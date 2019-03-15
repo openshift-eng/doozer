@@ -336,7 +336,7 @@ class ImageDistGitRepo(DistGitRepo):
             source_container_yaml = os.path.join(self.source_path(), CYAML)
         if os.path.isfile(source_container_yaml):
             with open(source_container_yaml, 'r') as scy:
-                source_container_yaml = yaml.load(scy)
+                source_container_yaml = yaml.full_load(scy)
         else:
             source_container_yaml = {}
 

@@ -163,7 +163,7 @@ class Runtime(object):
         if replace_vars is not Missing:
             try:
                 group_yml = yaml.safe_dump(tmp_config.primitive(), default_flow_style=False)
-                tmp_config = Model(yaml.load(group_yml.format(**replace_vars)))
+                tmp_config = Model(yaml.full_load(group_yml.format(**replace_vars)))
             except KeyError as e:
                 raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
 
@@ -174,7 +174,7 @@ class Runtime(object):
         self.state = dict(state.TEMPLATE_BASE_STATE)
         if os.path.isfile(self.state_file):
             with open(self.state_file, 'r') as f:
-                self.state = yaml.load(f)
+                self.state = yaml.full_load(f)
             self.state.update(state.TEMPLATE_BASE_STATE)
 
     def save_state(self):
@@ -257,7 +257,7 @@ class Runtime(object):
 
         if self.sources:
             with open(self.sources, 'r') as sf:
-                source_dict = yaml.load(sf)
+                source_dict = yaml.full_load(sf)
                 if not isinstance(source_dict, dict):
                     raise ValueError('--sources param must be a yaml file containing a single dict.')
                 for key, val in source_dict.items():
