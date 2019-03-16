@@ -90,6 +90,11 @@ class RPMMetadata(Metadata):
             exectools.cmd_assert("git add .")
             exectools.cmd_assert(['git', 'commit', '-m', "Local commit for dist-git build"])
 
+    def rollback_changes(self):
+        with Dir(self.source_path):
+            exectools.cmd_assert("git reset --hard HEAD~")
+            exectools.cmd_assert("git tag -d {}".format(self.tag))
+
     def tito_setup(self):
         tito_dir = os.path.join(self.source_path, '.tito')
         with Dir(self.source_path):
@@ -292,6 +297,7 @@ class RPMMetadata(Metadata):
             # threaded, we should not throw an exception; instead return False.
         finally:
             self.runtime.add_record(action, **record)
+            self.rollback_changes()
 
         if self.build_status and not scratch:
             try:
