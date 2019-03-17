@@ -39,6 +39,7 @@ class RPMMetadata(Metadata):
         self.version = None
         self.release = None
         self.tag = None
+        self.vtag = None
         self.commit_sha = None
         self.build_status = False
 
@@ -67,14 +68,15 @@ class RPMMetadata(Metadata):
         self.version = version
         self.release = release
         self.tag = '{}-{}-{}'.format(self.config.name, self.version, self.release)
+        self.vtag = 'v{}-{}'.format(self.version, self.release)
 
     def create_tag(self, scratch):
         if not self.tag:
             raise ValueError('Must run set_nvr() before calling!')
 
         with Dir(self.source_path):
-            if not scratch:
-                exectools.cmd_assert('git tag {}'.format(self.tag))
+            exectools.cmd_assert('git tag {}'.format(self.tag))
+            exectools.cmd_assert('git tag {}'.format(self.vtag))
             rc, sha, err = exectools.cmd_gather('git rev-parse HEAD')
             self.commit_sha = sha.strip()
 
@@ -93,7 +95,7 @@ class RPMMetadata(Metadata):
     def rollback_changes(self):
         with Dir(self.source_path):
             exectools.cmd_assert("git reset --hard HEAD~")
-            exectools.cmd_assert("git tag -d {}".format(self.tag))
+            exectools.cmd_assert("git tag -d {} {}".format(self.tag, self.vtag))
 
     def tito_setup(self):
         tito_dir = os.path.join(self.source_path, '.tito')
@@ -297,12 +299,13 @@ class RPMMetadata(Metadata):
             # threaded, we should not throw an exception; instead return False.
         finally:
             self.runtime.add_record(action, **record)
-            self.rollback_changes()
 
         if self.build_status and not scratch:
             try:
                 self.push_tag()
             except Exception:
                 raise RuntimeError('Build succeeded but failure pushing RPM tag for {}'.format(self.qualified_name))
+
+        self.rollback_changes()
 
         return (self.distgit_key, self.build_status)
