@@ -18,6 +18,11 @@ mapping:
     sequence:
       - type: str
 
+  "blacklist":
+    type: seq
+    sequence:
+      - type: str
+
   "branch":
     type: str
 
