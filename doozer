@@ -1539,8 +1539,8 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
           namespace: ocp
         spec:
           tags: []
-
     """
+    runtime.exclude.extend(runtime.group_config.get('blacklist', []))
     runtime.initialize(clone_distgits=False)
     images = [i for i in runtime.image_metas()]
 
@@ -1552,6 +1552,7 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
     src_dest_items = []
     missing_source_items = []
     invalid_name_items = []
+    blacklisted_items = []
 
     for image in images:
         click.echo("###############################################################")
