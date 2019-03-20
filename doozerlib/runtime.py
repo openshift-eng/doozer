@@ -692,6 +692,12 @@ class Runtime(object):
 
         branch = branches["target"]
         fallback_branch = branches.get("fallback", None)
+        if self.group_config.use_source_fallback_branch == "always" and fallback_branch:
+            # only use the fallback (unless none is given)
+            branch, fallback_branch = fallback_branch, None
+        elif self.group_config.use_source_fallback_branch == "never":
+            # ignore the fallback
+            fallback_branch = None
         stage_branch = branches.get("stage", None) if self.stage else None
 
         if stage_branch:
