@@ -220,9 +220,12 @@ class DistGitRepo(object):
         Returns: bool
         """
         source_details = self.config.content.source.git
-        if source_details is Missing:
+        alias = self.config.content.source.alias
+        if source_details is Missing and alias is Missing:
             # no git source configured, so distgit always matches itself
             return True
+        if source_details is Missing:
+            source_details = self.runtime.group_config.sources[alias]
         _, commit_hash = self.runtime.detect_remote_source_branch(dict(source_details))
         return self._matches_commit(commit_hash) if commit_hash else False
 
