@@ -1541,6 +1541,7 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
           tags: []
 
     """
+    runtime.exclude.extend(runtime.group_config.get('non_release.images', []))
     runtime.initialize(clone_distgits=False)
     images = [i for i in runtime.image_metas()]
 
