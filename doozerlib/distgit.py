@@ -131,7 +131,7 @@ class DistGitRepo(object):
                                      'local build will be sourced from the current dist-git '
                                      'contents and not the typical GitHub source. '
                                      )
-                    cmd_list = ["timeout", "300", "rhpkg"]
+                    cmd_list = ["timeout", "900", "rhpkg"]
 
                     if self.runtime.user is not None:
                         cmd_list.append("--user=%s" % self.runtime.user)
