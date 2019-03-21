@@ -9,6 +9,7 @@ deploy:
   provider: pypi
   skip_cleanup: true
   on:
+    repo: openshift/doozer
     python: 2.7
     tags: true
   user: OpenShiftART
