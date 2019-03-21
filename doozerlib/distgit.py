@@ -131,7 +131,7 @@ class DistGitRepo(object):
                                      'local build will be sourced from the current dist-git '
                                      'contents and not the typical GitHub source. '
                                      )
-                    cmd_list = ["timeout", "900", "rhpkg"]
+                    cmd_list = ["timeout", str(self.runtime.global_opts['rhpkg_clone_timeout']), "rhpkg"]
 
                     if self.runtime.user is not None:
                         cmd_list.append("--user=%s" % self.runtime.user)
@@ -976,7 +976,8 @@ class ImageDistGitRepo(DistGitRepo):
         with Dir(self.distgit_dir):
             self.logger.info("Pushing repository")
             try:
-                exectools.cmd_assert("timeout 1200 rhpkg push", retries=3)
+                timeout = str(self.runtime.global_opts['rhpkg_push_timeout'])
+                exectools.cmd_assert("timeout {} rhpkg push".format(timeout), retries=3)
                 # rhpkg will create but not push tags :(
                 # Not asserting this exec since this is non-fatal if a tag already exists,
                 # and tags in dist-git can't be --force overwritten

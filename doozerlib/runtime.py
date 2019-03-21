@@ -829,13 +829,17 @@ class Runtime(object):
         pool.join()
         return ret
 
-    def clone_distgits(self, n_threads=20):
+    def clone_distgits(self, n_threads=None):
+        if n_threads is None:
+            n_threads = self.global_opts['distgit_threads']
         return self._parallel_exec(
             lambda m: m.distgit_repo(),
             self.all_metas(),
             n_threads=n_threads).get()
 
-    def push_distgits(self, n_threads=20):
+    def push_distgits(self, n_threads=None):
+        if n_threads is None:
+            n_threads = self.global_opts['distgit_threads']
         return self._parallel_exec(
             lambda m: m.distgit_repo().push(),
             self.all_metas(),
