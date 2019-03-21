@@ -19,10 +19,23 @@ data_path: https://github.com/openshift/ocp-build-data.git
 
 #Sub-group directory or branch to pull build data
 group: openshift-4.0
+
+#Username for running rhpkg / brew / tito
+user: ahaile
+
+#Global option overrides that can only be set from settings.yaml
+global_opts:
+  # num of concurrent distgit pull/pushes
+  distgit_threads: 20
+  # timeout for `rhpkg clone` operation
+  rhpkg_clone_timeout: 900
+  # timeout for `rhpkg push` operation
+  rhpkg_push_timeout: 1200
 ```
 
-Note, all three options above can be set at the CLI with `doozer --working-dir <path> --data-path <url> --group <group>` but we highly recommend setting them in `settings.yaml` to save typing every time you run.
-Also, please note that `group` in `settings.yaml` only makes sense if you only ever work on that one version, otherwise specify it on the CLI at runtime.
+Note, the options `working_dir`, `data_path`, `group`, and `user` above can be set at the CLI with `doozer --working-dir <path> --data-path <url> --group <group> --user <user>` but we highly recommend setting at least `working_dir` and `data_path` in `settings.yaml` to save typing every time you run.
+Setting `group` in `settings.yaml` only makes sense if you only ever work on that one version, otherwise specify it on the CLI at runtime.
+Finally, `global_opts` is used to set some internal options and can only be configured from `settings.yaml`. This is intentional as they are meant to be global to the system running doozer.
 
 # Image Configuration
 

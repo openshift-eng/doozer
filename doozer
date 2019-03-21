@@ -118,6 +118,8 @@ def print_version(ctx, param, value):
 @click.pass_context
 def cli(ctx, **kwargs):
     global CTX_GLOBAL
+    kwargs['global_opts'] = None  # can only be set in settings.yaml, add manually
+
     cfg = dotconfig.Config('doozer', 'settings',
                            template=cli_opts.CLI_CONFIG_TEMPLATE,
                            envvars=cli_opts.CLI_ENV_VARS,
@@ -131,7 +133,17 @@ def cli(ctx, **kwargs):
         ).format(cfg.full_path)
         yellow_print(msg)
 
-    ctx.obj = Runtime(cfg_obj=cfg, command=ctx.invoked_subcommand, **cfg.to_dict())
+    # set global option defaults
+    runtime_args = cfg.to_dict()
+    global_opts = runtime_args['global_opts']
+    if global_opts is None:
+        global_opts = {}
+    for k, v in cli_opts.GLOBAL_OPT_DEFAULTS.iteritems():
+        if k not in global_opts or global_opts[k] is None:
+            global_opts[k] = v
+    runtime_args['global_opts'] = global_opts
+
+    ctx.obj = Runtime(cfg_obj=cfg, command=ctx.invoked_subcommand, **runtime_args)
     CTX_GLOBAL = ctx
     return ctx
 
