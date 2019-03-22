@@ -1553,8 +1553,11 @@ def release_mirror(runtime, src_dest, image_stream, is_base, pattern):
           tags: []
 
     """
-    runtime.exclude.extend(runtime.group_config.get('non_release.images', []))
     runtime.initialize(clone_distgits=False)
+    non_release_images = runtime.group_config.non_release.images
+    if non_release_images is not Missing:
+        runtime.exclude = list(runtime.exclude).extend(non_release_images)
+
     images = [i for i in runtime.image_metas()]
 
     # Load the ImageStream stub file
