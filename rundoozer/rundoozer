@@ -305,8 +305,8 @@ def main():
         image = PULL_SPEC
 
     run_cmd = [container_bin, 'run', '--rm', '-it']
-    run_cmd += ['-v', '{}:/kerb'.format(kerb)]
-    run_cmd += ['-v', '{}:/working'.format(working_dir)]
+    run_cmd += ['-v', '{}:/kerb:z'.format(kerb)]
+    run_cmd += ['-v', '{}:/working:z'.format(working_dir)]
     run_cmd += ['-v', '{}:/root/.ssh/'.format(ssh)]
     run_cmd += ['-v', '{}:/root/.gitconfig'.format(gitconfig)]
     run_cmd += [image]
