@@ -183,7 +183,8 @@ class Runtime(object):
 
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
-                   no_group=False, clone_source=True, disabled=None):
+                   no_group=False, clone_source=True, disabled=None,
+                   config_excludes=None):
 
         if self.initialized:
             return
@@ -320,6 +321,8 @@ class Runtime(object):
                 return d.get('mode', 'enabled') in ['enabled', 'disabled']
 
             exclude_keys = flatten_list(self.exclude)
+            image_ex = list(exclude_keys)
+            rpm_ex = list(exclude_keys)
             image_keys = flatten_list(self.images)
             rpm_keys = flatten_list(self.rpms)
 
@@ -337,14 +340,20 @@ class Runtime(object):
             if self.group_config.vars:
                 replace_vars = self.group_config.vars.primitive()
 
+            if config_excludes:
+                excludes = self.group_config.get(config_excludes, {})
+                image_ex.extend(excludes.get('images', []))
+                rpm_ex.extend(excludes.get('rpms', []))
+
+            print(image_ex)
             image_data = self.gitdata.load_data(path='images', keys=image_keys,
-                                                exclude=exclude_keys,
+                                                exclude=image_ex,
                                                 replace_vars=replace_vars,
                                                 filter_funcs=None if len(image_keys) else filter_func)
 
             try:
                 rpm_data = self.gitdata.load_data(path='rpms', keys=rpm_keys,
-                                                  exclude=exclude_keys,
+                                                  exclude=rpm_ex,
                                                   replace_vars=replace_vars,
                                                   filter_funcs=None if len(rpm_keys) else filter_func)
             except gitdata.GitDataPathException:
