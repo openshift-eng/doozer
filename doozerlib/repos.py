@@ -260,7 +260,7 @@ class Repos(object):
             "criteria": {
                 "fields": [
                     "id",
-                    "notes.content_set"
+                    "notes"
                 ],
                 "filters": {
                     "notes.arch": {
