@@ -345,7 +345,6 @@ class Runtime(object):
                 image_ex.extend(excludes.get('images', []))
                 rpm_ex.extend(excludes.get('rpms', []))
 
-            print(image_ex)
             image_data = self.gitdata.load_data(path='images', keys=image_keys,
                                                 exclude=image_ex,
                                                 replace_vars=replace_vars,
