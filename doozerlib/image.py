@@ -10,7 +10,6 @@ from pushd import Dir
 import assertion
 import logutil
 import exectools
-import container
 import logutil
 
 logger = logutil.getLogger(__name__)
