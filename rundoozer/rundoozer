@@ -291,10 +291,16 @@ def main():
     if not os.path.isdir(working_dir):
         os.makedirs(working_dir)
 
+    # create tmp .ssh config
     tmp_path = tempfile.mkdtemp()
     new_ssh = os.path.join(tmp_path, '.ssh')
     shutil.copytree(ssh, new_ssh)
     ssh = new_ssh
+
+    # create tmp .gitconfig
+    tmp_git = tempfile.NamedTemporaryFile()
+    shutil.copyfile(gitconfig, tmp_git.name)
+    gitconfig = tmp_git.name
 
     # writing out manually to avoid importing pyyaml
     with open(os.path.join(working_dir, 'settings.yaml'), 'w') as f:
@@ -323,6 +329,7 @@ def main():
     finally:
         if os.path.isdir(tmp_path):
             shutil.rmtree(tmp_path)
+        tmp_git.close()
 
 
 if __name__ == '__main__':
