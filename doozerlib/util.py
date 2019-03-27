@@ -1,4 +1,5 @@
 import click
+import copy
 
 
 def red_prefix(msg):
@@ -43,3 +44,18 @@ def cprint(msg):
 def color_print(msg, color='white', nl=True):
     """Print out a message in given color"""
     click.secho(msg, nl=nl, bold=False, fg=color)
+
+
+DICT_EMPTY = object()
+
+
+def dict_get(dct, path, default=DICT_EMPTY):
+    dct = copy.deepcopy(dct)  # copy to not modify original
+    for key in path.split('.'):
+        try:
+            dct = dct[key]
+        except KeyError:
+            if default is DICT_EMPTY:
+                raise Exception('Unable to follow key path {}'.format(path))
+            return default
+    return dct
