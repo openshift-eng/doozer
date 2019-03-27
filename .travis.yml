@@ -6,13 +6,11 @@ install:
 script:
 - echo "We should run tests here"
 deploy:
-  provider: pypi
+  provider: script
+  script: pypi_push.sh $PYPI_PASS
   skip_cleanup: true
   skip_existing: true
   on:
     repo: openshift/doozer
     python: 2.7
     tags: true
-  user: OpenShiftART
-  password:
-    secure: jOpBYA+t1VK8t6xqiCtyXvzxAQOnXNwjNUGgM15YiQcWsnUTv/PUKWDoMdaVNReUiTQUYd/ZH5ooSWAC7+ITKbSXLpetZxy4btHdUeYC5cPHVUk9x7hKnZjJu31hJEadHm1M+Lwt7Wf2Th4a/gsDYe0lq0Oq1EjHHzoJeTFRQokzp3ACr+jgxZOVwoJWq5tgl6AFsMLv/N1dg0klM9uIwGZTbuuS41/pIeFzVIJ6sDpBdKH+av9hoHujtGx3FQLvhW3j4UIXeRlqzoDhM5m8yHJwjIhkQVa0S4eWwtocRguP29buiZw0vosNJNSFzZzFFUfSJxkqKNZlQoVy8h8StnHUZic69Vjtu+JMVt67E598zCY34Qbmzv6KhD1j7Spl92a6zrV1G7wQePN1phOrs3LLEJnDZouhDhX8hI/p8fy/jpPUcVfnY19y7W6aFE/VCMTotCWje7xc/59OZVWUSc4v80m7jFMa5evwevsxTAT6+PAcO1BewAB1DvdPfo4s5+IxOypNGgyBJ5PCJnE+1UyE3yAOPZtius2CbAtCzYHDkZC40v5Sy/yn9zWvOELdaqsLz3VQlTPSfGgMh1fbtX2mKcc9NH4Lwr1dNPUWA7dmf7S1uJTvu3DJ7qU7wGNcRQtje0qhAM1mvH+zNZs7Wo8fDfcgfq4gtGccSPhVtk8=
