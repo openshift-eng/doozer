@@ -153,6 +153,9 @@ class Runtime(object):
         self.image_tree = {}
         self.image_order = []
 
+        # holds untouched group config
+        self.raw_group_config = {}
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
@@ -163,7 +166,8 @@ class Runtime(object):
         if replace_vars is not Missing:
             try:
                 group_yml = yaml.safe_dump(tmp_config.primitive(), default_flow_style=False)
-                tmp_config = Model(yaml.full_load(group_yml.format(**replace_vars)))
+                self.raw_group_config = yaml.full_load(group_yml.format(**replace_vars))
+                tmp_config = Model(dict(self.raw_group_config))
             except KeyError as e:
                 raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
 

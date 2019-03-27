@@ -13,7 +13,7 @@ from doozerlib.config import valid_updates
 from doozerlib import cli_opts
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
-from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print
+from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
 import datetime
 import click
 import os
@@ -1332,6 +1332,42 @@ def config_get(runtime):
     """
     _fix_runtime_mode(runtime)
     runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
+
+
+@cli.command("config:read-group", short_help="Pull latest config data into working directory")
+@click.argument("key", nargs=1, metavar="KEY", type=click.STRING, required=True)
+@click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
+@click.option("--out-file", help="Specific key in config to print", default=None)
+@pass_runtime
+def config_read_group(runtime, key, as_yaml, out_file):
+    """
+    Read data from group.yaml for given group and key
+
+    Usage:
+
+    $ doozer --group=openshift-4.0 config:read-group [KEY] --yaml
+
+    Where [KEY] is a key inside group.yaml that you would like to read.
+    Key dot-notation is supported, such as: sources.ose.branch.fallback
+
+    """
+    _fix_runtime_mode(runtime)
+    runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
+
+    try:
+        value = dict_get(runtime.raw_group_config, key, None)
+    except Exception, e:
+        raise DoozerFatalError(e.message)
+    if as_yaml:
+        value = yaml.safe_dump(value, indent=2, default_flow_style=False)
+
+    if out_file:
+        # just in case
+        out_file = os.path.expanduser(out_file)
+        with open(out_file, 'w') as f:
+            f.write(value)
+
+    green_print(str(value))
 
 
 @cli.command("config:update-mode", short_help="Update config(s) mode. enabled|disabled|wip")
