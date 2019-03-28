@@ -743,6 +743,8 @@ class ImageDistGitRepo(DistGitRepo):
                         # No need to retry if the failure will just recur
                         error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
                         if error is not None:
+                            for match in re.finditer("No package (.*) available", error):
+                                self._add_missing_pkgs(match.group(1))
                             raise exectools.RetryException(
                                 "Saw permanent error in build logs:\n{}\nWill not retry after {} failed attempt(s)"
                                 .format(error, n + 1)
@@ -968,6 +970,14 @@ class ImageDistGitRepo(DistGitRepo):
                         extracted_file.write(output)
         except OSError as e:
             self.logger.warning("Exception while trying to extract build logs in {}: {}".format(logs_dir, e))
+
+    def _add_missing_pkgs(self, pkg_name):
+        """
+        add missing packages to runtime.missing_pkgs set
+        :param pkg_name: Missing packages like: No package (.*) available
+        """
+        with self.runtime.mutex:
+            self.runtime.missing_pkgs.add("{} image is missing package {}".format(self.metadata.name, pkg_name))
 
     def _detect_permanent_build_failures(self, scanner):
         """
