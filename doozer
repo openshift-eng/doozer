@@ -852,6 +852,8 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
     failed = [name for name, r in results if not r]
     if failed:
         runtime.logger.error("\n".join(["Build/push failures:"] + sorted(failed)))
+        if len(runtime.missing_pkgs):
+            runtime.logger.error("Missing packages: \n{}".format("\n".join(runtime.missing_pkgs)))
         exit(1)
 
     # Push all late images

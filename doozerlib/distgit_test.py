@@ -18,13 +18,16 @@ from dockerfile_parse import DockerfileParser
 import distgit
 from model import Model
 
+
 class MockDistgit(object):
     def __init__(self):
         self.branch = None
 
+
 class MockContent(object):
     def __init__(self):
         self.branch = None
+
 
 class MockConfig(object):
 
@@ -34,12 +37,23 @@ class MockConfig(object):
         self.content.source = Model()
         self.content.source.specfile = "test-dummy.spec"
 
+
+class SimpleMockLock(object):
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
 class MockRuntime(object):
 
     def __init__(self, logger):
         self.branch = None
         self.distgits_dir = "distgits_dir"
         self.logger = logger
+        self.mutex = SimpleMockLock()
+        self.missing_pkgs = set()
 
     def detect_remote_source_branch(self, _):
         pass
@@ -56,7 +70,6 @@ class MockMetadata(object):
 
     def fetch_cgit_file(self, file):
         pass
-
 
 class MockScanner(object):
 
@@ -111,6 +124,14 @@ class TestGenericDistGit(TestDistgit):
         actual = self.stream.getvalue()
 
         self.assertIn(msg, actual)
+
+    def test_add_missing_pkgs_succeed(self):
+        md = MockMetadata(MockRuntime(self.logger))
+        d = distgit.ImageDistGitRepo(md, autoclone=False)
+        d._add_missing_pkgs("haproxy")
+
+        self.assertEqual(1, len(d.runtime.missing_pkgs))
+        self.assertIn("test image is missing package haproxy", d.runtime.missing_pkgs)
 
     def test_distgit_is_recent(self):
         scan_freshness = self.dg.runtime.group_config.scan_freshness = Model()

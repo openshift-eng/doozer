@@ -156,6 +156,9 @@ class Runtime(object):
         # holds untouched group config
         self.raw_group_config = {}
 
+        # Used to capture missing packages for 4.x build
+        self.missing_pkgs = set()
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
