@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
+set -e
+
 REPO="https://upload.pypi.org/legacy/"
+
+# install twine for pypi push
+pip install twine
 
 # deploy rh-doozer
 python setup.py sdist bdist_wheel
