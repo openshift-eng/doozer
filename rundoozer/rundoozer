@@ -78,6 +78,9 @@ CLI_OPTS = {
     'image': {
         'env': 'DOOZER_IMAGE',
         'help': 'Pull spec of image to use if not default'
+    },
+    'container_opts': {
+        'help': 'List of config options to send to podman when running doozer container'
     }
 }
 
@@ -214,10 +217,18 @@ def main():
 
     doozer_args = clean_args(doozer_args)
 
-    cfg = dotconfig.Config('rundoozer', 'settings',
-                           template=CLI_CONFIG_TEMPLATE,
-                           envvars=CLI_ENV_VARS,
-                           cli_args=args)
+    settings_file = os.environ.get('DOOZER_SETTINGS', None)
+
+    try:
+        cfg = dotconfig.Config('rundoozer', 'settings',
+                               template=CLI_CONFIG_TEMPLATE,
+                               envvars=CLI_ENV_VARS,
+                               cli_args=args,
+                               file_override=settings_file)
+    except Exception as e:
+        print('Failure loading rundoozer config:')
+        print(e.message)
+        sys.exit(1)
 
     if config_is_empty(cfg.full_path):
         msg = (
@@ -284,7 +295,7 @@ def main():
         'data_path': config['data_path'],
         'group': config['group'],
         'user': user,
-        'global_opts': config['global_opts']
+        'global_opts': config.get('global_opts', {})
     }
 
     # create working dir if not there
@@ -315,6 +326,10 @@ def main():
     run_cmd += ['-v', '{}:/working:z'.format(working_dir)]
     run_cmd += ['-v', '{}:/root/.ssh/'.format(ssh)]
     run_cmd += ['-v', '{}:/root/.gitconfig'.format(gitconfig)]
+
+    for opt in config.get('container_opts', []):
+        run_cmd += opt.split(' ')
+
     run_cmd += [image]
     run_cmd += doozer_args
 
@@ -323,7 +338,7 @@ def main():
     try:
         rc, std, err = cmd_gather(run_cmd, realtime=True)
         exit(rc)  # pass along return code
-    except Exception, e:
+    except Exception as e:
         print('Failure running doozer container: ')
         print(e)
     finally:

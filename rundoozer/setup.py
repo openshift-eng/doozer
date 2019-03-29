@@ -24,7 +24,7 @@ setup(
         'rundoozer'
     ],
 
-    install_requires=['pydotconfig'],
+    install_requires=['pydotconfig>=0.1.5'],
 
     dependency_links=[]
 )
