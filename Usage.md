@@ -4,11 +4,13 @@ The main purpose of doozer is to run brew builds based on upstream sources. This
 
 # How to get doozer
 
-Follow the [Installation Instructions](https://github.com/openshift/doozer/blob/master/Installation.md)
+Follow the [Installation Instructions](Container.md)
 
 # Doozer Configuration
 
-After installing you will need to setup your doozer config, by adding the file `~/.config/doozer/settings.yaml` with the following contents:
+After installing you will need to setup your doozer config, by adding the config file with the contents below:
+For containerized doozer edit `~/.config/rundoozer/settings.yaml`
+For local doozer edit `~/.config/doozer/settings.yaml`
 
 ```
 #Persistent working directory to use
@@ -32,6 +34,8 @@ global_opts:
   # timeout for `rhpkg push` operation
   rhpkg_push_timeout: 1200
 ```
+
+See the [containerized doozer doc](Container.md) for more details on its specific config options.
 
 Note, the options `working_dir`, `data_path`, `group`, and `user` above can be set at the CLI with `doozer --working-dir <path> --data-path <url> --group <group> --user <user>` but we highly recommend setting at least `working_dir` and `data_path` in `settings.yaml` to save typing every time you run.
 Setting `group` in `settings.yaml` only makes sense if you only ever work on that one version, otherwise specify it on the CLI at runtime.
