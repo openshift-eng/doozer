@@ -1683,6 +1683,9 @@ installonly_limit=3
 
         # must flush so it can be read
         yc_file.flush()
+
+        exectools.cmd_assert('yum clean all')  # clean the cache first to avoid outdated repomd.xml files
+
         cmd_base = 'reposync -c {} -p {} --delete -n -r {}'
 
         for repo in repos.itervalues():
