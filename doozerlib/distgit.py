@@ -563,28 +563,31 @@ class ImageDistGitRepo(DistGitRepo):
 
                     mirror_cmd = 'oc image mirror {} {} --filename={}'.format(dr, insecure, push_config)
 
-                    for r in range(10):
-                        self.logger.info("Mirroring image [retry={}]".format(r))
-                        rc, out, err = exectools.cmd_gather(mirror_cmd)
-                        if rc == 0:
-                            break
-                        self.logger.info("Error mirroring image -- retrying in 60 seconds.\n{}".format(err))
-                        time.sleep(60)
-
-                    lstate = self.runtime.state[self.runtime.command] if self.runtime.command == 'images:push' else None
-
-                    if rc != 0:
-                        if lstate:
-                            state.record_image_fail(lstate, self.metadata, 'Build failure', self.runtime.logger)
-                        # Unable to push to registry
-                        raise IOError('Error pushing image: {}'.format(err))
+                    if dry_run:  # skip everything else if dry run
+                        continue
                     else:
-                        if lstate:
-                            state.record_image_success(lstate, self.metadata)
-                        self.logger.info('Success mirroring image')
+                        for r in range(10):
+                            self.logger.info("Mirroring image [retry={}]".format(r))
+                            rc, out, err = exectools.cmd_gather(mirror_cmd)
+                            if rc == 0:
+                                break
+                            self.logger.info("Error mirroring image -- retrying in 60 seconds.\n{}".format(err))
+                            time.sleep(60)
 
-                    record["message"] = "Successfully pushed all tags"
-                    record["status"] = 0
+                        lstate = self.runtime.state[self.runtime.command] if self.runtime.command == 'images:push' else None
+
+                        if rc != 0:
+                            if lstate:
+                                state.record_image_fail(lstate, self.metadata, 'Build failure', self.runtime.logger)
+                            # Unable to push to registry
+                            raise IOError('Error pushing image: {}'.format(err))
+                        else:
+                            if lstate:
+                                state.record_image_success(lstate, self.metadata)
+                            self.logger.info('Success mirroring image')
+
+                        record["message"] = "Successfully pushed all tags"
+                        record["status"] = 0
 
                 except Exception as ex:
                     lstate = self.runtime.state[self.runtime.command] if self.runtime.command == 'images:push' else None
