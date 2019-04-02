@@ -1,6 +1,7 @@
 import glob
 import os
 import traceback
+import re
 
 import exectools
 from pushd import Dir
@@ -11,7 +12,7 @@ from model import Missing
 from doozerlib.exceptions import DoozerFatalError
 
 RELEASERS_CONF = """
-[aos]
+[{target}]
 releaser = tito.release.DistGitReleaser
 branches = {branch}
 srpm_disttag = .el7aos
@@ -19,9 +20,10 @@ builder.test = 1
 remote_git_name = {name}
 """
 
+# note; appended to, does not replace existing props
 TITO_PROPS = """
 
-[aos]
+[{target}]
 remote_git_name = {name}
 """
 
@@ -39,7 +41,6 @@ class RPMMetadata(Metadata):
         self.version = None
         self.release = None
         self.tag = None
-        self.vtag = None
         self.commit_sha = None
         self.build_status = False
 
@@ -68,15 +69,13 @@ class RPMMetadata(Metadata):
         self.version = version
         self.release = release
         self.tag = '{}-{}-{}'.format(self.config.name, self.version, self.release)
-        self.vtag = 'v{}-{}'.format(self.version, self.release)
 
     def create_tag(self, scratch):
         if not self.tag:
             raise ValueError('Must run set_nvr() before calling!')
 
         with Dir(self.source_path):
-            exectools.cmd_assert('git tag {}'.format(self.tag))
-            exectools.cmd_assert('git tag {}'.format(self.vtag))
+            exectools.cmd_assert(["git", "tag", "-am", "Release with doozer", self.tag])
             rc, sha, err = exectools.cmd_gather('git rev-parse HEAD')
             self.commit_sha = sha.strip()
 
@@ -85,32 +84,73 @@ class RPMMetadata(Metadata):
             raise ValueError('Must run set_nvr() before calling!')
 
         with Dir(self.source_path):
-            exectools.cmd_assert('git push origin {}'.format(self.tag), retries=3)
+            exectools.cmd_assert('git push origin --tags', retries=3)
 
-    def commit_changes(self):
+    def commit_changes(self, scratch):
         with Dir(self.source_path):
+            if self.config.content.build.use_source_tito_config:
+                # just use the tito tagger to change spec and tag
+                exectools.cmd_assert(["tito", "tag", "--no-auto-changelog",
+                    "--use-version", self.version,
+                    "--use-release", "{}%{{?dist}}".format(self.release)
+                ])
+                if self.config.content.build.push_release_commit and not scratch:
+                    exectools.cmd_assert("git push origin")
+                return
+
             exectools.cmd_assert("git add .")
-            exectools.cmd_assert(['git', 'commit', '-m', "Local commit for dist-git build"])
+            commit_msg = "Automatic commit of package [{name}] release [{version}-{release}].".format(
+                name=self.config.name, version=self.version, release=self.release
+            )
+            exectools.cmd_assert(['git', 'commit', '-m', commit_msg])
 
-    def rollback_changes(self):
+    def post_build(self, scratch):
+        build_spec = self.config.content.build
         with Dir(self.source_path):
-            exectools.cmd_assert("git reset --hard HEAD~")
-            exectools.cmd_assert("git tag -d {} {}".format(self.tag, self.vtag))
+            if self.build_status and not scratch:
+                # success; push the tag
+                try:
+                    self.push_tag()
+                except Exception:
+                    raise RuntimeError('Build succeeded but failure pushing RPM tag for {}'.format(self.qualified_name))
+
+            elif build_spec.use_source_tito_config:
+                # don't leave the tag/commit lying around if not a valid build
+                exectools.cmd_assert("tito tag --undo")
+
+            if not build_spec.push_release_commit and not build_spec.use_source_tito_config:
+                # temporary tag/commit; never leave lying around
+                exectools.cmd_assert("git reset --hard HEAD~")
+                exectools.cmd_assert("git tag -d {}".format(self.tag))
 
     def tito_setup(self):
+        if self.config.content.build.use_source_tito_config:
+            return  # rely on tito already set up in source
+
         tito_dir = os.path.join(self.source_path, '.tito')
+        tito_target = self.config.content.build.tito_target
+        tito_target = tito_target if tito_target else 'aos'
+        tito_dist = self.config.content.build.tito_dist
+        tito_dist = tito_dist if tito_dist else '.el7aos'
+
         with Dir(self.source_path):
             if not os.path.isdir(tito_dir):
                 exectools.cmd_assert('tito init')
+                # roll the init changes into the others
+                exectools.cmd_assert('git reset HEAD~')
 
             with open(os.path.join(tito_dir, 'releasers.conf'), 'w') as r:
-                r.write(RELEASERS_CONF.format(branch=self.runtime.branch,
-                                              name=self.name))
+                r.write(RELEASERS_CONF.format(
+                    branch=self.runtime.branch,
+                    name=self.name,
+                    target=tito_target,
+                    dist=tito_dist,
+                ))
                 r.flush()
 
             # fix for tito 0.6.10 which looks like remote_git_name in wrong place
             with open(os.path.join(tito_dir, 'tito.props'), 'a') as props:
-                props.write(TITO_PROPS.format(name=self.name))
+                props.write(TITO_PROPS.format(name=self.name, target=tito_target))
                 props.flush()
 
     def _run_modifications(self):
@@ -145,6 +185,11 @@ class RPMMetadata(Metadata):
             df.write(specfile_data)
 
     def update_spec(self):
+        if self.config.content.build.use_source_tito_config:
+            # tito tag will handle updating specfile
+            return
+
+        # otherwise, make changes similar to tito tagging
         replace = {
             'Name:': 'Name:           {}\n'.format(self.config.name),
             'Version:': 'Version:        {}\n'.format(self.version),
@@ -180,7 +225,10 @@ class RPMMetadata(Metadata):
                             version=full, major=major, minor=minor, patch=patch, commit=self.commit_sha
                         )
 
-                    if replace_keys:  # If there are keys left to replace
+                    elif "%global commit" in lines[i]:
+                        lines[i] = re.sub(r'commit\s+\w+', "commit {}".format(self.commit_sha), lines[i])
+
+                    elif replace_keys:  # If there are keys left to replace
                         for k in replace_keys:
                             v = replace[k]
                             if lines[i].startswith(k):
@@ -205,7 +253,8 @@ class RPMMetadata(Metadata):
             cmd_list = ['tito', 'release', '--debug', '--yes', '--test']
             if scratch:
                 cmd_list.append('--scratch')
-            cmd_list.append('aos')
+            tito_target = self.config.content.build.tito_target
+            cmd_list.append(tito_target if tito_target else 'aos')
 
             # Run the build with --nowait so that we can immediately get information about the brew task
             rc, out, err = exectools.cmd_gather(cmd_list)
@@ -251,13 +300,28 @@ class RPMMetadata(Metadata):
             self.logger.info("Successfully built rpm: {} ; {}".format(self.rpm_name, task_url))
         return True
 
-    def build_rpm(
-            self, version, release, terminate_event, scratch=False, retries=3):
+    def build_rpm(self, version, release, terminate_event, scratch=False, retries=3):
+        """
+        Builds a package using tito release.
+
+        If the source repository has the necessary tito configuration in .tito, the build can be
+        configured to use that in the standard `tito tag` flow.
+
+        The default flow imitates `tito tag`, but instead of creating a release commit and tagging that,
+        the tag is added to the existing commit and a release commit is created afterward. In
+        this way, the tag can be pushed back to the source, but pushing the commit is optional.
+        [lmeyer 2019-04-01] I looked into customizing the tito tagger to support this flow.
+        It was not going to be pretty, and even so would probably require doozer to do
+        some modification of the spec first. It seems best to limit the craziness to doozer.
+
+        By default, the tag is pushed, then it and the commit are removed locally after the build.
+        But optionally the commit can be pushed before the build, so that the actual commit released is in the source.
+	"""
         self.set_nvr(version, release)
         self.create_tag(scratch)
         self.tito_setup()
         self.update_spec()
-        self.commit_changes()
+        self.commit_changes(scratch)
         action = "build_rpm"
         record = {
             "specfile": self.specfile,
@@ -300,12 +364,6 @@ class RPMMetadata(Metadata):
         finally:
             self.runtime.add_record(action, **record)
 
-        if self.build_status and not scratch:
-            try:
-                self.push_tag()
-            except Exception:
-                raise RuntimeError('Build succeeded but failure pushing RPM tag for {}'.format(self.qualified_name))
-
-        self.rollback_changes()
+        self.post_build(scratch)
 
         return (self.distgit_key, self.build_status)
