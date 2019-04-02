@@ -10,6 +10,17 @@ mapping:
   "content":
     type: map
     mapping:
+      'build':
+        type: map
+        mapping:
+          "use_source_tito_config":
+            type: bool
+          "tito_target":
+            type: str
+          "tito_dist":
+            type: str
+          "push_release_commit":
+            type: bool
       'source':
         type: map
         mapping:
