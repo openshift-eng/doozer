@@ -12,6 +12,7 @@ import logging
 import tempfile
 import shutil
 import re
+from datetime import datetime, timedelta
 
 from dockerfile_parse import DockerfileParser
 import distgit
@@ -30,6 +31,8 @@ class MockConfig(object):
     def __init__(self):
         self.distgit = MockDistgit()
         self.content = Model()
+        self.content.source = Model()
+        self.content.source.specfile = "test-dummy.spec"
 
 class MockRuntime(object):
 
@@ -75,6 +78,7 @@ class TestDistgit(unittest.TestCase):
         logging.basicConfig(level=logging.DEBUG, stream=self.stream)
         self.logger = logging.getLogger()
         self.logs_dir = tempfile.mkdtemp()
+        self.md = MockMetadata(MockRuntime(self.logger))
 
     def tearDown(self):
         """
@@ -84,34 +88,52 @@ class TestDistgit(unittest.TestCase):
         reload(logging)
         shutil.rmtree(self.logs_dir)
 
+
+class TestGenericDistGit(TestDistgit):
+    def setUp(self):
+        super(TestGenericDistGit, self).setUp()
+        self.dg = distgit.DistGitRepo(self.md, autoclone=False)
+        self.dg.runtime.group_config = Model()
+
     def test_init(self):
         """
         Ensure that init creates the object expected
         """
-        md = MockMetadata(MockRuntime(self.logger))
-        d = distgit.DistGitRepo(md, autoclone=False)
-
-        self.assertIsInstance(d, distgit.DistGitRepo)
+        self.assertIsInstance(self.dg, distgit.DistGitRepo)
 
     def test_logging(self):
         """
         Ensure that logs work
         """
-        md = MockMetadata(MockRuntime(self.logger))
-        d = distgit.DistGitRepo(md, autoclone=False)
-
         msg = "Hey there!"
-        d.logger.info(msg)
+        self.dg.logger.info(msg)
 
         actual = self.stream.getvalue()
 
         self.assertIn(msg, actual)
 
-    def test_detect_permanent_build_failures(self):
-        md = MockMetadata(MockRuntime(self.logger))
-        d = distgit.ImageDistGitRepo(md, autoclone=False)
+    def test_distgit_is_recent(self):
+        scan_freshness = self.dg.runtime.group_config.scan_freshness = Model()
+        self.assertFalse(self.dg.release_is_recent("201901020304"))  # not configured
 
-        d._logs_dir = lambda: self.logs_dir
+        scan_freshness.release_regex = r'^(....)(..)(..)(..)'
+        scan_freshness.threshold_hours = 24
+        self.assertFalse(self.dg.release_is_recent("2019"))  # no match by regex
+
+        too_soon = datetime.now() - timedelta(hours=4)
+        self.assertTrue(self.dg.release_is_recent(too_soon.strftime('%Y%m%d%H')))
+        too_stale = datetime.now() - timedelta(hours=25)
+        self.assertFalse(self.dg.release_is_recent(too_stale.strftime('%Y%m%d%H')))
+
+
+class TestImageDistGit(TestDistgit):
+    def setUp(self):
+        super(TestImageDistGit, self).setUp()
+        self.img_dg = distgit.ImageDistGitRepo(self.md, autoclone=False)
+        self.img_dg.runtime.group_config = Model()
+
+    def test_detect_permanent_build_failures(self):
+        self.img_dg._logs_dir = lambda: self.logs_dir
         task_dir = tempfile.mkdtemp(dir=self.logs_dir)
         with open(task_dir + "/x86_64.log", "w") as file:
             msg1 = "No package fubar available"
@@ -127,31 +149,28 @@ class TestDistgit(unittest.TestCase):
             re.compile("Failed component comparison for components:.*"),
         ]
         scanner.files = [ "x86_64.log", "task_failed.log" ]
-        fails = d._detect_permanent_build_failures(scanner)
+        fails = self.img_dg._detect_permanent_build_failures(scanner)
         self.assertIn(msg1, fails)
         self.assertIn(msg2, fails)
 
     def test_detect_permanent_build_failures_borkage(self):
-        md = MockMetadata(MockRuntime(self.logger))
-        d = distgit.ImageDistGitRepo(md, autoclone=False)
-
         scanner = MockScanner()
         scanner.matches = []
         scanner.files = [ "x86_64.log", "task_failed.log" ]
 
-        self.assertIsNone(d._detect_permanent_build_failures(scanner))
+        self.assertIsNone(self.img_dg._detect_permanent_build_failures(scanner))
         output = self.stream.getvalue()
         self.assertIn("Log file scanning not specified", output)
 
         scanner.matches.append(None)
 
-        d._logs_dir = lambda: self.logs_dir  # search an empty log dir
-        self.assertIsNone(d._detect_permanent_build_failures(scanner))
+        self.img_dg._logs_dir = lambda: self.logs_dir  # search an empty log dir
+        self.assertIsNone(self.img_dg._detect_permanent_build_failures(scanner))
         output = self.stream.getvalue()
         self.assertIn("No task logs found under", output)
 
-        d._logs_dir = lambda: str(tempfile.TemporaryFile())  # search a dir that won't be there
-        self.assertIsNone(d._detect_permanent_build_failures(scanner))
+        self.img_dg._logs_dir = lambda: str(tempfile.TemporaryFile())  # search a dir that won't be there
+        self.assertIsNone(self.img_dg._detect_permanent_build_failures(scanner))
         output = self.stream.getvalue()
         self.assertIn("Exception while trying to analyze build logs", output)
 
@@ -200,71 +219,102 @@ class TestDistgit(unittest.TestCase):
         """
         Check the logic for matching a commit from cgit
         """
-        md = MockMetadata(MockRuntime(self.logger))
-        d = distgit.ImageDistGitRepo(md, autoclone=False)
-
         test_file = u"""
             from foo
             label "{}"="spam"
         """.format(distgit.ImageDistGitRepo.source_labels['now']['sha'])
-        flexmock(md).should_receive("fetch_cgit_file").and_return(test_file)
+        flexmock(self.md).should_receive("fetch_cgit_file").and_return(test_file)
+        flexmock(self.img_dg).should_receive("_built_or_recent").and_return(None)  # hit this on match
 
-        self.assertTrue(d._matches_commit("spam"))
+        self.assertIsNone(self.img_dg._matches_commit("spam", {}))  # commit matches, falls through
         self.assertNotIn("ERROR", self.stream.getvalue())
-        self.assertFalse(d._matches_commit("eggs"))
+        self.assertFalse(self.img_dg._matches_commit("eggs", {}))
 
-        flexmock(md).should_receive("fetch_cgit_file").and_raise(Exception("bogus!!"))
-        self.assertFalse(d._matches_commit("bacon"))
+        flexmock(self.md).should_receive("fetch_cgit_file").and_raise(Exception("bogus!!"))
+        self.assertFalse(self.img_dg._matches_commit("bacon", {}))
         self.assertIn("bogus", self.stream.getvalue())
 
     def test_image_distgit_matches_source(self):
         """
         Check the logic for matching a commit from source repo
         """
-        md = MockMetadata(MockRuntime(self.logger))
-        d = distgit.ImageDistGitRepo(md, autoclone=False)
-        d.config.content = Model()
+        self.img_dg.config.content = Model()
 
-        # no source, dist-git only; should be considered a match
-        self.assertTrue(d.matches_source_commit())
+        # no source, dist-git only; should go on to check if built/stale
+        flexmock(self.img_dg).should_receive("_built_or_recent").once().and_return(None)
+        self.assertIsNone(self.img_dg.matches_source_commit({}))
 
         # source specified and matches Dockerfile in dist-git
-        d.config.content.source = Model()
-        d.config.content.source.git = dict()
+        self.img_dg.config.content.source = Model()
+        self.img_dg.config.content.source.git = dict()
         test_file = u"""
             from foo
             label "{}"="spam"
         """.format(distgit.ImageDistGitRepo.source_labels['now']['sha'])
-        flexmock(md).should_receive("fetch_cgit_file").and_return(test_file)
-        flexmock(d.runtime).should_receive("detect_remote_source_branch").and_return(("branch", "spam"))
-        self.assertTrue(d.matches_source_commit())
+        flexmock(self.md).should_receive("fetch_cgit_file").and_return(test_file)
+        flexmock(self.img_dg).should_receive("_built_or_recent").and_return(None)  # hit this on match
+        flexmock(self.img_dg.runtime).should_receive("detect_remote_source_branch").and_return(("branch", "spam"))
+        self.assertIsNone(self.img_dg.matches_source_commit({}))  # matches, falls through
 
         # source specified and doesn't match Dockerfile in dist-git
-        flexmock(d.runtime).should_receive("detect_remote_source_branch").and_return(("branch", "eggs"))
-        self.assertFalse(d.matches_source_commit())
+        flexmock(self.img_dg.runtime).should_receive("detect_remote_source_branch").and_return(("branch", "eggs"))
+        self.assertFalse(self.img_dg.matches_source_commit({}))
+
+    def test_img_build_or_recent(self):
+        flexmock(self.img_dg).should_receive("release_is_recent").and_return(None)
+        self.img_dg.name = "my-container"
+
+        builds = {"my-container": ("v1", "r1")}
+        self.assertTrue(self.img_dg._built_or_recent("v1", "r1", builds))
+        self.assertIsNone(self.img_dg._built_or_recent("v2", "r1", builds))
+
+
+class TestRPMDistGit(TestDistgit):
+    def setUp(self):
+        super(TestRPMDistGit, self).setUp()
+        self.rpm_dg = distgit.RPMDistGitRepo(self.md, autoclone=False)
+        self.rpm_dg.runtime.group_config = Model()
+
+    def test_pkg_find_in_spec(self):
+        """ Test RPMDistGitRepo._find_in_spec """
+        self.assertEqual("", self.rpm_dg._find_in_spec("spec", "(?mx) nothing", "thing"))
+        self.assertIn("No thing found", self.stream.getvalue())
+        self.assertEqual("SOMEthing", self.rpm_dg._find_in_spec("no\nSOMEthing", "(?imx) ^ (something)", "thing"))
 
     def test_pkg_distgit_matches_commit(self):
         """
         Check the logic for matching a commit from cgit
         """
-        md = MockMetadata(MockRuntime(self.logger))
-        source = md.config.content.source = Model()
-        source.specfile = "foo.spec"
-        d = distgit.RPMDistGitRepo(md, autoclone=False)
+        flexmock(self.md).should_receive("fetch_cgit_file").once().and_raise(Exception(""))
+        self.assertFalse(self.rpm_dg._matches_commit("anything", {}))
 
         test_file = u"""
             Version: 42
-            Source0: something-42.00spam0.tar.gz
+            Release: 201901020304.git.1.12spam7%{?dist}
+            %global commit 5p4mm17y5p4m
         """
-        flexmock(md).should_receive("fetch_cgit_file").once().and_return(test_file)
+        flexmock(self.md).should_receive("fetch_cgit_file").and_return(test_file)
+        flexmock(self.rpm_dg).should_receive("_built_or_recent").and_return(None)
+        self.assertIsNone(self.rpm_dg._matches_commit("12spam78", {}))  # matches, falls through
+        self.assertIsNone(self.rpm_dg._matches_commit("5p4mm17y5p4m", {}))  # matches, falls through
+        self.assertFalse(self.rpm_dg._matches_commit("11eggs11", {}))  # doesn't match, returns
 
-        self.assertTrue(d._matches_commit("00spam00"))
-        self.assertFalse(d._matches_commit("11eggs11"))
+        self.assertNotIn("No Release: field found", self.stream.getvalue())
+        flexmock(self.md).should_receive("fetch_cgit_file").once().and_return("nothing")
+        self.assertFalse(self.rpm_dg._matches_commit("nothing", {}))
+        self.assertIn("No Release: field found", self.stream.getvalue())
 
-        flexmock(md).should_receive("fetch_cgit_file").once().and_return("nothing")
-        self.assertFalse(d._matches_commit("nothing"))
-        self.assertIn("No Source0 found", self.stream.getvalue())
+    def test_pkg_build_or_recent(self):
+        flexmock(self.rpm_dg).should_receive("release_is_recent").and_return(None)
+        self.rpm_dg.name = "mypkg"
 
+        builds = dict(mypkg=("v1", "r1"))
+        self.assertTrue(self.rpm_dg._built_or_recent("v1", "r1", builds))
+
+        builds = dict(mypkg=("v1", "r1.el7"))
+        self.assertTrue(self.rpm_dg._built_or_recent("v1", "r1%{?dist}", builds))
+        self.assertIsNone(self.rpm_dg._built_or_recent("v2", "r1", builds))
+        
 
 if __name__ == "__main__":
     unittest.main()

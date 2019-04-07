@@ -5,18 +5,17 @@ import runtime
 import exectools
 import logutil
 
+from model import Model, Missing
 
 def stub_runtime():
-    return runtime.Runtime(
+    rt = runtime.Runtime(
         latest_parent_version=False,
         logger=logutil.getLogger(__name__),
         stage=False,
+        branch=None,
     )
-
-def stub_exectools(assert_response = None):
-
-    def cmd_assert(self, cmd, *_):
-        return assert_response or (None, None)
+    rt.group_config=Model()
+    return rt
 
 
 class RuntimeTestCase(unittest.TestCase):
@@ -74,6 +73,22 @@ class RuntimeTestCase(unittest.TestCase):
         flexmock(rt).should_receive("_get_remote_branch_ref").once().and_return(None)
         with self.assertRaises(runtime.DoozerFatalError):
             rt.detect_remote_source_branch(source_details)
+
+    def test_builds_for_group_branch(self):
+        rt = stub_runtime()
+        list_tagged = """
+            somepackage-1.2.3-4.5.el7    some-tag    somebody
+            some-container-v1.2.3-4.5    some-tag    somebody
+        """
+        expected = {
+            "somepackage": ("1.2.3", "4.5.el7"),
+            "some-container": ("v1.2.3", "4.5"),
+        }
+        flexmock(exectools).should_receive("cmd_assert").once().and_return(list_tagged, "")
+        self.assertEqual(expected, rt.builds_for_group_branch())
+
+        flexmock(exectools).should_receive("cmd_assert").once().and_return("\n", "")
+        self.assertEqual({}, rt.builds_for_group_branch())
 
 
 if __name__ == "__main__":

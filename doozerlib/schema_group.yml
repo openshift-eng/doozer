@@ -52,6 +52,14 @@ mapping:
         sequence:
           - type: str
 
+  "scan_freshness":
+    type: map
+    mapping:
+      "release_regex":
+        type: str
+      "threshold_hours":
+        type: str
+
   "sources":
     type: map
     mapping:
