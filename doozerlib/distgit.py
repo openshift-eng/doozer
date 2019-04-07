@@ -11,6 +11,7 @@ import logging
 import bashlex
 import glob
 import re
+from datetime import datetime, timedelta
 
 from dockerfile_parse import DockerfileParser
 
@@ -212,22 +213,52 @@ class DistGitRepo(object):
             self.logger.info("Adding tag to local repo: {}".format(tag))
             exectools.cmd_gather(["git", "tag", "-f", tag, "-m", tag])
 
-    def matches_source_commit(self):
+    def matches_source_commit(self, builds):
         """
         Check whether the commit that we recorded in the distgit content (according to cgit)
-        matches the commit of the source (according to git ls-remote). Nothing is cloned
-        and no local clones are consulted.
+        matches the commit of the source (according to git ls-remote) and has been built
+        (according to brew). Nothing is cloned and no existing clones are consulted.
+        :param builds: dict of builds, each entry an NVR like "pkgname": tuple("4.0.0", "123.dist")
         Returns: bool
         """
         source_details = self.config.content.source.git
         alias = self.config.content.source.alias
-        if source_details is Missing and alias is Missing:
-            # no git source configured, so distgit always matches itself
-            return True
-        if source_details is Missing:
+        if source_details is Missing and alias is not Missing:
             source_details = self.runtime.group_config.sources[alias]
-        _, commit_hash = self.runtime.detect_remote_source_branch(dict(source_details))
-        return self._matches_commit(commit_hash) if commit_hash else False
+        if source_details is Missing:
+            commit_hash = None  # source is in distgit; just check if it has built
+        else:
+            _, commit_hash = self.runtime.detect_remote_source_branch(dict(source_details))
+        return self._matches_commit(commit_hash, builds)
+
+    def release_is_recent(self, release):
+        # believe it or not, there is no good (generic) way to determine a remote commit timestamp 
+        # without cloning it or parsing html from cgit. therefore, if so configured, we rely on the
+        # only timestamp we can easily get, in the release value; otherwise just consider it stale.
+
+        release_re = self.runtime.group_config.scan_freshness.release_regex
+        threshold_hours = self.runtime.group_config.scan_freshness.threshold_hours
+        if release_re is Missing or threshold_hours is Missing:
+            self.logger.debug("scan_freshness is not configured; treating distgit as stale")
+            return False
+
+        match = re.search(release_re, release)
+        if not match:
+            self.logger.debug("release doesn't match release_regex; treating distgit as stale")
+            return False
+        timestamp = [int(f) for f in match.groups()]
+        # naively assume local timezone matches timestamp timezone for comparison
+        if datetime.now() - datetime(*timestamp) < timedelta(hours=threshold_hours):
+            self.logger.debug(
+                "distgit timetamp within {} hours; will wait to count it as stale"
+                .format(threshold_hours)
+            )
+            return True
+        self.logger.debug(
+            "distgit timetamp is more than {} hours stale"
+            .format(threshold_hours)
+        )
+        return False
 
 
 class ImageDistGitRepo(DistGitRepo):
@@ -1518,10 +1549,13 @@ class ImageDistGitRepo(DistGitRepo):
 
         return (real_version, real_release)
 
-    def _matches_commit(self, commit_hash):
+    def _matches_commit(self, commit_hash, builds):
         """
         Given a source repo git hash, checks to see if the most recent Dockerfile
         claims that hash as its source via the label.
+        If no hash given, or it matches, check whether it has been built or distgit is stale.
+        :param commit_hash: if available, the commit to look for in the Dockerfile
+        :param builds: dict of latest builds N => (V, R)
         Returns: bool
         """
         dfp = DockerfileParser()
@@ -1534,8 +1568,37 @@ class ImageDistGitRepo(DistGitRepo):
             return False
 
         df_hash = dfp.labels.get(self.source_labels['now']['sha'])
-        self.logger.debug('Comparing distgit Dockerfile label "%s" to source hash "%s"', df_hash, commit_hash)
-        return commit_hash == df_hash
+        if commit_hash:
+            self.logger.debug(
+                'Comparing distgit Dockerfile label "{}" to source hash "{}"'
+                .format(df_hash, commit_hash)
+            )
+            if commit_hash != df_hash:
+                self.logger.debug("No match; the source is different from dist-git")
+                return False
+
+        # at this point, the distgit matches (or is) the source commit. check if it has been built.
+        return self._built_or_recent(
+            dfp.labels.get("version", ""),
+            dfp.labels.get("release", ""),
+            builds
+        )
+
+    def _built_or_recent(self, dg_version, dg_release, builds):
+        if self.name in builds:
+            b_version, b_release = builds[self.name]
+            self.logger.debug(
+                'Looking for VR "{}-{}" in distgit dockerfile to match build VR "{}-{}"'
+                .format(dg_version, dg_release, b_version, b_release)
+            )
+            if b_version == dg_version and b_release == dg_release:
+                self.logger.debug("Latest source has been built; no need to rebuild")
+                return True
+        self.logger.debug('No build matches distgit NVR "{}-{}-{}"'.format(self.name, dg_version, dg_release))
+
+        # it hasn't been built; but has it been long enough since the distgit commit was made?
+        # we want neither to spam owners about still-broken builds nor to ignore them forever.
+        return self.release_is_recent(dg_release)
 
 
 class RPMDistGitRepo(DistGitRepo):
@@ -1550,25 +1613,61 @@ class RPMDistGitRepo(DistGitRepo):
             # Read in information about the rpm we are about to build
             pass  # placeholder for now. nothing to read
 
-    def _matches_commit(self, commit_hash):
+    def _find_in_spec(self, spec, regex, desc):
+        match = re.search(regex, spec)
+        if match:
+            return match.group(1)
+        self.logger.error("No {} found in specfile '{}'".format(desc, self.source.specfile))
+        return ""
+
+    def _matches_commit(self, commit_hash, builds):
         """
         Given a source repo git hash, checks to see if the most recent distgit specfile
-        includes that hash in its Source0
+        includes that hash in its %global commit or Release: field
+        and that it has been built or attempted recently.
         Returns: bool
         """
-        commit_hash = commit_hash[:7]  # we only store the short hash
+        # download the latest spec file from dist-git
+        specfile = self.source.specfile
         try:
-            specfile = self.source.specfile
-            content = self.metadata.fetch_cgit_file(self.source.specfile)
+            spec = self.metadata.fetch_cgit_file(specfile)
         except Exception as e:
             self.logger.error("failed to retrieve valid specfile '{}' to compare: {}".format(specfile, e))
-            return False
+            return False  # assume it's not a match
 
-        match = re.search(r'^%global.*OS_GIT_COMMIT=(\w+)', content, re.MULTILINE)
-        if not match:
-            self.logger.error("No OS_GIT_COMMIT found in specfile '{}'".format(specfile))
-            return False
-        srcname = match.group(1)
+        # look for the %global commit or the Release to match the commit_hash
+        # for most RPM sources the commit_hash will match the %global commit
+        global_commit_hash = self._find_in_spec(spec, r'(?x) %global \s+ commit \s+ (\w+)', "%global commit")
 
-        self.logger.debug('Looking for source hash %s in distgit source "%s"', commit_hash, srcname)
-        return commit_hash in srcname
+        # but also check if it's in the Release, because that may have a tito commit 
+        # pushed to the source repo with the global_commit_hash being the previous commit.
+        dg_release = self._find_in_spec(spec, r'(?mix) ^ \s* Release: \s+ (\S+)', "Release: field")
+
+        self.logger.debug(
+            'Looking for source hash "{}" in distgit specfile "{}" as global commit "{}" or Release "{}"'
+            .format(commit_hash, specfile, global_commit_hash, dg_release)
+        )
+        if commit_hash != global_commit_hash and commit_hash[:7] not in dg_release:
+            return False  # source commit is not in latest spec file
+
+        # at this point, the distgit matches the source commit. check if it has been built.
+        dg_version = self._find_in_spec(spec, r'(?mix) ^ \s* Version: \s+ (\S+)', "Version: field")
+        return self._built_or_recent(dg_version, dg_release, builds)
+
+    def _built_or_recent(self, dg_version, dg_release, builds):
+        dg_release = dg_release.replace("%{?dist}", "")  # remove macro for dist, if there
+        if self.name in builds:
+            b_version, b_release = builds[self.name]
+            b_release = re.sub(r'\.\w+$', "", b_release)
+            self.logger.debug(
+                'Looking for VR "{}-{}" in distgit specfile {} to match build VR "{}-{}"'
+                .format(dg_version, dg_release, self.source.specfile, b_version, b_release)
+            )
+            if b_version == dg_version and b_release == dg_release:
+                self.logger.debug("Latest source has been built; no need to rebuild")
+                return True
+        self.logger.debug('No build matches distgit NVR "{}-{}-{}"'.format(self.name, dg_version, dg_release))
+
+        # it hasn't been built; but has it been long enough since the distgit commit was made?
+        # we want neither to spam owners about still-broken builds nor to ignore them forever.
+        return self.release_is_recent(dg_release)

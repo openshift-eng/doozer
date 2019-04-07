@@ -875,9 +875,25 @@ class Runtime(object):
         pool.join()
         return ret
 
+    def builds_for_group_branch(self):
+        # return a dict of all the latest builds for this group, according to
+        # the branch's candidate tag in brew. each entry is name => tuple(version, release).
+        output, _ = exectools.cmd_assert(
+            "brew list-tagged --quiet --latest {}-candidate".format(self.branch),
+            retries=3,
+        )
+        builds = [
+            # each line like "build tag owner" split into build NVR
+            line.split()[0].rsplit("-", 2)
+            for line in output.strip().split("\n")
+            if line.strip()
+        ]
+        return { n: (v, r) for n, v, r in builds }
+
     def scan_distgit_sources(self):
+        builds = self.builds_for_group_branch()  # query for builds only once
         return self.parallel_exec(
-            lambda m: (m[0], m[0].distgit_repo(autoclone=False).matches_source_commit()),
+            lambda m: (m[0], m[0].distgit_repo(autoclone=False).matches_source_commit(builds)),
             self.image_metas() + self.rpm_metas(),
             n_threads=100,
         ).get()
