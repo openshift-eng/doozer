@@ -41,7 +41,6 @@ class RPMMetadata(Metadata):
         self.version = None
         self.release = None
         self.tag = None
-        self.commit_sha = None
         self.build_status = False
 
         if clone_source:
@@ -70,15 +69,6 @@ class RPMMetadata(Metadata):
         self.release = release
         self.tag = '{}-{}-{}'.format(self.config.name, self.version, self.release)
 
-    def create_tag(self, scratch):
-        if not self.tag:
-            raise ValueError('Must run set_nvr() before calling!')
-
-        with Dir(self.source_path):
-            exectools.cmd_assert(["git", "tag", "-am", "Release with doozer", self.tag])
-            rc, sha, err = exectools.cmd_gather('git rev-parse HEAD')
-            self.commit_sha = sha.strip()
-
     def push_tag(self):
         if not self.tag:
             raise ValueError('Must run set_nvr() before calling!')
@@ -87,6 +77,8 @@ class RPMMetadata(Metadata):
             exectools.cmd_assert('git push origin --tags', retries=3)
 
     def commit_changes(self, scratch):
+        if not self.tag:
+            raise ValueError('Must run set_nvr() before calling!')
         with Dir(self.source_path):
             if self.config.content.build.use_source_tito_config:
                 # just use the tito tagger to change spec and tag
@@ -98,6 +90,7 @@ class RPMMetadata(Metadata):
                     exectools.cmd_assert("git push origin")
                 return
 
+            exectools.cmd_assert(["git", "tag", "-am", "Release with doozer", self.tag])
             exectools.cmd_assert("git add .")
             commit_msg = "Automatic commit of package [{name}] release [{version}-{release}].".format(
                 name=self.config.name, version=self.version, release=self.release
@@ -211,6 +204,8 @@ class RPMMetadata(Metadata):
         replace_keys = replace.keys()
 
         with Dir(self.source_path):
+            commit_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()
+
             # run generic modifications first
             if self.config.content.source.modifications is not Missing:
                 self._run_modifications()
@@ -222,11 +217,11 @@ class RPMMetadata(Metadata):
 
                     if "%global os_git_vars " in lines[i]:
                         lines[i] = "%global os_git_vars OS_GIT_VERSION={version} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit} OS_GIT_TREE_STATE=clean\n".format(
-                            version=full, major=major, minor=minor, patch=patch, commit=self.commit_sha
+                            version=full, major=major, minor=minor, patch=patch, commit=commit_sha
                         )
 
                     elif "%global commit" in lines[i]:
-                        lines[i] = re.sub(r'commit\s+\w+', "commit {}".format(self.commit_sha), lines[i])
+                        lines[i] = re.sub(r'commit\s+\w+', "commit {}".format(commit_sha), lines[i])
 
                     elif replace_keys:  # If there are keys left to replace
                         for k in replace_keys:
@@ -318,7 +313,6 @@ class RPMMetadata(Metadata):
         But optionally the commit can be pushed before the build, so that the actual commit released is in the source.
 	"""
         self.set_nvr(version, release)
-        self.create_tag(scratch)
         self.tito_setup()
         self.update_spec()
         self.commit_changes(scratch)
