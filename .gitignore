@@ -12,7 +12,7 @@ htmlcov
 venv
 cover
 *.egg-info
-
+*.csv
 
 
 # Ignore emacs backup files
