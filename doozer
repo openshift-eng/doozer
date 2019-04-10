@@ -1454,6 +1454,39 @@ def config_print(runtime, key, name_only, as_yaml):
     config.config_print(key, name_only, as_yaml)
 
 
+@cli.command("config:gen-csv", short_help="Generate .csv file for given images/rpms")
+@click.option("--keys", help="Specific key in config to print, separated by commas: --keys key,name,owners",
+              default=None)
+@click.option("--type", "as_type", default=None, help='Write content type: image or rpm')
+@click.option("--output", "-o", default=None, help='Write csv data to FILE instead of STDOUT')
+@pass_runtime
+def config_gencsv(runtime, keys, as_type, output):
+    """Generate .csv file for given --keys and --type
+
+    By default print out with STDOUT, you can use --output/-o to specify an output file
+
+    Filtering of configs is based on usage of the following global options:
+    --group, --images/-i, --rpms/-r
+
+    See `doozer --help` for more.
+
+    Examples:
+
+    Generate a CSV where each row is distgit key, image name, and owners list:
+
+        $ doozer --group=openshift-4.0 config:gen-csv --type image --keys key,name,owners
+
+    Generate a CSV only include image aos3-installation each row is distgit key, image name, output to file ./image.csv:
+
+        $ doozer --group=openshift-4.0 -i aos3-installation config:gen-csv --type image --keys key,name --output ./image.csv
+
+    """
+    _fix_runtime_mode(runtime)
+    runtime.initialize(**CONFIG_RUNTIME_OPTS)
+    config = mdc(runtime)
+    config.config_gen_csv(keys, as_type, output)
+
+
 @cli.command("beta:release-gen", short_help="Generate input files for release mirroring")
 @click.option("--src-dest", "--sd", default="img-mirror.txt",
               help="The SRC=DEST file to write to\ndefault=img-mirror.txt")

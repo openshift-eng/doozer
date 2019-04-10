@@ -6,6 +6,7 @@ import shutil
 from pushd import Dir
 import exectools
 import sys
+import csv
 
 
 VALID_UPDATES = {
@@ -113,6 +114,51 @@ class MetaDataConfig(object):
 
         _do_print("Images", data['images'])
         _do_print(" RPMS ", data['rpms'])
+
+    def config_gen_csv(self, keys, as_type=None, output=None):
+        """
+        Generate csv file or print it out to STDOUT
+        """
+
+        if keys is None:
+            print('No --keys specified, please make sure you have at least one key to generate')
+            return
+
+        # split --keys=a,b,c,d to list [a,b,c,d]
+        keys = [c.strip() for c in keys.split(',')]
+
+        image_list = None
+        if as_type == "image" and not self.runtime.rpms:
+            image_list = self.runtime.image_metas()
+        if as_type == "rpm" and not self.runtime.images:
+            image_list = self.runtime.rpm_metas()
+
+        if image_list is None:
+            print('Not correct --type specified (--type image or --type rpm). '
+                  'Or not consistent with global options: --images/-i and --rpms/-r')
+            return
+
+        def _write_rows(w):
+            # write header
+            w.writerow(keys)
+            # write values
+            for value in image_list:
+                value_list = []
+                for k in keys:
+                    if k == "key":
+                        value_list.append(value.config_filename)
+                    else:
+                        value_list.append(value.config.get(k, None))
+                w.writerow(value_list)
+
+        if output is None:
+            writer = csv.writer(sys.stdout, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            _write_rows(writer)
+            return
+
+        with open(output, mode='w') as csv_file:
+            writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            _write_rows(writer)
 
     def commit(self, msg):
         """
