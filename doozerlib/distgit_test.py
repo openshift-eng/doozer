@@ -71,6 +71,9 @@ class MockMetadata(object):
     def fetch_cgit_file(self, file):
         pass
 
+    def get_component_name(self):
+        pass
+
 class MockScanner(object):
 
     def __init__(self):
@@ -283,9 +286,10 @@ class TestImageDistGit(TestDistgit):
 
     def test_img_build_or_recent(self):
         flexmock(self.img_dg).should_receive("release_is_recent").and_return(None)
-        self.img_dg.name = "my-container"
+        self.img_dg.name = "spam-a-lot"
+        flexmock(self.img_dg.metadata).should_receive("get_component_name").and_return("spam-a-lot-container")
 
-        builds = {"my-container": ("v1", "r1")}
+        builds = {"spam-a-lot-container": ("v1", "r1")}
         self.assertTrue(self.img_dg._built_or_recent("v1", "r1", builds))
         self.assertIsNone(self.img_dg._built_or_recent("v2", "r1", builds))
 
