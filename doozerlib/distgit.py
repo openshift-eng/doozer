@@ -1595,8 +1595,9 @@ class ImageDistGitRepo(DistGitRepo):
         )
 
     def _built_or_recent(self, dg_version, dg_release, builds):
-        if self.name in builds:
-            b_version, b_release = builds[self.name]
+        component = self.metadata.get_component_name()
+        if component in builds:
+            b_version, b_release = builds[component]
             self.logger.debug(
                 'Looking for VR "{}-{}" in distgit dockerfile to match build VR "{}-{}"'
                 .format(dg_version, dg_release, b_version, b_release)
@@ -1604,7 +1605,7 @@ class ImageDistGitRepo(DistGitRepo):
             if b_version == dg_version and b_release == dg_release:
                 self.logger.debug("Latest source has been built; no need to rebuild")
                 return True
-        self.logger.debug('No build matches distgit NVR "{}-{}-{}"'.format(self.name, dg_version, dg_release))
+        self.logger.debug('No build matches distgit NVR "{}-{}-{}"'.format(component, dg_version, dg_release))
 
         # it hasn't been built; but has it been long enough since the distgit commit was made?
         # we want neither to spam owners about still-broken builds nor to ignore them forever.
