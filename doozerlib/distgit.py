@@ -1446,7 +1446,7 @@ class ImageDistGitRepo(DistGitRepo):
             # Record that we've reconciled against this source file so that we do not notify the owner again.
             shutil.copy(source_dockerfile_path, dockerfile_already_reconciled_path)
 
-        # Leave a record for external processes that owners will need to notified.
+        # Leave a record for external processes that owners will need to be notified.
 
         if not notify_owner:
             return
@@ -1481,13 +1481,17 @@ class ImageDistGitRepo(DistGitRepo):
             source_dockerfile_subpath = dockerfile_name
         else:
             source_dockerfile_subpath = "{}/{}".format(sub_path, dockerfile_name)
+        # there ought to be a better way to determine the source alias that was registered:
+        source_root = self.runtime.resolve_source(self.name, self.metadata)
+        source_alias = self.config.content.source.get('alias', os.path.basename(source_root))
+
         self.runtime.add_record("dockerfile_notify",
             distgit=self.metadata.qualified_name,
             image=self.config.name,
-            dockerfile=os.path.abspath("Dockerfile"),
             owners=','.join(owners),
-            source_alias=self.config.content.source.get('alias', None),
+            source_alias=source_alias,
             source_dockerfile_subpath=source_dockerfile_subpath,
+            dockerfile=os.path.abspath("Dockerfile"),
         )
 
     def _run_modifications(self):
