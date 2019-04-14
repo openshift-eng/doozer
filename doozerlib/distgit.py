@@ -1448,41 +1448,47 @@ class ImageDistGitRepo(DistGitRepo):
 
         # Leave a record for external processes that owners will need to notified.
 
-        if notify_owner:
-            with Dir(self.source_path()):
-                author_email = None
-                err = None
-                rc, sha, err = exectools.cmd_gather(
-                    # --no-merges because the merge bot is not the real author
-                    # --diff-filter=a to omit the "first" commit in a shallow clone which may not be the author
-                    #   (though this means when the only commit is the initial add, that is omitted)
-                    'git log --no-merges --diff-filter=a -n 1 --pretty=format:%H {}'.format(dockerfile_name)
-                )
-                if rc == 0:
-                    rc, ae, err = exectools.cmd_gather('git show -s --pretty=format:%ae {}'.format(sha))
-                    if rc == 0:
-                        if ae.lower().endswith('@redhat.com'):
-                            self.logger.info('Last Dockerfile committer: {}'.format(ae))
-                            author_email = ae
-                        else:
-                            err = 'Last committer email found, but is not @redhat.com address: {}'.format(ae)
-                if err:
-                    self.logger.info('Unable to get author email for last {} commit: {}'.format(dockerfile_name, err))
+        if not notify_owner:
+            return
 
-            owners = []
-            if self.config.owners is not Missing and isinstance(self.config.owners, list):
-                owners = list(self.config.owners)
-            if author_email:
-                owners.append(author_email)
-            sub_path = self.config.content.source.path
-            if not sub_path:
-                source_dockerfile_subpath = dockerfile_name
-            else:
-                source_dockerfile_subpath = "{}/{}".format(sub_path, dockerfile_name)
-            self.runtime.add_record("dockerfile_notify", distgit=self.metadata.qualified_name, image=self.config.name,
-                                    dockerfile=os.path.abspath("Dockerfile"), owners=','.join(owners),
-                                    source_alias=self.config.content.source.get('alias', None),
-                                    source_dockerfile_subpath=source_dockerfile_subpath)
+        with Dir(self.source_path()):
+            author_email = None
+            err = None
+            rc, sha, err = exectools.cmd_gather(
+                # --no-merges because the merge bot is not the real author
+                # --diff-filter=a to omit the "first" commit in a shallow clone which may not be the author
+                #   (though this means when the only commit is the initial add, that is omitted)
+                'git log --no-merges --diff-filter=a -n 1 --pretty=format:%H {}'.format(dockerfile_name)
+            )
+            if rc == 0:
+                rc, ae, err = exectools.cmd_gather('git show -s --pretty=format:%ae {}'.format(sha))
+                if rc == 0:
+                    if ae.lower().endswith('@redhat.com'):
+                        self.logger.info('Last Dockerfile committer: {}'.format(ae))
+                        author_email = ae
+                    else:
+                        err = 'Last committer email found, but is not @redhat.com address: {}'.format(ae)
+            if err:
+                self.logger.info('Unable to get author email for last {} commit: {}'.format(dockerfile_name, err))
+
+        owners = []
+        if self.config.owners is not Missing and isinstance(self.config.owners, list):
+            owners = list(self.config.owners)
+        if author_email:
+            owners.append(author_email)
+        sub_path = self.config.content.source.path
+        if not sub_path:
+            source_dockerfile_subpath = dockerfile_name
+        else:
+            source_dockerfile_subpath = "{}/{}".format(sub_path, dockerfile_name)
+        self.runtime.add_record("dockerfile_notify",
+            distgit=self.metadata.qualified_name,
+            image=self.config.name,
+            dockerfile=os.path.abspath("Dockerfile"),
+            owners=','.join(owners),
+            source_alias=self.config.content.source.get('alias', None),
+            source_dockerfile_subpath=source_dockerfile_subpath,
+        )
 
     def _run_modifications(self):
         """
