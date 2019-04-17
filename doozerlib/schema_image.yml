@@ -15,6 +15,16 @@ mapping:
     sequence:
       - type: str
 
+  "update-csv":
+  type: map
+    mapping:
+      "manifests-dir":
+        type: str
+        required: true
+      "registry":
+        type: str
+        required: true
+
   "distgit":
     type: map
     mapping:
@@ -103,6 +113,11 @@ mapping:
                       - type: str
 
   "enabled_repos":
+    type: seq
+    sequence:
+      - type: str
+
+  "dependents":
     type: seq
     sequence:
       - type: str
