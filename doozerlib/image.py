@@ -6,6 +6,7 @@ from distgit import pull_image
 from metadata import Metadata
 from model import Missing
 from pushd import Dir
+from exceptions import DoozerFatalError
 
 import assertion
 import logutil
@@ -48,6 +49,21 @@ class ImageMetadata(Metadata):
         self.image_name_short = self.image_name.split('/')[-1]
         self.parent = None
         self.children = []
+        dependents = self.config.get('dependents', [])
+        for d in dependents:
+            self.children.append(self.runtime.late_resolve_image(d, add=True))
+
+    def is_ancestor(self, image):
+        if isinstance(image, Metadata):
+            image = image.distgit_key
+
+        parent = self.parent
+        while parent:
+            if parent.distgit_key == image:
+                return True
+            parent = parent.parent
+
+        return False
 
     def resolve_parent(self):
         if 'from' in self.config:

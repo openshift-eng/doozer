@@ -152,6 +152,8 @@ class Runtime(object):
         # Used for image build ordering
         self.image_tree = {}
         self.image_order = []
+        # allows mapping from name or distgit to meta
+        self.image_name_map = {}
 
         # holds untouched group config
         self.raw_group_config = {}
@@ -352,6 +354,17 @@ class Runtime(object):
                 image_ex.extend(excludes.get('images', []))
                 rpm_ex.extend(excludes.get('rpms', []))
 
+            # pre-load the image data to get the names for all images
+            # eventually we can use this to allow loading images by
+            # name or distgit. For now this is used elsewhere
+            image_name_data = self.gitdata.load_data(path='images')
+
+            for img in image_name_data.itervalues():
+                name = img.data.get('name')
+                short_name = name.split('/')[1]
+                self.image_name_map[name] = img.key
+                self.image_name_map[short_name] = img.key
+
             image_data = self.gitdata.load_data(path='images', keys=image_keys,
                                                 exclude=image_ex,
                                                 replace_vars=replace_vars,
@@ -379,6 +392,12 @@ class Runtime(object):
 
                 for image in self.image_map.itervalues():
                     image.resolve_parent()
+
+                # now that ancestry is defined, make sure no cyclic dependencies
+                for image in self.image_map.itervalues():
+                    for child in image.children:
+                        if image.is_ancestor(child):
+                            raise DoozerFatalError('{} cannot be both a parent and dependent of {}'.format(child.distgit_key, image.distgit_key))
 
                 self.image_tree = {}
                 image_lists = {0: []}
@@ -487,6 +506,10 @@ class Runtime(object):
 
     def ordered_image_metas(self):
         return [self.image_map[dg] for dg in self.image_order]
+
+    def image_distgit_by_name(self, name):
+        """Returns image meta but full name, short name, or distgit"""
+        return self.image_name_map.get(name, None)
 
     def rpm_metas(self):
         return self.rpm_map.values()
@@ -599,12 +622,20 @@ class Runtime(object):
             raise DoozerFatalError("Unable to find image metadata in group / included images: %s" % distgit_name)
         return self.image_map[distgit_name]
 
-    def late_resolve_image(self, distgit_name):
-        """Resolve image and retrive meta without adding to image_map.
-        Mainly for looking up parent image info."""
+    def late_resolve_image(self, distgit_name, add=False):
+        """Resolve image and retrieve meta, optionally adding to image_map.
+        If add==True and image not found, error will be thrown"""
+
+        if distgit_name in self.image_map:
+            return self.image_map[distgit_name]
 
         data_obj = self.gitdata.load_data(path='images', key=distgit_name)
+        if add and not data_obj:
+            raise DoozerFatalError('Unable to resovle image metadata for {}'.format(distgit_name))
+
         meta = ImageMetadata(self, data_obj)
+        if add:
+            self.image_map[distgit_name] = meta
         return meta
 
     def resolve_stream(self, stream_name):

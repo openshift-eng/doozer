@@ -232,7 +232,7 @@ class DistGitRepo(object):
         return self._matches_commit(commit_hash, builds)
 
     def release_is_recent(self, release):
-        # believe it or not, there is no good (generic) way to determine a remote commit timestamp 
+        # believe it or not, there is no good (generic) way to determine a remote commit timestamp
         # without cloning it or parsing html from cgit. therefore, if so configured, we rely on the
         # only timestamp we can easily get, in the release value; otherwise just consider it stale.
 
@@ -1308,7 +1308,68 @@ class ImageDistGitRepo(DistGitRepo):
 
             self._reflow_labels()
 
+            self._update_csv(version, release)
+
             return (version, release)
+
+    def _update_csv(self, version, release):
+        csv_config = self.metadata.config.get('update-csv', None)
+        if not csv_config:
+            return
+
+        gvars = self.runtime.group_config.vars
+        ver = '{}.{}'.format(gvars['MAJOR'], gvars['MINOR'])
+        manifests = os.path.join(self.distgit_dir, csv_config['manifests-dir'], ver)
+        registry = csv_config['registry'].rstrip("/")
+        refs = os.path.join(manifests, 'image-references')
+        if not os.path.isfile(refs):
+            raise DoozerFatalError('{}: file does not exist: {}'.format(self.name, refs))
+        with open(refs, 'r') as f_ref:
+            ref_data = yaml.full_load(f_ref)
+
+        with Dir(manifests):
+            csvs = glob.glob('*.clusterserviceversion.yaml')
+            if len(csvs) != 1:
+                raise DoozerFatalError('{}: Must be exactly one *.clusterserviceversion.yaml file but found more than one or none @ {}'.format(self.name, manifests))
+            csv = os.path.join(manifests, csvs[0])
+
+        image_refs = ref_data.get('spec', {}).get('tags', {})
+
+        if not image_refs:
+            raise DoozerFatalError('Data in {} not valid'.format(refs))
+
+        for ref in image_refs:
+            try:
+                name = 'openshift/ose-' + ref['name']
+                spec = ref['from']['name']
+            except:
+                raise DoozerFatalError('Error loading image-references data for {}'.format(self.name))
+
+            try:
+                if name == self.metadata.image_name:  # ref is current image
+                    nvr = '{}:{}-{}'.format(name, version, release)
+                else:
+                    distgit = self.runtime.image_distgit_by_name(name)
+                    meta = self.runtime.image_map.get(distgit, None)
+                    if meta:  # image is currently be processed
+                        nvr = '{}:{}-{}'.format(meta.image_name, version, release)
+                    else:
+                        meta = self.runtime.late_resolve_image(distgit)
+                        _, v, r = meta.get_latest_build_info()
+                        nvr = '{}:{}-{}'.format(meta.image_name, v, r)
+
+                replace = '{}/{}'.format(registry, nvr)
+
+                with open(csv, 'r+') as f:
+                    content = f.read()
+                    content = content.replace(spec + '\n', replace + '\n')
+                    f.seek(0)
+                    f.truncate()
+                    f.write(content)
+            except Exception, e:
+                self.runtime.logger.error(e)
+                raise
+
 
     def _reflow_labels(self, filename="Dockerfile"):
         """
@@ -1662,7 +1723,7 @@ class RPMDistGitRepo(DistGitRepo):
         # for most RPM sources the commit_hash will match the %global commit
         global_commit_hash = self._find_in_spec(spec, r'(?x) %global \s+ commit \s+ (\w+)', "%global commit")
 
-        # but also check if it's in the Release, because that may have a tito commit 
+        # but also check if it's in the Release, because that may have a tito commit
         # pushed to the source repo with the global_commit_hash being the previous commit.
         dg_release = self._find_in_spec(spec, r'(?mix) ^ \s* Release: \s+ (\S+)', "Release: field")
 
