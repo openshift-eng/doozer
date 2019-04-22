@@ -304,6 +304,8 @@ class ImageDistGitRepo(DistGitRepo):
         container_config = self._generate_odcs_config() or {}
         if build_method is not Missing:
             container_config['image_build_method'] = build_method
+        if self.config.container_yaml is not Missing:
+            container_config.update(self.config.container_yaml)
 
         if not container_config:
             return  # no need to write empty file
