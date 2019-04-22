@@ -168,6 +168,9 @@ mapping:
               sequence:
                 - type: str
 
+  "container_yaml":
+      type: map
+
   "arches":
     type: seq
     sequence:
