@@ -1104,21 +1104,6 @@ class ImageDistGitRepo(DistGitRepo):
                 if changed:
                     dfp.add_lines_at(entry, "RUN " + new_value, replace=True)
 
-    def _combine_multiline(self, dfp):
-        """
-        XXX: this is an ugly hack to work around an OSBS bug regarding multiline statements.
-        for now, combine into single line. revert this once a fix appears.
-        """
-        entry_after = None
-        for entry in reversed(dfp.structure):  # iterate in reverse
-            # look for builder stages that end in a multiline statement and combine those.
-            if (entry_after is not None
-                and entry_after['instruction'] == 'FROM'
-                and entry['startline'] != entry['endline']):
-                    new_entry = "{cmd} {value}".format(cmd=entry['instruction'], value=entry['value'])
-                    dfp.add_lines_at(entry, new_entry, replace=True)
-            entry_after = entry
-
     def update_distgit_dir(self, version, release, prev_release=None):
         ignore_missing_base = self.runtime.ignore_missing_base
         # A collection of comment lines that will be included in the generated Dockerfile. They
@@ -1136,7 +1121,6 @@ class ImageDistGitRepo(DistGitRepo):
             dfp = DockerfileParser(path="Dockerfile")
 
             self._clean_repos(dfp)
-            self._combine_multiline(dfp)
 
             # If no version has been specified, we will leave the version in the Dockerfile. Extract it.
             if version is None:
