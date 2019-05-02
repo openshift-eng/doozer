@@ -1346,19 +1346,22 @@ class ImageDistGitRepo(DistGitRepo):
                 raise DoozerFatalError('Error loading image-references data for {}'.format(self.name))
 
             try:
-                if name == self.metadata.image_name:  # ref is current image
+                if name == self.metadata.image_name_short:  # ref is current image
                     nvr = '{}:{}-{}'.format(name, version, release)
                 else:
                     distgit = self.runtime.image_distgit_by_name(name)
                     meta = self.runtime.image_map.get(distgit, None)
                     if meta:  # image is currently be processed
-                        nvr = '{}:{}-{}'.format(meta.image_name, version, release)
+                        nvr = '{}:{}-{}'.format(meta.image_name_short, version, release)
                     else:
                         meta = self.runtime.late_resolve_image(distgit)
                         _, v, r = meta.get_latest_build_info()
-                        nvr = '{}:{}-{}'.format(meta.image_name, v, r)
+                        nvr = '{}:{}-{}'.format(meta.image_name_short, v, r)
 
-                replace = '{}/{}'.format(registry, nvr)
+                namespace = self.runtime.group_config.get('csv_namespace', None)
+                if not namespace:
+                    raise DoozerFatalError('csv_namespace is required in group.yaml when any image defines update-csv')
+                replace = '{}/{}/{}'.format(registry, namespace, nvr)
 
                 with open(csv, 'r+') as f:
                     content = f.read()
@@ -1369,7 +1372,6 @@ class ImageDistGitRepo(DistGitRepo):
             except Exception, e:
                 self.runtime.logger.error(e)
                 raise
-
 
     def _reflow_labels(self, filename="Dockerfile"):
         """

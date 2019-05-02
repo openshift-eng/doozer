@@ -134,3 +134,6 @@ mapping:
         type: seq
         sequence:
           - type: str
+
+  "csv_namespace":
+    type: str
