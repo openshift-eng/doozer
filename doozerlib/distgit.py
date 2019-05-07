@@ -1362,7 +1362,7 @@ class ImageDistGitRepo(DistGitRepo):
 
                 with open(csv, 'r+') as f:
                     content = f.read()
-                    content = content.replace(spec + '\n', replace + '\n')
+                    content = content.replace(spec, replace)
                     f.seek(0)
                     f.truncate()
                     f.write(content)
