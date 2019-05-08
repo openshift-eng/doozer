@@ -780,7 +780,7 @@ class ImageDistGitRepo(DistGitRepo):
             # threaded, we should not throw an exception; instead return False.
         finally:
             # Regardless of success, allow other images depending on this one to progress or fail.
-            if self.build_lock.locked():
+            if self.build_lock.acquire(False):
                 self.build_lock.release()
 
         self.push_status = True  # if if never pushes, the status is True
