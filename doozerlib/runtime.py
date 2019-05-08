@@ -420,7 +420,9 @@ class Runtime(object):
                 levels.sort()
                 self.image_order = []
                 for l in levels:
-                    self.image_order.extend(image_lists[l])
+                    for i in image_lists[l]:
+                        if i not in self.image_order:
+                            self.image_order.append(i)
 
             if mode in ['rpms', 'both']:
                 for r in rpm_data.itervalues():

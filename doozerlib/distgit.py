@@ -638,7 +638,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     def wait_for_build(self, who_is_waiting):
         """
-        Blocks the calling thread until this image has been built by oit or throws an exception if this
+        Blocks the calling thread until this image has been built by doozer or throws an exception if this
         image cannot be built.
         :param who_is_waiting: The caller's distgit_key (i.e. the waiting image).
         :return: Returns when the image has been built or throws an exception if the image could not be built.
@@ -1366,7 +1366,8 @@ class ImageDistGitRepo(DistGitRepo):
 
                 with open(csv, 'r+') as f:
                     content = f.read()
-                    content = content.replace(spec, replace)
+                    content = content.replace(spec + '\n', replace + '\n')
+                    content = content.replace(spec + '\"', replace + '\"')
                     f.seek(0)
                     f.truncate()
                     f.write(content)
