@@ -583,7 +583,15 @@ class ImageDistGitRepo(DistGitRepo):
 
                     push_config_dir = os.path.join(self.runtime.working_dir, 'push')
                     if not os.path.isdir(push_config_dir):
-                        os.mkdir(push_config_dir)
+                        try:
+                            os.mkdir(push_config_dir)
+                        except OSError as e:
+                            # File exists, and it's a directory,
+                            # another thread already created this dir, that's OK.
+                            if e.errno == errno.EEXIST and os.path.isdir(push_config_dir):
+                                pass
+                            else:
+                                raise
 
                     push_config = os.path.join(push_config_dir, self.metadata.distgit_key)
 
