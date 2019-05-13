@@ -84,7 +84,7 @@ class DistGitRepo(object):
         self.branch = self.runtime.branch
 
         self.source_sha = None
-        self.full_source_sha = None
+        self.source_full_sha = None
         self.source_url = None
 
         # Allow the config yaml to override branch
@@ -1308,11 +1308,11 @@ class ImageDistGitRepo(DistGitRepo):
 
             # set with new source if known, otherwise leave alone for a refresh
             srclab = self.source_labels['now']
-            if self.full_source_sha:
-                dfp.labels[srclab['sha']] = self.full_source_sha
+            if self.source_full_sha:
+                dfp.labels[srclab['sha']] = self.source_full_sha
                 if self.source_url:
                     dfp.labels[srclab['source']] = self.source_url
-                    dfp.labels[srclab['source_commit']] = '{}/commit/{}'.format(self.source_url, self.full_source_sha)
+                    dfp.labels[srclab['source_commit']] = '{}/commit/{}'.format(self.source_url, self.source_full_sha)
 
             self._reflow_labels()
 
@@ -1419,12 +1419,12 @@ class ImageDistGitRepo(DistGitRepo):
 
         with Dir(self.source_path()):
             # gather source repo short sha for audit trail
-            rc, out, err = exectools.cmd_gather(["git", "rev-parse", "--short", "HEAD"])
+            rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "--short", "HEAD"])
             self.source_sha = out.strip()
-            rc, out, err = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
-            self.full_source_sha = out.strip()
+            rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
+            self.source_full_sha = out.strip()
 
-            rc, out, err = exectools.cmd_gather(["git", "remote", "get-url", "origin"])
+            rc, out, _ = exectools.cmd_gather(["git", "remote", "get-url", "origin"])
             out = out.strip()
             self.source_url = out.replace(':', '/').replace('.git', '').replace('git@', 'https://')
 
