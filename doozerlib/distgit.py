@@ -85,6 +85,7 @@ class DistGitRepo(object):
 
         self.source_sha = None
         self.source_full_sha = None
+        self.source_latest_tag = None
         self.source_url = None
 
         # Allow the config yaml to override branch
@@ -1219,6 +1220,12 @@ class ImageDistGitRepo(DistGitRepo):
 
                 dfp.parent_images = mapped_images
 
+            if self.source_sha is not None:
+                # in a rebase, add ENV vars to each stage to relay source repo metadata
+                env_line = "ENV OS_GIT_COMMIT={} SOURCE_GIT_TAG={}".format(
+                    self.source_full_sha, self.source_latest_tag)
+                dfp.add_lines(env_line, all_stages=True, at_start=True)
+
             # Set image name in case it has changed
             dfp.labels["name"] = self.config.name
 
@@ -1423,6 +1430,8 @@ class ImageDistGitRepo(DistGitRepo):
             self.source_sha = out.strip()
             rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
             self.source_full_sha = out.strip()
+            rc, out, _ = exectools.cmd_gather("git describe --always --tags HEAD")
+            self.source_latest_tag = out.strip()
 
             rc, out, _ = exectools.cmd_gather(["git", "remote", "get-url", "origin"])
             out = out.strip()
