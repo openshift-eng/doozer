@@ -183,6 +183,25 @@ option_push = click.option('--push/--no-push', default=False, is_flag=True,
 # =============================================================================
 
 
+@cli.command("clone-sources", help="Clone a group's rpm & images source repos locally and add to sources yaml.")
+@click.option("--output-yml", metavar="YAML_PATH",
+              help="Output yml file to write sources dict to. Can be same as --sources option but must be explicitly specified.")
+@click.option("--output-resolved-branches", metavar="YAML_PATH",
+              help="Output yml dictionary of resolved source branches")
+@pass_runtime
+def clone_sources(runtime, output_yml, output_resolved_branches):
+    runtime.initialize(mode='both', clone_distgits=False, validate_content_sets=False, clone_source=True)
+    # Never delete after clone; defeats the purpose of cloning
+    runtime.remove_tmp_working_dir = False
+
+    if output_yml:
+        runtime.export_sources(output_yml)
+
+    if output_resolved_branches:
+        with open(output_resolved_branches, 'w') as f:
+            yaml.safe_dump(runtime.resolved_sources, f, indent=2, default_flow_style=False)
+
+
 @cli.command("images:clone", help="Clone a group's image distgit repos locally.")
 @pass_runtime
 def images_clone(runtime):

@@ -161,6 +161,11 @@ class Runtime(object):
         # Used to capture missing packages for 4.x build
         self.missing_pkgs = set()
 
+        self.resolved_sources = {
+            'image': {},
+            'rpm': {}
+        }
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
@@ -385,7 +390,7 @@ class Runtime(object):
 
             if mode in ['images', 'both']:
                 for i in image_data.itervalues():
-                    metadata = ImageMetadata(self, i)
+                    metadata = ImageMetadata(self, i, clone_source=clone_source)
                     self.image_map[metadata.distgit_key] = metadata
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
@@ -714,7 +719,7 @@ class Runtime(object):
                 format(alias, source_dir))
             return source_dir
 
-        clone_branch, _ = self.detect_remote_source_branch(source_details)
+        clone_branch, _ = self.detect_remote_source_branch(meta, source_details)
 
         url = source_details["url"]
         try:
@@ -733,8 +738,9 @@ class Runtime(object):
         self.register_source_alias(alias, source_dir)
         return source_dir
 
-    def detect_remote_source_branch(self, source_details):
+    def detect_remote_source_branch(self, meta, source_details):
         """Find a configured source branch that exists, or raise DoozerFatalError. Returns branch name and git hash"""
+
         git_url = source_details["url"]
         branches = source_details["branch"]
 
@@ -748,15 +754,31 @@ class Runtime(object):
             fallback_branch = None
         stage_branch = branches.get("stage", None) if self.stage else None
 
+        type_resolved = self.resolved_sources[meta.meta_type]
+        if meta.distgit_key not in type_resolved:
+            type_resolved[meta.distgit_key] = {
+                'target': None,
+                'fallback': None,
+                'stage': None,
+                'used': None
+            }
+
+        details = type_resolved[meta.distgit_key]
+        details['target'] = branch
+        details['fallback'] = fallback_branch
+        details['stage'] = stage_branch
+
         if stage_branch:
             self.logger.info('Normal branch overridden by --stage option, using "{}"'.format(stage_branch))
             result = self._get_remote_branch_ref(git_url, stage_branch)
             if result:
+                details['used'] = stage_branch
                 return stage_branch, result
             raise DoozerFatalError('--stage option specified and no stage branch named "{}" exists for {}'.format(stage_branch, git_url))
 
         result = self._get_remote_branch_ref(git_url, branch)
         if result:
+            details['used'] = branch
             return branch, result
         elif not fallback_branch:
             raise DoozerFatalError('Requested target branch {} does not exist and no fallback provided'.format(branch))
@@ -764,6 +786,7 @@ class Runtime(object):
         self.logger.info('Target branch does not exist in {}, checking fallback branch {}'.format(git_url, fallback_branch))
         result = self._get_remote_branch_ref(git_url, fallback_branch)
         if result:
+            details['used'] = fallback_branch
             return fallback_branch, result
         raise DoozerFatalError('Requested fallback branch {} does not exist'.format(branch))
 

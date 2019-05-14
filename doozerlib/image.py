@@ -42,7 +42,7 @@ YUM_NON_FLAGS = [
 
 class ImageMetadata(Metadata):
 
-    def __init__(self, runtime, data_obj):
+    def __init__(self, runtime, data_obj, clone_source=False):
         super(ImageMetadata, self).__init__('image', runtime, data_obj)
         self.image_name = self.config.name
         self.required = self.config.get('required', False)
@@ -52,6 +52,10 @@ class ImageMetadata(Metadata):
         dependents = self.config.get('dependents', [])
         for d in dependents:
             self.children.append(self.runtime.late_resolve_image(d, add=True))
+
+        self.source = None
+        if clone_source and self.config.content.source:
+            self.source = self.runtime.resolve_source(self.name, self)
 
     def is_ancestor(self, image):
         if isinstance(image, Metadata):
