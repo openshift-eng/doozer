@@ -1222,7 +1222,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             if self.source_sha is not None:
                 # in a rebase, add ENV vars to each stage to relay source repo metadata
-                env_line = "ENV OS_GIT_COMMIT={} SOURCE_GIT_TAG={}".format(
+                env_line = "ENV SOURCE_GIT_COMMIT={} SOURCE_GIT_TAG={}".format(
                     self.source_full_sha, self.source_latest_tag)
                 dfp.add_lines(env_line, all_stages=True, at_start=True)
 
