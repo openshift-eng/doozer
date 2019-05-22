@@ -11,4 +11,4 @@ RUN pip install -r requirements-test.txt
 ENV PYTHONPATH /code/doozerlib
 
 ENTRYPOINT ["make", "-f", ".ci/Makefile"]
-CMD ["test"]
+CMD ["coverage"]
