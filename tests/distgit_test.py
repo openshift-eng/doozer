@@ -6,6 +6,7 @@ $ python -m doozerlib.distgit_test
 """
 import unittest
 import flexmock
+from mock import patch, ANY
 
 import StringIO
 import logging
@@ -79,6 +80,35 @@ class MockScanner(object):
     def __init__(self):
         self.matches = []
         self.files = []
+
+
+class TestDistgitRecursiveOverwrite(unittest.TestCase):
+    """
+    Mocking exectools.cmd_assert to prevent actual command executions, since
+    the only purpose of these tests is to ensure that the correct command
+    string is being generated.
+    """
+
+    @patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_without_ignore_set(self, cmd_assert_mock):
+        expected_cmd = ("rsync -av "
+                        " --exclude .git/ "
+                        " my-source/ my-dest/")
+
+        distgit.recursive_overwrite("my-source", "my-dest")
+        cmd_assert_mock.assert_called_once_with(expected_cmd, retries=ANY)
+
+    @patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_with_ignore_set(self, cmd_assert_mock):
+        expected_cmd = ("rsync -av "
+                        " --exclude .git/ "
+                        " --exclude=\"me\" "
+                        " --exclude=\"ignore\" "
+                        " my-source/ my-dest/")
+
+        distgit.recursive_overwrite("my-source", "my-dest", {"ignore", "me"})
+        cmd_assert_mock.assert_called_once_with(expected_cmd, retries=ANY)
+
 
 
 class TestDistgit(unittest.TestCase):
