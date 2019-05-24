@@ -402,6 +402,103 @@ class TestGenericDistGit(TestDistgit):
 
         self.assertEqual("source-root", repo.source_path())
 
+    @patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_commit_local(self, cmd_assert_mock):
+        metadata = Mock()
+        metadata.runtime.local = True
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        self.assertEqual("", repo.commit("commit msg"))
+        self.assertFalse(cmd_assert_mock.called)
+
+    @patch("distgit.Dir")
+    @patch("distgit.exectools.cmd_gather", return_value=(1, "", ""))
+    def test_commit_log_diff_failed(self, cmd_gather_mock, _):
+        metadata = Mock()
+        metadata.runtime.local = False
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        try:
+            repo.commit("commit msg", log_diff=True)
+            self.fail()
+        except IOError as e:
+            expected_msg = ("Command returned non-zero exit status: "
+                            "Failed fetching distgit diff")
+            self.assertEqual(expected_msg, e.message)
+
+    @patch("distgit.Dir")
+    @patch("distgit.exectools.cmd_gather", return_value=(0, "stdout", ""))
+    def test_commit_log_diff_succeeded(self, cmd_gather_mock, _):
+        metadata = Mock()
+        metadata.name = "name"
+        metadata.runtime.local = False
+        metadata.runtime.add_distgits_diff.return_value = None
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.commit("commit msg", log_diff=True)
+        metadata.runtime.add_distgits_diff.assert_called_once_with("name", "stdout")
+
+    @patch("distgit.Dir")
+    @patch("distgit.exectools.cmd_gather", return_value=(0, "stdout-sha", ""))
+    @patch("distgit.exectools.cmd_assert")
+    def test_commit_with_source_sha(self, cmd_assert_mock, _, __):
+        metadata = Mock()
+        metadata.name = "name"
+        metadata.runtime.local = False
+        metadata.runtime.add_distgits_diff.return_value = None
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        # @TODO: find out how/when source_sha gets assigned
+        repo.source_sha = "my-source-sha"
+
+        self.assertEqual("stdout-sha", repo.commit("commit msg"))
+
+        expected_cmd_calls = [
+            call(["git", "add", "-A", "."]),
+            call(["git", "commit", "--allow-empty", "-m", "commit msg - my-source-sha\n- MaxFileSize: 50000000"]),
+        ]
+        self.assertEqual(expected_cmd_calls, cmd_assert_mock.mock_calls)
+
+    @patch("distgit.Dir")
+    @patch("distgit.exectools.cmd_gather", return_value=(0, "stdout-sha", ""))
+    @patch("distgit.exectools.cmd_assert")
+    def test_commit_without_source_sha(self, cmd_assert_mock, _, __):
+        metadata = Mock()
+        metadata.name = "name"
+        metadata.runtime.local = False
+        metadata.runtime.add_distgits_diff.return_value = None
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        self.assertEqual("stdout-sha", repo.commit("commit msg"))
+
+        expected_cmd_calls = [
+            call(["git", "add", "-A", "."]),
+            call(["git", "commit", "--allow-empty", "-m", "commit msg\n- MaxFileSize: 50000000"]),
+        ]
+        self.assertEqual(expected_cmd_calls, cmd_assert_mock.mock_calls)
+
+    @patch("distgit.Dir")
+    @patch("distgit.exectools.cmd_gather", return_value=(1, "stdout-sha", ""))
+    @patch("distgit.exectools.cmd_assert")
+    def test_commit_failed_fetching_sha(self, cmd_assert_mock, _, __):
+        metadata = Mock()
+        metadata.name = "name"
+        metadata.runtime.local = False
+        metadata.runtime.add_distgits_diff.return_value = None
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.distgit_dir = "my-distgit-dir"
+
+        try:
+            repo.commit("commit msg")
+            self.fail()
+        except IOError as e:
+            expected_msg = ("Command returned non-zero exit status: "
+                            "Failure fetching commit SHA for my-distgit-dir")
+            self.assertEqual(expected_msg, e.message)
+
     def test_logging(self):
         """
         Ensure that logs work
