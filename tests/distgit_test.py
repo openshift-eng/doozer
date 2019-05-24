@@ -8,6 +8,7 @@ import unittest
 import flexmock
 from mock import patch, ANY, call, Mock
 
+import errno
 import StringIO
 import logging
 import tempfile
@@ -201,6 +202,122 @@ class TestGenericDistGit(TestDistgit):
         """
         distgit.DistGitRepo(self.md)
         clone_mock.assert_called_once()
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.path.isdir", return_value=True)
+    def test_clone_already_cloned(self, _, __):
+        metadata = Mock()
+        metadata.runtime.local = False
+        metadata.logger.info.return_value = None
+        metadata.namespace = "my-namespace"
+        metadata.distgit_key = "my-distgit-key"
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.clone("my-root-dir", "my-branch")
+
+        expected = ("Distgit directory already exists; "
+                    "skipping clone: my-root-dir/my-namespace/my-distgit-key")
+        metadata.logger.info.assert_called_once_with(expected)
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.path.isdir", return_value=False)
+    @patch("distgit.os.mkdir")
+    def test_clone_fails_to_create_namespace_dir(self, mkdir_mock, _, __):
+        metadata = Mock()
+        metadata.runtime.local = True
+
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config["content"] = "..."
+        metadata.config.distgit = Mock()
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        try:
+            mkdir_mock.side_effect = OSError(errno.EEXIST, "strerror")
+            repo.clone("my-root-dir", "my-branch")
+        except OSError:
+            self.fail("Should not have raised a \"dir already exists\" exception")
+        except:
+            pass # doesn't matter if something fails at a later point
+
+        mkdir_mock.side_effect = OSError("some other error", "strerror")
+        self.assertRaises(OSError, repo.clone, "my-root-dir", "my-branch")
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.path.isdir", return_value=False)
+    @patch("distgit.os.mkdir", return_value=None)
+    @patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_clone_with_fake_distgit(self, cmd_assert_mock, _, __, ___):
+        metadata = Mock()
+        metadata.runtime.local = True
+        metadata.logger.info.return_value = None
+        metadata.namespace = "my-namespace"
+        metadata.distgit_key = "my-distgit-key"
+
+        metadata.runtime.command = "images:rebase"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config["content"] = "..."
+        metadata.config.distgit = Mock()
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.clone("my-root-dir", "my-branch")
+
+        expected_cmd = ["mkdir", "-p", "my-root-dir/my-namespace/my-distgit-key"]
+        cmd_assert_mock.assert_called_once_with(expected_cmd)
+
+        expected_log = "Creating local build dir: my-root-dir/my-namespace/my-distgit-key"
+        metadata.logger.info.assert_called_once_with(expected_log)
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.path.isdir", return_value=False)
+    @patch("distgit.os.mkdir", return_value=None)
+    @patch("distgit.yellow_print", return_value=None)
+    @patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_clone_images_build_command(self, cmd_assert_mock, yellow_print_mock, _, __, ___):
+        metadata = Mock()
+        metadata.runtime.local = False
+        metadata.namespace = "my-namespace"
+        metadata.distgit_key = "my-distgit-key"
+
+        metadata.runtime.command = "images:build"
+        metadata.runtime.global_opts = {"rhpkg_clone_timeout": 999}
+        metadata.runtime.user = None
+        metadata.qualified_name = "my-qualified-name"
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.clone("my-root-dir", "my-branch")
+
+        expected_cmd = (
+            "timeout 999 rhpkg clone my-qualified-name "
+            "my-root-dir/my-namespace/my-distgit-key --branch my-branch"
+        ).split(" ")
+        cmd_assert_mock.assert_called_once_with(expected_cmd, retries=ANY)
+        yellow_print_mock.assert_called_once()
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.path.isdir", return_value=False)
+    @patch("distgit.os.mkdir", return_value=None)
+    @patch("distgit.yellow_print", return_value=None)
+    @patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_clone_cmd_with_user(self, cmd_assert_mock, _, __, ___, ____):
+        metadata = Mock()
+        metadata.runtime.local = False
+        metadata.namespace = "my-namespace"
+        metadata.distgit_key = "my-distgit-key"
+
+        metadata.runtime.command = "images:build"
+        metadata.runtime.global_opts = {"rhpkg_clone_timeout": 999}
+        metadata.runtime.user = "my-user"
+        metadata.qualified_name = "my-qualified-name"
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.clone("my-root-dir", "my-branch")
+
+        expected_cmd = (
+            "timeout 999 rhpkg --user=my-user clone my-qualified-name "
+            "my-root-dir/my-namespace/my-distgit-key --branch my-branch"
+        ).split(" ")
+        cmd_assert_mock.assert_called_once_with(expected_cmd, retries=ANY)
 
     def test_logging(self):
         """

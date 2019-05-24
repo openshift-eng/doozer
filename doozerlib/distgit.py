@@ -262,6 +262,11 @@ class DistGitRepo(object):
         )
         return False
 
+    # @TODO: check with my peers why this method was not implemented in the
+    # base class. Looks like the parent knows too much about the children.
+    def _read_master_data(self):
+        pass
+
 
 class ImageDistGitRepo(DistGitRepo):
 
