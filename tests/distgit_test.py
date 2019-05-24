@@ -6,7 +6,7 @@ $ python -m doozerlib.distgit_test
 """
 import unittest
 import flexmock
-from mock import patch, ANY, call
+from mock import patch, ANY, call, Mock
 
 import StringIO
 import logging
@@ -181,6 +181,26 @@ class TestGenericDistGit(TestDistgit):
         Ensure that init creates the object expected
         """
         self.assertIsInstance(self.dg, distgit.DistGitRepo)
+
+    def test_init_branch_override(self):
+        metadata = Mock()
+        metadata.runtime.branch = "original-branch"
+
+        metadata.config.distgit.branch = distgit.Missing
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        self.assertEqual("original-branch", repo.branch)
+
+        metadata.config.distgit.branch = "new-branch"
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        self.assertEqual("new-branch", repo.branch)
+
+    @patch("distgit.DistGitRepo.clone")
+    def test_init_with_autoclone(self, clone_mock):
+        """
+        Mocking `clone` method, since only `init` is what is under test here.
+        """
+        distgit.DistGitRepo(self.md)
+        clone_mock.assert_called_once()
 
     def test_logging(self):
         """
