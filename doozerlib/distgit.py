@@ -187,7 +187,7 @@ class DistGitRepo(object):
             if log_diff:
                 rc, out, err = exectools.cmd_gather(["git", "diff", "Dockerfile"])
                 assertion.success(rc, 'Failed fetching distgit diff')
-                self.runtime.add_distgits_diff(self.metadata.name, out)
+                self.runtime.add_distgits_diff(self.metadata.distgit_key, out)
             if self.source_sha:
                 # add short sha of source for audit trail
                 commit_message += " - {}".format(self.source_sha)
@@ -369,7 +369,7 @@ class ImageDistGitRepo(DistGitRepo):
         else:
             source_container_yaml = {}
 
-        self.logger.info("Generating compose file for Dockerfile {}".format(self.metadata.name))
+        self.logger.info("Generating compose file for Dockerfile {}".format(self.metadata.distgit_key))
 
         odcs = self.config.odcs
         if odcs is Missing:
@@ -442,7 +442,7 @@ class ImageDistGitRepo(DistGitRepo):
         Generates a repo file in .oit/repo.conf
         """
 
-        self.logger.debug("Generating repo file for Dockerfile {}".format(self.metadata.name))
+        self.logger.debug("Generating repo file for Dockerfile {}".format(self.metadata.distgit_key))
 
         # Make our metadata directory if it does not exist
         if not os.path.isdir(".oit"):
@@ -638,7 +638,7 @@ class ImageDistGitRepo(DistGitRepo):
                         state.record_image_fail(lstate, self.metadata, str(ex), self.runtime.logger)
 
                     record["message"] = "Exception occurred: %s" % str(ex)
-                    self.logger.info("Error pushing %s: %s" % (self.metadata.name, ex))
+                    self.logger.info("Error pushing %s: %s" % (self.metadata.distgit_key, ex))
                     raise
 
                 finally:
@@ -704,7 +704,7 @@ class ImageDistGitRepo(DistGitRepo):
         record = {
             "dir": self.distgit_dir,
             "dockerfile": "%s/Dockerfile" % self.distgit_dir,
-            "distgit": self.metadata.name,
+            "distgit": self.metadata.distgit_key,
             "image": self.org_image_name,
             "owners": ",".join(list(self.config.owners) if self.config.owners is not Missing else []),
             "version": self.org_version,
@@ -952,7 +952,7 @@ class ImageDistGitRepo(DistGitRepo):
         return True
 
     def _logs_dir(self, task_id=None):
-        segments = [self.runtime.brew_logs_dir, self.metadata.name]
+        segments = [self.runtime.brew_logs_dir, self.metadata.distgit_key]
         if task_id is not None:
             segments.append("noarch-" + task_id)
         return os.path.join(*segments)
@@ -989,7 +989,7 @@ class ImageDistGitRepo(DistGitRepo):
         :param pkg_name: Missing packages like: No package (.*) available
         """
         with self.runtime.mutex:
-            self.runtime.missing_pkgs.add("{} image is missing package {}".format(self.metadata.name, pkg_name))
+            self.runtime.missing_pkgs.add("{} image is missing package {}".format(self.metadata.distgit_key, pkg_name))
 
     def _detect_permanent_build_failures(self, scanner):
         """
@@ -1339,14 +1339,14 @@ class ImageDistGitRepo(DistGitRepo):
         registry = csv_config['registry'].rstrip("/")
         refs = os.path.join(manifests, 'image-references')
         if not os.path.isfile(refs):
-            raise DoozerFatalError('{}: file does not exist: {}'.format(self.name, refs))
+            raise DoozerFatalError('{}: file does not exist: {}'.format(self.metadata.distgit_key, refs))
         with open(refs, 'r') as f_ref:
             ref_data = yaml.full_load(f_ref)
 
         with Dir(manifests):
             csvs = glob.glob('*.clusterserviceversion.yaml')
             if len(csvs) != 1:
-                raise DoozerFatalError('{}: Must be exactly one *.clusterserviceversion.yaml file but found more than one or none @ {}'.format(self.name, manifests))
+                raise DoozerFatalError('{}: Must be exactly one *.clusterserviceversion.yaml file but found more than one or none @ {}'.format(self.metadata.distgit_key, manifests))
             csv = os.path.join(manifests, csvs[0])
 
         image_refs = ref_data.get('spec', {}).get('tags', {})
@@ -1359,7 +1359,7 @@ class ImageDistGitRepo(DistGitRepo):
                 name = 'openshift/ose-' + ref['name']
                 spec = ref['from']['name']
             except:
-                raise DoozerFatalError('Error loading image-references data for {}'.format(self.name))
+                raise DoozerFatalError('Error loading image-references data for {}'.format(self.metadata.distgit_key))
 
             try:
                 if name == self.metadata.image_name_short:  # ref is current image
@@ -1489,7 +1489,7 @@ class ImageDistGitRepo(DistGitRepo):
                         branch = out.strip()
                         url = '{}/tree/{}/{}'.format(url, branch, self.config.content.source.path)
                     raise DoozerFatalError('{}:{} does not exist in @ {}{}'
-                                           .format(self.name, dockerfile_name, url, options))
+                                           .format(self.metadata.distgit_key, dockerfile_name, url, options))
                 os.rename(dockerfile_name, "Dockerfile")
             except OSError as err:
                 raise DoozerFatalError(err.message)
@@ -1590,7 +1590,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         self.logger.debug(
             "About to start modifying Dockerfile [%s]:\n%s\n" %
-            (self.metadata.name, dockerfile_data))
+            (self.metadata.distgit_key, dockerfile_data))
 
         for modification in self.config.content.source.modifications:
             if modification.action == "replace":
@@ -1604,7 +1604,7 @@ class ImageDistGitRepo(DistGitRepo):
                 dockerfile_data = pre.replace(match, replacement)
                 if dockerfile_data == pre:
                     raise DoozerFatalError("{}: Replace ({}->{}) modification did not make a change to the Dockerfile content"
-                                           .format(self.name, match, replacement))
+                                           .format(self.metadata.distgit_key, match, replacement))
                 self.logger.debug(
                     "Performed string replace '%s' -> '%s':\n%s\n" %
                     (match, replacement, dockerfile_data))
