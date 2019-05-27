@@ -2,7 +2,7 @@ import tempfile
 import re
 
 import flexmock
-from mock import Mock
+from mock import Mock, patch
 from .test_distgit import TestDistgit
 from .mocks import *
 
@@ -46,6 +46,190 @@ class TestImageDistGit(TestDistgit):
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         self.assertEqual("config-method", repo.image_build_method)
+
+    def test_push_image_is_late_push(self):
+        metadata = Mock()
+        metadata.config.push.late = True
+        metadata.distgit_key = "distgit_key"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+
+        expected = ("distgit_key", True)
+        actual = repo.push_image([], "push_to_defaults")
+        self.assertEqual(expected, actual)
+
+    def test_push_image_nothing_to_push(self):
+        metadata = Mock()
+        metadata.config.push.late = distgit.Missing
+        metadata.distgit_key = "distgit_key"
+        metadata.get_default_push_names.return_value = []
+        metadata.get_additional_push_names.return_value = []
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        push_to_defaults = False
+
+        expected = ("distgit_key", True)
+        actual = repo.push_image([], push_to_defaults)
+        self.assertEqual(expected, actual)
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.mkdir", return_value=None)
+    @patch("distgit.os.path.isdir", return_value=True)
+    @patch("distgit.os.path.isfile", return_value=True)
+    @patch("distgit.os.remove", return_value=None)
+    @patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
+    @patch("__builtin__.open")
+    def test_push_image_to_defaults(self, open_mock, _, __, ___, ____, _____, ______):
+        open_mock.write.return_value = None
+        metadata = Mock()
+        metadata.config.push.late = distgit.Missing
+        metadata.get_default_push_names.return_value = ["my-default-name"]
+        metadata.get_additional_push_names.return_value = []
+        metadata.distgit_key = "my-distgit-key"
+        metadata.config.name = "my-name"
+        metadata.config.namespace = "my-namespace"
+        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
+        metadata.runtime.group_config.insecure_source = False
+        metadata.runtime.working_dir = "my-working-dir"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        tag_list = ["tag-a", "tag-b"]
+        push_to_defaults = True
+
+        expected = ("my-distgit-key", True)
+        actual = repo.push_image(tag_list,
+                                 push_to_defaults,
+                                 version_release_tuple=("version", "release"))
+        self.assertEqual(expected, actual)
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.mkdir", return_value=None)
+    @patch("distgit.os.path.isdir", return_value=True)
+    @patch("distgit.os.path.isfile", return_value=True)
+    @patch("distgit.os.remove", return_value=None)
+    @patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
+    @patch("__builtin__.open")
+    def test_push_image_without_version_release_tuple(self, open_mock, _, __, ___, ____, _____, ______):
+        open_mock.write.return_value = None
+        metadata = Mock()
+        metadata.config.push.late = distgit.Missing
+        metadata.get_default_push_names.return_value = ["my-default-name"]
+        metadata.get_additional_push_names.return_value = []
+        metadata.distgit_key = "my-distgit-key"
+        metadata.config.name = "my-name"
+        metadata.config.namespace = "my-namespace"
+        metadata.get_latest_build_info.return_value = ("_", "my-version", "my-release")
+        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
+        metadata.runtime.group_config.insecure_source = False
+        metadata.runtime.working_dir = "my-working-dir"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        tag_list = ["tag-a", "tag-b"]
+        push_to_defaults = True
+
+        expected = ("my-distgit-key", True)
+        actual = repo.push_image(tag_list,
+                                 push_to_defaults)
+        self.assertEqual(expected, actual)
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.mkdir", return_value=None)
+    @patch("distgit.os.path.isdir", return_value=True)
+    @patch("distgit.os.path.isfile", return_value=True)
+    @patch("distgit.os.remove", return_value=None)
+    @patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
+    @patch("__builtin__.open")
+    def test_push_image_dry_run(self, open_mock, _, __, ___, ____, _____, ______):
+        open_mock.write.return_value = None
+        metadata = Mock()
+        metadata.config.push.late = distgit.Missing
+        metadata.get_default_push_names.return_value = ["my-default-name"]
+        metadata.get_additional_push_names.return_value = []
+        metadata.distgit_key = "my-distgit-key"
+        metadata.config.name = "my-name"
+        metadata.config.namespace = "my-namespace"
+        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
+        metadata.runtime.group_config.insecure_source = False
+        metadata.runtime.working_dir = "my-working-dir"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        tag_list = ["tag-a", "tag-b"]
+        push_to_defaults = True
+
+        expected = ("my-distgit-key", True)
+        actual = repo.push_image(tag_list,
+                                 push_to_defaults,
+                                 version_release_tuple=("version", "release"),
+                                 dry_run=True)
+        self.assertEqual(expected, actual)
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.mkdir", return_value=None)
+    @patch("distgit.os.path.isdir", return_value=True)
+    @patch("distgit.os.path.isfile", return_value=True)
+    @patch("distgit.os.remove", return_value=None)
+    @patch("distgit.time.sleep", return_value=None)
+    @patch("distgit.exectools.cmd_gather", return_value=(1, "", "stderr"))
+    @patch("__builtin__.open")
+    def test_push_image_to_defaults_fail_mirroring(self, open_mock, _, __, ___, ____, _____, ______, _______):
+        open_mock.write.return_value = None
+        metadata = Mock()
+        metadata.config.push.late = distgit.Missing
+        metadata.get_default_push_names.return_value = ["my-default-name"]
+        metadata.get_additional_push_names.return_value = []
+        metadata.distgit_key = "my-distgit-key"
+        metadata.config.name = "my-name"
+        metadata.config.namespace = "my-namespace"
+        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
+        metadata.runtime.group_config.insecure_source = False
+        metadata.runtime.working_dir = "my-working-dir"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        tag_list = ["tag-a", "tag-b"]
+        push_to_defaults = True
+        version_release_tuple = ("version", "release")
+
+        try:
+            repo.push_image(tag_list,
+                            push_to_defaults,
+                            version_release_tuple=version_release_tuple)
+            self.fail("Should have raised an exception, but didn't")
+        except IOError as e:
+            expected_msg = "Error pushing image: stderr"
+            self.assertEqual(expected_msg, e.message)
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.mkdir", return_value=None)
+    @patch("distgit.os.path.isdir", return_value=True)
+    @patch("distgit.os.path.isfile", return_value=True)
+    @patch("distgit.os.remove", return_value=None)
+    @patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
+    @patch("__builtin__.open")
+    def test_push_image_insecure_source(self, open_mock, cmd_gather_mock, __, ___, ____, _____, ______):
+        open_mock.write.return_value = None
+        metadata = Mock()
+        metadata.config.push.late = distgit.Missing
+        metadata.get_default_push_names.return_value = ["my-default-name"]
+        metadata.get_additional_push_names.return_value = []
+        metadata.distgit_key = "my-distgit-key"
+        metadata.config.name = "my-name"
+        metadata.config.namespace = "my-namespace"
+        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
+        metadata.runtime.group_config.insecure_source = True
+        metadata.runtime.working_dir = "my-working-dir"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        tag_list = ["tag-a", "tag-b"]
+        push_to_defaults = True
+
+        expected = ("my-distgit-key", True)
+        actual = repo.push_image(tag_list,
+                                 push_to_defaults,
+                                 version_release_tuple=("version", "release"))
+        self.assertEqual(expected, actual)
+
+        expected_cmd = "oc image mirror  --insecure=true --filename=my-working-dir/push/my-distgit-key"
+        cmd_gather_mock.assert_called_once_with(expected_cmd)
 
     def test_detect_permanent_build_failures(self):
         self.img_dg._logs_dir = lambda: self.logs_dir
