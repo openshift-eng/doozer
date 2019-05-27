@@ -1,9 +1,8 @@
 .PHONY: test coverage
 
 test:
-	python -m unittest discover -s tests -p '*_test.py'
+	python -m unittest discover
 
 coverage:
-	coverage run --branch --source doozerlib \
-		-m unittest discover -s tests -p '*_test.py' &&\
+	coverage run --branch --source doozerlib -m unittest discover &&\
 	coverage report -m
