@@ -2,6 +2,7 @@ import tempfile
 import re
 
 import flexmock
+from mock import Mock
 from .test_distgit import TestDistgit
 from .mocks import *
 
@@ -14,6 +15,37 @@ class TestImageDistGit(TestDistgit):
         super(TestImageDistGit, self).setUp()
         self.img_dg = distgit.ImageDistGitRepo(self.md, autoclone=False)
         self.img_dg.runtime.group_config = Model()
+
+    def test_image_build_method_default(self):
+        metadata = Mock()
+        metadata.runtime.group_config.default_image_build_method = "default-method"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config.distgit = Mock()
+        metadata.config.image_build_method = distgit.Missing
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("default-method", repo.image_build_method)
+
+    def test_image_build_method_imagebuilder(self):
+        metadata = Mock()
+        metadata.runtime.group_config.default_image_build_method = "default-method"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config["from"] = {"builder": "..."}
+        metadata.config.distgit = Mock()
+        metadata.config.image_build_method = distgit.Missing
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("imagebuilder", repo.image_build_method)
+
+    def test_image_build_method_from_config(self):
+        metadata = Mock()
+        metadata.runtime.group_config.default_image_build_method = "default-method"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config.distgit = Mock()
+        metadata.config.image_build_method = "config-method"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("config-method", repo.image_build_method)
 
     def test_detect_permanent_build_failures(self):
         self.img_dg._logs_dir = lambda: self.logs_dir
