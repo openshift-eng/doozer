@@ -9,6 +9,7 @@ COPY requirements* ./
 RUN pip install -r requirements-test.txt
 
 ENV PYTHONPATH /code/doozerlib
+ENV PYTHONDONTWRITEBYTECODE 1
 
 ENTRYPOINT ["make", "-f", ".ci/Makefile"]
 CMD ["coverage"]
