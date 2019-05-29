@@ -267,13 +267,13 @@ class TestGenericDistGit(TestDistgit):
     @patch("distgit.exectools.cmd_gather", return_value=(0, "stdout", ""))
     def test_commit_log_diff_succeeded(self, cmd_gather_mock, _):
         metadata = Mock()
-        metadata.name = "name"
+        metadata.distgit_key = "distgit-key"
         metadata.runtime.local = False
         metadata.runtime.add_distgits_diff.return_value = None
 
         repo = distgit.DistGitRepo(metadata, autoclone=False)
         repo.commit("commit msg", log_diff=True)
-        metadata.runtime.add_distgits_diff.assert_called_once_with("name", "stdout")
+        metadata.runtime.add_distgits_diff.assert_called_once_with("distgit-key", "stdout")
 
     @patch("distgit.Dir")
     @patch("distgit.exectools.cmd_gather", return_value=(0, "stdout-sha", ""))
@@ -403,7 +403,7 @@ class TestGenericDistGit(TestDistgit):
         d._add_missing_pkgs("haproxy")
 
         self.assertEqual(1, len(d.runtime.missing_pkgs))
-        self.assertIn("test image is missing package haproxy", d.runtime.missing_pkgs)
+        self.assertIn("distgit_key image is missing package haproxy", d.runtime.missing_pkgs)
 
     def test_distgit_is_recent(self):
         scan_freshness = self.dg.runtime.group_config.scan_freshness = Model()
