@@ -118,3 +118,36 @@ brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/origin-aggregated-logging:v
 
         repo.push_image([], True, dry_run=True)
         mocked_cmd_gather.assert_not_called()
+
+    @patch("distgit.Dir")
+    @patch("distgit.os.mkdir")
+    @patch("distgit.open")
+    @patch("distgit.time.sleep", return_value=None)
+    @patch("distgit.exectools.cmd_gather", return_value=(1, "stdout", "stderr"))
+    def test_oc_mirror_command_fails_more_than_10_times(self, mocked_cmd_gather, *_):
+        repo = ImageDistGitRepo(Mock(**{
+            "config.push.late": False,
+            "runtime.group_config.insecure_source": False,
+
+            "get_latest_build_info.return_value": ("name", "version", "release"),
+            "get_default_push_names.return_value": [
+                "registry.reg-aws.openshift.com:443/openshift/logging-elasticsearch5",
+                "registry.reg-aws.openshift.com:443/openshift/ose-logging-elasticsearch5",
+            ],
+            "get_additional_push_names.return_value": [],
+            "runtime.group_config.urls.brew_image_host": "brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888",
+            "get_default_push_tags.return_value": [
+                "v4.1.0-201905191700",
+                "v4.1.0",
+            ],
+            "runtime.working_dir": "/my/working/dir",
+            "distgit_key": "logging-elasticsearch5", # is it correct ?
+            "config.name": "origin-aggregated-logging",
+        }), autoclone=False)
+
+        try:
+            repo.push_image([], True)
+            self.fail("Should have raised an exception, but didn't")
+        except IOError as e:
+            self.assertEqual(10, len(mocked_cmd_gather.mock_calls))
+            self.assertEqual("Error pushing image: stderr", e.message)
