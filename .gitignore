@@ -13,6 +13,7 @@ venv
 cover
 *.egg-info
 *.csv
+.tox
 
 
 # Ignore emacs backup files
