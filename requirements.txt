@@ -7,3 +7,4 @@ requests_kerberos
 bashlex
 pydotconfig >= 0.1.4
 pygitdata >= 0.2.2
+koji
