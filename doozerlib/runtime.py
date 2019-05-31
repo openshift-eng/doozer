@@ -30,7 +30,7 @@ from model import Model, Missing
 from multiprocessing import Lock
 from repos import Repos
 import brew
-from exceptions import DoozerFatalError
+from doozerlib.exceptions import DoozerFatalError
 
 
 # Registered atexit to close out debug/record logs
