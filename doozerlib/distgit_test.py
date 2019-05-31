@@ -46,6 +46,7 @@ class SimpleMockLock(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
+
 class MockRuntime(object):
 
     def __init__(self, logger):
@@ -57,6 +58,7 @@ class MockRuntime(object):
 
     def detect_remote_source_branch(self, _):
         pass
+
 
 class MockMetadata(object):
 
@@ -73,6 +75,7 @@ class MockMetadata(object):
 
     def get_component_name(self):
         pass
+
 
 class MockScanner(object):
 
@@ -172,7 +175,7 @@ class TestImageDistGit(TestDistgit):
             re.compile("No package .* available"),
             re.compile("Failed component comparison for components:.*"),
         ]
-        scanner.files = [ "x86_64.log", "task_failed.log" ]
+        scanner.files = ["x86_64.log", "task_failed.log"]
         fails = self.img_dg._detect_permanent_build_failures(scanner)
         self.assertIn(msg1, fails)
         self.assertIn(msg2, fails)
@@ -180,7 +183,7 @@ class TestImageDistGit(TestDistgit):
     def test_detect_permanent_build_failures_borkage(self):
         scanner = MockScanner()
         scanner.matches = []
-        scanner.files = [ "x86_64.log", "task_failed.log" ]
+        scanner.files = ["x86_64.log", "task_failed.log"]
 
         self.assertIsNone(self.img_dg._detect_permanent_build_failures(scanner))
         output = self.stream.getvalue()
@@ -339,7 +342,7 @@ class TestRPMDistGit(TestDistgit):
         builds = dict(mypkg=("v1", "r1.el7"))
         self.assertTrue(self.rpm_dg._built_or_recent("v1", "r1%{?dist}", builds))
         self.assertIsNone(self.rpm_dg._built_or_recent("v2", "r1", builds))
-        
+
 
 if __name__ == "__main__":
     unittest.main()

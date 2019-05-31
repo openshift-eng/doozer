@@ -165,4 +165,3 @@ def cmd_gather(cmd, set_env=None, realtime=False):
         "Process {}: exited with: {}\nstdout>>{}<<\nstderr>>{}<<\n".
         format(cmd_info, rc, out, err))
     return rc, out, err
-

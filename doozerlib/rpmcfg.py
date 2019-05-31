@@ -82,7 +82,10 @@ class RPMMetadata(Metadata):
         with Dir(self.source_path):
             if self.config.content.build.use_source_tito_config:
                 # just use the tito tagger to change spec and tag
-                exectools.cmd_assert(["tito", "tag", "--no-auto-changelog",
+                exectools.cmd_assert([
+                    "tito",
+                    "tag",
+                    "--no-auto-changelog",
                     "--use-version", self.version,
                     "--use-release", "{}%{{?dist}}".format(self.release)
                 ])
@@ -311,7 +314,7 @@ class RPMMetadata(Metadata):
 
         By default, the tag is pushed, then it and the commit are removed locally after the build.
         But optionally the commit can be pushed before the build, so that the actual commit released is in the source.
-	"""
+        """
         self.set_nvr(version, release)
         self.tito_setup()
         self.update_spec()

@@ -75,7 +75,7 @@ class Metadata(object):
         assert (self.config.name is not Missing)
 
         # Choose default namespace for config data
-        if meta_type is "image":
+        if meta_type == "image":
             self.namespace = "containers"
         else:
             self.namespace = "rpms"

@@ -7,6 +7,7 @@ import logutil
 
 from model import Model, Missing
 
+
 def stub_runtime():
     rt = runtime.Runtime(
         latest_parent_version=False,
@@ -14,7 +15,7 @@ def stub_runtime():
         stage=False,
         branch=None,
     )
-    rt.group_config=Model()
+    rt.group_config = Model()
     return rt
 
 
@@ -54,8 +55,7 @@ class RuntimeTestCase(unittest.TestCase):
         (flexmock(rt).
             should_receive("_get_remote_branch_ref").
             and_return(None).
-            and_return("eggs")
-        )
+            and_return("eggs"))
         self.assertEqual(("fallback_branch", "eggs"), rt.detect_remote_source_branch(source_details))
 
         # no target or fallback branch
