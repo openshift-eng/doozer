@@ -55,7 +55,7 @@ class MockMetadata(object):
         self.config = MockConfig()
         self.runtime = runtime
         self.logger = runtime.logger
-        self.name = "test"
+        self.name = None
         self.namespace = "namespace"
         self.distgit_key = "distgit_key"
 
