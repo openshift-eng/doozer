@@ -6,7 +6,7 @@ from distgit import pull_image
 from metadata import Metadata
 from model import Missing
 from pushd import Dir
-from exceptions import DoozerFatalError
+from doozerlib.exceptions import DoozerFatalError
 
 import assertion
 import logutil
