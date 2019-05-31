@@ -142,4 +142,3 @@ def check_rpm_buildroot(name, branch, arch='x86_64'):
         return result
     else:
         raise ValueError(stderr)
-

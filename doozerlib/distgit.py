@@ -717,7 +717,7 @@ class ImageDistGitRepo(DistGitRepo):
             # Status defaults to failure until explicitly set by success. This handles raised exceptions.
         }
 
-        if self.runtime.local and release is '?':
+        if self.runtime.local and release == '?':
             target_tag = self.org_version
         else:
             target_tag = "{}-{}".format(self.org_version, release)
@@ -1050,6 +1050,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         # build a list of nodes we may want to alter from the AST
         cmd_nodes = []
+
         def append_nodes_from(node):
             if node.kind in ["list", "compound"]:
                 sublist = node.parts if node.kind == "list" else node.list
@@ -1307,7 +1308,6 @@ class ImageDistGitRepo(DistGitRepo):
                 for comment in oit_comments:
                     df.write("%s %s\n" % (OIT_COMMENT_PREFIX, comment))
                 df.write(df_content)
-
 
             # remove old labels from dist-git
             for label in self.source_labels['old']:
@@ -1572,13 +1572,12 @@ class ImageDistGitRepo(DistGitRepo):
         source_alias = self.config.content.source.get('alias', os.path.basename(source_root))
 
         self.runtime.add_record("dockerfile_notify",
-            distgit=self.metadata.qualified_name,
-            image=self.config.name,
-            owners=','.join(owners),
-            source_alias=source_alias,
-            source_dockerfile_subpath=source_dockerfile_subpath,
-            dockerfile=os.path.abspath("Dockerfile"),
-        )
+                                distgit=self.metadata.qualified_name,
+                                image=self.config.name,
+                                owners=','.join(owners),
+                                source_alias=source_alias,
+                                source_dockerfile_subpath=source_dockerfile_subpath,
+                                dockerfile=os.path.abspath("Dockerfile"))
 
     def _run_modifications(self):
         """

@@ -867,7 +867,7 @@ class Runtime(object):
         Not Valid:
           1, v1..2, av3.4, .v12  .99.12, v13-55
         """
-        return re.match("^v\d+((\.\d+)+)?$", version) is not None
+        return re.match(r"^v\d+((\.\d+)+)?$", version) is not None
 
     @classmethod
     def _parallel_exec(self, f, args, n_threads):
@@ -924,7 +924,7 @@ class Runtime(object):
             for line in output.strip().split("\n")
             if line.strip()
         ]
-        return { n: (v, r) for n, v, r in builds }
+        return {n: (v, r) for n, v, r in builds}
 
     def scan_distgit_sources(self):
         builds = self.builds_for_group_branch()  # query for builds only once
