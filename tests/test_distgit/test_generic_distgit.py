@@ -157,6 +157,71 @@ class TestGenericDistGit(TestDistgit):
         ).split(" ")
         cmd_assert_mock.assert_called_once_with(expected_cmd, retries=mock.ANY)
 
+    @mock.patch("distgit.os.path.isfile", return_value=False)
+    @mock.patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_merge_branch(self, cmd_assert_mock, _):
+        metadata = mock.Mock()
+        metadata.logger.info.return_value = None
+        metadata.config.distgit.branch = "my-branch"
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.merge_branch("my-target")
+
+        expected_cmd_calls = [
+            mock.call(["rhpkg", "switch-branch", "my-target"], retries=mock.ANY),
+            mock.call(cmd=["git", "merge", "--allow-unrelated-histories", "-m", "Merge branch my-branch into my-target", "my-branch"],
+                      on_retry=["git", "reset", "--hard", "my-target"],
+                      retries=mock.ANY)
+        ]
+        self.assertEqual(expected_cmd_calls, cmd_assert_mock.mock_calls)
+
+        expected_log_calls = [
+            mock.call("Switching to branch: my-target"),
+            mock.call("Merging source branch history over current branch"),
+        ]
+        self.assertEqual(expected_log_calls, metadata.logger.info.mock_calls)
+
+    @mock.patch("distgit.os.path.isfile", return_value=False)
+    @mock.patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_merge_branch_allow_overwrite(self, cmd_assert_mock, _):
+        metadata = mock.Mock()
+        metadata.logger.info.return_value = None
+        metadata.config.distgit.branch = "my-branch"
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.merge_branch("my-target", allow_overwrite=True)
+
+        expected_cmd_calls = [
+            mock.call(["rhpkg", "switch-branch", "my-target"], retries=mock.ANY),
+            mock.call(cmd=["git", "merge", "--allow-unrelated-histories", "-m", "Merge branch my-branch into my-target", "my-branch"],
+                      on_retry=["git", "reset", "--hard", "my-target"],
+                      retries=mock.ANY)
+        ]
+        self.assertEqual(expected_cmd_calls, cmd_assert_mock.mock_calls)
+
+        expected_log_calls = [
+            mock.call("Switching to branch: my-target"),
+            mock.call("Merging source branch history over current branch"),
+        ]
+        self.assertEqual(expected_log_calls, metadata.logger.info.mock_calls)
+
+    @mock.patch("distgit.os.path.isfile", return_value=True)
+    @mock.patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_merge_branch_dockerfile_or_oit_dir_already_present(self, *_):
+        metadata = mock.Mock()
+        metadata.config.distgit.branch = "my-branch"
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        try:
+            repo.merge_branch("my-target")
+            self.fail()
+        except IOError as e:
+            expected_msg = ("Unable to continue merge. "
+                            "Dockerfile found in target branch. "
+                            "Use --allow-overwrite to force.")
+            self.assertEqual(expected_msg, e.message)
+
     def test_logging(self):
         """
         Ensure that logs work
