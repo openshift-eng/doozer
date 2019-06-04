@@ -222,6 +222,24 @@ class TestGenericDistGit(TestDistgit):
                             "Use --allow-overwrite to force.")
             self.assertEqual(expected_msg, e.message)
 
+    @mock.patch("distgit.assertion.isdir", return_value=True)
+    def test_source_path(self, _):
+        metadata = mock.Mock()
+        metadata.runtime.resolve_source.return_value = "source-root"
+        metadata.config.content.source.path = "sub-path"
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        self.assertEqual("source-root/sub-path", repo.source_path())
+
+    @mock.patch("distgit.assertion.isdir", return_value=True)
+    def test_source_path_without_sub_path(self, _):
+        metadata = mock.Mock()
+        metadata.runtime.resolve_source.return_value = "source-root"
+        metadata.config.content.source.path = distgit.Missing
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        self.assertEqual("source-root", repo.source_path())
+
     def test_logging(self):
         """
         Ensure that logs work
