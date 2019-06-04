@@ -67,6 +67,12 @@ class TestRPMDistGit(TestDistgit):
         self.assertTrue(self.rpm_dg._built_or_recent("v1", "r1%{?dist}", builds))
         self.assertIsNone(self.rpm_dg._built_or_recent("v2", "r1", builds))
 
+    def test_pkg_build_or_recent_with_no_builds(self):
+        flexmock(self.rpm_dg).should_receive("release_is_recent").and_return(None)
+
+        builds = dict()
+        self.assertIsNone(self.rpm_dg._built_or_recent("v1", "r1", builds))
+
 
 if __name__ == "__main__":
     unittest.main()
