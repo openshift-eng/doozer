@@ -262,6 +262,9 @@ class DistGitRepo(object):
         )
         return False
 
+    def _read_master_data(self):
+        pass
+
 
 class ImageDistGitRepo(DistGitRepo):
 
