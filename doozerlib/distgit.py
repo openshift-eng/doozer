@@ -147,8 +147,6 @@ class DistGitRepo(object):
                     # Clone the distgit repository. Occasional flakes in clone, so use retry.
                     exectools.cmd_assert(cmd_list, retries=3)
 
-            self._read_master_data()
-
     def merge_branch(self, target, allow_overwrite=False):
         self.logger.info('Switching to branch: {}'.format(target))
         exectools.cmd_assert(["rhpkg", "switch-branch", target], retries=3)
@@ -262,9 +260,6 @@ class DistGitRepo(object):
         )
         return False
 
-    def _read_master_data(self):
-        pass
-
 
 class ImageDistGitRepo(DistGitRepo):
 
@@ -286,6 +281,10 @@ class ImageDistGitRepo(DistGitRepo):
         self.build_lock = Lock()
         self.build_lock.acquire()
         self.logger = metadata.logger
+
+    def clone(self, distgits_root_dir, distgit_branch):
+        super(ImageDistGitRepo, self).clone(distgits_root_dir, distgit_branch)
+        self._read_master_data()
 
     @property
     def image_build_method(self):
