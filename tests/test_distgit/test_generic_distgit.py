@@ -337,6 +337,56 @@ class TestGenericDistGit(TestDistgit):
                             "Failure fetching commit SHA for my-distgit-dir")
             self.assertEqual(expected_msg, e.message)
 
+    @mock.patch("distgit.exectools.cmd_gather", return_value=None)
+    def test_tag_local(self, cmd_gather_mock):
+        metadata = mock.Mock()
+        metadata.runtime.local = True
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        self.assertEqual("", repo.tag("my-version", "my-release"))
+        self.assertFalse(cmd_gather_mock.called)
+
+    @mock.patch("distgit.exectools.cmd_gather", return_value=None)
+    def test_tag_no_version(self, cmd_gather_mock):
+        metadata = mock.Mock()
+        metadata.runtime.local = False
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        self.assertIsNone(repo.tag(None, "my-release"))
+        self.assertFalse(cmd_gather_mock.called)
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=None)
+    def test_tag_no_release(self, cmd_gather_mock, _):
+        metadata = mock.Mock()
+        metadata.runtime.local = False
+        metadata.logger.info.return_value = None
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        repo.tag("my-version", None)
+
+        expected_cmd = ["git", "tag", "-f", "my-version", "-m", "my-version"]
+        cmd_gather_mock.assert_called_once_with(expected_cmd)
+
+        expected_log = "Adding tag to local repo: my-version"
+        metadata.logger.info.assert_called_once_with(expected_log)
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=None)
+    def test_tag_with_release(self, cmd_gather_mock, _):
+        metadata = mock.Mock()
+        metadata.runtime.local = False
+        metadata.logger.info.return_value = None
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        repo.tag("my-version", "my-release")
+
+        expected_cmd = ["git", "tag", "-f", "my-version-my-release", "-m", "my-version-my-release"]
+        cmd_gather_mock.assert_called_once_with(expected_cmd)
+
+        expected_log = "Adding tag to local repo: my-version-my-release"
+        metadata.logger.info.assert_called_once_with(expected_log)
+
     def test_logging(self):
         """
         Ensure that logs work
