@@ -30,14 +30,13 @@ class TestGenericDistGit(TestDistgit):
 
         self.assertIn(msg, actual)
 
-    @unittest.skip("assertion failing, check if desired behavior changed")
     def test_add_missing_pkgs_succeed(self):
         md = MockMetadata(MockRuntime(self.logger))
         d = distgit.ImageDistGitRepo(md, autoclone=False)
         d._add_missing_pkgs("haproxy")
 
         self.assertEqual(1, len(d.runtime.missing_pkgs))
-        self.assertIn("test image is missing package haproxy", d.runtime.missing_pkgs)
+        self.assertIn("distgit_key image is missing package haproxy", d.runtime.missing_pkgs)
 
     def test_distgit_is_recent(self):
         scan_freshness = self.dg.runtime.group_config.scan_freshness = Model()
