@@ -1,6 +1,7 @@
 import unittest
 
 import flexmock
+import mock
 
 import distgit
 from model import Model
@@ -13,6 +14,18 @@ class TestRPMDistGit(TestDistgit):
         super(TestRPMDistGit, self).setUp()
         self.rpm_dg = distgit.RPMDistGitRepo(self.md, autoclone=False)
         self.rpm_dg.runtime.group_config = Model()
+
+    def test_init_with_missing_source_specfile(self):
+        metadata = mock.Mock()
+        metadata.config.content.source.specfile = distgit.Missing
+
+        try:
+            distgit.RPMDistGitRepo(metadata, autoclone=False)
+            self.fail("Should have raised a ValueError")
+        except ValueError as e:
+            expected = "Must specify spec file name for RPMs."
+            actual = e.message
+            self.assertEqual(expected, actual)
 
     def test_pkg_find_in_spec(self):
         """ Test RPMDistGitRepo._find_in_spec """
