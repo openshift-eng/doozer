@@ -1716,11 +1716,6 @@ class RPMDistGitRepo(DistGitRepo):
         if self.source.specfile is Missing:
             raise ValueError('Must specify spec file name for RPMs.')
 
-    def _read_master_data(self):
-        with Dir(self.distgit_dir):
-            # Read in information about the rpm we are about to build
-            pass  # placeholder for now. nothing to read
-
     def _find_in_spec(self, spec, regex, desc):
         match = re.search(regex, spec)
         if match:
