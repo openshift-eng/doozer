@@ -240,6 +240,103 @@ class TestGenericDistGit(TestDistgit):
 
         self.assertEqual("source-root", repo.source_path())
 
+    @mock.patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_commit_local(self, cmd_assert_mock):
+        metadata = mock.Mock()
+        metadata.runtime.local = True
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        self.assertEqual("", repo.commit("commit msg"))
+        self.assertFalse(cmd_assert_mock.called)
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=(1, "", ""))
+    def test_commit_log_diff_failed(self, cmd_gather_mock, _):
+        metadata = mock.Mock()
+        metadata.runtime.local = False
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        try:
+            repo.commit("commit msg", log_diff=True)
+            self.fail()
+        except IOError as e:
+            expected_msg = ("Command returned non-zero exit status: "
+                            "Failed fetching distgit diff")
+            self.assertEqual(expected_msg, e.message)
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "stdout", ""))
+    def test_commit_log_diff_succeeded(self, cmd_gather_mock, _):
+        metadata = mock.Mock()
+        metadata.distgit_key = "distgit_key"
+        metadata.runtime.local = False
+        metadata.runtime.add_distgits_diff.return_value = None
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.commit("commit msg", log_diff=True)
+        metadata.runtime.add_distgits_diff.assert_called_once_with("distgit_key", "stdout")
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "stdout-sha", ""))
+    @mock.patch("distgit.exectools.cmd_assert")
+    def test_commit_with_source_sha(self, cmd_assert_mock, *_):
+        metadata = mock.Mock()
+        metadata.name = "name"
+        metadata.runtime.local = False
+        metadata.runtime.add_distgits_diff.return_value = None
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        # @TODO: find out how/when source_sha gets assigned
+        repo.source_sha = "my-source-sha"
+
+        self.assertEqual("stdout-sha", repo.commit("commit msg"))
+
+        expected_cmd_calls = [
+            mock.call(["git", "add", "-A", "."]),
+            mock.call(["git", "commit", "--allow-empty", "-m", "commit msg - my-source-sha\n- MaxFileSize: 50000000"]),
+        ]
+        self.assertEqual(expected_cmd_calls, cmd_assert_mock.mock_calls)
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "stdout-sha", ""))
+    @mock.patch("distgit.exectools.cmd_assert")
+    def test_commit_without_source_sha(self, cmd_assert_mock, *_):
+        metadata = mock.Mock()
+        metadata.name = "name"
+        metadata.runtime.local = False
+        metadata.runtime.add_distgits_diff.return_value = None
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+
+        self.assertEqual("stdout-sha", repo.commit("commit msg"))
+
+        expected_cmd_calls = [
+            mock.call(["git", "add", "-A", "."]),
+            mock.call(["git", "commit", "--allow-empty", "-m", "commit msg\n- MaxFileSize: 50000000"]),
+        ]
+        self.assertEqual(expected_cmd_calls, cmd_assert_mock.mock_calls)
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=(1, "stdout-sha", ""))
+    @mock.patch("distgit.exectools.cmd_assert")
+    def test_commit_failed_fetching_sha(self, cmd_assert_mock, *_):
+        metadata = mock.Mock()
+        metadata.name = "name"
+        metadata.runtime.local = False
+        metadata.runtime.add_distgits_diff.return_value = None
+
+        repo = distgit.DistGitRepo(metadata, autoclone=False)
+        repo.distgit_dir = "my-distgit-dir"
+
+        try:
+            repo.commit("commit msg")
+            self.fail()
+        except IOError as e:
+            expected_msg = ("Command returned non-zero exit status: "
+                            "Failure fetching commit SHA for my-distgit-dir")
+            self.assertEqual(expected_msg, e.message)
+
     def test_logging(self):
         """
         Ensure that logs work
