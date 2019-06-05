@@ -29,6 +29,37 @@ class TestImageDistGit(TestDistgit):
 
         repo._read_master_data.assert_called_once()
 
+    def test_image_build_method_default(self):
+        metadata = mock.Mock()
+        metadata.runtime.group_config.default_image_build_method = "default-method"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config.distgit = mock.Mock()
+        metadata.config.image_build_method = distgit.Missing
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("default-method", repo.image_build_method)
+
+    def test_image_build_method_imagebuilder(self):
+        metadata = mock.Mock()
+        metadata.runtime.group_config.default_image_build_method = "default-method"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config["from"] = {"builder": "..."}
+        metadata.config.distgit = mock.Mock()
+        metadata.config.image_build_method = distgit.Missing
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("imagebuilder", repo.image_build_method)
+
+    def test_image_build_method_from_config(self):
+        metadata = mock.Mock()
+        metadata.runtime.group_config.default_image_build_method = "default-method"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config.distgit = mock.Mock()
+        metadata.config.image_build_method = "config-method"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("config-method", repo.image_build_method)
+
     def test_detect_permanent_build_failures(self):
         self.img_dg._logs_dir = lambda: self.logs_dir
         task_dir = tempfile.mkdtemp(dir=self.logs_dir)
