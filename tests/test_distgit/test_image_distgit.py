@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 import flexmock
+import mock
 
 import distgit
 from model import Model
@@ -15,6 +16,109 @@ class TestImageDistGit(TestDistgit):
         super(TestImageDistGit, self).setUp()
         self.img_dg = distgit.ImageDistGitRepo(self.md, autoclone=False)
         self.img_dg.runtime.group_config = Model()
+
+    @mock.patch("distgit.DistGitRepo.clone", return_value=None)
+    def test_clone_invokes_read_master_data(self, *_):
+        """
+        Mocking `clone` method of parent class, since we are only interested
+        in validating that `_read_master_data` is called in the child class.
+        """
+        repo = distgit.ImageDistGitRepo(mock.Mock(), autoclone=False)
+        repo._read_master_data = mock.Mock()
+        repo.clone("distgits_root_dir", "distgit_branch")
+
+        repo._read_master_data.assert_called_once()
+
+    def test_image_build_method_default(self):
+        metadata = mock.Mock()
+        metadata.runtime.group_config.default_image_build_method = "default-method"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config.distgit = mock.Mock()
+        metadata.config.image_build_method = distgit.Missing
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("default-method", repo.image_build_method)
+
+    def test_image_build_method_imagebuilder(self):
+        metadata = mock.Mock()
+        metadata.runtime.group_config.default_image_build_method = "default-method"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config["from"] = {"builder": "..."}
+        metadata.config.distgit = mock.Mock()
+        metadata.config.image_build_method = distgit.Missing
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("imagebuilder", repo.image_build_method)
+
+    def test_image_build_method_from_config(self):
+        metadata = mock.Mock()
+        metadata.runtime.group_config.default_image_build_method = "default-method"
+        metadata.config = type("MyConfig", (dict,), {})()
+        metadata.config.distgit = mock.Mock()
+        metadata.config.image_build_method = "config-method"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("config-method", repo.image_build_method)
+
+    def test_wait_for_build_with_build_status_true(self):
+        metadata = mock.Mock()
+        metadata.qualified_name = "my-qualified-name"
+        info_log = mock.Mock(return_value=None)
+        metadata.logger.info = info_log
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        repo.build_lock = mock.MagicMock()  # we don't want tests to be blocked
+        repo.build_status = True
+
+        repo.wait_for_build("i-am-waiting")
+
+        expected_info_log_calls = [
+            mock.call("Member waiting for me to build: i-am-waiting"),
+            mock.call("Member successfully waited for me to build: i-am-waiting"),
+        ]
+        self.assertEqual(expected_info_log_calls, info_log.mock_calls)
+
+    def test_wait_for_build_with_build_status_false(self):
+        metadata = mock.Mock()
+        metadata.qualified_name = "my-qualified-name"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        repo.build_lock = mock.MagicMock()  # we don't want tests to be blocked
+        repo.build_status = False
+
+        try:
+            repo.wait_for_build("i-am-waiting")
+            self.fail("Should have raised IOError")
+        except IOError as e:
+            expected = "Error building image: my-qualified-name (i-am-waiting was waiting)"
+            actual = e.message
+            self.assertEqual(expected, actual)
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=None)
+    @mock.patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_push(self, cmd_assert_mock, cmd_gather_mock, *_):
+        metadata = mock.Mock()
+        metadata.runtime.global_opts = {"rhpkg_push_timeout": 999}
+
+        expected = (metadata, True)
+        actual = distgit.ImageDistGitRepo(metadata, autoclone=False).push()
+
+        self.assertEqual(expected, actual)
+        cmd_assert_mock.assert_called_once_with("timeout 999 rhpkg push", retries=mock.ANY)
+        cmd_gather_mock.assert_called_once_with(["timeout", "60", "git", "push", "--tags"])
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=None)
+    @mock.patch("distgit.exectools.cmd_assert", side_effect=IOError("io-error"))
+    def test_push_with_io_error(self, cmd_assert_mock, cmd_gather_mock, *_):
+        metadata = mock.Mock()
+        metadata.runtime.global_opts = {"rhpkg_push_timeout": mock.ANY}
+
+        expected = (metadata, "IOError('io-error',)")
+        actual = distgit.ImageDistGitRepo(metadata, autoclone=False).push()
+
+        self.assertEqual(expected, actual)
 
     def test_detect_permanent_build_failures(self):
         self.img_dg._logs_dir = lambda: self.logs_dir
