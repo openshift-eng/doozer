@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 import flexmock
+import mock
 
 import distgit
 from model import Model
@@ -15,6 +16,18 @@ class TestImageDistGit(TestDistgit):
         super(TestImageDistGit, self).setUp()
         self.img_dg = distgit.ImageDistGitRepo(self.md, autoclone=False)
         self.img_dg.runtime.group_config = Model()
+
+    @mock.patch("distgit.DistGitRepo.clone", return_value=None)
+    def test_clone_invokes_read_master_data(self, *_):
+        """
+        Mocking `clone` method of parent class, since we are only interested
+        in validating that `_read_master_data` is called in the child class.
+        """
+        repo = distgit.ImageDistGitRepo(mock.Mock(), autoclone=False)
+        repo._read_master_data = mock.Mock()
+        repo.clone("distgits_root_dir", "distgit_branch")
+
+        repo._read_master_data.assert_called_once()
 
     def test_detect_permanent_build_failures(self):
         self.img_dg._logs_dir = lambda: self.logs_dir
