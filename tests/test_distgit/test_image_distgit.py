@@ -60,6 +60,40 @@ class TestImageDistGit(TestDistgit):
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         self.assertEqual("config-method", repo.image_build_method)
 
+    def test_wait_for_build_with_build_status_true(self):
+        metadata = mock.Mock()
+        metadata.qualified_name = "my-qualified-name"
+        info_log = mock.Mock(return_value=None)
+        metadata.logger.info = info_log
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        repo.build_lock = mock.MagicMock()  # we don't want tests to be blocked
+        repo.build_status = True
+
+        repo.wait_for_build("i-am-waiting")
+
+        expected_info_log_calls = [
+            mock.call("Member waiting for me to build: i-am-waiting"),
+            mock.call("Member successfully waited for me to build: i-am-waiting"),
+        ]
+        self.assertEqual(expected_info_log_calls, info_log.mock_calls)
+
+    def test_wait_for_build_with_build_status_false(self):
+        metadata = mock.Mock()
+        metadata.qualified_name = "my-qualified-name"
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        repo.build_lock = mock.MagicMock()  # we don't want tests to be blocked
+        repo.build_status = False
+
+        try:
+            repo.wait_for_build("i-am-waiting")
+            self.fail("Should have raised IOError")
+        except IOError as e:
+            expected = "Error building image: my-qualified-name (i-am-waiting was waiting)"
+            actual = e.message
+            self.assertEqual(expected, actual)
+
     def test_detect_permanent_build_failures(self):
         self.img_dg._logs_dir = lambda: self.logs_dir
         task_dir = tempfile.mkdtemp(dir=self.logs_dir)
