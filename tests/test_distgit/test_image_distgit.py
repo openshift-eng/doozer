@@ -94,6 +94,32 @@ class TestImageDistGit(TestDistgit):
             actual = e.message
             self.assertEqual(expected, actual)
 
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=None)
+    @mock.patch("distgit.exectools.cmd_assert", return_value=None)
+    def test_push(self, cmd_assert_mock, cmd_gather_mock, *_):
+        metadata = mock.Mock()
+        metadata.runtime.global_opts = {"rhpkg_push_timeout": 999}
+
+        expected = (metadata, True)
+        actual = distgit.ImageDistGitRepo(metadata, autoclone=False).push()
+
+        self.assertEqual(expected, actual)
+        cmd_assert_mock.assert_called_once_with("timeout 999 rhpkg push", retries=mock.ANY)
+        cmd_gather_mock.assert_called_once_with(["timeout", "60", "git", "push", "--tags"])
+
+    @mock.patch("distgit.Dir")
+    @mock.patch("distgit.exectools.cmd_gather", return_value=None)
+    @mock.patch("distgit.exectools.cmd_assert", side_effect=IOError("io-error"))
+    def test_push_with_io_error(self, cmd_assert_mock, cmd_gather_mock, *_):
+        metadata = mock.Mock()
+        metadata.runtime.global_opts = {"rhpkg_push_timeout": mock.ANY}
+
+        expected = (metadata, "IOError('io-error',)")
+        actual = distgit.ImageDistGitRepo(metadata, autoclone=False).push()
+
+        self.assertEqual(expected, actual)
+
     def test_detect_permanent_build_failures(self):
         self.img_dg._logs_dir = lambda: self.logs_dir
         task_dir = tempfile.mkdtemp(dir=self.logs_dir)
