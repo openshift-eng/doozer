@@ -8,7 +8,7 @@ import mock
 import distgit
 from model import Model
 
-from .support import MockScanner, TestDistgit
+from ..support import MockScanner, TestDistgit
 
 
 class TestImageDistGit(TestDistgit):
