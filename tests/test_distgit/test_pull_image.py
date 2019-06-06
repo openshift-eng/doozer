@@ -1,5 +1,5 @@
 import unittest
-import mock
+import flexmock
 import distgit
 
 
@@ -9,31 +9,38 @@ class TestDistgitPullImage(unittest.TestCase):
     Also mocking time.sleep for faster tests.
     """
 
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    def test_generate_podman_command(self, cmd_gather_mock):
+    def test_generate_podman_command(self):
         expected_cmd = ["podman", "pull", "my-image"]
 
-        distgit.pull_image("my-image")
-        cmd_gather_mock.assert_called_with(expected_cmd)
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_gather")
+            .with_args(expected_cmd)
+            .once()
+            .and_return((0, "", "")))
 
-    @mock.patch("distgit.time.sleep", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(1, "", ""))
-    def test_pull_fails_more_than_3_times(self, *_):
+        distgit.pull_image("my-image")
+
+    def test_pull_fails_more_than_3_times(self):
+        flexmock(distgit.time).should_receive("sleep").replace_with(lambda _: None)
+
+        # simulating a failed command execution
+        flexmock(distgit.exectools).should_receive("cmd_gather").and_return((1, "", ""))
+
         expected_exception = distgit.exectools.RetryException
         self.assertRaises(expected_exception, distgit.pull_image, "my-image")
 
-    @mock.patch("distgit.time.sleep", return_value=None)
-    @mock.patch("distgit.logger.info", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather")
-    def test_custom_logging(self, cmd_gather_mock, logger_info_mock, *_):
-        # pretending the cmd failed twice and succeeded on the third attempt.
-        cmd_gather_mock.side_effect = [(1, "", ""), (1, "", ""), (0, "", "")]
+    def test_custom_logging(self):
+        flexmock(distgit.time).should_receive("sleep").replace_with(lambda _: None)
 
-        expected_logging_calls = [
-            mock.call("Pulling image: my-image"),
-            mock.call("Error pulling image my-image -- retrying in 60 seconds"),
-            mock.call("Error pulling image my-image -- retrying in 60 seconds"),
-        ]
+        # pretending the cmd failed twice and succeeded on the third attempt.
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_gather")
+            .and_return((1, "", ""))
+            .and_return((1, "", ""))
+            .and_return((0, "", "")))
+
+        logger = flexmock(distgit.logger)
+        logger.should_receive("info").with_args("Pulling image: my-image").once()
+        logger.should_receive("info").with_args("Error pulling image my-image -- retrying in 60 seconds").twice()
 
         distgit.pull_image("my-image")
-        self.assertEqual(expected_logging_calls, logger_info_mock.mock_calls)
