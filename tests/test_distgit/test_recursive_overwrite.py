@@ -1,5 +1,5 @@
 import unittest
-import mock
+import flexmock
 import distgit
 
 
@@ -10,24 +10,30 @@ class TestDistgitRecursiveOverwrite(unittest.TestCase):
     string is being generated.
     """
 
-    @mock.patch("distgit.exectools.cmd_assert", return_value=None)
-    def test_without_ignore_set(self, cmd_assert_mock):
+    def test_without_ignore_set(self):
         expected_cmd = ("rsync -av "
                         " --exclude .git/ "
                         " my-source/ my-dest/")
 
-        distgit.recursive_overwrite("my-source", "my-dest")
-        cmd_assert_mock.assert_called_once_with(expected_cmd, retries=mock.ANY)
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_assert")
+            .with_args(expected_cmd, retries=3)
+            .once())
 
-    @mock.patch("distgit.exectools.cmd_assert", return_value=None)
-    def test_with_ignore_set(self, cmd_assert_mock):
+        distgit.recursive_overwrite("my-source", "my-dest")
+
+    def test_with_ignore_set(self):
         expected_cmd = ("rsync -av "
                         " --exclude .git/ "
                         " --exclude=\"ignore\" "
                         " --exclude=\"me\" "
                         " my-source/ my-dest/")
 
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_assert")
+            .with_args(expected_cmd, retries=3)
+            .once())
+
         # passing a list to ignore instead of a set, because sets are unordered,
         # making this assertion unpredictable.
         distgit.recursive_overwrite("my-source", "my-dest", ignore=["ignore", "me"])
-        cmd_assert_mock.assert_called_once_with(expected_cmd, retries=mock.ANY)

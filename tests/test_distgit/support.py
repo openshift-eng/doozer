@@ -18,9 +18,10 @@ class MockContent(object):
         self.branch = None
 
 
-class MockConfig(object):
+class MockConfig(dict):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super(MockConfig, self).__init__(*args, **kwargs)
         self.distgit = MockDistgit()
         self.content = Model()
         self.content.source = Model()

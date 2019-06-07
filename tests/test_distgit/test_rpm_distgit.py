@@ -1,7 +1,6 @@
 import unittest
 
 import flexmock
-import mock
 
 import distgit
 from model import Model
@@ -16,8 +15,11 @@ class TestRPMDistGit(TestDistgit):
         self.rpm_dg.runtime.group_config = Model()
 
     def test_init_with_missing_source_specfile(self):
-        metadata = mock.Mock()
-        metadata.config.content.source.specfile = distgit.Missing
+        metadata = flexmock(config=flexmock(content=flexmock(source=distgit.Missing),
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(branch="_irrelevant_"),
+                            name="_irrelevant_",
+                            logger="_irrelevant_")
 
         try:
             distgit.RPMDistGitRepo(metadata, autoclone=False)
