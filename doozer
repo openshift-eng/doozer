@@ -807,24 +807,25 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
 
     lstate['total'] = len(items)
 
+    if not items:
+        runtime.logger.info("No images found. Check the arguments.")
+        exit(1)
+
     if required:
         msg = 'The following images failed during the previous step and are required:\n{}'.format('\n'.join(required))
         lstate['status'] = state.STATE_FAIL
         lstate['msg'] = msg
         raise DoozerFatalError(msg)
     elif failed:
-        yellow_print('The following images failed the last step and will be skipped:\n{}'.format('\n'.join(failed)))
+        # filter out failed images and their children
+        failed = runtime.filter_failed_image_trees(failed)
+        yellow_print('The following images failed the last step (or are children of failed images) and will be skipped:\n{}'.format('\n'.join(failed)))
+        # reload after fail filtered
+        items = [m.distgit_repo() for m in runtime.ordered_image_metas()]
 
-        # filter out the failed images from previous step
-        new_items = []
-        for i in items:
-            if i.name not in failed:
-                new_items.append(i)
-        items = new_items
-
-    if not items:
-        runtime.logger.info("No images found. Check the arguments.")
-        exit(1)
+        if not items:
+            runtime.logger.info("No images left to build after failures and children filtered out.")
+            exit(1)
 
     # Without one of these two arguments, brew would not enable any repos.
     if not repo_type and not repo:
@@ -923,14 +924,15 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
         lstate['msg'] = msg
         raise DoozerFatalError(msg)
     elif pre_failed:
-        yellow_print('The following images failed the last step and will be skipped:\n{}'.format('\n'.join(pre_failed)))
+        # filter out failed images and their children
+        failed = runtime.filter_failed_image_trees(failed)
+        yellow_print('The following images failed the last step (or are children of failed images) and will be skipped:\n{}'.format('\n'.join(failed)))
+        # reload after fail filtered
+        items = [m.distgit_repo() for m in runtime.ordered_image_metas()]
 
-        # filter out the failed images from previous step
-        new_items = []
-        for i in items:
-            if i.name not in pre_failed:
-                new_items.append(i)
-        items = new_items
+        if not items:
+            runtime.logger.info("No images left to build after failures and children filtered out.")
+            exit(1)
 
     # late-only is useful if we are resuming a partial build in which not all images
     # can be built/pushed. Calling images:push can end up hitting the same

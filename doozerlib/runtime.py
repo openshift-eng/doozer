@@ -399,30 +399,7 @@ class Runtime(object):
                         if image.is_ancestor(child):
                             raise DoozerFatalError('{} cannot be both a parent and dependent of {}'.format(child.distgit_key, image.distgit_key))
 
-                self.image_tree = {}
-                image_lists = {0: []}
-
-                def add_child_branch(child, branch, level=1):
-                    if level not in image_lists:
-                        image_lists[level] = []
-                    for sub_child in child.children:
-                        branch[sub_child.distgit_key] = {}
-                        image_lists[level].append(sub_child.distgit_key)
-                        add_child_branch(sub_child, branch[sub_child.distgit_key], level + 1)
-
-                for image in self.image_map.itervalues():
-                    if not image.parent:
-                        self.image_tree[image.distgit_key] = {}
-                        image_lists[0].append(image.distgit_key)
-                        add_child_branch(image, self.image_tree[image.distgit_key])
-
-                levels = image_lists.keys()
-                levels.sort()
-                self.image_order = []
-                for l in levels:
-                    for i in image_lists[l]:
-                        if i not in self.image_order:
-                            self.image_order.append(i)
+                self.generate_image_tree()
 
             if mode in ['rpms', 'both']:
                 for r in rpm_data.itervalues():
@@ -508,6 +485,46 @@ class Runtime(object):
 
     def ordered_image_metas(self):
         return [self.image_map[dg] for dg in self.image_order]
+
+    def filter_failed_image_trees(self, failed):
+        for i in self.ordered_image_metas():
+            if i.parent and i.parent.distgit_key in failed:
+                failed.append(i.distgit_key)
+
+        for f in failed:
+            if f in self.image_map:
+                del self.image_map[f]
+
+        # regen order and tree
+        self.generate_image_tree()
+
+        return failed
+
+    def generate_image_tree(self):
+        self.image_tree = {}
+        image_lists = {0: []}
+
+        def add_child_branch(child, branch, level=1):
+            if level not in image_lists:
+                image_lists[level] = []
+            for sub_child in child.children:
+                branch[sub_child.distgit_key] = {}
+                image_lists[level].append(sub_child.distgit_key)
+                add_child_branch(sub_child, branch[sub_child.distgit_key], level + 1)
+
+        for image in self.image_map.itervalues():
+            if not image.parent:
+                self.image_tree[image.distgit_key] = {}
+                image_lists[0].append(image.distgit_key)
+                add_child_branch(image, self.image_tree[image.distgit_key])
+
+        levels = image_lists.keys()
+        levels.sort()
+        self.image_order = []
+        for l in levels:
+            for i in image_lists[l]:
+                if i not in self.image_order:
+                    self.image_order.append(i)
 
     def image_distgit_by_name(self, name):
         """Returns image meta but full name, short name, or distgit"""
