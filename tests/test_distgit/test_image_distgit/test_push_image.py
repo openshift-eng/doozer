@@ -1,8 +1,9 @@
 import errno
 import os
+import sys
 import unittest
 
-import mock
+import flexmock
 
 import distgit
 
@@ -10,9 +11,12 @@ import distgit
 class TestImageDistGitRepoPushImage(unittest.TestCase):
 
     def test_push_image_is_late_push(self):
-        metadata = mock.Mock()
-        metadata.config.push.late = True
-        metadata.distgit_key = "distgit_key"
+        metadata = flexmock(config=flexmock(push=flexmock(late=True),
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            distgit_key="distgit_key",
+                            runtime=flexmock(branch="_irrelevant_"),
+                            name="_irrelevant_",
+                            logger=flexmock(info=lambda *_: None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
 
@@ -21,11 +25,14 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         self.assertEqual(expected, actual)
 
     def test_push_image_nothing_to_push(self):
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.distgit_key = "distgit_key"
-        metadata.get_default_push_names.return_value = []
-        metadata.get_additional_push_names.return_value = []
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            distgit_key="distgit_key",
+                            get_default_push_names=lambda *_: [],
+                            get_additional_push_names=lambda *_: [],
+                            runtime=flexmock(branch="_irrelevant_"),
+                            name="_irrelevant_",
+                            logger=flexmock(info=lambda *_: None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         push_to_defaults = False
@@ -34,25 +41,37 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         actual = repo.push_image([], push_to_defaults)
         self.assertEqual(expected, actual)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", return_value=None)
-    @mock.patch("distgit.os.path.isdir", return_value=True)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    @mock.patch("__builtin__.open")
-    def test_push_image_to_defaults(self, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
+    def test_push_image_to_defaults(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+
+        # preventing tests from executing real commands
+        flexmock(distgit.exectools).should_receive("cmd_gather").and_return((0, "", ""))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             branch="_irrelevant_",
+                                             command="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None),
+                            namespace="_irrelevant_")
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]
@@ -64,56 +83,80 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                  version_release_tuple=("version", "release"))
         self.assertEqual(expected, actual)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", return_value=None)
-    @mock.patch("distgit.os.path.isdir", return_value=True)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    @mock.patch("__builtin__.open")
-    def test_push_image_without_version_release_tuple(self, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.get_latest_build_info.return_value = ("_", "my-version", "my-release")
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
+    def test_push_image_without_version_release_tuple(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+
+        # preventing tests from executing real commands
+        flexmock(distgit.exectools).should_receive("cmd_gather").and_return((0, "", ""))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             branch="_irrelevant_",
+                                             command="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            get_latest_build_info=lambda *_: ("_", "my-version", "my-release"),
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None),
+                            namespace="_irrelevant_")
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]
         push_to_defaults = True
 
         expected = ("my-distgit-key", True)
-        actual = repo.push_image(tag_list,
-                                 push_to_defaults)
+        actual = repo.push_image(tag_list, push_to_defaults)
         self.assertEqual(expected, actual)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", return_value=None)
-    @mock.patch("distgit.os.path.isdir", return_value=True)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    @mock.patch("__builtin__.open")
-    def test_push_image_no_push_tags(self, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my/default-name"]
-        metadata.get_default_push_tags.return_value = []
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
+    def test_push_image_no_push_tags(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+
+        # preventing tests from executing real commands
+        flexmock(distgit.exectools).should_receive("cmd_gather").and_return((0, "", ""))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             branch="_irrelevant_",
+                                             command="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            namespace="my-namespace",
+                            get_latest_build_info=lambda *_: ("_", "my-version", "my-release"),
+                            get_default_push_names=lambda *_: ["my/default-name"],
+                            get_default_push_tags=lambda *_: [],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = []
@@ -126,25 +169,37 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                  dry_run=True)
         self.assertEqual(expected, actual)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", return_value=None)
-    @mock.patch("distgit.os.path.isdir", return_value=True)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    @mock.patch("__builtin__.open")
-    def test_push_image_dry_run(self, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
+    def test_push_image_dry_run(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+
+        # preventing tests from executing real commands
+        flexmock(distgit.exectools).should_receive("cmd_gather").and_return((0, "", ""))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             branch="_irrelevant_",
+                                             command="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            namespace="my-namespace",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]
@@ -157,25 +212,37 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                  dry_run=True)
         self.assertEqual(expected, actual)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", return_value=None)
-    @mock.patch("distgit.os.path.isdir", return_value=False)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    @mock.patch("__builtin__.open")
-    def test_push_image_without_a_push_config_dir_previously_present(self, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
+    def test_push_image_without_a_push_config_dir_previously_present(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(False)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+
+        # preventing tests from executing real commands
+        flexmock(distgit.exectools).should_receive("cmd_gather").and_return((0, "", ""))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             branch="_irrelevant_",
+                                             command="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            namespace="my-namespace",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]
@@ -187,25 +254,39 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                  version_release_tuple=("version", "release"))
         self.assertEqual(expected, actual)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", side_effect=OSError)
-    @mock.patch("distgit.os.path.isdir", return_value=False)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    @mock.patch("__builtin__.open")
-    def test_push_image_fail_to_create_a_push_config_dir(self, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
+    def test_push_image_fail_to_create_a_push_config_dir(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os.path).should_receive("isdir").and_return(False)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+
+        # simulating an error on mkdir attempt
+        flexmock(distgit.os).should_receive("mkdir").and_raise(OSError)
+
+        # preventing tests from executing real commands
+        flexmock(distgit.exectools).should_receive("cmd_gather").and_return((0, "", ""))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             branch="_irrelevant_",
+                                             command="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            namespace="my-namespace",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]
@@ -218,24 +299,41 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                           push_to_defaults,
                           version_release_tuple=version_release_tuple)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", side_effect=OSError(errno.EEXIST, os.strerror(errno.EEXIST)))
-    @mock.patch("distgit.os.path.isdir", side_effect=[False, True])
-    @mock.patch("distgit.os.path.isfile", return_value=False)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    @mock.patch("__builtin__.open")
-    def test_push_image_push_config_dir_already_created_by_another_thread(self, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
+    def test_push_image_push_config_dir_already_created_by_another_thread(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os.path).should_receive("isdir").and_return(False).and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(False)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+
+        # simulating an "already exists" error on mkdir attempt
+        (flexmock(distgit.os)
+            .should_receive("mkdir")
+            .and_raise(OSError(errno.EEXIST, os.strerror(errno.EEXIST))))
+
+        # preventing tests from executing real commands
+        flexmock(distgit.exectools).should_receive("cmd_gather").and_return((0, "", ""))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             branch="_irrelevant_",
+                                             command="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            namespace="my-namespace",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]
@@ -247,26 +345,42 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                  version_release_tuple=("version", "release"))
         self.assertEqual(expected, actual)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", return_value=None)
-    @mock.patch("distgit.os.path.isdir", return_value=True)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.time.sleep", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(1, "", "stderr"))
-    @mock.patch("__builtin__.open")
-    def test_push_image_to_defaults_fail_mirroring(self, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
+    def test_push_image_to_defaults_fail_mirroring(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+
+        # simulating an error while executing cmd_gather
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_gather")
+            .and_return((1, "", "stderr")))
+
+        # a failed cmd_gather will try again in X seconds, we don't want to wait
+        flexmock(distgit.time).should_receive("sleep").replace_with(lambda *_: None)
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             branch="_irrelevant_",
+                                             command="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            namespace="my-namespace",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]
@@ -282,28 +396,44 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
             expected_msg = "Error pushing image: stderr"
             self.assertEqual(expected_msg, e.message)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", return_value=None)
-    @mock.patch("distgit.os.path.isdir", return_value=True)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    @mock.patch("__builtin__.open")
-    @mock.patch("doozerlib.state.record_image_success", return_value=None)
-    def test_push_image_to_defaults_with_lstate(self, record_image_success_mock, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
-        metadata.runtime.state = {"images:push": "my-runtime-state"}
-        metadata.runtime.command = "images:push"
+    def test_push_image_to_defaults_with_lstate(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+
+        # preventing tests from executing real commands
+        flexmock(distgit.exectools).should_receive("cmd_gather").and_return((0, "", ""))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             state={"images:push": "my-runtime-state"},
+                                             command="images:push",
+                                             branch="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None),
+                            namespace="_irrelevant_")
+
+        (flexmock(distgit.state)
+            .should_receive("record_image_success")
+            .with_args("my-runtime-state", metadata)
+            .once()
+            .and_return(None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]
@@ -314,34 +444,62 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                  push_to_defaults,
                                  version_release_tuple=("version", "release"))
         self.assertEqual(expected, actual)
-        record_image_success_mock.assert_called_once_with("my-runtime-state", metadata)
 
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", return_value=None)
-    @mock.patch("distgit.os.path.isdir", return_value=True)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.time.sleep", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(1, "", "stderr"))
-    @mock.patch("__builtin__.open")
-    @mock.patch("doozerlib.state.record_image_fail", return_value=None)
-    def test_push_image_to_defaults_fail_mirroring_with_lstate(self, record_image_fail_mock, open_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = False
-        metadata.runtime.working_dir = "my-working-dir"
-        metadata.runtime.state = {"images:push": "my-runtime-state"}
-        metadata.runtime.command = "images:push"
+    def test_push_image_to_defaults_fail_mirroring_with_lstate(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
 
-        logger = mock.Mock()
-        metadata.runtime.logger = logger
+        # simulating an error while executing cmd_gather
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_gather")
+            .and_return((1, "", "stderr")))
+
+        # a failed cmd_gather will try again in X seconds, we don't want to wait
+        flexmock(distgit.time).should_receive("sleep").replace_with(lambda *_: None)
+
+        logger = flexmock(info=lambda *_: None)
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=False),
+                                             working_dir="my-working-dir",
+                                             state={"images:push": "my-runtime-state"},
+                                             command="images:push",
+                                             logger=logger,
+                                             branch="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            namespace="my-namespace",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=logger)
+
+        (flexmock(distgit.state)
+            .should_receive("record_image_fail")
+            .with_args("my-runtime-state", metadata, "Build failure", logger)
+            .once()
+            .ordered()
+            .and_return(None))
+
+        expected_msg = "Error pushing image: stderr"
+
+        (flexmock(distgit.state)
+            .should_receive("record_image_fail")
+            .with_args("my-runtime-state", metadata, expected_msg, logger)
+            .once()
+            .ordered()
+            .and_return(None))
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]
@@ -354,44 +512,51 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                             version_release_tuple=version_release_tuple)
             self.fail("Should have raised an exception, but didn't")
         except IOError as e:
-            expected_msg = "Error pushing image: stderr"
             self.assertEqual(expected_msg, e.message)
 
-            expected_record_fail_calls = [
-                mock.call("my-runtime-state", metadata, "Build failure", logger),
-                mock.call("my-runtime-state", metadata, expected_msg, logger),
-            ]
-            self.assertEqual(expected_record_fail_calls, record_image_fail_mock.mock_calls)
-
-    @mock.patch("distgit.Dir")
-    @mock.patch("distgit.os.mkdir", return_value=None)
-    @mock.patch("distgit.os.path.isdir", return_value=True)
-    @mock.patch("distgit.os.path.isfile", return_value=True)
-    @mock.patch("distgit.os.remove", return_value=None)
-    @mock.patch("distgit.exectools.cmd_gather", return_value=(0, "", ""))
-    @mock.patch("__builtin__.open")
-    def test_push_image_insecure_source(self, open_mock, cmd_gather_mock, *_):
-        open_mock.write.return_value = None
-        metadata = mock.Mock()
-        metadata.config.push.late = distgit.Missing
-        metadata.get_default_push_names.return_value = ["my-default-name"]
-        metadata.get_additional_push_names.return_value = []
-        metadata.distgit_key = "my-distgit-key"
-        metadata.config.name = "my-name"
-        metadata.config.namespace = "my-namespace"
-        metadata.runtime.group_config.urls.brew_image_host = "brew-img-host"
-        metadata.runtime.group_config.insecure_source = True
-        metadata.runtime.working_dir = "my-working-dir"
-
-        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
-        tag_list = ["tag-a", "tag-b"]
-        push_to_defaults = True
-
-        expected = ("my-distgit-key", True)
-        actual = repo.push_image(tag_list,
-                                 push_to_defaults,
-                                 version_release_tuple=("version", "release"))
-        self.assertEqual(expected, actual)
+    def test_push_image_insecure_source(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(sys.modules["__builtin__"])
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
 
         expected_cmd = "oc image mirror  --insecure=true --filename=my-working-dir/push/my-distgit-key"
-        cmd_gather_mock.assert_called_once_with(expected_cmd)
+
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_gather")
+            .with_args(expected_cmd)
+            .once()
+            .and_return((0, "", "")))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
+                                                                   insecure_source=True),
+                                             working_dir="my-working-dir",
+                                             branch="_irrelevant_",
+                                             command="_irrelevant_",
+                                             add_record=lambda *_, **__: None),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None),
+                            namespace="_irrelevant_")
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        tag_list = ["tag-a", "tag-b"]
+        push_to_defaults = True
+
+        expected = ("my-distgit-key", True)
+        actual = repo.push_image(tag_list,
+                                 push_to_defaults,
+                                 version_release_tuple=("version", "release"))
+        self.assertEqual(expected, actual)
