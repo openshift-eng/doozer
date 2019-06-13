@@ -643,13 +643,13 @@ class Runtime(object):
 
     def late_resolve_image(self, distgit_name, add=False):
         """Resolve image and retrieve meta, optionally adding to image_map.
-        If add==True and image not found, error will be thrown"""
+        If image not found, error will be thrown"""
 
         if distgit_name in self.image_map:
             return self.image_map[distgit_name]
 
         data_obj = self.gitdata.load_data(path='images', key=distgit_name)
-        if add and not data_obj:
+        if not data_obj:
             raise DoozerFatalError('Unable to resovle image metadata for {}'.format(distgit_name))
 
         meta = ImageMetadata(self, data_obj)

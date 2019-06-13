@@ -45,7 +45,6 @@ class Metadata(object):
         self.meta_type = meta_type
         self.runtime = runtime
         self.data_obj = data_obj
-        self.base_dir = data_obj.base_dir
         self.config_filename = data_obj.filename
         self.full_config_path = data_obj.path
 
