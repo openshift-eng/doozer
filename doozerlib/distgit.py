@@ -1331,6 +1331,8 @@ class ImageDistGitRepo(DistGitRepo):
             return (version, release)
 
     def _update_csv(self, version, release):
+        # AMH - most of this really method shouldn't be in Doozer itself
+        # But right now there's no better way to handle it
         csv_config = self.metadata.config.get('update-csv', None)
         if not csv_config:
             return
@@ -1388,9 +1390,68 @@ class ImageDistGitRepo(DistGitRepo):
                     f.seek(0)
                     f.truncate()
                     f.write(content)
-            except Exception, e:
+            except Exception as e:
                 self.runtime.logger.error(e)
                 raise
+
+        if version.startswith('v'):
+            version = version[1:]  # strip off leading v
+
+        x, y, z = version.split('.')[0:3]
+
+        replace_args = {
+            'MAJOR': x,
+            'MINOR': y,
+            'SUBMINOR': z,
+            'RELEASE': release,
+            'FULL_VER': '{}-{}'.format(version, release)
+        }
+
+        manifests_base = os.path.join(self.distgit_dir, csv_config['manifests-dir'])
+
+        art_yaml = os.path.join(manifests_base, 'art.yaml')
+
+        if os.path.isfile(art_yaml):
+            with open(art_yaml, 'r') as art_file:
+                art_yaml_str = art_file.read()
+
+            try:
+                art_yaml_str = art_yaml_str.format(**replace_args)
+                art_yaml_data = yaml.full_load(art_yaml_str)
+            except Exception as ex:  # exception is low level, need to pull out the details and rethrow
+                raise DoozerFatalError('Error processing art.yaml!\n{}\n\n{}'.format(str(ex), art_yaml_str))
+
+            updates = art_yaml_data.get('updates', [])
+            if not isinstance(updates, list):
+                raise DoozerFatalError('`updates` key must be a list in art.yaml!')
+
+            for u in updates:
+                f = u.get('file', None)
+                u_list = u.get('update_list', [])
+                if not f:
+                    raise DoozerFatalError('No file to update specified in art.yaml')
+                if not u_list:
+                    raise DoozerFatalError('update_list empty for {} in art.yaml'.format(f))
+
+                f_path = os.path.join(manifests_base, f)
+                if not os.path.isfile(f_path):
+                    raise DoozerFatalError('{} does not exist as defined in art.yaml'.format(f_path))
+
+                self.runtime.logger.info('Updating {}'.format(f_path))
+                with open(f_path, 'r+') as sr_file:
+                    sr_file_str = sr_file.read()
+                    for sr in u_list:
+                        s = sr.get('search', None)
+                        r = sr.get('replace', None)
+                        if not s or not r:
+                            raise DoozerFatalError('Must provide `search` and `replace` fields in art.yaml `update_list`')
+
+                        sr_file_str = sr_file_str.replace(s, r)
+                    sr_file.seek(0)
+                    sr_file.truncate()
+                    sr_file.write(sr_file_str)
+
+
 
     def _reflow_labels(self, filename="Dockerfile"):
         """
