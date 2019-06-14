@@ -7,7 +7,7 @@ import unittest
 import os
 from multiprocessing.dummy import Pool
 
-import pushd
+from doozerlib import pushd
 
 
 class DirTestCase(unittest.TestCase):

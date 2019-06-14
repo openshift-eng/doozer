@@ -2,8 +2,7 @@ import unittest
 
 import flexmock
 
-import distgit
-from model import Model
+from doozerlib import distgit, model
 
 from .support import TestDistgit
 
@@ -12,7 +11,7 @@ class TestRPMDistGit(TestDistgit):
     def setUp(self):
         super(TestRPMDistGit, self).setUp()
         self.rpm_dg = distgit.RPMDistGitRepo(self.md, autoclone=False)
-        self.rpm_dg.runtime.group_config = Model()
+        self.rpm_dg.runtime.group_config = model.Model()
 
     def test_init_with_missing_source_specfile(self):
         metadata = flexmock(config=flexmock(content=flexmock(source=distgit.Missing),

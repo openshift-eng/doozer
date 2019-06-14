@@ -13,7 +13,7 @@ import shutil
 
 import logging
 
-import exectools
+from doozerlib import exectools
 
 
 class RetryTestCase(unittest.TestCase):

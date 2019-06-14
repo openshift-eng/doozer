@@ -3,7 +3,7 @@ Test the task related functions for the OpenShift Image/RPM Build Tool
 """
 import unittest
 
-import assertion
+from doozerlib import assertion
 
 
 class TestAssert(unittest.TestCase):

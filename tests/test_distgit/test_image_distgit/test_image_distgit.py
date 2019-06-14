@@ -4,8 +4,7 @@ import unittest
 
 import flexmock
 
-import distgit
-from model import Model
+from doozerlib import distgit, model
 
 from ..support import MockScanner, TestDistgit
 
@@ -14,7 +13,7 @@ class TestImageDistGit(TestDistgit):
     def setUp(self):
         super(TestImageDistGit, self).setUp()
         self.img_dg = distgit.ImageDistGitRepo(self.md, autoclone=False)
-        self.img_dg.runtime.group_config = Model()
+        self.img_dg.runtime.group_config = model.Model()
 
     def test_clone_invokes_read_master_data(self):
         """
@@ -276,14 +275,14 @@ class TestImageDistGit(TestDistgit):
         """
         Check the logic for matching a commit from source repo
         """
-        self.img_dg.config.content = Model()
+        self.img_dg.config.content = model.Model()
 
         # no source, dist-git only; should go on to check if built/stale
         flexmock(self.img_dg).should_receive("_built_or_recent").once().and_return(None)
         self.assertIsNone(self.img_dg.matches_source_commit({}))
 
         # source specified and matches Dockerfile in dist-git
-        self.img_dg.config.content.source = Model()
+        self.img_dg.config.content.source = model.Model()
         self.img_dg.config.content.source.git = dict()
         test_file = u"""
             from foo

@@ -5,7 +5,7 @@ import unittest
 
 import flexmock
 
-import distgit
+from doozerlib import distgit
 
 
 class TestImageDistGitRepoPushImage(unittest.TestCase):

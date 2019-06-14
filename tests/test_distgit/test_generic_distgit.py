@@ -5,8 +5,7 @@ from datetime import datetime, timedelta
 
 import flexmock
 
-import distgit
-from model import Model
+from doozerlib import distgit, model
 
 from .support import MockConfig, MockMetadata, MockRuntime, TestDistgit
 
@@ -15,7 +14,7 @@ class TestGenericDistGit(TestDistgit):
     def setUp(self):
         super(TestGenericDistGit, self).setUp()
         self.dg = distgit.DistGitRepo(self.md, autoclone=False)
-        self.dg.runtime.group_config = Model()
+        self.dg.runtime.group_config = model.Model()
 
     def test_init(self):
         """
@@ -600,7 +599,7 @@ class TestGenericDistGit(TestDistgit):
         self.assertIn("distgit_key image is missing package haproxy", d.runtime.missing_pkgs)
 
     def test_distgit_is_recent(self):
-        scan_freshness = self.dg.runtime.group_config.scan_freshness = Model()
+        scan_freshness = self.dg.runtime.group_config.scan_freshness = model.Model()
         self.assertFalse(self.dg.release_is_recent("201901020304"))  # not configured
 
         scan_freshness.release_regex = r'^(....)(..)(..)(..)'
