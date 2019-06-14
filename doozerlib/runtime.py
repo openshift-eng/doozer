@@ -508,6 +508,8 @@ class Runtime(object):
             if level not in image_lists:
                 image_lists[level] = []
             for sub_child in child.children:
+                if sub_child.distgit_key not in self.image_map:
+                    continue  # don't add images that have been filtered out
                 branch[sub_child.distgit_key] = {}
                 image_lists[level].append(sub_child.distgit_key)
                 add_child_branch(sub_child, branch[sub_child.distgit_key], level + 1)
