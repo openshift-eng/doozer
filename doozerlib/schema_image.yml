@@ -41,6 +41,11 @@ mapping:
     sequence:
       - type: str
 
+  "additional_tags":
+    type: seq
+    sequence:
+      - type: scalar
+
   "push":
     type: map
     mapping:

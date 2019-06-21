@@ -1155,6 +1155,9 @@ class ImageDistGitRepo(DistGitRepo):
                     vsplit = version.split(".")
                     if len(vsplit) > 1:
                         at.write("%s.%s\n" % (vsplit[0], vsplit[1]))  # e.g. "v3.7.0" -> "v3.7"
+                    if self.metadata.config.additional_tags is not Missing:
+                        for tag in self.metadata.config.additional_tags:
+                            at.write("{}\n".format(tag))
 
             self.logger.debug("Dockerfile contains the following labels:")
             for k, v in dfp.labels.iteritems():
