@@ -364,7 +364,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
 
     failed = []
     for img, status in lstate['images'].iteritems():
-        if isinstance(status, str):
+        if status is not True:  # anything other than true is fail
             failed.append(img)
 
     if lstate['status'] == state.STATE_FAIL:
@@ -512,7 +512,7 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
 
     failed = []
     for img, status in lstate['images'].iteritems():
-        if isinstance(status, str):
+        if status is not True:  # anything other than true is fail
             failed.append(img)
 
     if lstate['status'] == state.STATE_FAIL:
@@ -814,7 +814,7 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
 
     if pre_step:
         for img, status in pre_step['images'].iteritems():
-            if isinstance(status, str):
+            if status is not True:  # anything other than true is fail
                 img_obj = runtime.image_map[img]
                 failed.append(img)
                 if img_obj.required:
@@ -921,7 +921,7 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
 
     if pre_step:
         for img, status in pre_step['images'].iteritems():
-            if isinstance(status, str):
+            if status is not True:  # anything other than true is fail
                 img_obj = runtime.image_map[img]
                 pre_failed.append(img)
                 if img_obj.required:
