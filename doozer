@@ -1122,8 +1122,6 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         except Exception:
             raise DoozerFatalError("Error reading Dockerfile from distgit: {}".format(image.distgit_key))
 
-        version = dfp.labels["version"]
-
         s = pattern
         s = s.replace("{build}", "{component}-{version}-{release}")
         s = s.replace("{repository}", "{image}:{version}-{release}")
@@ -1133,18 +1131,21 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         s = s.replace("{image_name_short}", image.image_name_short)
         s = s.replace("{component}", image.get_component_name())
         s = s.replace("{image}", dfp.labels["name"])
-        s = s.replace("{version}", version)
+
         if label is not None:
             s = s.replace("{label}", dfp.labels.get(label, ''))
         s = s.replace("{lf}", "\n")
 
         release_query_needed = '{release}' in s or '{pushes}' in s
+        version_query_needed = '{version}' in s or '{pushes}' in s
 
-        # Since querying release takes time, check before executing replace
+        # Since querying nvr takes time, check before executing replace
+        version = ''
         release = ''
-        if release_query_needed:
-            _, _, release = image.get_latest_build_info()
+        if release_query_needed or version_query_needed:
+            _, version, release = image.get_latest_build_info()
 
+        s = s.replace("{version}", version)
         s = s.replace("{release}", release)
 
         pushes_formatted = ''
