@@ -9,7 +9,7 @@ import logging
 import tempfile
 import shutil
 
-import image
+from doozerlib import image
 
 TEST_YAML = """---
 name: 'test'

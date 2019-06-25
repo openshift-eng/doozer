@@ -7,8 +7,6 @@ import tempfile
 import logging
 import shutil
 
-import metadata
-
 TEST_YAML = """---
 name: 'test'
 distgit:

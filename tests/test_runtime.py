@@ -1,11 +1,7 @@
 #!/usr/bin/env python
 import unittest
 import flexmock
-import runtime
-import exectools
-import logutil
-
-from model import Model, Missing
+from doozerlib import runtime, exectools, logutil, model
 
 
 def stub_runtime():
@@ -15,7 +11,7 @@ def stub_runtime():
         stage=False,
         branch=None,
     )
-    rt.group_config = Model()
+    rt.group_config = model.Model()
     return rt
 
 

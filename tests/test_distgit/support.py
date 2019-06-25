@@ -5,7 +5,7 @@ import logging
 import tempfile
 import shutil
 
-from model import Model
+from doozerlib import model
 
 
 class MockDistgit(object):
@@ -23,8 +23,8 @@ class MockConfig(dict):
     def __init__(self, *args, **kwargs):
         super(MockConfig, self).__init__(*args, **kwargs)
         self.distgit = MockDistgit()
-        self.content = Model()
-        self.content.source = Model()
+        self.content = model.Model()
+        self.content.source = model.Model()
         self.content.source.specfile = "test-dummy.spec"
 
 

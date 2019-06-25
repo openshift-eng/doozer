@@ -6,11 +6,9 @@ import unittest
 
 import os
 import logging
-import StringIO
 import tempfile
 import shutil
 
-import rpmcfg
 
 TEST_YAML = """---
 name: 'test'

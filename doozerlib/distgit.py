@@ -1454,8 +1454,6 @@ class ImageDistGitRepo(DistGitRepo):
                     sr_file.truncate()
                     sr_file.write(sr_file_str)
 
-
-
     def _reflow_labels(self, filename="Dockerfile"):
         """
         The Dockerfile parser we are presently using writes all labels on a single line
