@@ -1174,6 +1174,9 @@ class ImageDistGitRepo(DistGitRepo):
             # Set the distgit repo name
             dfp.labels["com.redhat.component"] = self.metadata.get_component_name()
 
+            # record env vars that we need to set in the dockerfile
+            env_vars = {}
+
             if 'from' in self.config:
                 image_from = Model(self.config.get('from', None))
 
@@ -1229,9 +1232,12 @@ class ImageDistGitRepo(DistGitRepo):
 
             if self.source_sha is not None:
                 # in a rebase, add ENV vars to each stage to relay source repo metadata
-                env_line = "ENV SOURCE_GIT_COMMIT={} SOURCE_GIT_TAG={} SOURCE_DATE_EPOCH={}".format(
-                    self.source_full_sha, self.source_latest_tag, self.source_date_epoch)
-                dfp.add_lines(env_line, all_stages=True, at_start=True)
+                env_vars.update(dict(
+                    SOURCE_GIT_COMMIT=self.source_full_sha,
+                    SOURCE_GIT_TAG=self.source_latest_tag,
+                    SOURCE_GIT_URL=self.source_url,
+                    SOURCE_DATE_EPOCH=self.source_date_epoch,
+                ))
 
             # Set image name in case it has changed
             dfp.labels["name"] = self.config.name
@@ -1239,6 +1245,7 @@ class ImageDistGitRepo(DistGitRepo):
             # Set version if it has been specified.
             if version is not None:
                 dfp.labels["version"] = version
+                env_vars["BUILD_VERSION"] = version
 
             # If the release is specified as "+", this means the user wants to bump the release.
             if release == "+":
@@ -1269,6 +1276,7 @@ class ImageDistGitRepo(DistGitRepo):
             # a pre-existing image version-release.
             if release is not None:
                 dfp.labels["release"] = release
+                env_vars["BUILD_RELEASE"] = release
             else:
                 if "release" in dfp.labels:
                     self.logger.info("Removing release field from Dockerfile")
@@ -1278,6 +1286,11 @@ class ImageDistGitRepo(DistGitRepo):
             for deprecated in ["Release", "Architecture", "BZComponent"]:
                 if deprecated in dfp.labels:
                     del dfp.labels[deprecated]
+
+            # specify new env vars in the dockerfile
+            if env_vars:
+                env_line = "ENV " + " ".join(map(lambda it: it[0] + "=" + it[1], env_vars.iteritems()))
+                dfp.add_lines(env_line, all_stages=True, at_start=True)
 
             # Remove any programmatic oit comments from previous management
             df_lines = dfp.content.splitlines(False)
