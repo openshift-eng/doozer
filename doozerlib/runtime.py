@@ -15,6 +15,7 @@ import logging
 import functools
 import traceback
 import urlparse
+import signal
 
 import gitdata
 
@@ -31,6 +32,15 @@ from multiprocessing import Lock
 from repos import Repos
 import brew
 from doozerlib.exceptions import DoozerFatalError
+
+
+# doozer cancel brew builds on SIGINT (Ctrl-C)
+# but Jenkins sends a SIGTERM when cancelling a job.
+def handle_sigterm(*_):
+    raise KeyboardInterrupt()
+
+
+signal.signal(signal.SIGTERM, handle_sigterm)
 
 
 # Registered atexit to close out debug/record logs
