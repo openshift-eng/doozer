@@ -136,8 +136,9 @@ class RPMMetadata(Metadata):
                 exectools.cmd_assert('git reset HEAD~')
 
             with open(os.path.join(tito_dir, 'releasers.conf'), 'w') as r:
+                branch = self.config.get('distgit', {}).get('branch', self.runtime.branch)
                 r.write(RELEASERS_CONF.format(
-                    branch=self.runtime.branch,
+                    branch=branch,
                     name=self.name,
                     target=tito_target,
                     dist=tito_dist,
