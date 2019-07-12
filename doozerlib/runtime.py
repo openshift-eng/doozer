@@ -660,7 +660,10 @@ class Runtime(object):
         if distgit_name in self.image_map:
             return self.image_map[distgit_name]
 
-        data_obj = self.gitdata.load_data(path='images', key=distgit_name)
+        replace_vars = {}
+        if self.group_config.vars:
+            replace_vars = self.group_config.vars.primitive()
+        data_obj = self.gitdata.load_data(path='images', key=distgit_name, replace_vars=replace_vars)
         if not data_obj:
             raise DoozerFatalError('Unable to resovle image metadata for {}'.format(distgit_name))
 
