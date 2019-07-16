@@ -19,6 +19,11 @@ TEMPLATE_IMAGE = {
 }
 
 
+class DoozerStateError(Exception):
+    """A broad exception for errors during Brew CRUD operations"""
+    pass
+
+
 def record_image_success(state, image):
     state['success'] += 1
     state['images'][image.distgit_key] = True
