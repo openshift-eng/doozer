@@ -71,6 +71,12 @@ def pull_image(url):
         task_f=lambda: exectools.cmd_gather(["podman", "pull", url])[0] == 0)
 
 
+def convert_source_url_to_https(source):
+    return re.sub(pattern=r'git@([^:]+):([^\.]+)\.git',
+                  repl='https://\\1/\\2',
+                  string=source)
+
+
 class DistGitRepo(object):
     def __init__(self, metadata, autoclone=True):
         self.metadata = metadata
@@ -1515,7 +1521,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             rc, out, _ = exectools.cmd_gather(["git", "remote", "get-url", "origin"])
             out = out.strip()
-            self.source_url = out.replace(':', '/').replace('.git', '').replace('git@', 'https://')
+            self.source_url = convert_source_url_to_https(out)
 
         # See if the config is telling us a file other than "Dockerfile" defines the
         # distgit image content.
