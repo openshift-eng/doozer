@@ -72,10 +72,12 @@ def pull_image(url):
 
 
 def convert_source_url_to_https(source):
-    return re.sub(pattern=r'\.git$', repl='',
-                  string=(re.sub(pattern=r'git@([^:]+):([^\.]+)',
-                                 repl='https://\\1/\\2',
-                                 string=source)))
+    url = re.sub(
+        pattern=r'git@([^:]+):([^\.]+)',
+        repl='https://\\1/\\2',
+        string=source,
+    )
+    return re.sub(string=url, pattern=r'\.git$', repl='')
 
 
 class DistGitRepo(object):
