@@ -80,6 +80,10 @@ def convert_source_url_to_https(source):
     return re.sub(string=url, pattern=r'\.git$', repl='')
 
 
+def build_image_ref_name(name):
+    return 'openshift/ose-' + re.sub(pattern='^ose-', repl='', string=name)
+
+
 class DistGitRepo(object):
     def __init__(self, metadata, autoclone=True):
         self.metadata = metadata
@@ -1385,7 +1389,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         for ref in image_refs:
             try:
-                name = 'openshift/ose-' + ref['name']
+                name = build_image_ref_name(ref['name'])
                 spec = ref['from']['name']
             except:
                 raise DoozerFatalError('Error loading image-references data for {}'.format(self.metadata.distgit_key))
