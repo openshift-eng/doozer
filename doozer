@@ -1863,7 +1863,7 @@ def update_operator_metadata(runtime, nvr_list, merge_branch):
 
     $ doozer operator:metadata cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --merge-branch prod
     """
-    operator_metadata.working_dir = os.path.join(runtime.working_dir, 'distgits', 'containers')
+    operator_metadata.working_dir = runtime.working_dir
     target = 'rhaos-4.2-rhel-7-candidate'  # @TODO: hardcoded, find out from where this value should come
 
     for nvr in nvr_list:  # @TODO: process them in parallel
