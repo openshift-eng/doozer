@@ -61,6 +61,7 @@ def update_metadata_repo(nvr, operator_branch='rhaos-4.2-rhel-7', metadata_branc
     metadata = '{}-metadata'.format(operator)
     channel = get_channel_from_tag(tag)
 
+    exectools.cmd_assert('mkdir -p {}'.format(working_dir))
     # @TODO: reuse repo if already present (doozer does that somewhere else)
     try:
         shutil.rmtree(os.path.join(working_dir, operator))
