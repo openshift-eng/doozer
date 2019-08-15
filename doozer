@@ -14,6 +14,7 @@ from doozerlib import cli_opts
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
 from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
+from doozerlib import operator_metadata
 import datetime
 import click
 import os
@@ -1840,6 +1841,35 @@ def config_update_required(runtime, image_list):
         data_obj.save()
 
     green_print('\nComplete! Remember to commit and push the changes!')
+
+
+@cli.command("operator:metadata", short_help="Update operator(s) metadata")
+@click.argument("nvr_list", nargs=-1, required=True)
+@click.option("--merge-branch", required=True, type=click.Choice(['dev', 'stage', 'prod']),
+              help="Metadata branch to apply update. Possible values: dev, stage, prod.")
+@pass_runtime
+def update_operator_metadata(runtime, nvr_list, merge_branch):
+    """Update the corresponding metadata repositories of the given operators
+    and build "metadata containers" with nothing but a collection of manifests on them.
+
+    nvr_list: One or more NVRs to have their corresponding metadata repos updated (i.e.: cluster-logging-operator-container-v4.2.0-201908070219)
+    merge_branch: metadata repos have multiple branches (dev, stage and prod) representing the destination of the updates.
+
+    Usage example with single NVR:
+
+    $ doozer operator:metadata cluster-logging-operator-container-v4.2.0-201908070219 --merge-branch dev
+
+    Usage example with multiple NVRs:
+
+    $ doozer operator:metadata cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --merge-branch prod
+    """
+    operator_metadata.working_dir = os.path.join(runtime.working_dir, 'distgits', 'containers')
+    target = 'rhaos-4.2-rhel-7-candidate'  # @TODO: hardcoded, find out from where this value should come
+
+    for nvr in nvr_list:  # @TODO: process them in parallel
+        metadata_repo = operator_metadata.update_metadata_repo(nvr, metadata_branch=merge_branch)
+        operator_metadata.build_metadata_container(metadata_repo, target)
+        # @TODO: save state.yaml (how to do that, i'm not using runtime for anything)
 
 
 def main():

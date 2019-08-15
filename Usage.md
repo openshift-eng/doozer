@@ -91,3 +91,7 @@ That's it. Once successful, the image is available in docker locally.
 # Cleaning the Workspace
 
 Please note that the given working directory is intended to be persistent between `doozer` steps. You can run subequent builds of the same or other images with the same persistent working directory; previously cloned repos will remain. If you switch versions of OCP you are testing against, or want to pull updates to repos already cloned, it is best to delete the contents of the working directory before running `doozer`.
+
+# Operator metadata
+
+    $ doozer operator:metadata cluster-logging-operator-container-v4.2.0-201908070219 --merge-branch dev
