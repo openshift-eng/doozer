@@ -43,7 +43,9 @@ def log(func):
     return wrap
 
 
+# @TODO: keeping global state looks awful, convert this module to a class
 working_dir = ''
+rhpkg_user = ''
 logger = setup_logger()
 
 
@@ -93,7 +95,7 @@ def build_metadata_container(repo, target):
     :param string target: Container build target
     """
     with pushd.Dir(os.path.join(working_dir, repo)):
-        exectools.cmd_assert('rhpkg container-build --target {}'.format(target))
+        exectools.cmd_assert('rhpkg --user {} container-build --target {}'.format(rhpkg_user, target))
 
 
 @log
@@ -116,7 +118,7 @@ def clone_repo(name, branch):
     :param string branch: Which branch of the repository should be cloned
     """
     with pushd.Dir(working_dir):
-        exectools.cmd_assert('rhpkg clone containers/{} --branch {}'.format(name, branch))
+        exectools.cmd_assert('rhpkg --user {} clone containers/{} --branch {}'.format(rhpkg_user, name, branch))
 
 
 @log
@@ -287,8 +289,8 @@ def commit_and_push_repo(metadata_repo):
     with pushd.Dir(os.path.join(working_dir, metadata_repo)):
         try:
             exectools.cmd_assert('git add .')
-            exectools.cmd_assert('rhpkg commit -m "Update operator metadata"')
-            exectools.cmd_assert('rhpkg push')
+            exectools.cmd_assert('rhpkg --user {} commit -m "Update operator metadata"'.format(rhpkg_user))
+            exectools.cmd_assert('rhpkg --user {} push'.format(rhpkg_user))
         except:
             # The metadata repo might be already up to date, so we don't have
             # anything new to commit
