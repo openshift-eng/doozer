@@ -212,8 +212,8 @@ def merge_streams_on_top_level_package_yaml(metadata, channel_to_update):
     if channel_index is not None:
         package_yaml['channels'][channel_index]['currentCSV'] = current_csv
     else:
-        package_yaml['channels'].append({'name': channel_to_update,
-                                         'currentCSV': current_csv})
+        package_yaml['channels'].append({'name': str(channel_to_update),
+                                         'currentCSV': str(current_csv)})
 
     with open(package_yaml_filename(metadata), 'w') as file:
         yaml.dump(package_yaml, file)
@@ -278,6 +278,7 @@ def create_metadata_dockerfile(operator, metadata):
         metadata_dockerfile.content = 'FROM scratch\nCOPY ./manifests /manifests'
         metadata_dockerfile.labels = operator_dockerfile.labels
         metadata_dockerfile.labels['com.redhat.component'] = '{}-container'.format(metadata)
+        metadata_dockerfile.labels['name'] = 'openshift/ose-{}'.format(metadata)
 
 
 @log
