@@ -220,19 +220,22 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.yaml)
             .should_receive('dump')
-            .with_args(expected_package_yaml_contents, object)  # <-- That's the assertion we are interested
+            .with_args(expected_package_yaml_contents)  # <-- That's the assertion we are interested
             .replace_with(lambda *_: None))
 
         (mock.should_receive('open')
             .with_args(package_yaml_filename, 'w')
-            .and_return(flexmock(__exit__=None)))
+            .and_return(flexmock(write=lambda *_: None, __exit__=None)))
 
         nvr = 'my-operator-container-v0.1.2-201901010000'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/tmp',
             'operator_name': 'my-operator',
-            'csv': 'updated-value'
+            'csv': 'updated-value',
+            'operator': type('', (object,), {
+                'config': {'update-csv': {}}
+            })
         }
         (operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs)
             .merge_streams_on_top_level_package_yaml())
@@ -266,19 +269,22 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.yaml)
             .should_receive('dump')
-            .with_args(expected_package_yaml_contents, object)  # <-- That's the assertion we are interested
+            .with_args(expected_package_yaml_contents)  # <-- That's the assertion we are interested
             .replace_with(lambda *_: None))
 
         (mock.should_receive('open')
             .with_args(package_yaml_filename, 'w')
-            .and_return(flexmock(__exit__=None)))
+            .and_return(flexmock(write=lambda *_: None, __exit__=None)))
 
         nvr = 'my-operator-container-v0.1.2-201901010000'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/tmp',
             'operator_name': 'my-operator',
-            'csv': 'updated-value'
+            'csv': 'updated-value',
+            'operator': type('', (object,), {
+                'config': {'update-csv': {}}
+            })
         }
         (operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs)
             .merge_streams_on_top_level_package_yaml())
@@ -653,6 +659,38 @@ class TestOperatorMetadata(unittest.TestCase):
         self.assertEqual(
             operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).csv,
             'my-csv'
+        )
+
+    def test_property_channel_name(self):
+        nvr = 'my-operator-container-v0.1.2-201901010000'
+        runtime = '...irrelevant...'
+        cached_attrs = {
+            'operator': type('', (object,), {
+                'config': {
+                    'update-csv': {}
+                }
+            })
+        }
+        self.assertEqual(
+            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).channel_name,
+            '0.1'
+        )
+
+    def test_property_channel_name_with_override(self):
+        nvr = 'my-operator-container-v0.1.2-201901010000'
+        runtime = '...irrelevant...'
+        cached_attrs = {
+            'operator': type('', (object,), {
+                'config': {
+                    'update-csv': {
+                        'channel': 'my-custom-channel-name'
+                    }
+                }
+            })
+        }
+        self.assertEqual(
+            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).channel_name,
+            'my-custom-channel-name'
         )
 
     def test_get_brew_buildinfo(self):
