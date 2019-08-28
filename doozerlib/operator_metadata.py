@@ -105,11 +105,11 @@ class OperatorMetadata:
         """Update (or create) a channel entry on the top-level package YAML file,
         pointing to the current CSV
         """
-        package_yaml = yaml.load(open(self.metadata_package_yaml_filename))
+        package_yaml = yaml.safe_load(open(self.metadata_package_yaml_filename))
 
         def find_channel_index(package_yaml):
             for index, channel in enumerate(package_yaml['channels']):
-                if str(channel['name']) == str(self.channel):
+                if str(channel['name']) == str(self.channel_name):
                     return index
             return None
 
@@ -119,7 +119,7 @@ class OperatorMetadata:
             package_yaml['channels'][index]['currentCSV'] = str(self.csv)
         else:
             package_yaml['channels'].append({
-                'name': str(self.channel),
+                'name': str(self.channel_name),
                 'currentCSV': str(self.csv)
             })
 
@@ -234,7 +234,7 @@ class OperatorMetadata:
 
     @property
     def operator(self):
-        return self.runtime.image_map[self.operator_name]
+        return self._cache_attr('operator')
 
     @property
     def metadata_name(self):
@@ -285,6 +285,14 @@ class OperatorMetadata:
     def csv(self):
         return self._cache_attr('csv')
 
+    @property
+    def channel_name(self):
+        """@TODO: document why we are doing this
+        """
+        if 'override-channel' in self.operator.config['update-csv']:
+            return self.operator.config['update-csv']['override-channel']
+        return self.channel
+
     def get_working_dir(self):
         return '{}/{}/{}'.format(self.runtime.working_dir, 'distgits', 'containers')
 
@@ -301,6 +309,9 @@ class OperatorMetadata:
     def get_commit_hash(self):
         _rc, stdout, _stderr = self.brew_buildinfo
         return re.search('Source:[^#]+#(.+)', stdout).group(1)
+
+    def get_operator(self):
+        return self.runtime.image_map[self.operator_name]
 
     @log
     def get_brew_buildinfo(self):
