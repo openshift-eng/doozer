@@ -36,13 +36,7 @@ class OperatorMetadata:
 
         :param string metadata_branch: Which branch of the metadata repository should be updated
         """
-        # @TODO: reuse repo if already present (doozer does that somewhere else)
-        try:
-            exectools.cmd_assert('mkdir -p {}'.format(self.working_dir))
-            shutil.rmtree('{}/{}'.format(self.working_dir, self.operator_name))
-            shutil.rmtree('{}/{}'.format(self.working_dir, self.metadata_name))
-        except OSError:
-            pass
+        exectools.cmd_assert('mkdir -p {}'.format(self.working_dir))
 
         self.clone_repo(self.operator_name, self.operator_branch)
         self.clone_repo(self.metadata_name, metadata_branch)
@@ -81,12 +75,25 @@ class OperatorMetadata:
         :param string repo: Name of the repository to be cloned
         :param string branch: Which branch of the repository should be cloned
         """
-        cmd = 'timeout 600 rhpkg '
-        cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
-        cmd += 'clone containers/{} --branch {}'.format(repo, branch)
+        def delete_and_clone():
+            self.delete_repo(repo)
+
+            cmd = 'timeout 600 rhpkg '
+            cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
+            cmd += 'clone containers/{} --branch {}'.format(repo, branch)
+            exectools.cmd_assert(cmd)
 
         with pushd.Dir(self.working_dir):
-            exectools.retry(retries=3, task_f=lambda: exectools.cmd_assert(cmd))
+            exectools.retry(retries=3, task_f=lambda: delete_and_clone)
+
+    @log
+    def delete_repo(self, repo):
+        """Delete repository from working_dir. Ignore errors if repo is already absent
+        """
+        try:
+            shutil.rmtree('{}/{}'.format(self.working_dir, repo))
+        except OSError:
+            pass
 
     @log
     def checkout_repo(self, repo, commit_hash):
