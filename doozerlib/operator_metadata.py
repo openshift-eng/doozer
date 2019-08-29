@@ -81,7 +81,7 @@ class OperatorMetadata:
         :param string repo: Name of the repository to be cloned
         :param string branch: Which branch of the repository should be cloned
         """
-        cmd = 'rhpkg '
+        cmd = 'timeout 600 rhpkg '
         cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
         cmd += 'clone containers/{} --branch {}'.format(repo, branch)
 
@@ -169,7 +169,7 @@ class OperatorMetadata:
                 exectools.cmd_assert('git add .')
                 user_option = '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
                 exectools.cmd_assert('rhpkg {}commit -m "Update operator metadata"'.format(user_option))
-                exectools.retry(retries=3, task_f=lambda: exectools.cmd_assert('rhpkg {}push'.format(user_option)))
+                exectools.retry(retries=3, task_f=lambda: exectools.cmd_assert('timeout 600 rhpkg {}push'.format(user_option)))
             except Exception:
                 # The metadata repo might be already up to date, so we don't have anything new to commit
                 pass

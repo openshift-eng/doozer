@@ -41,7 +41,7 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('rhpkg clone containers/my-repo --branch my-branch')
+            .with_args('timeout 600 rhpkg clone containers/my-repo --branch my-branch')
             .replace_with(lambda *_: '...irrelevant...'))
 
         operator_metadata.OperatorMetadata(nvr, runtime).clone_repo('my-repo', 'my-branch')
@@ -61,7 +61,7 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('rhpkg --user my-user clone containers/my-repo --branch my-branch')
+            .with_args('timeout 600 rhpkg --user my-user clone containers/my-repo --branch my-branch')
             .replace_with(lambda *_: '...irrelevant...'))
 
         operator_metadata.OperatorMetadata(nvr, runtime).clone_repo('my-repo', 'my-branch')
@@ -351,7 +351,7 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('rhpkg push')
+            .with_args('timeout 600 rhpkg push')
             .once()
             .replace_with(lambda *_: '...irrelevant...'))
 
@@ -385,7 +385,7 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('rhpkg --user my-user push')
+            .with_args('timeout 600 rhpkg --user my-user push')
             .once()
             .replace_with(lambda *_: '...irrelevant...'))
 
