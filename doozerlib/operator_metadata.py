@@ -35,6 +35,7 @@ class OperatorMetadata:
         """Update the corresponding metadata repository of an operator
 
         :param string metadata_branch: Which branch of the metadata repository should be updated
+        :return: bool True if metadata repo was updated, False if there was nothing to update
         """
         exectools.cmd_assert('mkdir -p {}'.format(self.working_dir))
 
@@ -45,13 +46,13 @@ class OperatorMetadata:
         self.update_metadata_manifests_dir()
         self.merge_streams_on_top_level_package_yaml()
         self.create_metadata_dockerfile()
-        self.commit_and_push_metadata_repo()
+        return self.commit_and_push_metadata_repo()
 
     @log
     def build_metadata_container(self):
         """Build the metadata container using rhpkg
 
-        :return bool True if build succeeded, False otherwise
+        :return: bool True if build succeeded, False otherwise
         :raise: Exception if command failed (rc != 0)
         """
         with pushd.Dir('{}/{}'.format(self.working_dir, self.metadata_name)):
@@ -187,9 +188,10 @@ class OperatorMetadata:
                 user_option = '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
                 exectools.cmd_assert('rhpkg {}commit -m "Update operator metadata"'.format(user_option))
                 exectools.retry(retries=3, task_f=lambda: exectools.cmd_assert('timeout 600 rhpkg {}push'.format(user_option)))
+                return True
             except Exception:
                 # The metadata repo might be already up to date, so we don't have anything new to commit
-                pass
+                return False
 
     @log
     def remove_metadata_channel_dir(self):

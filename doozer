@@ -1867,7 +1867,11 @@ def update_operator_metadata(runtime, nvr_list, merge_branch):
 
     for nvr in nvr_list:  # @TODO: process them in parallel
         op_md = operator_metadata.OperatorMetadata(nvr, runtime=runtime)
-        op_md.update_metadata_repo(merge_branch)
+
+        if not op_md.update_metadata_repo(merge_branch):
+            green_print('No changes in metadata repo, skipping build')
+            sys.exit(0)
+
         if not op_md.build_metadata_container():
             sys.exit(1)
         # @TODO: save state.yaml (check how to do that)
