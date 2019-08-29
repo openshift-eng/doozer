@@ -82,10 +82,10 @@ class OperatorMetadata:
             cmd = 'timeout 600 rhpkg '
             cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
             cmd += 'clone containers/{} --branch {}'.format(repo, branch)
-            exectools.cmd_assert(cmd)
+            return exectools.cmd_assert(cmd)
 
         with pushd.Dir(self.working_dir):
-            exectools.retry(retries=3, task_f=lambda: delete_and_clone)
+            exectools.retry(retries=3, task_f=delete_and_clone)
 
     @log
     def delete_repo(self, repo):
