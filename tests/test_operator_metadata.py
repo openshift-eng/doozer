@@ -433,6 +433,18 @@ class TestOperatorMetadata(unittest.TestCase):
             operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).metadata_package_yaml_exists()
         )
 
+    def test_extract_brew_task_id(self):
+        rhpkg_container_build_output = ("""
+            Created task: 23233205
+            Task info: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=23233205
+        """)
+        nvr = '...irrelevant...'
+        runtime = '...irrelevant...'
+        self.assertEqual(
+            operator_metadata.OperatorMetadata(nvr, runtime).extract_brew_task_id(rhpkg_container_build_output),
+            '23233205'
+        )
+
     def test_property_working_dir(self):
         nvr = '...irrelevant...'
         runtime = type('TestRuntime', (object,), {

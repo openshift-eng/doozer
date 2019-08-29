@@ -1,10 +1,11 @@
 import glob
 import re
 import shutil
+import threading
 import yaml
 
 from dockerfile_parse import DockerfileParser
-from doozerlib import exectools, logutil, pushd
+from doozerlib import brew, exectools, logutil, pushd
 
 logger = logutil.getLogger(__name__)
 
@@ -55,12 +56,23 @@ class OperatorMetadata:
     @log
     def build_metadata_container(self):
         """Build the metadata container using rhpkg
+
+        :return bool True if build succeeded, False otherwise
+        :raise: Exception if command failed (rc != 0)
         """
         with pushd.Dir('{}/{}'.format(self.working_dir, self.metadata_name)):
-            cmd = 'rhpkg '
-            cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
-            cmd += 'container-build --target {}'.format(self.target)
-            return exectools.retry(retries=3, task_f=lambda: exectools.cmd_assert(cmd))
+            cmd = 'timeout 600 rhpkg {}container-build --nowait --target {}'.format(
+                ('--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''),
+                self.target
+            )
+            rc, stdout, stderr = exectools.cmd_gather(cmd)
+
+            if rc != 0:
+                raise Exception('{} failed! rc={} stdout={} stderr={}'.format(
+                    cmd, rc, stdout, stderr
+                ))
+
+            return self.watch_brew_task(self.extract_brew_task_id(stdout)) is None
 
     @log
     def clone_repo(self, repo, branch):
@@ -207,6 +219,27 @@ class OperatorMetadata:
             self.metadata_name,
             self.metadata_manifests_dir
         ))) > 0
+
+    @log
+    def extract_brew_task_id(self, container_build_output):
+        """Extract the Task ID from the output of a `rhpkg container-build` command
+
+        :param string container_build_output: stdout from `rhpkg container-build`
+        :return: string of captured task ID
+        :raise: AttributeError if task ID can't be found in provided output
+        """
+        return re.search(r'Created task:\ (\d+)', container_build_output).group(1)
+
+    @log
+    def watch_brew_task(self, task_id):
+        """Keep watching progress of brew task
+
+        :param string task_id: The Task ID to be watched
+        :return: string with an error if an error happens, None otherwise
+        """
+        return brew.watch_task(
+            self.runtime.group_config.urls.brewhub, logger.info, task_id, threading.Event()
+        )
 
     @property
     def working_dir(self):
