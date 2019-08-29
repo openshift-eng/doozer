@@ -148,13 +148,19 @@ class OperatorMetadata:
     @log
     def create_metadata_dockerfile(self):
         """Create a minimal Dockerfile on the metadata repository, copying all manifests
-        inside the image and having the same labels as its corresponding operator Dockerfile
+        inside the image and having nearly the same labels as its corresponding operator Dockerfile
 
-        Except the component label, that should not conflict with the operator, otherwise
-        brew fails with a "build already exists" error
+        But some modifications on the labels are neeeded:
 
-        Also ensures that the label "com.redhat.delivery.appregistry" is always "true",
-        regardless of the value coming from the operator Dockerfile
+        - 'com.redhat.component' label should contain the metadata component name,
+           otherwise it conflicts with the operator, causing a "build already exists"
+           error in brew
+
+        - 'com.redhat.delivery.appregistry' should always be "true", regardless of
+          the value coming from the operator Dockerfile
+
+        - 'release' label should be removed, because we can't build the same NVR
+        multiple times
         """
         operator_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.operator_name))
         metadata_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.metadata_name))
@@ -166,6 +172,10 @@ class OperatorMetadata:
         )
         metadata_dockerfile.labels['com.redhat.delivery.appregistry'] = 'true'
         metadata_dockerfile.labels['name'] = 'openshift/ose-{}'.format(self.metadata_name)
+        try:
+            del(metadata_dockerfile.labels['release'])
+        except KeyError:
+            pass
 
     @log
     def commit_and_push_metadata_repo(self):

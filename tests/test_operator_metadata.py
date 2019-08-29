@@ -323,7 +323,6 @@ class TestOperatorMetadata(unittest.TestCase):
                 'LABEL com.redhat.delivery.appregistry=true',
                 'LABEL name=openshift/ose-my-operator-metadata',
                 'LABEL com.redhat.component=my-operator-metadata-container',
-                'LABEL release=201908261419'
             ])
 
         # Cleaning up
