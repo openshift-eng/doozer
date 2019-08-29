@@ -676,8 +676,8 @@ class TestOperatorMetadata(unittest.TestCase):
             '0.1'
         )
 
-    def test_property_channel_name_with_override(self):
-        nvr = 'my-operator-container-v0.1.2-201901010000'
+    def test_property_channel_name_with_override_on_4_1(self):
+        nvr = 'my-operator-container-v4.1.2-201901010000'
         runtime = '...irrelevant...'
         cached_attrs = {
             'operator': type('', (object,), {
@@ -691,6 +691,23 @@ class TestOperatorMetadata(unittest.TestCase):
         self.assertEqual(
             operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).channel_name,
             'my-custom-channel-name'
+        )
+
+    def test_property_channel_name_with_override_on_4_2(self):
+        nvr = 'my-operator-container-v4.2.2-201901010000'
+        runtime = '...irrelevant...'
+        cached_attrs = {
+            'operator': type('', (object,), {
+                'config': {
+                    'update-csv': {
+                        'channel': 'my-custom-channel-name'
+                    }
+                }
+            })
+        }
+        self.assertEqual(
+            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).channel_name,
+            '4.2'
         )
 
     def test_get_brew_buildinfo(self):

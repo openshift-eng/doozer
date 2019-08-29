@@ -289,8 +289,10 @@ class OperatorMetadata:
     def channel_name(self):
         """Use a custom name for a channel on package YAML if specified,
         fallback to default channel (4.1, 4.2, etc) otherwise
+
+        This is valid only for 4.1, custom names should be ignored on 4.2
         """
-        if 'channel' in self.operator.config['update-csv']:
+        if str(self.channel) == '4.1' and 'channel' in self.operator.config['update-csv']:
             return self.operator.config['update-csv']['channel']
         return self.channel
 
