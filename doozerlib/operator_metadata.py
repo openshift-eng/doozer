@@ -233,7 +233,7 @@ class OperatorMetadata:
 
     @log
     def metadata_package_yaml_exists(self):
-        return len(glob.glob('{}/{}/{}/*.package.yaml'.format(
+        return len(glob.glob('{}/{}/{}/*package.yaml'.format(
             self.working_dir,
             self.metadata_name,
             self.metadata_manifests_dir
@@ -310,7 +310,7 @@ class OperatorMetadata:
 
     @property
     def operator_package_yaml_filename(self):
-        return glob.glob('{}/{}/{}/*.package.yaml'.format(
+        return glob.glob('{}/{}/{}/*package.yaml'.format(
             self.working_dir,
             self.operator_name,
             self.operator_manifests_dir
@@ -318,7 +318,7 @@ class OperatorMetadata:
 
     @property
     def metadata_package_yaml_filename(self):
-        return glob.glob('{}/{}/{}/*.package.yaml'.format(
+        return glob.glob('{}/{}/{}/*package.yaml'.format(
             self.working_dir,
             self.metadata_name,
             self.metadata_manifests_dir

@@ -107,12 +107,12 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-name-metadata/manifests/*.package.yaml')
+            .with_args('/tmp/my-operator-name-metadata/manifests/*package.yaml')
             .and_return([]))
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-name/path/to/operator/manifests/*.package.yaml')
+            .with_args('/tmp/my-operator-name/path/to/operator/manifests/*package.yaml')
             .and_return(['/full/path/to/operator.package.yaml']))
 
         (flexmock(operator_metadata.exectools)
@@ -163,12 +163,12 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-name-metadata/manifests/*.package.yaml')
+            .with_args('/tmp/my-operator-name-metadata/manifests/*package.yaml')
             .and_return(['one-item']))
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-name/path/to/operator/manifests/*.package.yaml')
+            .with_args('/tmp/my-operator-name/path/to/operator/manifests/*package.yaml')
             .times(0))
 
         nvr = 'my-operator-container-v0.1.2-201901010000'
@@ -204,7 +204,7 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-metadata/manifests/*.package.yaml')
+            .with_args('/tmp/my-operator-metadata/manifests/*package.yaml')
             .and_return([package_yaml_filename]))
 
         (mock.should_receive('open')
@@ -253,7 +253,7 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-metadata/manifests/*.package.yaml')
+            .with_args('/tmp/my-operator-metadata/manifests/*package.yaml')
             .and_return([package_yaml_filename]))
 
         (mock.should_receive('open')
@@ -408,7 +408,7 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/working/dir/my-operator-metadata/manifests/*.package.yaml')
+            .with_args('/working/dir/my-operator-metadata/manifests/*package.yaml')
             .and_return(['one-item']))
 
         self.assertTrue(
@@ -425,7 +425,7 @@ class TestOperatorMetadata(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/working/dir/my-operator-metadata/manifests/*.package.yaml')
+            .with_args('/working/dir/my-operator-metadata/manifests/*package.yaml')
             .and_return([]))
 
         self.assertFalse(
@@ -599,7 +599,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'operator_name': 'my-operator-name'
         }
 
-        arg = '/working/dir/my-operator-name/path/to/operator/manifests/*.package.yaml'
+        arg = '/working/dir/my-operator-name/path/to/operator/manifests/*package.yaml'
         ret = '/working/dir/my-operator-name/path/to/operator/manifests/my-operator.package.yaml'
         flexmock(operator_metadata.glob).should_receive('glob').with_args(arg).and_return([ret])
 
@@ -616,7 +616,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'operator_name': 'my-operator-name'
         }
 
-        arg = '/working/dir/my-operator-name-metadata/manifests/*.package.yaml'
+        arg = '/working/dir/my-operator-name-metadata/manifests/*package.yaml'
         ret = '/working/dir/my-operator-name-metadata/manifests/my-operator.package.yaml'
         flexmock(operator_metadata.glob).should_receive('glob').with_args(arg).and_return([ret])
 
