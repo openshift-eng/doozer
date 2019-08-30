@@ -17,16 +17,17 @@ def log(func):
     :param function func: Function to be decorated
     :return: Return wrapper function
     """
-    def wrap(*args, **kwargs):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
         logger.info('running: {}, with args {} {}'.format(func.__name__, args, kwargs))
         return_val = func(*args, **kwargs)
         logger.info('{} returned {}'.format(func.__name__, return_val))
         return return_val
-    return wrap
+    return wrapper
 
 
 def unpack(func):
-    """Unpack decorator, unpacks a tuple into arguments for a function call
+    """Unpacking decorator, unpacks a tuple into arguments for a function call
     Needed because Python 2.7 doesn't have "starmap" for Pool / ThreadPool
 
     :param function func: Function to be decorated
