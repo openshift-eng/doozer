@@ -39,7 +39,7 @@ def unpack(func):
 
 
 @unpack
-def update_and_build(nvr, merge_branch, runtime):
+def update_and_build(nvr, merge_branch, runtime, force_build=False):
     """Module entrypoint, orchestrate update and build steps of metadata repos
 
     :param string nvr: Operator name-version-release
@@ -49,7 +49,7 @@ def update_and_build(nvr, merge_branch, runtime):
     """
     op_md = OperatorMetadata(nvr, runtime=runtime)
 
-    if not op_md.update_metadata_repo(merge_branch):
+    if not op_md.update_metadata_repo(merge_branch) and not force_build:
         util.green_print('No changes in metadata repo, skipping build')
         return True
 

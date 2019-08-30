@@ -1847,8 +1847,10 @@ def config_update_required(runtime, image_list):
 @click.argument("nvr_list", nargs=-1, required=True)
 @click.option("--merge-branch", required=True, type=click.Choice(['dev', 'stage', 'prod']),
               help="Metadata branch to apply update. Possible values: dev, stage, prod.")
+@click.option("-f", "--force", required=False, is_flag=True,
+              help="Perform a build even if there is nothing new on the metadata repo")
 @pass_runtime
-def update_operator_metadata(runtime, nvr_list, merge_branch):
+def update_operator_metadata(runtime, nvr_list, merge_branch, force=False):
     """Update the corresponding metadata repositories of the given operators
     and build "metadata containers" with nothing but a collection of manifests on them.
 
@@ -1867,7 +1869,7 @@ def update_operator_metadata(runtime, nvr_list, merge_branch):
 
     try:
         ok = ThreadPool(cpu_count()).map(operator_metadata.update_and_build, [
-            (nvr, merge_branch, runtime) for nvr in nvr_list
+            (nvr, merge_branch, runtime, force) for nvr in nvr_list
         ])
         # @TODO: save state.yaml (check how to do that)
     except Exception as e:
