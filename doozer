@@ -1705,21 +1705,33 @@ def release_gen_payload(runtime, src_dest, image_stream, is_base, pattern):
         click.echo()
 
 @cli.command("beta:reposync", short_help="Sync yum repos listed in group.yaml to local directory.")
-@click.option("-o", "--output", help="Output directory to sync to", required=True)
-@click.option("-c", "--cachedir", help="Cache directory for yum", required=True)
+@click.option("-o", "--output", metavar="DIR", help="Output directory to sync to", required=True)
+@click.option("-c", "--cachedir", metavar="DIR", help="Cache directory for yum", required=True)
+@click.option("-a", "--arch",
+              metavar='ARCH',
+              help="Arch for which the repo should be generated",
+              default='x86_64', required=False)
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for repo file generation (e.g. signed, unsigned).")
+@click.option("-n", "--name", "names", default=[], metavar='NAME', multiple=True,
+              help="Only sync the specified repository names; if not specified all will be synced.")
+@click.option('--dry-run', default=False, is_flag=True,
+              help='Print derived yum configuration for sync operation and exit')
 @pass_runtime
-def beta_reposync(runtime, output, cachedir, repo_type):
+def beta_reposync(runtime, output, cachedir, arch, repo_type, names, dry_run):
     """Sync yum repos listed in group.yaml to local directory.
     See `doozer --help` for more.
 
     Examples:
 
-    Write unsigned.repo:
+    Perform reposync operation for ppc64le architecture, preferring unsigned repos:
 
-        $ doozer --group=openshift-4.0 beta:reposync -o /tmp/repo_sync -c /tmp/cache/ --repo-type unsigned
+        $ doozer --group=openshift-4.0 beta:reposync -o /tmp/repo_sync -c /tmp/cache/ --repo-type unsigned --arch ppc64le
+
+    Synchronize signed, x86_64, rpms from rhel-server-ose-rpms repository.
+
+        $ doozer --group=openshift-4.0 beta:reposync -o /tmp/repo_sync -c /tmp/cache/ --repo-type signed -r rhel-server-ose-rpms
 
     """
     runtime.initialize(clone_distgits=False)
@@ -1740,16 +1752,22 @@ installonly_limit=3
 
     optional_fails = []
 
+    repos_content = repos.repo_file(repo_type, enabled_repos=None, use_config_name=True, arch=arch)
+    content = "{}\n\n{}".format(yum_conf, repos_content)
+
+    if dry_run:
+        print(content)
+        return
+
     if not os.path.isdir(cachedir):
         yellow_print('Creating cachedir: {}'.format(cachedir))
         exectools.cmd_assert('mkdir -p {}'.format(cachedir))
 
     try:
+        # If corrupted, reposync metadata can interfere with subsequent runs.
+        # Ensure we have a clean space for each invocation.
+        metadata_dir = tempfile.mkdtemp(prefix='reposync-metadata.', dir=cachedir)
         yc_file = tempfile.NamedTemporaryFile()
-
-        yc_file.write(yum_conf)
-        yc_file.write('\n\n')
-        content = repos.repo_file(repo_type, enabled_repos=None, use_config_name=True)
         yc_file.write(content)
 
         # must flush so it can be read
@@ -1757,11 +1775,16 @@ installonly_limit=3
 
         exectools.cmd_assert('yum clean all')  # clean the cache first to avoid outdated repomd.xml files
 
-        cmd_base = 'reposync -c {} -p {} --delete -n -r {}'
+        cmd_base = 'reposync -c {} -p {} --delete --arch {} -n -r {} -e {}'
 
         for repo in repos.itervalues():
+
+            # If specific names were specified, only synchronize them.
+            if names and repo.name not in names:
+                continue
+
             color_print('Syncing repo {}'.format(repo.name), 'blue')
-            cmd = cmd_base.format(yc_file.name, output, repo.name)
+            cmd = cmd_base.format(yc_file.name, output, arch, repo.name, metadata_dir)
             rc, out, err = exectools.cmd_gather(cmd, realtime=True)
             if rc != 0:
                 if not repo.cs_optional:
@@ -1779,11 +1802,12 @@ installonly_limit=3
                         optional_fails.append(repo.name)
     finally:
         yc_file.close()
+        shutil.rmtree(metadata_dir, ignore_errors=True)
 
     if optional_fails:
         yellow_print('Completed with the following optional repos skipped or partial due to failure, see log.:\n{}'.format('\n'.join(optional_fails)))
     else:
-        green_print('All repos synced to {}'.format(output))
+        green_print('Repos synced to {}'.format(output))
 
 
 @cli.command("config:update-required", short_help="Update images that are required")
