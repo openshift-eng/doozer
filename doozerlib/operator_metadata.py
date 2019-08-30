@@ -4,8 +4,9 @@ import shutil
 import threading
 import yaml
 
+from functools import wraps
 from dockerfile_parse import DockerfileParser
-from doozerlib import brew, exectools, logutil, pushd
+from doozerlib import brew, exectools, logutil, pushd, util
 
 logger = logutil.getLogger(__name__)
 
@@ -22,6 +23,41 @@ def log(func):
         logger.info('{} returned {}'.format(func.__name__, return_val))
         return return_val
     return wrap
+
+
+def unpack(func):
+    """Unpack decorator, unpacks a tuple into arguments for a function call
+    Needed because Python 2.7 doesn't have "starmap" for Pool / ThreadPool
+
+    :param function func: Function to be decorated
+    :return: Return wrapper function
+    """
+    @wraps(func)
+    def wrapper(arg_tuple):
+        return func(*arg_tuple)
+    return wrapper
+
+
+@unpack
+def update_and_build(nvr, merge_branch, runtime):
+    """Module entrypoint, orchestrate update and build steps of metadata repos
+
+    :param string nvr: Operator name-version-release
+    :param string merge_branch: Which metadata branch should be updated (dev, stage, prod)
+    :param Runtime runtime: a runtime instance
+    :return bool True if operations succeeded, False if something went wrong
+    """
+    op_md = OperatorMetadata(nvr, runtime=runtime)
+
+    if not op_md.update_metadata_repo(merge_branch):
+        util.green_print('No changes in metadata repo, skipping build')
+        return True
+
+    if not op_md.build_metadata_container():
+        util.red_print('Build of {} failed, see debug.log'.format(op_md.metadata_name))
+        return False
+
+    return True
 
 
 class OperatorMetadata:

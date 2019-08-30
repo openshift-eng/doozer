@@ -27,7 +27,7 @@ import tempfile
 import traceback
 import koji
 from numbers import Number
-from multiprocessing.dummy import Pool as ThreadPool
+from multiprocessing.pool import ThreadPool
 from multiprocessing import cpu_count
 from dockerfile_parse import DockerfileParser
 import dotconfig
@@ -1865,16 +1865,15 @@ def update_operator_metadata(runtime, nvr_list, merge_branch):
     """
     runtime.initialize(clone_distgits=False)
 
-    for nvr in nvr_list:  # @TODO: process them in parallel
-        op_md = operator_metadata.OperatorMetadata(nvr, runtime=runtime)
-
-        if not op_md.update_metadata_repo(merge_branch):
-            green_print('No changes in metadata repo, skipping build')
-            sys.exit(0)
-
-        if not op_md.build_metadata_container():
-            sys.exit(1)
+    try:
+        ok = ThreadPool(cpu_count()).map(operator_metadata.update_and_build, [
+            (nvr, merge_branch, runtime) for nvr in nvr_list
+        ])
         # @TODO: save state.yaml (check how to do that)
+    except Exception as e:
+        red_print(str(e))
+
+    sys.exit(0 if all(ok) else 1)
 
 
 def main():
