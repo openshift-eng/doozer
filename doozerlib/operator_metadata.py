@@ -190,7 +190,7 @@ class OperatorMetadata:
         But some modifications on the labels are neeeded:
 
         - 'com.redhat.component' label should contain the metadata component name,
-           otherwise it conflicts with the operator, causing a "build already exists"
+           otherwise it conflicts with the operator.
            error in brew
 
         - 'com.redhat.delivery.appregistry' should always be "true", regardless of
