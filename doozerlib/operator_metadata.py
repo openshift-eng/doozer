@@ -434,6 +434,7 @@ class OperatorMetadataLatestBuildReporter:
         self.operator_name = operator_name
         self.runtime = runtime
 
+    @log
     def get_latest_build(self):
         cmd = 'brew latest-build {} {} --quiet'.format(self.target, self.metadata_component_name)
         _rc, stdout, _stderr = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
