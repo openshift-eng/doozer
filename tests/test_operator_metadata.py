@@ -733,5 +733,59 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         operator_metadata.OperatorMetadataBuilder(nvr, runtime).get_brew_buildinfo()
 
 
+class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
+    def test_get_latest_build(self):
+        runtime = type('TestRuntime', (object,), {
+            'group_config': type('TestGroupConfig', (object,), {
+                'branch': 'my-target-branch'
+            }),
+            'image_map': {
+                'my-operator': type('TestImageMetadata', (object,), {
+                    'config': {}
+                })
+            }
+        })
+
+        expected_cmd = ('brew latest-build '
+                        'my-target-branch-candidate '
+                        'my-operator-metadata-container '
+                        '--quiet')
+
+        (flexmock(operator_metadata.exectools)
+            .should_receive('cmd_gather')
+            .with_args(expected_cmd)
+            .and_return(('..', 'irrelevant', '..')))
+
+        operator_metadata.OperatorMetadataLatestBuildReporter('my-operator', runtime).get_latest_build()
+
+    def test_get_latest_build_with_custom_component_name(self):
+        runtime = type('TestRuntime', (object,), {
+            'group_config': type('TestGroupConfig', (object,), {
+                'branch': 'my-target-branch'
+            }),
+            'image_map': {
+                'my-operator': type('TestImageMetadata', (object,), {
+                    'config': {
+                        'distgit': {
+                            'component': 'my-custom-component-name-container'
+                        }
+                    }
+                })
+            }
+        })
+
+        expected_cmd = ('brew latest-build '
+                        'my-target-branch-candidate '
+                        'my-custom-component-name-metadata-container '
+                        '--quiet')
+
+        (flexmock(operator_metadata.exectools)
+            .should_receive('cmd_gather')
+            .with_args(expected_cmd)
+            .and_return(('..', 'irrelevant', '..')))
+
+        operator_metadata.OperatorMetadataLatestBuildReporter('my-operator', runtime).get_latest_build()
+
+
 def get_builtin_module():
     return sys.modules.get('__builtin__', sys.modules.get('builtins'))

@@ -1878,6 +1878,24 @@ def update_operator_metadata(runtime, nvr_list, merge_branch, force=False):
     sys.exit(0 if all(ok) else 1)
 
 
+@cli.command("operator-metadata:latest-build", short_help="Print latest metadata build of a given operator")
+@click.argument("operator_list", nargs=-1, required=True)
+@pass_runtime
+def operator_metadata_latest_build(runtime, operator_list):
+    """Print the latest metadata build of a given operator
+
+    operator_list: One or more operator names
+
+    Usage example:
+
+    $ doozer -g openshift-4.2 operator-metadata:latest-build cluster-logging-operator
+    """
+    runtime.initialize(clone_distgits=False)
+
+    for operator in operator_list:
+        print(operator_metadata.OperatorMetadataLatestBuildReporter(operator, runtime).get_latest_build())
+
+
 def main():
     try:
         if 'REQUESTS_CA_BUNDLE' not in os.environ:

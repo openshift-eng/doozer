@@ -427,3 +427,37 @@ class OperatorMetadataBuilder:
         if attr not in self._cached_attrs:
             self._cached_attrs[attr] = getattr(self, 'get_{}'.format(attr))()
         return self._cached_attrs[attr]
+
+
+class OperatorMetadataLatestBuildReporter:
+    def __init__(self, operator_name, runtime):
+        self.operator_name = operator_name
+        self.runtime = runtime
+
+    def get_latest_build(self):
+        cmd = 'brew latest-build {} {} --quiet'.format(self.target, self.metadata_component_name)
+        _rc, stdout, _stderr = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+        return stdout.split(' ')[0]
+
+    @property
+    def target(self):
+        return '{}-candidate'.format(self.operator_branch)
+
+    @property
+    def operator_branch(self):
+        return self.runtime.group_config.branch
+
+    @property
+    def metadata_component_name(self):
+        return self.operator_component_name.replace('-container', '-metadata-container')
+
+    @property
+    def operator_component_name(self):
+        if 'distgit' in self.operator.config and 'component' in self.operator.config['distgit']:
+            return self.operator.config['distgit']['component']
+
+        return '{}-container'.format(self.operator_name)
+
+    @property
+    def operator(self):
+        return self.runtime.image_map[self.operator_name]
