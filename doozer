@@ -1859,11 +1859,11 @@ def update_operator_metadata(runtime, nvr_list, merge_branch, force=False):
 
     Usage example with single NVR:
 
-    $ doozer operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 --merge-branch dev
+    $ doozer -g openshift-4.2 operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 --merge-branch dev
 
     Usage example with multiple NVRs:
 
-    $ doozer operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --merge-branch prod
+    $ doozer -g openshift-4.2 operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --merge-branch prod
     """
     runtime.initialize(clone_distgits=False)
 
