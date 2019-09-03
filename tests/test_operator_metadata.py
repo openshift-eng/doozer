@@ -193,9 +193,9 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         package_yaml_filename = '/tmp/my-operator-metadata/manifests/my-operator.package.yaml'
         initial_package_yaml_contents = io.BytesIO(b"""
         channels:
-          - name: 0.1
+          - name: 4.1
             currentCSV: initial-value
-          - name: 0.2
+          - name: 4.2
             currentCSV: should-remain-unchanged
         """)
 
@@ -213,10 +213,10 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         expected_package_yaml_contents = {
             'channels': [
-                {'name': 0.1, 'currentCSV': 'updated-value'},
-                {'name': 0.2, 'currentCSV': 'should-remain-unchanged'}
+                {'name': 4.1, 'currentCSV': 'updated-value'},
+                {'name': 4.2, 'currentCSV': 'should-remain-unchanged'}
             ],
-            'defaultChannel': '4.2'  # @TODO: replace hardcoded with highest release
+            'defaultChannel': '4.2'
         }
 
         (flexmock(operator_metadata.yaml)
@@ -228,7 +228,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             .with_args(package_yaml_filename, 'w')
             .and_return(flexmock(write=lambda *_: None, __exit__=None)))
 
-        nvr = 'my-operator-container-v0.1.2-201901010000'
+        nvr = 'my-operator-container-v4.1.2-201901010000'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/tmp',
@@ -266,7 +266,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
                 {'name': 0.2, 'currentCSV': 'should-remain-unchanged'},
                 {'name': '0.1', 'currentCSV': 'updated-value'}
             ],
-            'defaultChannel': '4.2'  # @TODO: replace hardcoded with highest release
+            'defaultChannel': '0.1'
         }
 
         (flexmock(operator_metadata.yaml)
