@@ -1843,7 +1843,7 @@ def config_update_required(runtime, image_list):
     green_print('\nComplete! Remember to commit and push the changes!')
 
 
-@cli.command("operator:metadata", short_help="Update operator(s) metadata")
+@cli.command("operator-metadata:build", short_help="Update operator(s) metadata")
 @click.argument("nvr_list", nargs=-1, required=True)
 @click.option("--merge-branch", required=True, type=click.Choice(['dev', 'stage', 'prod']),
               help="Metadata branch to apply update. Possible values: dev, stage, prod.")
@@ -1859,11 +1859,11 @@ def update_operator_metadata(runtime, nvr_list, merge_branch, force=False):
 
     Usage example with single NVR:
 
-    $ doozer operator:metadata cluster-logging-operator-container-v4.2.0-201908070219 --merge-branch dev
+    $ doozer operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 --merge-branch dev
 
     Usage example with multiple NVRs:
 
-    $ doozer operator:metadata cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --merge-branch prod
+    $ doozer operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --merge-branch prod
     """
     runtime.initialize(clone_distgits=False)
 
