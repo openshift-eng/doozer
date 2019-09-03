@@ -18,7 +18,7 @@ Tags: rhaos-4.2-rhel-7-candidate
 """
 
 
-class TestOperatorMetadata(unittest.TestCase):
+class TestOperatorMetadataBuilder(unittest.TestCase):
     def test_update_metadata_repo(self):
         # @TODO: test this method
         pass
@@ -44,7 +44,7 @@ class TestOperatorMetadata(unittest.TestCase):
             .with_args('timeout 600 rhpkg clone containers/my-repo --branch my-branch')
             .replace_with(lambda *_: '...irrelevant...'))
 
-        operator_metadata.OperatorMetadata(nvr, runtime).clone_repo('my-repo', 'my-branch')
+        operator_metadata.OperatorMetadataBuilder(nvr, runtime).clone_repo('my-repo', 'my-branch')
 
     def test_clone_repo_with_rhpkg_user(self):
         nvr = '...irrelevant...'
@@ -64,7 +64,7 @@ class TestOperatorMetadata(unittest.TestCase):
             .with_args('timeout 600 rhpkg --user my-user clone containers/my-repo --branch my-branch')
             .replace_with(lambda *_: '...irrelevant...'))
 
-        operator_metadata.OperatorMetadata(nvr, runtime).clone_repo('my-repo', 'my-branch')
+        operator_metadata.OperatorMetadataBuilder(nvr, runtime).clone_repo('my-repo', 'my-branch')
 
     def test_checkout_repo(self):
         nvr = '...irrelevant...'
@@ -83,7 +83,7 @@ class TestOperatorMetadata(unittest.TestCase):
             .with_args('git checkout my-hash')
             .replace_with(lambda *_: '...irrelevant...'))
 
-        operator_metadata.OperatorMetadata(nvr, runtime).checkout_repo('my-repo', 'my-hash')
+        operator_metadata.OperatorMetadataBuilder(nvr, runtime).checkout_repo('my-repo', 'my-hash')
 
     def test_update_metadata_manifests_dir_metadata_package_yaml_not_present(self):
         (flexmock(operator_metadata.exectools)
@@ -139,7 +139,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'working_dir': '/tmp',
             'operator_name': 'my-operator-name'
         }
-        operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).update_metadata_manifests_dir()
+        operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).update_metadata_manifests_dir()
 
     def test_update_metadata_manifests_dir_metadata_package_yaml_already_present(self):
         (flexmock(operator_metadata.exectools)
@@ -187,7 +187,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'working_dir': '/tmp',
             'operator_name': 'my-operator-name'
         }
-        operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).update_metadata_manifests_dir()
+        operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).update_metadata_manifests_dir()
 
     def test_merge_streams_on_top_level_package_yaml_channel_already_present(self):
         package_yaml_filename = '/tmp/my-operator-metadata/manifests/my-operator.package.yaml'
@@ -237,7 +237,7 @@ class TestOperatorMetadata(unittest.TestCase):
                 'config': {'update-csv': {}}
             })
         }
-        (operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs)
+        (operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs)
             .merge_streams_on_top_level_package_yaml())
 
     def test_merge_streams_on_top_level_package_yaml_channel_not_present(self):
@@ -286,7 +286,7 @@ class TestOperatorMetadata(unittest.TestCase):
                 'config': {'update-csv': {}}
             })
         }
-        (operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs)
+        (operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs)
             .merge_streams_on_top_level_package_yaml())
 
     def test_create_metadata_dockerfile(self):
@@ -314,7 +314,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'working_dir': '/tmp',
             'operator_name': 'my-operator'
         }
-        operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).create_metadata_dockerfile()
+        operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).create_metadata_dockerfile()
         with open('/tmp/my-operator-metadata/Dockerfile', 'r') as f:
             self.assertItemsEqual([l.strip() for l in f.readlines()], [
                 'FROM scratch',
@@ -360,7 +360,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'working_dir': '/my/working/dir',
             'operator_name': 'my-operator'
         }
-        (operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs)
+        (operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs)
             .commit_and_push_metadata_repo())
 
     def test_commit_and_push_metadata_repo_with_rhpkg_user(self):
@@ -395,7 +395,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'operator_name': 'my-operator',
             'rhpkg_user': 'my-user'
         }
-        (operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs)
+        (operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs)
             .commit_and_push_metadata_repo())
 
     def test_metadata_package_yaml_exists(self):
@@ -412,7 +412,7 @@ class TestOperatorMetadata(unittest.TestCase):
             .and_return(['one-item']))
 
         self.assertTrue(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).metadata_package_yaml_exists()
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).metadata_package_yaml_exists()
         )
 
     def test_metadata_package_yaml_does_not_exist(self):
@@ -429,7 +429,7 @@ class TestOperatorMetadata(unittest.TestCase):
             .and_return([]))
 
         self.assertFalse(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).metadata_package_yaml_exists()
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).metadata_package_yaml_exists()
         )
 
     def test_extract_brew_task_id(self):
@@ -440,7 +440,7 @@ class TestOperatorMetadata(unittest.TestCase):
         nvr = '...irrelevant...'
         runtime = '...irrelevant...'
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime).extract_brew_task_id(rhpkg_container_build_output),
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime).extract_brew_task_id(rhpkg_container_build_output),
             '23233205'
         )
 
@@ -450,7 +450,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'working_dir': '/my/working/dir'
         })
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime).working_dir,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime).working_dir,
             '/my/working/dir/distgits/containers'
         )
 
@@ -460,7 +460,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'user': 'my_user'
         })
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime).rhpkg_user,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime).rhpkg_user,
             'my_user'
         )
 
@@ -469,7 +469,7 @@ class TestOperatorMetadata(unittest.TestCase):
         runtime = type('TestRuntime', (object,), {
         })
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime).rhpkg_user,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime).rhpkg_user,
             ''
         )
 
@@ -481,7 +481,7 @@ class TestOperatorMetadata(unittest.TestCase):
             })
         })
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime).operator_branch,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime).operator_branch,
             'my-branch'
         )
 
@@ -492,7 +492,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'operator_branch': 'my-operator-branch'
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).target,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).target,
             'my-operator-branch-candidate'
         )
 
@@ -503,7 +503,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'brew_buildinfo': (0, SAMPLE_BREW_BUILDINFO_STDOUT, '')
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).operator_name,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).operator_name,
             'my-operator'
         )
 
@@ -514,7 +514,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'brew_buildinfo': (0, SAMPLE_BREW_BUILDINFO_STDOUT, '')
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).commit_hash,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).commit_hash,
             'a1b2c3d4e5f6g7h8'
         )
 
@@ -529,7 +529,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'operator_name': 'my-operator-name'
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).operator,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).operator,
             'My Operator Object'
         )
 
@@ -540,7 +540,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'operator_name': 'my-operator-name'
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).metadata_name,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).metadata_name,
             'my-operator-name-metadata'
         )
 
@@ -548,7 +548,7 @@ class TestOperatorMetadata(unittest.TestCase):
         nvr = 'my-operator-container-v0.1.2-201901010000'
         runtime = '...irrelevant...'
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime).channel,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime).channel,
             '0.1'
         )
 
@@ -569,7 +569,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'operator_name': 'my-operator-name'
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).operator_manifests_dir,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).operator_manifests_dir,
             'path/to/operator/manifests'
         )
 
@@ -577,7 +577,7 @@ class TestOperatorMetadata(unittest.TestCase):
         nvr = '...irrelevant...'
         runtime = '...irrelevant...'
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime).metadata_manifests_dir,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime).metadata_manifests_dir,
             'manifests'
         )
 
@@ -604,7 +604,7 @@ class TestOperatorMetadata(unittest.TestCase):
         flexmock(operator_metadata.glob).should_receive('glob').with_args(arg).and_return([ret])
 
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).operator_package_yaml_filename,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).operator_package_yaml_filename,
             '/working/dir/my-operator-name/path/to/operator/manifests/my-operator.package.yaml'
         )
 
@@ -621,7 +621,7 @@ class TestOperatorMetadata(unittest.TestCase):
         flexmock(operator_metadata.glob).should_receive('glob').with_args(arg).and_return([ret])
 
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).metadata_package_yaml_filename,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).metadata_package_yaml_filename,
             '/working/dir/my-operator-name-metadata/manifests/my-operator.package.yaml'
         )
 
@@ -639,7 +639,7 @@ class TestOperatorMetadata(unittest.TestCase):
             .and_return(['/working-dir/my-operator-metadata/manifests/0.1/my-operator.clusterserviceversion.yaml']))
 
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).metadata_csv_yaml_filename,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).metadata_csv_yaml_filename,
             '/working-dir/my-operator-metadata/manifests/0.1/my-operator.clusterserviceversion.yaml'
         )
 
@@ -668,7 +668,7 @@ class TestOperatorMetadata(unittest.TestCase):
             'operator_name': 'my-operator',
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).csv,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).csv,
             'my-csv'
         )
 
@@ -683,7 +683,7 @@ class TestOperatorMetadata(unittest.TestCase):
             })
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).channel_name,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).channel_name,
             '0.1'
         )
 
@@ -700,7 +700,7 @@ class TestOperatorMetadata(unittest.TestCase):
             })
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).channel_name,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).channel_name,
             'my-custom-channel-name'
         )
 
@@ -717,7 +717,7 @@ class TestOperatorMetadata(unittest.TestCase):
             })
         }
         self.assertEqual(
-            operator_metadata.OperatorMetadata(nvr, runtime, **cached_attrs).channel_name,
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).channel_name,
             '4.2'
         )
 
@@ -730,7 +730,7 @@ class TestOperatorMetadata(unittest.TestCase):
             .with_args('brew buildinfo {}'.format(nvr))
             .replace_with(lambda *_: '...irrelevant...'))
 
-        operator_metadata.OperatorMetadata(nvr, runtime).get_brew_buildinfo()
+        operator_metadata.OperatorMetadataBuilder(nvr, runtime).get_brew_buildinfo()
 
 
 def get_builtin_module():

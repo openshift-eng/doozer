@@ -48,7 +48,7 @@ def update_and_build(nvr, merge_branch, runtime, force_build=False):
     :param Runtime runtime: a runtime instance
     :return bool True if operations succeeded, False if something went wrong
     """
-    op_md = OperatorMetadata(nvr, runtime=runtime)
+    op_md = OperatorMetadataBuilder(nvr, runtime=runtime)
 
     if not op_md.update_metadata_repo(merge_branch) and not force_build:
         util.green_print('No changes in metadata repo, skipping build')
@@ -61,7 +61,7 @@ def update_and_build(nvr, merge_branch, runtime, force_build=False):
     return True
 
 
-class OperatorMetadata:
+class OperatorMetadataBuilder:
     def __init__(self, nvr, runtime, **kwargs):
         self.nvr = nvr
         self.runtime = runtime
