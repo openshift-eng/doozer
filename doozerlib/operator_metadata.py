@@ -163,6 +163,7 @@ class OperatorMetadataBuilder:
         pointing to the current CSV
         """
         package_yaml = yaml.safe_load(open(self.metadata_package_yaml_filename))
+        package_yaml['defaultChannel'] = '4.2'  # @TODO: replace hardcoded with highest release
 
         def find_channel_index(package_yaml):
             for index, channel in enumerate(package_yaml['channels']):

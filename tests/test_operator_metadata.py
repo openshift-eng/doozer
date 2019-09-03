@@ -215,7 +215,8 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             'channels': [
                 {'name': 0.1, 'currentCSV': 'updated-value'},
                 {'name': 0.2, 'currentCSV': 'should-remain-unchanged'}
-            ]
+            ],
+            'defaultChannel': '4.2'  # @TODO: replace hardcoded with highest release
         }
 
         (flexmock(operator_metadata.yaml)
@@ -264,7 +265,8 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             'channels': [
                 {'name': 0.2, 'currentCSV': 'should-remain-unchanged'},
                 {'name': '0.1', 'currentCSV': 'updated-value'}
-            ]
+            ],
+            'defaultChannel': '4.2'  # @TODO: replace hardcoded with highest release
         }
 
         (flexmock(operator_metadata.yaml)
