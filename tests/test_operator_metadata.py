@@ -546,6 +546,17 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             'my-operator-name-metadata'
         )
 
+    def test_property_metadata_repo(self):
+        nvr = '...irrelevant...'
+        runtime = '...irrelevant...'
+        cached_attrs = {
+            'operator_name': 'my-operator-name'
+        }
+        self.assertEqual(
+            operator_metadata.OperatorMetadataBuilder(nvr, runtime, **cached_attrs).metadata_repo,
+            'my-operator-name-metadata'
+        )
+
     def test_property_channel(self):
         nvr = 'my-operator-container-v0.1.2-201901010000'
         runtime = '...irrelevant...'

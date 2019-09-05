@@ -55,7 +55,7 @@ def update_and_build(nvr, merge_branch, runtime, force_build=False):
         return True
 
     if not op_md.build_metadata_container():
-        util.red_print('Build of {} failed, see debug.log'.format(op_md.metadata_name))
+        util.red_print('Build of {} failed, see debug.log'.format(op_md.metadata_repo))
         return False
 
     return True
@@ -77,7 +77,7 @@ class OperatorMetadataBuilder:
         exectools.cmd_assert('mkdir -p {}'.format(self.working_dir))
 
         self.clone_repo(self.operator_name, self.operator_branch)
-        self.clone_repo(self.metadata_name, metadata_branch)
+        self.clone_repo(self.metadata_repo, metadata_branch)
         self.checkout_repo(self.operator_name, self.commit_hash)
 
         self.update_metadata_manifests_dir()
@@ -92,7 +92,7 @@ class OperatorMetadataBuilder:
         :return: bool True if build succeeded, False otherwise
         :raise: Exception if command failed (rc != 0)
         """
-        with pushd.Dir('{}/{}'.format(self.working_dir, self.metadata_name)):
+        with pushd.Dir('{}/{}'.format(self.working_dir, self.metadata_repo)):
             cmd = 'timeout 600 rhpkg {}container-build --nowait --target {}'.format(
                 ('--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''),
                 self.target
@@ -207,7 +207,7 @@ class OperatorMetadataBuilder:
         multiple times
         """
         operator_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.operator_name))
-        metadata_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.metadata_name))
+        metadata_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.metadata_repo))
         metadata_dockerfile.content = 'FROM scratch\nCOPY ./manifests /manifests'
         metadata_dockerfile.labels = operator_dockerfile.labels
         metadata_dockerfile.labels['com.redhat.component'] = (
@@ -225,7 +225,7 @@ class OperatorMetadataBuilder:
     def commit_and_push_metadata_repo(self):
         """Commit and push changes made on the metadata repository, using rhpkg
         """
-        with pushd.Dir('{}/{}'.format(self.working_dir, self.metadata_name)):
+        with pushd.Dir('{}/{}'.format(self.working_dir, self.metadata_repo)):
             try:
                 exectools.cmd_assert('git add .')
                 user_option = '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
@@ -240,7 +240,7 @@ class OperatorMetadataBuilder:
     def remove_metadata_channel_dir(self):
         exectools.cmd_assert('rm -rf {}/{}/{}/{}'.format(
             self.working_dir,
-            self.metadata_name,
+            self.metadata_repo,
             self.metadata_manifests_dir,
             self.channel
         ))
@@ -249,7 +249,7 @@ class OperatorMetadataBuilder:
     def ensure_metadata_manifests_dir_exists(self):
         exectools.cmd_assert('mkdir -p {}/{}/{}'.format(
             self.working_dir,
-            self.metadata_name,
+            self.metadata_repo,
             self.metadata_manifests_dir
         ))
 
@@ -261,7 +261,7 @@ class OperatorMetadataBuilder:
             self.operator_manifests_dir,
             self.channel,
             self.working_dir,
-            self.metadata_name,
+            self.metadata_repo,
             self.metadata_manifests_dir
         ))
 
@@ -270,7 +270,7 @@ class OperatorMetadataBuilder:
         exectools.cmd_assert('cp {} {}/{}/{}'.format(
             self.operator_package_yaml_filename,
             self.working_dir,
-            self.metadata_name,
+            self.metadata_repo,
             self.metadata_manifests_dir
         ))
 
@@ -278,7 +278,7 @@ class OperatorMetadataBuilder:
     def metadata_package_yaml_exists(self):
         return len(glob.glob('{}/{}/{}/*package.yaml'.format(
             self.working_dir,
-            self.metadata_name,
+            self.metadata_repo,
             self.metadata_manifests_dir
         ))) > 0
 
@@ -336,6 +336,10 @@ class OperatorMetadataBuilder:
         return '{}-metadata'.format(self.operator_name)
 
     @property
+    def metadata_repo(self):
+        return self.metadata_name
+
+    @property
     def channel(self):
         return re.search(r'^v?(\d+\.\d+)\.*', self.nvr.split('-')[-2]).group(1)
 
@@ -363,7 +367,7 @@ class OperatorMetadataBuilder:
     def metadata_package_yaml_filename(self):
         return glob.glob('{}/{}/{}/*package.yaml'.format(
             self.working_dir,
-            self.metadata_name,
+            self.metadata_repo,
             self.metadata_manifests_dir
         ))[0]
 
@@ -371,7 +375,7 @@ class OperatorMetadataBuilder:
     def metadata_csv_yaml_filename(self):
         return glob.glob('{}/{}/{}/{}/*.clusterserviceversion.yaml'.format(
             self.working_dir,
-            self.metadata_name,
+            self.metadata_repo,
             self.metadata_manifests_dir,
             self.channel
         ))[0]
