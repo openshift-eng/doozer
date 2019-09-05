@@ -40,7 +40,7 @@ def unpack(func):
 
 
 @unpack
-def update_and_build(nvr, stream, runtime, merge_branch='rhaos-4-rhel-7', force_build=False):
+def update_and_build(nvr, stream, runtime, merge_branch, force_build=False):
     """Module entrypoint, orchestrate update and build steps of metadata repos
 
     :param string nvr: Operator name-version-release

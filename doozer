@@ -1868,6 +1868,8 @@ def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=Fals
     $ doozer -g openshift-4.2 operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --stream prod
     """
     runtime.initialize(clone_distgits=False)
+    if not merge_branch:
+        merge_branch = 'rhaos-4-rhel-7'
 
     try:
         ok = ThreadPool(cpu_count()).map(operator_metadata.update_and_build, [
