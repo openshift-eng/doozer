@@ -200,7 +200,7 @@ class OperatorMetadataBuilder:
 
         - 'com.redhat.component' label should contain the metadata component name,
            otherwise it conflicts with the operator.
-           error in brew
+
 
         - 'com.redhat.delivery.appregistry' should always be "true", regardless of
           the value coming from the operator Dockerfile
