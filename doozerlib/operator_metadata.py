@@ -182,7 +182,7 @@ class OperatorMetadataBuilder:
             channel_names = [str(channel['name']) for channel in package_yaml['channels']]
             return '4.2' if '4.2' in channel_names else self.channel_name
 
-        package_yaml['defaultChannel'] = get_default_channel(package_yaml)
+        package_yaml['defaultChannel'] = str(get_default_channel(package_yaml))
 
         def find_channel_index(package_yaml):
             for index, channel in enumerate(package_yaml['channels']):
