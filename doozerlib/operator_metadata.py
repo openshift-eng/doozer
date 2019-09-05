@@ -339,7 +339,9 @@ class OperatorMetadataBuilder:
 
     @property
     def metadata_repo(self):
-        return self.metadata_name
+        return self.operator_name.replace(
+            '-operator', '-{}-operator-metadata'.format(self.stream)
+        )
 
     @property
     def channel(self):

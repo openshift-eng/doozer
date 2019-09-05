@@ -91,46 +91,46 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
     def test_update_metadata_manifests_dir_metadata_package_yaml_not_present(self):
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('rm -rf /tmp/my-operator-name-metadata/manifests/0.1')
+            .with_args('rm -rf /tmp/my-dev-operator-metadata/manifests/0.1')
             .once())
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('mkdir -p /tmp/my-operator-name-metadata/manifests')
+            .with_args('mkdir -p /tmp/my-dev-operator-metadata/manifests')
             .once())
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
             .with_args((
                 'cp -r '
-                '/tmp/my-operator-name/path/to/operator/manifests/0.1 '
-                '/tmp/my-operator-name-metadata/manifests'
+                '/tmp/my-operator/path/to/operator/manifests/0.1 '
+                '/tmp/my-dev-operator-metadata/manifests'
             ))
             .once())
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-name-metadata/manifests/*package.yaml')
+            .with_args('/tmp/my-dev-operator-metadata/manifests/*package.yaml')
             .and_return([]))
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-name/path/to/operator/manifests/*package.yaml')
+            .with_args('/tmp/my-operator/path/to/operator/manifests/*package.yaml')
             .and_return(['/full/path/to/operator.package.yaml']))
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
             .with_args((
                 'cp /full/path/to/operator.package.yaml '
-                '/tmp/my-operator-name-metadata/manifests'
+                '/tmp/my-dev-operator-metadata/manifests'
             ))
             .once())
 
         nvr = 'my-operator-container-v0.1.2-201901010000'
-        stream = '...irrelevant...'
+        stream = 'dev'
         runtime = type('TestRuntime', (object,), {
             'image_map': {
-                'my-operator-name': type('TestImageMetadata', (object,), {
+                'my-operator': type('TestImageMetadata', (object,), {
                     'config': {
                         'update-csv': {
                             'manifests-dir': 'path/to/operator/manifests/'
@@ -141,45 +141,45 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         })
         cached_attrs = {
             'working_dir': '/tmp',
-            'operator_name': 'my-operator-name'
+            'operator_name': 'my-operator'
         }
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).update_metadata_manifests_dir()
 
     def test_update_metadata_manifests_dir_metadata_package_yaml_already_present(self):
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('rm -rf /tmp/my-operator-name-metadata/manifests/0.1')
+            .with_args('rm -rf /tmp/my-dev-operator-metadata/manifests/0.1')
             .once())
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('mkdir -p /tmp/my-operator-name-metadata/manifests')
+            .with_args('mkdir -p /tmp/my-dev-operator-metadata/manifests')
             .once())
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
             .with_args((
                 'cp -r '
-                '/tmp/my-operator-name/path/to/operator/manifests/0.1 '
-                '/tmp/my-operator-name-metadata/manifests'
+                '/tmp/my-operator/path/to/operator/manifests/0.1 '
+                '/tmp/my-dev-operator-metadata/manifests'
             ))
             .once())
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-name-metadata/manifests/*package.yaml')
+            .with_args('/tmp/my-dev-operator-metadata/manifests/*package.yaml')
             .and_return(['one-item']))
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-name/path/to/operator/manifests/*package.yaml')
+            .with_args('/tmp/my-operator/path/to/operator/manifests/*package.yaml')
             .times(0))
 
         nvr = 'my-operator-container-v0.1.2-201901010000'
-        stream = '...irrelevant...'
+        stream = 'dev'
         runtime = type('TestRuntime', (object,), {
             'image_map': {
-                'my-operator-name': type('TestImageMetadata', (object,), {
+                'my-operator': type('TestImageMetadata', (object,), {
                     'config': {
                         'update-csv': {
                             'manifests-dir': 'path/to/operator/manifests/'
@@ -190,12 +190,12 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         })
         cached_attrs = {
             'working_dir': '/tmp',
-            'operator_name': 'my-operator-name'
+            'operator_name': 'my-operator'
         }
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).update_metadata_manifests_dir()
 
     def test_merge_streams_on_top_level_package_yaml_channel_already_present(self):
-        package_yaml_filename = '/tmp/my-operator-metadata/manifests/my-operator.package.yaml'
+        package_yaml_filename = '/tmp/my-dev-operator-metadata/manifests/my-operator.package.yaml'
         initial_package_yaml_contents = io.BytesIO(b"""
         channels:
           - name: 4.1
@@ -209,7 +209,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-metadata/manifests/*package.yaml')
+            .with_args('/tmp/my-dev-operator-metadata/manifests/*package.yaml')
             .and_return([package_yaml_filename]))
 
         (mock.should_receive('open')
@@ -234,7 +234,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             .and_return(flexmock(write=lambda *_: None, __exit__=None)))
 
         nvr = 'my-operator-container-v4.1.2-201901010000'
-        stream = '...irrelevant...'
+        stream = 'dev'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/tmp',
@@ -248,7 +248,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             .merge_streams_on_top_level_package_yaml())
 
     def test_merge_streams_on_top_level_package_yaml_channel_not_present(self):
-        package_yaml_filename = '/tmp/my-operator-metadata/manifests/my-operator.package.yaml'
+        package_yaml_filename = '/tmp/my-dev-operator-metadata/manifests/my-operator.package.yaml'
         initial_package_yaml_contents = io.BytesIO(b"""
         channels:
           - name: 0.2
@@ -260,7 +260,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-metadata/manifests/*package.yaml')
+            .with_args('/tmp/my-dev-operator-metadata/manifests/*package.yaml')
             .and_return([package_yaml_filename]))
 
         (mock.should_receive('open')
@@ -285,7 +285,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             .and_return(flexmock(write=lambda *_: None, __exit__=None)))
 
         nvr = 'my-operator-container-v0.1.2-201901010000'
-        stream = '...irrelevant...'
+        stream = 'dev'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/tmp',
@@ -302,7 +302,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         # using the real filesystem, because DockerfileParser library keeps
         # opening and closing files at every operation, really hard to mock
         exectools.cmd_assert('mkdir -p /tmp/my-operator')
-        exectools.cmd_assert('mkdir -p /tmp/my-operator-metadata')
+        exectools.cmd_assert('mkdir -p /tmp/my-dev-operator-metadata')
         with open('/tmp/my-operator/Dockerfile', 'w') as f:
             f.write("""FROM openshift/foo-bar-operator:v0.1.2.20190826.143750
                        ENV SOURCE_GIT_COMMIT=... SOURCE_DATE_EPOCH=00000 BUILD_VERSION=vX.Y.Z
@@ -318,14 +318,14 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             """)
 
         nvr = '...irrelevant...'
-        stream = '...irrelevant...'
+        stream = 'dev'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/tmp',
             'operator_name': 'my-operator'
         }
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).create_metadata_dockerfile()
-        with open('/tmp/my-operator-metadata/Dockerfile', 'r') as f:
+        with open('/tmp/my-dev-operator-metadata/Dockerfile', 'r') as f:
             self.assertItemsEqual([l.strip() for l in f.readlines()], [
                 'FROM scratch',
                 'COPY ./manifests /manifests',
@@ -337,13 +337,13 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         # Cleaning up
         shutil.rmtree('/tmp/my-operator')
-        shutil.rmtree('/tmp/my-operator-metadata')
+        shutil.rmtree('/tmp/my-dev-operator-metadata')
 
     def test_commit_and_push_metadata_repo(self):
         sample_dir_obj = operator_metadata.pushd.Dir('/tmp')
         (flexmock(operator_metadata.pushd)
             .should_receive('Dir')
-            .with_args('/my/working/dir/my-operator-metadata')
+            .with_args('/my/working/dir/my-stage-operator-metadata')
             .replace_with(lambda *_: sample_dir_obj))
 
         (flexmock(operator_metadata.exectools)
@@ -365,7 +365,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             .replace_with(lambda *_: '...irrelevant...'))
 
         nvr = '...irrelevant...'
-        stream = '...irrelevant...'
+        stream = 'stage'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/my/working/dir',
@@ -378,7 +378,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         sample_dir_obj = operator_metadata.pushd.Dir('/tmp')
         (flexmock(operator_metadata.pushd)
             .should_receive('Dir')
-            .with_args('/my/working/dir/my-operator-metadata')
+            .with_args('/my/working/dir/my-prod-operator-metadata')
             .replace_with(lambda *_: sample_dir_obj))
 
         (flexmock(operator_metadata.exectools)
@@ -400,7 +400,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             .replace_with(lambda *_: '...irrelevant...'))
 
         nvr = '...irrelevant...'
-        stream = '...irrelevant...'
+        stream = 'prod'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/my/working/dir',
@@ -412,7 +412,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
     def test_metadata_package_yaml_exists(self):
         nvr = '...irrelevant...'
-        stream = '...irrelevant...'
+        stream = 'stage'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/working/dir',
@@ -421,7 +421,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/working/dir/my-operator-metadata/manifests/*package.yaml')
+            .with_args('/working/dir/my-stage-operator-metadata/manifests/*package.yaml')
             .and_return(['one-item']))
 
         self.assertTrue(
@@ -430,7 +430,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
     def test_metadata_package_yaml_does_not_exist(self):
         nvr = '...irrelevant...'
-        stream = '...irrelevant...'
+        stream = 'stage'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/working/dir',
@@ -439,7 +439,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/working/dir/my-operator-metadata/manifests/*package.yaml')
+            .with_args('/working/dir/my-stage-operator-metadata/manifests/*package.yaml')
             .and_return([]))
 
         self.assertFalse(
@@ -570,14 +570,14 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
     def test_property_metadata_repo(self):
         nvr = '...irrelevant...'
-        stream = '...irrelevant...'
+        stream = 'dev'
         runtime = '...irrelevant...'
         cached_attrs = {
-            'operator_name': 'my-operator-name'
+            'operator_name': 'my-operator'
         }
         self.assertEqual(
             operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).metadata_repo,
-            'my-operator-name-metadata'
+            'my-dev-operator-metadata'
         )
 
     def test_property_channel(self):
@@ -650,25 +650,25 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
     def test_property_metadata_package_yaml_filename(self):
         nvr = '...irrelevant...'
-        stream = '...irrelevant...'
+        stream = 'prod'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/working/dir',
-            'operator_name': 'my-operator-name'
+            'operator_name': 'my-operator'
         }
 
-        arg = '/working/dir/my-operator-name-metadata/manifests/*package.yaml'
-        ret = '/working/dir/my-operator-name-metadata/manifests/my-operator.package.yaml'
+        arg = '/working/dir/my-prod-operator-metadata/manifests/*package.yaml'
+        ret = '/working/dir/my-prod-operator-metadata/manifests/my-operator.package.yaml'
         flexmock(operator_metadata.glob).should_receive('glob').with_args(arg).and_return([ret])
 
         self.assertEqual(
             operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).metadata_package_yaml_filename,
-            '/working/dir/my-operator-name-metadata/manifests/my-operator.package.yaml'
+            '/working/dir/my-prod-operator-metadata/manifests/my-operator.package.yaml'
         )
 
     def test_property_metadata_csv_yaml_filename(self):
         nvr = 'my-operator-container-v0.1.2-201901010000'
-        stream = '...irrelevant...'
+        stream = 'stage'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/working-dir',
@@ -677,16 +677,16 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/working-dir/my-operator-metadata/manifests/0.1/*.clusterserviceversion.yaml')
-            .and_return(['/working-dir/my-operator-metadata/manifests/0.1/my-operator.clusterserviceversion.yaml']))
+            .with_args('/working-dir/my-stage-operator-metadata/manifests/0.1/*.clusterserviceversion.yaml')
+            .and_return(['/working-dir/my-stage-operator-metadata/manifests/0.1/my-operator.clusterserviceversion.yaml']))
 
         self.assertEqual(
             operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).metadata_csv_yaml_filename,
-            '/working-dir/my-operator-metadata/manifests/0.1/my-operator.clusterserviceversion.yaml'
+            '/working-dir/my-stage-operator-metadata/manifests/0.1/my-operator.clusterserviceversion.yaml'
         )
 
     def test_property_csv(self):
-        metadata_csv_yaml_filename = '/tmp/my-operator-metadata/0.1/my-operator.clusterserviceversion.yaml'
+        metadata_csv_yaml_filename = '/tmp/my-dev-operator-metadata/0.1/my-operator.clusterserviceversion.yaml'
         csv_yaml_file_contents = io.BytesIO(b"""
         metadata:
           name: my-csv
@@ -694,7 +694,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
-            .with_args('/tmp/my-operator-metadata/manifests/0.1/*.clusterserviceversion.yaml')
+            .with_args('/tmp/my-dev-operator-metadata/manifests/0.1/*.clusterserviceversion.yaml')
             .and_return([metadata_csv_yaml_filename]))
 
         mock = flexmock(get_builtin_module())
@@ -704,7 +704,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             .and_return(csv_yaml_file_contents))
 
         nvr = 'my-operator-container-v0.1.2-201901010000'
-        stream = '...irrelevant...'
+        stream = 'dev'
         runtime = '...irrelevant...'
         cached_attrs = {
             'working_dir': '/tmp',
