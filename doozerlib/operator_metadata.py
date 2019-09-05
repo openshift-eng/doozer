@@ -40,15 +40,16 @@ def unpack(func):
 
 
 @unpack
-def update_and_build(nvr, merge_branch, runtime, force_build=False):
+def update_and_build(nvr, stream, runtime, merge_branch='rhaos-4-rhel-7', force_build=False):
     """Module entrypoint, orchestrate update and build steps of metadata repos
 
     :param string nvr: Operator name-version-release
-    :param string merge_branch: Which metadata branch should be updated (dev, stage, prod)
+    :param string stream: Which metadata repo should be updated (dev, stage, prod)
     :param Runtime runtime: a runtime instance
+    :param string merge_branch: Which branch should be updated in the metadata repo
     :return bool True if operations succeeded, False if something went wrong
     """
-    op_md = OperatorMetadataBuilder(nvr, runtime=runtime)
+    op_md = OperatorMetadataBuilder(nvr, stream, runtime=runtime)
 
     if not op_md.update_metadata_repo(merge_branch) and not force_build:
         util.green_print('No changes in metadata repo, skipping build')
@@ -62,8 +63,9 @@ def update_and_build(nvr, merge_branch, runtime, force_build=False):
 
 
 class OperatorMetadataBuilder:
-    def __init__(self, nvr, runtime, **kwargs):
+    def __init__(self, nvr, stream, runtime, **kwargs):
         self.nvr = nvr
+        self.stream = stream
         self.runtime = runtime
         self._cached_attrs = kwargs
 
