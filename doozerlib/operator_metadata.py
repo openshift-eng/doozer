@@ -70,7 +70,7 @@ class OperatorMetadataBuilder:
         self._cached_attrs = kwargs
 
     @log
-    def update_metadata_repo(self, metadata_branch='dev'):
+    def update_metadata_repo(self, metadata_branch):
         """Update the corresponding metadata repository of an operator
 
         :param string metadata_branch: Which branch of the metadata repository should be updated
