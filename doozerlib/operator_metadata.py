@@ -167,6 +167,18 @@ class OperatorMetadataBuilder:
         package_yaml = yaml.safe_load(open(self.metadata_package_yaml_filename))
 
         def get_default_channel(package_yaml):
+            """A package YAML with multiple channels must declare a defaultChannel
+
+            It usually would be the highest version, but on 4.1 the channels have
+            custom names, such as "stable", "preview", etc. That's the reason for
+            the check if '4.2' in channel_names.
+
+            # @TODO: remove that check and replace it with a version compare once
+            we stop building 4.1
+
+            :param dict package_yaml: Parsed package.yaml structure
+            :return: string with "highest" channel name
+            """
             channel_names = [str(channel['name']) for channel in package_yaml['channels']]
             return '4.2' if '4.2' in channel_names else self.channel_name
 
