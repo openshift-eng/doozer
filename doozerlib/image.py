@@ -202,8 +202,17 @@ class ImageMetadata(Metadata):
         # Don't trust what is the Dockerfile for version & release. This field may not even be present.
         # Query brew to find the most recently built release for this component version.
         _, version, release = self.get_latest_build_info()
+
+        # we need to pull images from proxy since https://mojo.redhat.com/docs/DOC-1204856 if 'brew_image_namespace'
+        # is enabled.
+        if self.runtime.group_config.urls.brew_image_namespace is not Missing:
+            name = self.runtime.group_config.urls.brew_image_namespace + '/' + self.config.name.replace('/', '-')
+        else:
+            name = self.config.name
+
         return "{host}/{name}:{version}-{release}".format(
-            host=self.runtime.group_config.urls.brew_image_host, name=self.config.name, version=version, release=release)
+            host=self.runtime.group_config.urls.brew_image_host, name=name, version=version,
+            release=release)
 
     def pull_image(self):
         pull_image(self.pull_url())
