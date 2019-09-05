@@ -1889,6 +1889,10 @@ def operator_metadata_latest_build(runtime, operator_list):
     Usage example:
 
     $ doozer -g openshift-4.2 operator-metadata:latest-build cluster-logging-operator
+
+    Usage example with multiple operators
+
+    $ doozer -g openshift-4.2 operator-metadata:latest-build cluster-logging-operator elasticsearch-operator
     """
     runtime.initialize(clone_distgits=False)
 
