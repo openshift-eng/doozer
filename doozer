@@ -1870,6 +1870,10 @@ def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=Fals
     runtime.initialize(clone_distgits=False)
     if not merge_branch:
         merge_branch = 'rhaos-4-rhel-7'
+        # @TODO: populate merge_branch from runtime once the following MRs are merged:
+        #     https://gitlab.cee.redhat.com/openshift-art/ocp-build-data/merge_requests/222
+        #     https://gitlab.cee.redhat.com/openshift-art/ocp-build-data/merge_requests/223
+        # merge_branch = runtime.group_config.operator_metadata_branch
 
     try:
         ok = ThreadPool(cpu_count()).map(operator_metadata.update_and_build, [
