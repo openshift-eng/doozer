@@ -203,7 +203,7 @@ class OperatorMetadataBuilder:
             })
 
         with open(self.metadata_package_yaml_filename, 'w') as file:
-            file.write(yaml.dump(package_yaml))
+            file.write(yaml.safe_dump(package_yaml))
 
     @log
     def create_metadata_dockerfile(self):
