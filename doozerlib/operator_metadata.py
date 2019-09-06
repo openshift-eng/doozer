@@ -52,13 +52,15 @@ def update_and_build(nvr, stream, runtime, merge_branch, force_build=False):
     op_md = OperatorMetadataBuilder(nvr, stream, runtime=runtime)
 
     if not op_md.update_metadata_repo(merge_branch) and not force_build:
-        util.green_print('No changes in metadata repo, skipping build')
+        logger.info('No changes in metadata repo, skipping build')
+        print(OperatorMetadataLatestBuildReporter(op_md.operator_name, runtime).get_latest_build())
         return True
 
     if not op_md.build_metadata_container():
         util.red_print('Build of {} failed, see debug.log'.format(op_md.metadata_repo))
         return False
 
+    print(OperatorMetadataLatestBuildReporter(op_md.operator_name, runtime).get_latest_build())
     return True
 
 
