@@ -1881,6 +1881,7 @@ def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=Fals
         ])
         # @TODO: save state.yaml (check how to do that)
     except Exception as e:
+        ok = [False]
         red_print(str(e))
 
     sys.exit(0 if all(ok) else 1)
