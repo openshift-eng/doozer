@@ -108,7 +108,7 @@ class OperatorMetadataBuilder:
                     cmd, rc, stdout, stderr
                 ))
 
-            return self.watch_brew_task(self.extract_brew_task_id(stdout)) is None
+            return self.watch_brew_task(self.extract_brew_task_id(stdout.strip())) is None
 
     @log
     def clone_repo(self, repo, branch):
@@ -458,6 +458,7 @@ class OperatorMetadataBuilder:
 
 
 class OperatorMetadataLatestBuildReporter:
+    @log
     def __init__(self, operator_name, runtime):
         self.operator_name = operator_name
         self.runtime = runtime
