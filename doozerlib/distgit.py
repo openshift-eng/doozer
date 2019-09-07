@@ -1187,6 +1187,10 @@ class ImageDistGitRepo(DistGitRepo):
             # Set the distgit repo name
             dfp.labels["com.redhat.component"] = self.metadata.get_component_name()
 
+            # appregistry is managed in a separately-built metadata container (ref. ART-874)
+            if "com.redhat.delivery.appregistry" in dfp.labels:
+                dfp.labels["com.redhat.delivery.appregistry"] = "false"
+
             # record env vars that we need to set in the dockerfile
             env_vars = {}
 
