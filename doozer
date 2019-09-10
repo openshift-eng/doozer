@@ -27,7 +27,7 @@ import tempfile
 import traceback
 import koji
 from numbers import Number
-from multiprocessing.dummy import Pool as ThreadPool
+from multiprocessing.pool import ThreadPool
 from multiprocessing import cpu_count
 from dockerfile_parse import DockerfileParser
 import dotconfig
@@ -1843,12 +1843,16 @@ def config_update_required(runtime, image_list):
     green_print('\nComplete! Remember to commit and push the changes!')
 
 
-@cli.command("operator:metadata", short_help="Update operator(s) metadata")
+@cli.command("operator-metadata:build", short_help="Update operator(s) metadata")
 @click.argument("nvr_list", nargs=-1, required=True)
-@click.option("--merge-branch", required=True, type=click.Choice(['dev', 'stage', 'prod']),
-              help="Metadata branch to apply update. Possible values: dev, stage, prod.")
+@click.option("--stream", required=True, type=click.Choice(['dev', 'stage', 'prod']),
+              help="Metadata repo to apply update. Possible values: dev, stage, prod.")
+@click.option("--merge-branch", required=False,
+              help="Branch to be updated on the metadata repo (default: rhaos-4-rhel-7)")
+@click.option("-f", "--force", required=False, is_flag=True,
+              help="Perform a build even if there is nothing new on the metadata repo")
 @pass_runtime
-def update_operator_metadata(runtime, nvr_list, merge_branch):
+def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=False):
     """Update the corresponding metadata repositories of the given operators
     and build "metadata containers" with nothing but a collection of manifests on them.
 
@@ -1857,20 +1861,52 @@ def update_operator_metadata(runtime, nvr_list, merge_branch):
 
     Usage example with single NVR:
 
-    $ doozer operator:metadata cluster-logging-operator-container-v4.2.0-201908070219 --merge-branch dev
+    $ doozer -g openshift-4.2 operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 --stream dev --merge-branch rhaos-4-rhel-8
 
     Usage example with multiple NVRs:
 
-    $ doozer operator:metadata cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --merge-branch prod
+    $ doozer -g openshift-4.2 operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --stream prod
     """
-    operator_metadata.working_dir = os.path.join(runtime.working_dir, 'distgits', 'containers')
-    operator_metadata.rhpkg_user = runtime.user
-    target = 'rhaos-4.2-rhel-7-candidate'  # @TODO: hardcoded, find out from where this value should come
+    runtime.initialize(clone_distgits=False)
+    if not merge_branch:
+        merge_branch = 'rhaos-4-rhel-7'
+        # @TODO: populate merge_branch from runtime once the following MRs are merged:
+        #     https://gitlab.cee.redhat.com/openshift-art/ocp-build-data/merge_requests/222
+        #     https://gitlab.cee.redhat.com/openshift-art/ocp-build-data/merge_requests/223
+        # merge_branch = runtime.group_config.operator_metadata_branch
 
-    for nvr in nvr_list:  # @TODO: process them in parallel
-        metadata_repo = operator_metadata.update_metadata_repo(nvr, metadata_branch=merge_branch)
-        operator_metadata.build_metadata_container(metadata_repo, target)
-        # @TODO: save state.yaml (how to do that, i'm not using runtime for anything)
+    try:
+        ok = ThreadPool(cpu_count()).map(operator_metadata.update_and_build, [
+            (nvr, stream, runtime, merge_branch, force) for nvr in nvr_list
+        ])
+        # @TODO: save state.yaml (check how to do that)
+    except Exception as e:
+        ok = [False]
+        red_print(str(e))
+
+    sys.exit(0 if all(ok) else 1)
+
+
+@cli.command("operator-metadata:latest-build", short_help="Print latest metadata build of a given operator")
+@click.argument("operator_list", nargs=-1, required=True)
+@pass_runtime
+def operator_metadata_latest_build(runtime, operator_list):
+    """Print the latest metadata build of a given operator
+
+    operator_list: One or more operator names
+
+    Usage example:
+
+    $ doozer -g openshift-4.2 operator-metadata:latest-build cluster-logging-operator
+
+    Usage example with multiple operators
+
+    $ doozer -g openshift-4.2 operator-metadata:latest-build cluster-logging-operator elasticsearch-operator
+    """
+    runtime.initialize(clone_distgits=False)
+
+    for operator in operator_list:
+        print(operator_metadata.OperatorMetadataLatestBuildReporter(operator, runtime).get_latest_build())
 
 
 def main():
