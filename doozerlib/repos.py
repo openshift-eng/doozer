@@ -97,43 +97,48 @@ class Repo(object):
         else:
             return self._data.content_set[arch]
 
-    def conf_section(self, repotype, enabled=None, use_config_name=False):
+    def conf_section(self, repotype, enabled=None, use_config_name=False, arch='x86_64'):
         """Generates and returns the yum .repo section for this repo,
-        based on given type and enabled state"""
+        based on given type, arch, and enabled state"""
         if not repotype:
             repotype = 'unsigned'
 
+        if arch not in self._valid_arches:
+            raise ValueError('{} does not identify a yum repository for arch: {}'.format(self.name, arch))
+
         result = ''
 
-        for arch in self._valid_arches:
-            if use_config_name:
-                cs = self.name
-            else:
-                cs = self.content_set(arch)
-            # This may not be valid yet if not released
-            # but ALWAYS emit this repo
-            if not cs and self.name == 'rhel-server-ose-rpms':
-                cs = 'rhel-server-ose-rpms-{}'.format(arch)
-            if cs:
-                Repo.repos_nonce += 1
-                if use_config_name:
-                    result += '[{}]\n'.format(cs)
-                else:
-                    result += '[{}-{}]\n'.format(cs, Repo.repos_nonce)
-                for k, v in self._data.conf.iteritems():
-                    line = '{} = {}\n'
-                    if k == 'baseurl':
-                        line = line.format('baseurl', self.baseurl(repotype, arch))
-                    else:
-                        if k == 'enabled':
-                            if enabled is None:  # forcible disabled
-                                v = 0
-                            elif v is None or v == 0:  # v is None if `enabled` not in group config
-                                v = 1 if enabled else 0
+        if use_config_name:
+            cs = self.name
+        else:
+            cs = self.content_set(arch)
 
-                        line = line.format(k, v)
-                    result += line
-                result += '\n'
+        # This may not be valid yet if not released
+        # but ALWAYS emit this repo
+        if not cs and self.name == 'rhel-server-ose-rpms':
+            cs = 'rhel-server-ose-rpms-{}'.format(arch)
+
+        if cs:
+            Repo.repos_nonce += 1
+            if use_config_name:
+                result += '[{}]\n'.format(cs)
+            else:
+                result += '[{}-{}]\n'.format(cs, Repo.repos_nonce)
+            for k, v in self._data.conf.iteritems():
+                line = '{} = {}\n'
+                if k == 'baseurl':
+                    line = line.format('baseurl', self.baseurl(repotype, arch))
+                else:
+                    if k == 'enabled':
+                        if enabled is None:  # forcible disabled
+                            v = 0
+                        elif v is None or v == 0:  # v is None if `enabled` not in group config
+                            v = 1 if enabled else 0
+
+                    line = line.format(k, v)
+                result += line
+            result += '\n'
+
         return result
 
 
@@ -148,9 +153,9 @@ name = {0}
 
 # Base header for all content_sets.yml output
 CONTENT_SETS = """
-# This file is managed by the OpenShift Image Tool: https://github.com/openshift/enterprise-images,
-# by the OpenShift Continuous Delivery team (#aos-art on CoreOS Slack).
-# Any manual changes will be overwritten by OIT on the next build.
+# This file is managed by the doozer build tool: https://gitlab.cee.redhat.com/openshift-art/tools/doozer,
+# by the OpenShift Automated Release Team (#aos-art on CoreOS Slack).
+# Any manual changes will be overwritten by doozer on the next build.
 #
 # This is a file defining which content sets (yum repositories) are needed to
 # update content in this image. Data provided here helps determine which images
@@ -201,7 +206,7 @@ class Repos(object):
         """Mainly for debugging to dump a dict representation of the collection"""
         return str(self._repos)
 
-    def repo_file(self, repo_type, enabled_repos=[], empty_repos=[], use_config_name=False):
+    def repo_file(self, repo_type, enabled_repos=[], empty_repos=[], use_config_name=False, arch='x86_64'):
         """Returns the string contents of a yum .repo file for the given
         type, enabled repos, and dummy 'emtpy' repos. Contents written to file
         by external accessor.
@@ -210,7 +215,7 @@ class Repos(object):
         result = ''
         for r in self._repos.itervalues():
             en = None if enabled_repos is None else (r.name in enabled_repos)
-            result += r.conf_section(repo_type, enabled=en, use_config_name=use_config_name)
+            result += r.conf_section(repo_type, enabled=en, use_config_name=use_config_name, arch=arch)
         for er in empty_repos:
             result += EMPTY_REPO.format(er)
         return result
