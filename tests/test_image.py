@@ -8,8 +8,9 @@ import os
 import logging
 import tempfile
 import shutil
+import flexmock
 
-from doozerlib import image
+from doozerlib import image, exectools
 
 TEST_YAML = """---
 name: 'test'
@@ -105,6 +106,44 @@ class TestImageMetadata(unittest.TestCase):
         # Test the base_only property of the ImageMetadata object
         self.assertFalse(md.base_only)
         self.assertTrue(md_base.base_only)
+
+    @unittest.skip("AttributeError: 'str' object has no attribute 'filename'")
+    def test_pull_url(self):
+        fake_runtime = flexmock(
+            get_latest_build_info=lambda: ('openshift-cli', '1.1.1', '8'),
+            group_config=flexmock(urls=flexmock(brew_image_namespace='rh-osbs', brew_image_host='brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888')))
+
+        fake_image = flexmock(pull_url=image.ImageMetadata.pull_url(),
+            runtime=fake_runtime, config=flexmock(name='test'))
+
+        self.assertEqual(fake_image.pull_url(), "brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/rh-osbs/openshift-test")
+
+    @unittest.skip("AttributeError: 'str' object has no attribute 'filename'")
+    def test_get_latest_build_info(self):
+        expected_cmd = ["brew", "latest-build", "rhaos-4.2-rhel-7-build" "go-toolset-1.10"]
+
+        latest_build_output = """
+        Build                                     Tag                   Built by
+        ----------------------------------------  --------------------  ----------------
+        go-toolset-1.10-1.10.3-7.el7              devtools-2018.4-rhel-7  deparker
+        """
+
+        (flexmock(exectools)
+            .should_receive("cmd_gather")
+            .with_args(expected_cmd)
+            .once()
+            .and_return((0, latest_build_output)))
+
+        test_base_yml = open('test_pull.yml', 'w')
+        test_base_yml.write(TEST_BASE_YAML)
+        test_base_yml.close()
+        rt = MockRuntime(self.logger)
+        name = 'test_pull.yml'
+        md = image.ImageMetadata(rt, name)
+        n, v, r = md.get_latest_build_info()
+        self.assertEqual(n, "go-toolset-1.10")
+        self.assertEqual(v, "1.10.3")
+        self.assertEqual(r, "7")
 
 
 if __name__ == "__main__":
