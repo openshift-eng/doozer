@@ -1,298 +1,493 @@
 import glob
-import logging
-import os
 import re
 import shutil
-import sys
+import threading
 import yaml
 
+from functools import wraps
 from dockerfile_parse import DockerfileParser
-from doozerlib import exectools, pushd
+from doozerlib import brew, exectools, logutil, pushd, util
 
-
-def setup_logger():
-    """Set log level to DEBUG & add a handler to print it on STDOUT
-
-    :return: A logging.RootLogger instance
-    """
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.DEBUG)
-    handler.setFormatter(
-        logging.Formatter('%(asctime)s - %(name)s %(levelname)s %(message)s'))
-
-    logger.addHandler(handler)
-
-    return logger
+logger = logutil.getLogger(__name__)
 
 
 def log(func):
-    """Logging decorator, wraps a decorated function and log the arguments passed
-    to the call and the function return value
+    """Logging decorator, log the call and return value of a decorated function
 
     :param function func: Function to be decorated
-    :return: Return mixed, whatever is returned by the decorated function
+    :return: Return wrapper function
     """
-    def wrap(*args, **kwargs):
-        logger.debug('running: {}, with args {} {}'.format(func.__name__, args, kwargs))
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        logger.info('running: {}, with args {} {}'.format(func.__name__, args, kwargs))
         return_val = func(*args, **kwargs)
-        logger.debug('{} returned {}'.format(func.__name__, return_val))
+        logger.info('{} returned {}'.format(func.__name__, return_val))
         return return_val
-    return wrap
+    return wrapper
 
 
-# @TODO: keeping global state looks awful, convert this module to a class
-working_dir = ''
-rhpkg_user = ''
-logger = setup_logger()
+def unpack(func):
+    """Unpacking decorator, unpacks a tuple into arguments for a function call
+    Needed because Python 2.7 doesn't have "starmap" for Pool / ThreadPool
 
-
-@log
-def update_metadata_repo(nvr, operator_branch='rhaos-4.2-rhel-7', metadata_branch='dev'):
-    """Update the corresponding metadata repository of an operator
-
-    :param string nvr: The operator component NVR (i.e.: my-operator-container-v1.2.3-201901010000)
-    :param string operator_branch: Which branch of the operator repository should be used
-    :param string metadata_branch: Which branch of the metadata repository should be updated
-    :return: A string with the name of the updated metadata repository
+    :param function func: Function to be decorated
+    :return: Return wrapper function
     """
-    component, tag = split_nvr(nvr)
-    operator = component.replace('-container', '')
-    metadata = '{}-metadata'.format(operator)
-    channel = get_channel_from_tag(tag)
-
-    exectools.cmd_assert('mkdir -p {}'.format(working_dir))
-    # @TODO: reuse repo if already present (doozer does that somewhere else)
-    try:
-        shutil.rmtree(os.path.join(working_dir, operator))
-        shutil.rmtree(os.path.join(working_dir, metadata))
-    except:
-        pass
-
-    # @TODO: operator_branch is hardcoded, should we ask it to the user / infer from NVR?
-    clone_repo(operator, operator_branch)
-    clone_repo(metadata, metadata_branch)
-
-    commit_hash = retrieve_commit_hash_from_brew(nvr)
-    checkout_repo(operator, commit_hash)
-
-    update_metadata_manifests_dir(operator, metadata, channel)
-    merge_streams_on_top_level_package_yaml(metadata, channel)
-    create_symlink_to_latest_csv(metadata)
-    create_metadata_dockerfile(operator, metadata)
-
-    commit_and_push_repo(metadata)
-    return metadata
+    @wraps(func)
+    def wrapper(arg_tuple):
+        return func(*arg_tuple)
+    return wrapper
 
 
-@log
-def build_metadata_container(repo, target):
-    """Build the metadata container using rhpkg
+@unpack
+def update_and_build(nvr, stream, runtime, merge_branch, force_build=False):
+    """Module entrypoint, orchestrate update and build steps of metadata repos
 
-    :param string repo: Name of the metadata repository to be built
-    :param string target: Container build target
+    :param string nvr: Operator name-version-release
+    :param string stream: Which metadata repo should be updated (dev, stage, prod)
+    :param Runtime runtime: a runtime instance
+    :param string merge_branch: Which branch should be updated in the metadata repo
+    :return bool True if operations succeeded, False if something went wrong
     """
-    with pushd.Dir(os.path.join(working_dir, repo)):
-        exectools.cmd_assert('rhpkg --user {} container-build --target {}'.format(rhpkg_user, target))
+    op_md = OperatorMetadataBuilder(nvr, stream, runtime=runtime)
+
+    if not op_md.update_metadata_repo(merge_branch) and not force_build:
+        logger.info('No changes in metadata repo, skipping build')
+        print(OperatorMetadataLatestBuildReporter(op_md.operator_name, runtime).get_latest_build())
+        return True
+
+    if not op_md.build_metadata_container():
+        util.red_print('Build of {} failed, see debug.log'.format(op_md.metadata_repo))
+        return False
+
+    print(OperatorMetadataLatestBuildReporter(op_md.operator_name, runtime).get_latest_build())
+    return True
 
 
-@log
-def split_nvr(nvr):
-    """Extract the component name and a build tag from an NVR
+class OperatorMetadataBuilder:
+    def __init__(self, nvr, stream, runtime, **kwargs):
+        self.nvr = nvr
+        self.stream = stream
+        self.runtime = runtime
+        self._cached_attrs = kwargs
 
-    :param string nvr: The component NVR (i.e.: my-operator-container-v1.2.3-201901010000)
-    :return: A tuple with the operator component name and a build tag
-    """
-    name, version, release = nvr.rsplit('-', 2)
-    tag = "{}-{}".format(version, release)
-    return name, tag
+    @log
+    def update_metadata_repo(self, metadata_branch):
+        """Update the corresponding metadata repository of an operator
 
+        :param string metadata_branch: Which branch of the metadata repository should be updated
+        :return: bool True if metadata repo was updated, False if there was nothing to update
+        """
+        exectools.cmd_assert('mkdir -p {}'.format(self.working_dir))
 
-@log
-def clone_repo(name, branch):
-    """Clone a repository using rhpkg
+        self.clone_repo(self.operator_name, self.operator_branch)
+        self.clone_repo(self.metadata_repo, metadata_branch)
+        self.checkout_repo(self.operator_name, self.commit_hash)
 
-    :param string name: Name of the repository to be cloned
-    :param string branch: Which branch of the repository should be cloned
-    """
-    with pushd.Dir(working_dir):
-        exectools.cmd_assert('rhpkg --user {} clone containers/{} --branch {}'.format(rhpkg_user, name, branch))
+        self.update_metadata_manifests_dir()
+        self.merge_streams_on_top_level_package_yaml()
+        self.create_metadata_dockerfile()
+        return self.commit_and_push_metadata_repo()
 
+    @log
+    def build_metadata_container(self):
+        """Build the metadata container using rhpkg
 
-@log
-def retrieve_commit_hash_from_brew(nvr):
-    """Obtain the commit hash of a build (from brew buildinfo)
+        :return: bool True if build succeeded, False otherwise
+        :raise: Exception if command failed (rc != 0)
+        """
+        with pushd.Dir('{}/{}'.format(self.working_dir, self.metadata_repo)):
+            cmd = 'timeout 600 rhpkg {}container-build --nowait --target {}'.format(
+                ('--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''),
+                self.target
+            )
+            rc, stdout, stderr = exectools.cmd_gather(cmd)
 
-    :param string nvr: The component NVR (i.e.: my-operator-container-v1.2.3-201901010000)
-    :return: A string with the commit hash from which the build was based
-    """
-    _rc, stdout, _stderr = exectools.cmd_gather('brew buildinfo {}'.format(nvr))
-    return re.search(r'Source:[^#]+#(\w+)', stdout).group(1)
+            if rc != 0:
+                raise Exception('{} failed! rc={} stdout={} stderr={}'.format(
+                    cmd, rc, stdout, stderr
+                ))
 
+            return self.watch_brew_task(self.extract_brew_task_id(stdout.strip())) is None
 
-@log
-def checkout_repo(repo, commit_hash):
-    """Checkout a repository to a particular commit hash
+    @log
+    def clone_repo(self, repo, branch):
+        """Clone a repository using rhpkg
 
-    :param string repo: The repository in which the checkout operation will be performed
-    :param string commit_hash: The desired point to checkout the repository
-    """
-    with pushd.Dir(os.path.join(working_dir, repo)):
-        exectools.cmd_assert('git checkout {}'.format(commit_hash))
+        :param string repo: Name of the repository to be cloned
+        :param string branch: Which branch of the repository should be cloned
+        """
+        def delete_and_clone():
+            self.delete_repo(repo)
 
+            cmd = 'timeout 600 rhpkg '
+            cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
+            cmd += 'clone containers/{} --branch {}'.format(repo, branch)
+            return exectools.cmd_assert(cmd)
 
-@log
-def get_channel_from_tag(tag):
-    """Extract the channel name from a build tag
+        with pushd.Dir(self.working_dir):
+            exectools.retry(retries=3, task_f=delete_and_clone)
 
-    :param string tag: A build tag (i.e.: v1.2.3-201901010000)
-    :return: A string with the channel name (i.e.: 1.2)
+    @log
+    def delete_repo(self, repo):
+        """Delete repository from working_dir. Ignore errors if repo is already absent
+        """
+        try:
+            shutil.rmtree('{}/{}'.format(self.working_dir, repo))
+        except OSError:
+            pass
 
-    :raises AttributeError: If tag is not in the expected format
-    """
-    return re.search(r'^v(\d\.\d).+', tag).group(1)
+    @log
+    def checkout_repo(self, repo, commit_hash):
+        """Checkout a repository to a particular commit hash
 
+        :param string repo: The repository in which the checkout operation will be performed
+        :param string commit_hash: The desired point to checkout the repository
+        """
+        with pushd.Dir('{}/{}'.format(self.working_dir, repo)):
+            exectools.cmd_assert('git checkout {}'.format(commit_hash))
 
-@log
-def update_metadata_manifests_dir(operator, metadata, channel):
-    """Update channel-specific manifests in the metadata repository with the
-    latest manifests found on the operator repository
+    @log
+    def update_metadata_manifests_dir(self):
+        """Update channel-specific manifests in the metadata repository with the latest
+        manifests found in the operator repository
 
-    If the metadata repository is empty, bring the top-level package YAML file also
+        If the metadata repository is empty, bring the top-level package YAML file also
+        """
+        self.remove_metadata_channel_dir()
+        self.ensure_metadata_manifests_dir_exists()
+        self.copy_channel_manifests_from_operator_to_metadata()
 
-    :param string operator: Name of the operator that is the source for latest manifests
-    :param string metadata: Name of the metadata repository
-    :param string channel: Which manifests channel should be copied to the metadata repository
-    """
-    with pushd.Dir(os.path.join(working_dir)):
-        exectools.cmd_assert('rm -rf {}/manifests/{}'.format(metadata, channel))
-        exectools.cmd_assert('mkdir -p {}/manifests'.format(metadata))
-        exectools.cmd_assert('cp -r {}/manifests/{} {}/manifests'.format(operator, channel, metadata))
+        if not self.metadata_package_yaml_exists():
+            self.copy_operator_package_yaml_to_metadata()
 
-        if not package_yaml_exists(metadata):
-            exectools.cmd_assert('cp {} {}/manifests'.format(package_yaml_filename(operator), metadata))
+    @log
+    def merge_streams_on_top_level_package_yaml(self):
+        """Update (or create) a channel entry on the top-level package YAML file,
+        pointing to the current CSV
+        """
+        package_yaml = yaml.safe_load(open(self.metadata_package_yaml_filename))
 
+        def get_default_channel(package_yaml):
+            """A package YAML with multiple channels must declare a defaultChannel
 
-@log
-def package_yaml_exists(repo):
-    """Checks presence of a package YAML file on the manifests of a particular repo
+            It usually would be the highest version, but on 4.1 the channels have
+            custom names, such as "stable", "preview", etc. That's the reason for
+            the check if '4.2' in channel_names.
 
-    :param string repo: Repository in which the presence of a package YAML should be checked
-    :return: A bool, True if a package YAML is present, False otherwise
-    """
-    return len(glob.glob('{}/manifests/*.package.yaml'.format(os.path.join(working_dir, repo)))) > 0
+            # @TODO: remove that check and replace it with a version compare once
+            we stop building 4.1
 
+            :param dict package_yaml: Parsed package.yaml structure
+            :return: string with "highest" channel name
+            """
+            channel_names = [str(channel['name']) for channel in package_yaml['channels']]
+            return '4.2' if '4.2' in channel_names else self.channel_name
 
-@log
-def package_yaml_filename(repo):
-    """Return the full path to a package YAML file, since it usually is prefixed by the operator name
+        package_yaml['defaultChannel'] = str(get_default_channel(package_yaml))
 
-    :param string repo: Name of the repository in which the package YAML file is present
-    :return: A string with the full path to the repository package YAML file
-    """
-    return glob.glob('{}/manifests/*.package.yaml'.format(os.path.join(working_dir, repo)))[0]
+        def find_channel_index(package_yaml):
+            for index, channel in enumerate(package_yaml['channels']):
+                if str(channel['name']) == str(self.channel_name):
+                    return index
+            return None
 
+        index = find_channel_index(package_yaml)
 
-@log
-def merge_streams_on_top_level_package_yaml(metadata, channel_to_update):
-    """Update (or create) a channel entry on the package YAML file, pointing to the current CSV
+        if index is not None:
+            package_yaml['channels'][index]['currentCSV'] = str(self.csv)
+        else:
+            package_yaml['channels'].append({
+                'name': str(self.channel_name),
+                'currentCSV': str(self.csv)
+            })
 
-    :param string metadata: Name of the metadata repository that should have its package YAML updated
-    :param string channel_to_update: Name of the channel to have its currentCSV value updated
-    """
-    csv_yaml = yaml.safe_load(open(csv_yaml_filename(metadata, channel_to_update)))
-    current_csv = csv_yaml['metadata']['name']
+        with open(self.metadata_package_yaml_filename, 'w') as file:
+            file.write(yaml.safe_dump(package_yaml))
 
-    package_yaml = yaml.safe_load(open(package_yaml_filename(metadata)))
+    @log
+    def create_metadata_dockerfile(self):
+        """Create a minimal Dockerfile on the metadata repository, copying all manifests
+        inside the image and having nearly the same labels as its corresponding operator Dockerfile
 
-    channel_index = find_channel(channel_to_update, package_yaml)
+        But some modifications on the labels are neeeded:
 
-    if channel_index is not None:
-        package_yaml['channels'][channel_index]['currentCSV'] = current_csv
-    else:
-        package_yaml['channels'].append({'name': str(channel_to_update),
-                                         'currentCSV': str(current_csv)})
-
-    with open(package_yaml_filename(metadata), 'w') as file:
-        yaml.dump(package_yaml, file)
-
-
-@log
-def csv_yaml_filename(repo, channel):
-    """Return the full path to a CSV YAML file, since it is usually prefixed by the operator name
-
-    :param string repo: Name of the repository in which the CSV YAML file is present
-    :param string channel: Name of the channel directory in which the CSV YAML file is present
-    :return: A string with the full path to the CSV YAML file of a particular channel
-    """
-    pattern = '{}/manifests/{}/*.clusterserviceversion.yaml'.format(os.path.join(working_dir, repo), channel)
-    return glob.glob(pattern)[0]
-
-
-@log
-def find_channel(desired_channel, package_yaml):
-    """Search if there is already a specific channel entry in the list of channels of a given package YAML
-
-    :param string desired_channel: Name of the channel to be searched
-    :param dict package_yaml: Parsed structure of a package YAML file
-    :return: An int with the list index of the desired channel if found, None otherwise
-    """
-    for index, channel in enumerate(package_yaml['channels']):
-        if str(channel['name']) == str(desired_channel):
-            return index
-    return None
-
-
-@log
-def create_symlink_to_latest_csv(metadata):
-    """Create a "latest" symlink inside the manifests directory, pointing to
-    the latest manifest CSV file.
-
-    :param string metadata: Name of the metadata repository in which the symlink should be created
-    """
-    channel = '4.2'  # hardcoded for now
-    relative_csv_yaml_filename = (csv_yaml_filename(metadata, channel)
-                                  .replace('{}/manifests/'.format(os.path.join(working_dir, metadata)), ''))
-
-    with pushd.Dir(os.path.join(working_dir, metadata, 'manifests')):
-        exectools.cmd_assert('rm -f latest')
-        exectools.cmd_assert('ln -s {} latest'.format(relative_csv_yaml_filename))
+        - 'com.redhat.component' label should contain the metadata component name,
+           otherwise it conflicts with the operator.
 
 
-@log
-def create_metadata_dockerfile(operator, metadata):
-    """Create a minimal Dockerfile on the metadata repository, copying all manifests
-    inside the image and having the same labels as its corresponding operator Dockerfile
+        - 'com.redhat.delivery.appregistry' should always be "true", regardless of
+          the value coming from the operator Dockerfile
 
-    Except the component label, that should not conflict with the operator, otherwise
-    brew fails with a "build already exists" error
-
-    :param string operator: Name of the operator repository from which Dockerfile labels will be copied
-    :param string metadata: Name of the metadata repository in which the minimal Dockerfile will be created
-    """
-    with pushd.Dir(working_dir):
-        operator_dockerfile = DockerfileParser('{}/Dockerfile'.format(operator))
-        metadata_dockerfile = DockerfileParser('{}/Dockerfile'.format(metadata))
+        - 'release' label should be removed, because we can't build the same NVR
+        multiple times
+        """
+        operator_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.operator_name))
+        metadata_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.metadata_repo))
         metadata_dockerfile.content = 'FROM scratch\nCOPY ./manifests /manifests'
         metadata_dockerfile.labels = operator_dockerfile.labels
-        metadata_dockerfile.labels['com.redhat.component'] = '{}-container'.format(metadata)
-        metadata_dockerfile.labels['name'] = 'openshift/ose-{}'.format(metadata)
-
-
-@log
-def commit_and_push_repo(metadata_repo):
-    """Commit and push changes made on the metadata_repo using rhpkg
-
-    :param string metadata_repo: Name of the metadata repository with changes to be committed and pushed
-    """
-    with pushd.Dir(os.path.join(working_dir, metadata_repo)):
+        metadata_dockerfile.labels['com.redhat.component'] = (
+            operator_dockerfile.labels['com.redhat.component']
+            .replace(self.operator_name, self.metadata_name)
+        )
+        metadata_dockerfile.labels['com.redhat.delivery.appregistry'] = 'true'
+        metadata_dockerfile.labels['name'] = 'openshift/ose-{}'.format(self.metadata_name)
         try:
-            exectools.cmd_assert('git add .')
-            exectools.cmd_assert('rhpkg --user {} commit -m "Update operator metadata"'.format(rhpkg_user))
-            exectools.cmd_assert('rhpkg --user {} push'.format(rhpkg_user))
-        except:
-            # The metadata repo might be already up to date, so we don't have
-            # anything new to commit
+            del(metadata_dockerfile.labels['release'])
+        except KeyError:
             pass
+
+    @log
+    def commit_and_push_metadata_repo(self):
+        """Commit and push changes made on the metadata repository, using rhpkg
+        """
+        with pushd.Dir('{}/{}'.format(self.working_dir, self.metadata_repo)):
+            try:
+                exectools.cmd_assert('git add .')
+                user_option = '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
+                exectools.cmd_assert('rhpkg {}commit -m "Update operator metadata"'.format(user_option))
+                exectools.retry(retries=3, task_f=lambda: exectools.cmd_assert('timeout 600 rhpkg {}push'.format(user_option)))
+                return True
+            except Exception:
+                # The metadata repo might be already up to date, so we don't have anything new to commit
+                return False
+
+    @log
+    def remove_metadata_channel_dir(self):
+        exectools.cmd_assert('rm -rf {}/{}/{}/{}'.format(
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir,
+            self.channel
+        ))
+
+    @log
+    def ensure_metadata_manifests_dir_exists(self):
+        exectools.cmd_assert('mkdir -p {}/{}/{}'.format(
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir
+        ))
+
+    @log
+    def copy_channel_manifests_from_operator_to_metadata(self):
+        exectools.cmd_assert('cp -r {}/{}/{}/{} {}/{}/{}'.format(
+            self.working_dir,
+            self.operator_name,
+            self.operator_manifests_dir,
+            self.channel,
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir
+        ))
+
+    @log
+    def copy_operator_package_yaml_to_metadata(self):
+        exectools.cmd_assert('cp {} {}/{}/{}'.format(
+            self.operator_package_yaml_filename,
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir
+        ))
+
+    @log
+    def metadata_package_yaml_exists(self):
+        return len(glob.glob('{}/{}/{}/*package.yaml'.format(
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir
+        ))) > 0
+
+    @log
+    def extract_brew_task_id(self, container_build_output):
+        """Extract the Task ID from the output of a `rhpkg container-build` command
+
+        :param string container_build_output: stdout from `rhpkg container-build`
+        :return: string of captured task ID
+        :raise: AttributeError if task ID can't be found in provided output
+        """
+        return re.search(r'Created task:\ (\d+)', container_build_output).group(1)
+
+    @log
+    def watch_brew_task(self, task_id):
+        """Keep watching progress of brew task
+
+        :param string task_id: The Task ID to be watched
+        :return: string with an error if an error happens, None otherwise
+        """
+        return brew.watch_task(
+            self.runtime.group_config.urls.brewhub, logger.info, task_id, threading.Event()
+        )
+
+    @property
+    def working_dir(self):
+        return self._cache_attr('working_dir')
+
+    @property
+    def rhpkg_user(self):
+        return self._cache_attr('rhpkg_user')
+
+    @property
+    def operator_branch(self):
+        return self._cache_attr('operator_branch')
+
+    @property
+    def target(self):
+        return '{}-candidate'.format(self.operator_branch)
+
+    @property
+    def operator_name(self):
+        return self._cache_attr('operator_name')
+
+    @property
+    def commit_hash(self):
+        return self._cache_attr('commit_hash')
+
+    @property
+    def operator(self):
+        return self._cache_attr('operator')
+
+    @property
+    def metadata_name(self):
+        return '{}-metadata'.format(self.operator_name)
+
+    @property
+    def metadata_repo(self):
+        return self.operator_name.replace(
+            '-operator', '-{}-operator-metadata'.format(self.stream)
+        )
+
+    @property
+    def channel(self):
+        return re.search(r'^v?(\d+\.\d+)\.*', self.nvr.split('-')[-2]).group(1)
+
+    @property
+    def brew_buildinfo(self):
+        return self._cache_attr('brew_buildinfo')
+
+    @property
+    def operator_manifests_dir(self):
+        return self.operator.config['update-csv']['manifests-dir'].rstrip('/')
+
+    @property
+    def metadata_manifests_dir(self):
+        return 'manifests'
+
+    @property
+    def operator_package_yaml_filename(self):
+        return glob.glob('{}/{}/{}/*package.yaml'.format(
+            self.working_dir,
+            self.operator_name,
+            self.operator_manifests_dir
+        ))[0]
+
+    @property
+    def metadata_package_yaml_filename(self):
+        return glob.glob('{}/{}/{}/*package.yaml'.format(
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir
+        ))[0]
+
+    @property
+    def metadata_csv_yaml_filename(self):
+        return glob.glob('{}/{}/{}/{}/*.clusterserviceversion.yaml'.format(
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir,
+            self.channel
+        ))[0]
+
+    @property
+    def csv(self):
+        return self._cache_attr('csv')
+
+    @property
+    def channel_name(self):
+        """Use a custom name for a channel on package YAML if specified,
+        fallback to default channel (4.1, 4.2, etc) otherwise
+
+        This is valid only for 4.1, custom names should be ignored on 4.2
+        """
+        if str(self.channel) == '4.1' and 'channel' in self.operator.config['update-csv']:
+            return self.operator.config['update-csv']['channel']
+        return self.channel
+
+    def get_working_dir(self):
+        return '{}/{}/{}'.format(self.runtime.working_dir, 'distgits', 'containers')
+
+    def get_rhpkg_user(self):
+        return self.runtime.user if hasattr(self.runtime, 'user') else ''
+
+    def get_operator_branch(self):
+        return self.runtime.group_config.branch
+
+    def get_operator_name(self):
+        _rc, stdout, _stderr = self.brew_buildinfo
+        return re.search('Source:([^#]+)', stdout).group(1).split('/')[-1]
+
+    def get_commit_hash(self):
+        _rc, stdout, _stderr = self.brew_buildinfo
+        return re.search('Source:[^#]+#(.+)', stdout).group(1)
+
+    def get_operator(self):
+        return self.runtime.image_map[self.operator_name]
+
+    @log
+    def get_brew_buildinfo(self):
+        """Output of this command is used to extract the operator name and its commit hash
+        """
+        cmd = 'brew buildinfo {}'.format(self.nvr)
+        return exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+
+    def get_csv(self):
+        return yaml.safe_load(open(self.metadata_csv_yaml_filename))['metadata']['name']
+
+    def _cache_attr(self, attr):
+        """Some attribute values are time-consuming to retrieve, as they might
+        come from running an external command, etc. So, after obtaining the value
+        it gets saved in "_cached_attrs" for future uses
+
+        Also makes automated testing easier, as values can be simply injected
+        at "_cached_attrs", without the need of mocking the sources from which
+        the values come
+        """
+        if attr not in self._cached_attrs:
+            self._cached_attrs[attr] = getattr(self, 'get_{}'.format(attr))()
+        return self._cached_attrs[attr]
+
+
+class OperatorMetadataLatestBuildReporter:
+    @log
+    def __init__(self, operator_name, runtime):
+        self.operator_name = operator_name
+        self.runtime = runtime
+
+    @log
+    def get_latest_build(self):
+        cmd = 'brew latest-build {} {} --quiet'.format(self.target, self.metadata_component_name)
+        _rc, stdout, _stderr = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+        return stdout.split(' ')[0]
+
+    @property
+    def target(self):
+        return '{}-candidate'.format(self.operator_branch)
+
+    @property
+    def operator_branch(self):
+        return self.runtime.group_config.branch
+
+    @property
+    def metadata_component_name(self):
+        return self.operator_component_name.replace('-container', '-metadata-container')
+
+    @property
+    def operator_component_name(self):
+        if 'distgit' in self.operator.config and 'component' in self.operator.config['distgit']:
+            return self.operator.config['distgit']['component']
+
+        return '{}-container'.format(self.operator_name)
+
+    @property
+    def operator(self):
+        return self.runtime.image_map[self.operator_name]
