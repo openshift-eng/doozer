@@ -19,6 +19,9 @@ Tags: rhaos-4.2-rhel-7-candidate
 
 
 class TestOperatorMetadataBuilder(unittest.TestCase):
+    def setUp(self):
+        self.maxDiff = None
+
     def test_update_metadata_repo(self):
         # @TODO: test this method
         pass
@@ -193,6 +196,172 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             'operator_name': 'my-operator'
         }
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).update_metadata_manifests_dir()
+
+    def test_replace_version_by_sha_on_image_references(self):
+        initial = """
+        apiVersion: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        metadata:
+          name: clusterlogging.4.1.16-201901010000
+          namespace: placeholder
+        spec:
+          version: 4.1.16-201901010000
+          displayName: Cluster Logging
+          image: image-registry.svc:5000/openshift/ose-cluster-logging-operator:v4.1.6-201901010000
+          some:
+            key:
+            - item: "image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111"
+            - item: "image-registry.svc:5000/openshift/dependency-c:v1.1.1-1111"
+            - item: "image-registry.svc:5000/openshift/dependency-d:v1.1.1-1111"
+        other:
+        - reference: image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111
+        """
+
+        expected = """
+        apiVersion: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        metadata:
+          name: clusterlogging.4.1.16-201901010000
+          namespace: placeholder
+        spec:
+          version: 4.1.16-201901010000
+          displayName: Cluster Logging
+          image: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
+          some:
+            key:
+            - item: "image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb"
+            - item: "image-registry.svc:5000/openshift/dependency-c@sha256:cccccccccccccc"
+            - item: "image-registry.svc:5000/openshift/dependency-d@sha256:dddddddddddddd"
+        other:
+        - reference: image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb
+        """
+
+        flexmock(operator_metadata.OperatorMetadataBuilder).should_receive('fetch_image_sha').with_args('openshift/ose-cluster-logging-operator:v4.1.6-201901010000').and_return('sha256:aaaaaaaaaaaaaa')
+        flexmock(operator_metadata.OperatorMetadataBuilder).should_receive('fetch_image_sha').with_args('openshift/dependency-b:v1.1.1-1111').and_return('sha256:bbbbbbbbbbbbbb')
+        flexmock(operator_metadata.OperatorMetadataBuilder).should_receive('fetch_image_sha').with_args('openshift/dependency-c:v1.1.1-1111').and_return('sha256:cccccccccccccc')
+        flexmock(operator_metadata.OperatorMetadataBuilder).should_receive('fetch_image_sha').with_args('openshift/dependency-d:v1.1.1-1111').and_return('sha256:dddddddddddddd')
+
+        nvr = '...irrelevant...'
+        stream = '...irrelevant...'
+        runtime = '...irrelevant...'
+        cached_attrs = {
+            'operator': type('', (object,), {
+                'config': {
+                    'update-csv': {
+                        'registry': 'image-registry.svc:5000'
+                    }
+                }
+            })
+        }
+        op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs)
+        actual = op_md.replace_version_by_sha_on_image_references(initial)
+        self.assertMultiLineEqual(actual, expected)
+
+    def test_get_file_list_from_operator_art_yaml(self):
+        art_yaml_file_contents = io.BytesIO(b"""
+        updates:
+          - file: foo/bar.yaml
+            update_list:
+              - search: foo
+                replace: bar
+          - file: chunky/bacon.yaml
+            update_list:
+              - search: chunky
+                replace: bacon
+        """)
+
+        mock = flexmock(get_builtin_module())
+        mock.should_call('open')
+        (mock.should_receive('open')
+            .with_args('/working/dir/my-operator/deploy/olm/manifests/art.yaml')
+            .and_return(art_yaml_file_contents))
+
+        nvr = '...irrelevant...'
+        stream = 'dev'
+        runtime = type('TestRuntime', (object,), {
+            'group_config': type('', (object,), {'vars': {}}),
+        })
+        cached_attrs = {
+            'working_dir': '/working/dir',
+            'operator_name': 'my-operator',
+            'operator': type('', (object,), {
+                'config': {
+                    'update-csv': {
+                        'manifests-dir': 'deploy/olm/manifests/'
+                    }
+                }
+            })
+        }
+        op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs)
+        self.assertEqual(op_md.get_file_list_from_operator_art_yaml(), [
+            '/working/dir/my-dev-operator-metadata/manifests/foo/bar.yaml',
+            '/working/dir/my-dev-operator-metadata/manifests/chunky/bacon.yaml'
+        ])
+
+    def test_get_file_list_from_operator_art_yaml_with_variable_replacement(self):
+        art_yaml_file_contents = io.BytesIO(b"""
+        updates:
+          - file: "{MAJOR}.{MINOR}/{OTHERVAR}.clusterserviceversion.yaml"
+            update_list:
+              - search: foo
+                replace: bar
+          - file: filename-with-{MINOR}-vars-{OTHERVAR}.yaml
+            update_list:
+              - search: chunky
+                replace: bacon
+        """)
+
+        mock = flexmock(get_builtin_module())
+        mock.should_call('open')
+        (mock.should_receive('open')
+            .with_args('/working/dir/my-operator/deploy/olm/manifests/art.yaml')
+            .and_return(art_yaml_file_contents))
+
+        nvr = '...irrelevant...'
+        stream = 'dev'
+        runtime = type('TestRuntime', (object,), {
+            'group_config': type('', (object,), {'vars': {
+                'MAJOR': 4,
+                'MINOR': 2,
+                'OTHERVAR': 'other'
+            }}),
+        })
+        cached_attrs = {
+            'working_dir': '/working/dir',
+            'operator_name': 'my-operator',
+            'operator': type('', (object,), {
+                'config': {
+                    'update-csv': {
+                        'manifests-dir': 'deploy/olm/manifests/'
+                    }
+                }
+            })
+        }
+        op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs)
+        self.assertEqual(op_md.get_file_list_from_operator_art_yaml(), [
+            '/working/dir/my-dev-operator-metadata/manifests/4.2/other.clusterserviceversion.yaml',
+            '/working/dir/my-dev-operator-metadata/manifests/filename-with-2-vars-other.yaml'
+        ])
+
+    def test_fetch_image_sha_successfully(self):
+        expected_cmd = ('skopeo inspect --tls-verify=false '
+                        'docker://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/openshift/my-image')
+
+        (flexmock(operator_metadata.exectools)
+            .should_receive('cmd_gather')
+            .with_args(expected_cmd)
+            .and_return((0, '{"Digest": "shashasha"}', '')))
+
+        nvr = '...irrelevant...'
+        stream = '...irrelevant...'
+        runtime = '...irrelevant...'
+        op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime)
+
+        self.assertEqual(op_md.fetch_image_sha('openshift/my-image'), 'shashasha')
+
+    def test_fetch_image_sha_failed(self):
+        # @TODO: test this method
+        pass
 
     def test_merge_streams_on_top_level_package_yaml_channel_already_present(self):
         package_yaml_filename = '/tmp/my-dev-operator-metadata/manifests/my-operator.package.yaml'
@@ -765,6 +934,67 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         self.assertEqual(
             operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).channel_name,
             '4.2'
+        )
+
+    def test_property_operator_art_yaml(self):
+        art_yaml_file_contents = io.BytesIO(b"""
+        updates:
+          - file: foo/bar.yaml
+            update_list:
+              - search: foo
+                replace: bar
+          - file: chunky/bacon.yaml
+            update_list:
+              - search: chunky
+                replace: bacon
+        """)
+
+        mock = flexmock(get_builtin_module())
+        mock.should_call('open')
+        (mock.should_receive('open')
+            .with_args('/working/dir/my-operator/deploy/olm/manifests/art.yaml')
+            .and_return(art_yaml_file_contents))
+
+        nvr = '...irrelevant...'
+        stream = '...irrelevant...'
+        runtime = '...irrelevant...'
+        cached_attrs = {
+            'working_dir': '/working/dir',
+            'operator_name': 'my-operator',
+            'operator': type('', (object,), {
+                'config': {
+                    'update-csv': {
+                        'manifests-dir': 'deploy/olm/manifests/'
+                    }
+                }
+            })
+        }
+        self.assertEqual(
+            operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).operator_art_yaml,
+            {
+                'updates': [
+                    {'file': 'foo/bar.yaml', 'update_list': [{'search': 'foo', 'replace': 'bar'}]},
+                    {'file': 'chunky/bacon.yaml', 'update_list': [{'search': 'chunky', 'replace': 'bacon'}]}
+                ]
+            }
+        )
+
+    def test_operator_csv_registry(self):
+        nvr = '...irrelevant...'
+        stream = '...irrelevant...'
+        runtime = '...irrelevant...'
+        cached_attrs = {
+            'operator': type('', (object,), {
+                'config': {
+                    'update-csv': {
+                        'registry': 'my.registry.svc:5000'
+                    }
+                }
+            })
+        }
+        self.assertEqual(
+            operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).operator_csv_registry,
+            'my.registry.svc:5000'
         )
 
     def test_get_brew_buildinfo(self):
