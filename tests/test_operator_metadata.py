@@ -360,8 +360,24 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         self.assertEqual(op_md.fetch_image_sha('openshift/my-image'), 'shashasha')
 
     def test_fetch_image_sha_failed(self):
-        # @TODO: test this method
-        pass
+        expected_cmd = ('skopeo inspect --tls-verify=false '
+                        'docker://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/openshift/my-image')
+
+        (flexmock(operator_metadata.exectools)
+            .should_receive('cmd_gather')
+            .with_args(expected_cmd)
+            .and_return((1, '', '')))
+
+        nvr = '...irrelevant...'
+        stream = '...irrelevant...'
+        runtime = '...irrelevant...'
+        op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime)
+
+        self.assertRaises(
+            operator_metadata.ImageReferenceSHANotFoundException,
+            op_md.fetch_image_sha,
+            'openshift/my-image'
+        )
 
     def test_merge_streams_on_top_level_package_yaml_channel_already_present(self):
         package_yaml_filename = '/tmp/my-dev-operator-metadata/manifests/my-operator.package.yaml'
