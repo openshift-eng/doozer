@@ -1753,7 +1753,7 @@ installonly_limit=3
 
     optional_fails = []
 
-    repos_content = repos.repo_file(repo_type, enabled_repos=None, use_config_name=True, arch=arch)
+    repos_content = repos.repo_file(repo_type, enabled_repos=None, arch=arch)
     content = "{}\n\n{}".format(yum_conf, repos_content)
 
     if dry_run:
