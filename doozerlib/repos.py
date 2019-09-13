@@ -5,13 +5,13 @@ import json
 
 DEFAULT_REPOTYPE = 'signed'
 
+# This architecture is handled differently in some cases for legacy reasons
+ARCH_X86_64 = "x86_64"
+
 
 class Repo(object):
     """Represents a single yum repository and provides sane ways to
     access each property based on the arch or repo type."""
-
-    # class var that increases monotonically to enhance repo id uniqueness
-    repos_nonce = 0
 
     def __init__(self, name, data, valid_arches):
         self.name = name
@@ -97,47 +97,46 @@ class Repo(object):
         else:
             return self._data.content_set[arch]
 
-    def conf_section(self, repotype, enabled=None, use_config_name=False, arch='x86_64'):
-        """Generates and returns the yum .repo section for this repo,
-        based on given type, arch, and enabled state"""
+    def conf_section(self, repotype, arch=ARCH_X86_64, enabled=None, section_name=None):
+        """
+        Returns a str that represents a yum repo configuration section corresponding
+        to this repo in group.yml.
+
+        :param repotype: Whether to use signed or unsigned repos from group.yml
+        :param arch: The architecture this section if being generated for (e.g. ppc64le or x86_64).
+        :param enabled: If True|False, explicitly set 'enabled = 1|0' in section. If None, inherit group.yml setting.
+        :param section_name: The section name to use if not the repo name in group.yml.
+        :return: Returns a string representing a repo section in a yum configuration file. e.g.
+            [rhel-7-server-ansible-2.4-rpms]
+            gpgcheck = 0
+            enabled = 0
+            baseurl = http://pulp.dist.pr.../x86_64/ansible/2.4/os/
+            name = rhel-7-server-ansible-2.4-rpms
+        """
         if not repotype:
             repotype = 'unsigned'
 
         if arch not in self._valid_arches:
             raise ValueError('{} does not identify a yum repository for arch: {}'.format(self.name, arch))
 
-        result = ''
+        if not section_name:  # If the caller has not specified a name, use group.yml name.
+            section_name = self.name
 
-        if use_config_name:
-            cs = self.name
-        else:
-            cs = self.content_set(arch)
+        result = '[{}]\n'.format(section_name)
 
-        # This may not be valid yet if not released
-        # but ALWAYS emit this repo
-        if not cs and self.name == 'rhel-server-ose-rpms':
-            cs = 'rhel-server-ose-rpms-{}'.format(arch)
-
-        if cs:
-            Repo.repos_nonce += 1
-            if use_config_name:
-                result += '[{}]\n'.format(cs)
+        for k, v in self._data.conf.iteritems():
+            line = '{} = {}\n'
+            if k == 'baseurl':
+                line = line.format(k, self.baseurl(repotype, arch))
+            elif k == 'name':
+                line = line.format(k, section_name)
             else:
-                result += '[{}-{}]\n'.format(cs, Repo.repos_nonce)
-            for k, v in self._data.conf.iteritems():
-                line = '{} = {}\n'
-                if k == 'baseurl':
-                    line = line.format('baseurl', self.baseurl(repotype, arch))
-                else:
-                    if k == 'enabled':
-                        if enabled is None:  # forcible disabled
-                            v = 0
-                        elif v is None or v == 0:  # v is None if `enabled` not in group config
-                            v = 1 if enabled else 0
+                if k == 'enabled' and enabled is not None:
+                    v = 1 if enabled else 0
+                line = line.format(k, v)
 
-                    line = line.format(k, v)
-                result += line
-            result += '\n'
+            result += line
+        result += '\n'
 
         return result
 
@@ -206,18 +205,36 @@ class Repos(object):
         """Mainly for debugging to dump a dict representation of the collection"""
         return str(self._repos)
 
-    def repo_file(self, repo_type, enabled_repos=[], empty_repos=[], use_config_name=False, arch='x86_64'):
-        """Returns the string contents of a yum .repo file for the given
-        type, enabled repos, and dummy 'emtpy' repos. Contents written to file
-        by external accessor.
+    def repo_file(self, repo_type, enabled_repos=[], empty_repos=[], arch=None):
+        """
+        Returns a str defining a list of repo configuration secions for a yum configuration file.
+        :param repo_type: Whether to prefer signed or unsigned repos.
+        :param enabled_repos: A list of group.yml repo names which should be enabled. If the group.yml repo
+            name is not in the list, it will be returned as disabled.
+        :param empty_repos: A list of repo names to return defined as no-op yum repos.
+        :param arch: The architecture for which this repository should be generated. If None, all architectures
+            will be included in the returned str.
         """
 
         result = ''
         for r in self._repos.itervalues():
-            en = None if enabled_repos is None else (r.name in enabled_repos)
-            result += r.conf_section(repo_type, enabled=en, use_config_name=use_config_name, arch=arch)
+            enabled = False
+            if enabled_repos and r.name in enabled_repos:
+                enabled = True
+
+            if arch:  # Generating a single arch?
+                # Just use the configured name for the. This behavior needs to be preserved to
+                # prevent changing mirrored repos by reposync.
+                result += r.conf_section(repo_type, enabled=enabled, arch=arch, section_name=r.name)
+            else:
+                # When generating a repo file for builds, we need all arches in the same repo file.
+                for iarch in r.arches:
+                    section_name = '{}-{}'.format(r.name, iarch)
+                    result += r.conf_section(repo_type, enabled=enabled, arch=iarch, section_name=section_name)
+
         for er in empty_repos:
             result += EMPTY_REPO.format(er)
+
         return result
 
     def empty_repo_file_from_list(self, repos, odcs=False):
