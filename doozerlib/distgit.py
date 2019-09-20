@@ -552,7 +552,17 @@ class ImageDistGitRepo(DistGitRepo):
                 _, version, release = self.metadata.get_latest_build_info()
 
             image_name_and_version = "%s:%s-%s" % (self.config.name, version, release)
-            brew_image_url = "/".join((self.runtime.group_config.urls.brew_image_host, image_name_and_version))
+
+            # https://mojo.redhat.com/docs/DOC-1204856
+            # we need to convert into 'registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-installer-artifacts'
+            # from 'brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/openshift/ose-installer-artifacts'
+            if self.runtime.group_config.urls.brew_image_namespace is not Missing:
+                url = self.runtime.group_config.urls.brew_image_host
+                ns = self.runtime.group_config.urls.brew_image_namespace
+                name = image_name_and_version.replace('/', '-')
+                brew_image_url = "/".join(("/".join((url, ns)), name))
+            else:
+                brew_image_url = "/".join((self.runtime.group_config.urls.brew_image_host, image_name_and_version))
 
             push_tags = list(tag_list)
 
