@@ -25,15 +25,16 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import yellow_print
 from doozerlib import state
 
+# doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
 OIT_BEGIN = '##OIT_BEGIN'
 OIT_END = '##OIT_END'
 
 CONTAINER_YAML_HEADER = """
-# This file is managed by the OpenShift Image Tool: https://github.com/openshift/enterprise-images,
-# by the OpenShift Continuous Delivery team (#aos-art on CoreOS Slack).
+# This file is managed by doozer: https://gitlab.cee.redhat.com/openshift-art/tools/doozer
+# operated by the OpenShift Automated Release Tooling team (#aos-art on CoreOS Slack).
 
-# Any manual changes will be overwritten by OIT on the next build.
+# Any manual changes will be overwritten by doozer on the next build.
 #
 # See https://mojo.redhat.com/docs/DOC-1159997 for more information on
 # maintaining this file and the format and examples
