@@ -1,5 +1,4 @@
 import glob
-import json
 import re
 import shutil
 import threading
@@ -86,7 +85,6 @@ class OperatorMetadataBuilder:
         self.checkout_repo(self.operator_name, self.commit_hash)
 
         self.update_metadata_manifests_dir()
-        self.update_current_csv_shasums()
         self.merge_streams_on_top_level_package_yaml()
         self.create_metadata_dockerfile()
         return self.commit_and_push_metadata_repo()
@@ -162,36 +160,6 @@ class OperatorMetadataBuilder:
 
         if not self.metadata_package_yaml_exists():
             self.copy_operator_package_yaml_to_metadata()
-
-    @log
-    def update_current_csv_shasums(self):
-        """Read all files listed in operator's art.yaml, search for image
-        references and replace their version tags by a corresponding SHA.
-        """
-        for file in self.get_file_list_from_operator_art_yaml():
-            with open(file, 'r') as reader:
-                contents = reader.read()
-
-            with open(file, 'w') as writer:
-                writer.write(self.replace_version_by_sha_on_image_references(contents))
-
-    def replace_version_by_sha_on_image_references(self, contents):
-        """Search for image references with a version tag inside 'contents' and
-        replace them by a corresponding SHA.
-
-        :param string contents: File contents potentially containing image references
-        :return string Same content back, with image references replaced (if any was found)
-        """
-        return re.sub(
-            r'{}/([^:]+):([^\'"\s]+)'.format(self.operator_csv_registry),
-            lambda i: '{}/{}@{}'.format(
-                self.operator_csv_registry,
-                i.group(1),
-                self.fetch_image_sha('{}:{}'.format(i.group(1), i.group(2)))
-            ),
-            contents,
-            flags=re.MULTILINE
-        )
 
     @log
     def merge_streams_on_top_level_package_yaml(self):
@@ -331,30 +299,6 @@ class OperatorMetadataBuilder:
         ))) > 0
 
     @log
-    def get_file_list_from_operator_art_yaml(self):
-        return [
-            '{}/{}/{}/{}'.format(
-                self.working_dir,
-                self.metadata_repo,
-                self.metadata_manifests_dir,
-                entry['file'].format(**self.runtime.group_config.vars)
-            )
-            for entry in self.operator_art_yaml['updates']
-        ]
-
-    @log
-    def fetch_image_sha(self, image):
-        """Use skopeo to obtain the SHA of a given image
-
-        :param string image: Image name + version (format: openshift/my-image:v4.1.16-201901010000)
-        :return string Digest (format: sha256:a1b2c3d4...)
-        """
-        registry = '--tls-verify=false docker://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888'
-        cmd = 'skopeo inspect {}/{}'.format(registry, image)
-        rc, out, err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
-        return json.loads(out)['Digest']
-
-    @log
     def extract_brew_task_id(self, container_build_output):
         """Extract the Task ID from the output of a `rhpkg container-build` command
 
@@ -453,18 +397,6 @@ class OperatorMetadataBuilder:
             self.metadata_manifests_dir,
             self.channel
         ))[0]
-
-    @property
-    def operator_art_yaml(self):
-        return yaml.safe_load(open('{}/{}/{}/art.yaml'.format(
-            self.working_dir,
-            self.operator_name,
-            self.operator_manifests_dir
-        )))
-
-    @property
-    def operator_csv_registry(self):
-        return self.operator.config['update-csv']['registry']
 
     @property
     def csv(self):
