@@ -65,10 +65,6 @@ def update_and_build(nvr, stream, runtime, merge_branch, force_build=False):
     return True
 
 
-class ImageReferenceSHANotFoundException(Exception):
-    pass
-
-
 class OperatorMetadataBuilder:
     def __init__(self, nvr, stream, runtime, **kwargs):
         self.nvr = nvr
@@ -352,15 +348,10 @@ class OperatorMetadataBuilder:
 
         :param string image: Image name + version (format: openshift/my-image:v4.1.16-201901010000)
         :return string Digest (format: sha256:a1b2c3d4...)
-        :raise: ImageReferenceSHANotFoundException if command failed (rc != 0)
         """
         registry = '--tls-verify=false docker://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888'
         cmd = 'skopeo inspect {}/{}'.format(registry, image)
         rc, out, err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
-
-        if rc != 0:
-            raise ImageReferenceSHANotFoundException
-
         return json.loads(out)['Digest']
 
     @log
