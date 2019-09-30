@@ -1,5 +1,7 @@
 import click
 import copy
+import os
+import errno
 
 
 def red_prefix(msg):
@@ -59,3 +61,26 @@ def dict_get(dct, path, default=DICT_EMPTY):
                 raise Exception('Unable to follow key path {}'.format(path))
             return default
     return dct
+
+
+def is_in_directory(path, directory):
+    """check whether a path is in another directory
+
+    FIXME: Use os.path.commonpath when migrated to Python 3
+    """
+    path = os.path.realpath(path)
+    directory = os.path.realpath(directory)
+    relative = os.path.relpath(os.path.dirname(path), directory)
+    return relative != os.pardir and not relative.startswith(os.pardir + os.sep)
+
+
+def mkdirs(path):
+    """ Make sure a directory exists. Similar to shell command `mkdir -p`.
+
+    This function will not be necessary when fully migrated to Python 3.
+    """
+    try:
+        os.makedirs(path)
+    except OSError as e:
+        if e.errno != errno.EEXIST:  # ignore if dest_dir exists
+            raise
