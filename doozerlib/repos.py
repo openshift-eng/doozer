@@ -3,7 +3,7 @@ import yaml
 import requests
 import json
 
-DEFAULT_REPOTYPE = 'signed'
+DEFAULT_REPOTYPES = ['unsigned', 'signed']
 
 # This architecture is handled differently in some cases for legacy reasons
 ARCH_X86_64 = "x86_64"
@@ -32,8 +32,8 @@ class Repo(object):
         conf.gpgcheck = conf.get('gpgcheck', 0)
         self.cs_optional = self._data.content_set.get('optional', False)
 
-        self.repotypes = [DEFAULT_REPOTYPE]
-        self.baseurl(DEFAULT_REPOTYPE, self._valid_arches[0])  # run once just to populate self.repotypes
+        self.repotypes = DEFAULT_REPOTYPES
+        self.baseurl(DEFAULT_REPOTYPES[0], self._valid_arches[0])  # run once just to populate self.repotypes
 
     @property
     def enabled(self):
