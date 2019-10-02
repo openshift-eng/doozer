@@ -349,8 +349,8 @@ class OperatorMetadataBuilder:
         :param string image: Image name + version (format: openshift/my-image:v4.1.16-201901010000)
         :return string Digest (format: sha256:a1b2c3d4...)
         """
-        registry = '--tls-verify=false docker://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888'
-        cmd = 'skopeo inspect {}/{}'.format(registry, image)
+        registry = 'docker://registry-proxy.engineering.redhat.com/rh-osbs'
+        cmd = 'skopeo inspect {}/{}'.format(registry, image.replace('/', '-'))
         rc, out, err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
         return json.loads(out)['Digest']
 

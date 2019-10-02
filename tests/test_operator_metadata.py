@@ -344,8 +344,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         ])
 
     def test_fetch_image_sha_successfully(self):
-        expected_cmd = ('skopeo inspect --tls-verify=false '
-                        'docker://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/openshift/my-image')
+        expected_cmd = 'skopeo inspect docker://registry-proxy.engineering.redhat.com/rh-osbs/openshift-my-image'
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_gather')
