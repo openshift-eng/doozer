@@ -344,7 +344,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         ])
 
     def test_fetch_image_sha_successfully(self):
-        expected_cmd = 'skopeo inspect docker://registry-proxy.engineering.redhat.com/rh-osbs/openshift-my-image'
+        expected_cmd = 'skopeo inspect docker://brew-img-host/brew-img-ns/openshift-my-image'
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_gather')
@@ -353,7 +353,13 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         nvr = '...irrelevant...'
         stream = '...irrelevant...'
-        runtime = '...irrelevant...'
+        runtime = flexmock(
+            group_config=flexmock(
+                urls=flexmock(brew_image_host="brew-img-host", brew_image_namespace="brew-img-ns"),
+                insecure_source=False,
+            )
+        )
+
         op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime)
 
         self.assertEqual(op_md.fetch_image_sha('openshift/my-image'), 'shashasha')
