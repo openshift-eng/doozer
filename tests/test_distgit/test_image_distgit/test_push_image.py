@@ -10,11 +10,24 @@ from doozerlib import distgit
 
 class TestImageDistGitRepoPushImage(unittest.TestCase):
 
+    @staticmethod
+    def mock_runtime():
+        return flexmock(
+            group_config=flexmock(
+                urls=flexmock(brew_image_host="brew-img-host", brew_image_namespace="brew-img-ns"),
+                insecure_source=False,
+            ),
+            working_dir="my-working-dir",
+            branch="some-branch",
+            command="some-command",
+            add_record=lambda *_, **__: None,
+        )
+
     def test_push_image_is_late_push(self):
         metadata = flexmock(config=flexmock(push=flexmock(late=True),
                                             distgit=flexmock(branch="_irrelevant_")),
                             distgit_key="distgit_key",
-                            runtime=flexmock(branch="_irrelevant_"),
+                            runtime=self.mock_runtime(),
                             name="_irrelevant_",
                             logger=flexmock(info=lambda *_: None))
 
@@ -30,7 +43,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                             distgit_key="distgit_key",
                             get_default_push_names=lambda *_: [],
                             get_additional_push_names=lambda *_: [],
-                            runtime=flexmock(branch="_irrelevant_"),
+                            runtime=self.mock_runtime(),
                             name="_irrelevant_",
                             logger=flexmock(info=lambda *_: None))
 
@@ -60,12 +73,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             branch="_irrelevant_",
-                                             command="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             get_default_push_names=lambda *_: ["my-default-name"],
@@ -102,12 +110,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             branch="_irrelevant_",
-                                             command="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             get_latest_build_info=lambda *_: ("_", "my-version", "my-release"),
@@ -143,12 +146,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             branch="_irrelevant_",
-                                             command="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             namespace="my-namespace",
@@ -188,12 +186,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             branch="_irrelevant_",
-                                             command="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             namespace="my-namespace",
@@ -231,12 +224,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             branch="_irrelevant_",
-                                             command="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             namespace="my-namespace",
@@ -275,12 +263,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             branch="_irrelevant_",
-                                             command="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             namespace="my-namespace",
@@ -322,12 +305,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             branch="_irrelevant_",
-                                             command="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             namespace="my-namespace",
@@ -369,12 +347,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             branch="_irrelevant_",
-                                             command="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             namespace="my-namespace",
@@ -415,19 +388,16 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             state={"images:push": "my-runtime-state"},
-                                             command="images:push",
-                                             branch="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             get_default_push_names=lambda *_: ["my-default-name"],
                             get_additional_push_names=lambda *_: [],
                             logger=flexmock(info=lambda *_: None),
                             namespace="_irrelevant_")
+
+        metadata.runtime.state = {"images:push": "my-runtime-state"}
+        metadata.runtime.command = "images:push"
 
         (flexmock(distgit.state)
             .should_receive("record_image_success")
@@ -470,20 +440,17 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=False),
-                                             working_dir="my-working-dir",
-                                             state={"images:push": "my-runtime-state"},
-                                             command="images:push",
-                                             logger=logger,
-                                             branch="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             namespace="my-namespace",
                             get_default_push_names=lambda *_: ["my-default-name"],
                             get_additional_push_names=lambda *_: [],
                             logger=logger)
+
+        metadata.runtime.state = {"images:push": "my-runtime-state"}
+        metadata.runtime.command = "images:push"
+        metadata.runtime.logger = logger
 
         (flexmock(distgit.state)
             .should_receive("record_image_fail")
@@ -526,7 +493,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
 
-        expected_cmd = "oc image mirror  --insecure=true --filename=my-working-dir/push/my-distgit-key"
+        expected_cmd = "oc image mirror  --insecure=true --filename=some-workdir/push/my-distgit-key"
 
         (flexmock(distgit.exectools)
             .should_receive("cmd_gather")
@@ -538,18 +505,16 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                             name="my-name",
                                             namespace="my-namespace",
                                             distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(group_config=flexmock(urls=flexmock(brew_image_host="brew-img-host"),
-                                                                   insecure_source=True),
-                                             working_dir="my-working-dir",
-                                             branch="_irrelevant_",
-                                             command="_irrelevant_",
-                                             add_record=lambda *_, **__: None),
+                            runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
                             get_default_push_names=lambda *_: ["my-default-name"],
                             get_additional_push_names=lambda *_: [],
                             logger=flexmock(info=lambda *_: None),
                             namespace="_irrelevant_")
+
+        metadata.runtime.working_dir = "some-workdir"
+        metadata.runtime.group_config.insecure_source = True
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
         tag_list = ["tag-a", "tag-b"]

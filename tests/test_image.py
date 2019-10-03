@@ -113,7 +113,8 @@ class TestImageMetadata(unittest.TestCase):
             get_latest_build_info=lambda: ('openshift-cli', '1.1.1', '8'),
             group_config=flexmock(urls=flexmock(brew_image_namespace='rh-osbs', brew_image_host='brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888')))
 
-        fake_image = flexmock(pull_url=image.ImageMetadata.pull_url(),
+        fake_image = flexmock(
+            pull_url=image.ImageMetadata.pull_url(),
             runtime=fake_runtime, config=flexmock(name='test'))
 
         self.assertEqual(fake_image.pull_url(), "brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/rh-osbs/openshift-test")
