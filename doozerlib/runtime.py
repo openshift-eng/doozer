@@ -563,8 +563,11 @@ class Runtime(object):
                 # But we want an https hyperlink like http://github.com/openshift/origin
                 if origin_url.startswith("git@"):
                     origin_url = origin_url[4:]  # remove git@
-                    origin_url = origin_url[:-4]  # remove .git
                     origin_url = origin_url.replace(":", "/", 1)  # replace first colon with /
+
+                    if origin_url.endswith(".git"):
+                        origin_url = origin_url[:-4]  # remove .git
+
                     origin_url = "https://%s" % origin_url
             else:
                 self.logger.error("Failed acquiring origin url for source alias %s: %s" % (alias, err_origin))
