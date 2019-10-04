@@ -1374,33 +1374,38 @@ class ImageDistGitRepo(DistGitRepo):
 
             return (version, release)
 
-    def _update_csv(self, version, release):
-        # AMH - most of this really method shouldn't be in Doozer itself
-        # But right now there's no better way to handle it
-        csv_config = self.metadata.config.get('update-csv', None)
-        if not csv_config:
-            return
-
+    def _get_csv_file_and_refs(self, csv_config):
         gvars = self.runtime.group_config.vars
         ver = '{}.{}'.format(gvars['MAJOR'], gvars['MINOR'])
         manifests = os.path.join(self.distgit_dir, csv_config['manifests-dir'], ver)
-        registry = csv_config['registry'].rstrip("/")
+
         refs = os.path.join(manifests, 'image-references')
         if not os.path.isfile(refs):
             raise DoozerFatalError('{}: file does not exist: {}'.format(self.metadata.distgit_key, refs))
         with open(refs, 'r') as f_ref:
             ref_data = yaml.full_load(f_ref)
+        image_refs = ref_data.get('spec', {}).get('tags', {})
+        if not image_refs:
+            raise DoozerFatalError('Data in {} not valid'.format(refs))
 
         with Dir(manifests):
             csvs = glob.glob('*.clusterserviceversion.yaml')
-            if len(csvs) != 1:
-                raise DoozerFatalError('{}: Must be exactly one *.clusterserviceversion.yaml file but found more than one or none @ {}'.format(self.metadata.distgit_key, manifests))
-            csv = os.path.join(manifests, csvs[0])
+            if len(csvs) < 1:
+                raise DoozerFatalError('{}: did not find a *.clusterserviceversion.yaml file @ {}'.format(self.metadata.distgit_key, manifests))
+            elif len(csvs) > 1:
+                raise DoozerFatalError('{}: Must be exactly one *.clusterserviceversion.yaml file but found more than one @ {}'.format(self.metadata.distgit_key, manifests))
+            return os.path.join(manifests, csvs[0]), image_refs
 
-        image_refs = ref_data.get('spec', {}).get('tags', {})
+    def _update_csv(self, version, release):
+        # AMH - most of this method really shouldn't be in Doozer itself
+        # But right now there's no better way to handle it
+        csv_config = self.metadata.config.get('update-csv', None)
+        if not csv_config:
+            return
 
-        if not image_refs:
-            raise DoozerFatalError('Data in {} not valid'.format(refs))
+        raise DoozerFatalError("yo")
+        csv_file, image_refs = self._get_csv_file_and_refs(csv_config)
+        registry = csv_config['registry'].rstrip("/")
 
         for ref in image_refs:
             try:
@@ -1427,7 +1432,7 @@ class ImageDistGitRepo(DistGitRepo):
                     raise DoozerFatalError('csv_namespace is required in group.yaml when any image defines update-csv')
                 replace = '{}/{}/{}'.format(registry, namespace, nvr)
 
-                with open(csv, 'r+') as f:
+                with open(csv_file, 'r+') as f:
                     content = f.read()
                     content = content.replace(spec + '\n', replace + '\n')
                     content = content.replace(spec + '\"', replace + '\"')
