@@ -292,11 +292,27 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
                 }
             })
         }
-        op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs)
+        op_md = flexmock(
+            operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs),
+            metadata_csv_yaml_filename='/working/dir/my-dev-operator-metadata/manifests/4.2/other.clusterserviceversion.yaml'
+        )
         self.assertEqual(op_md.get_file_list_from_operator_art_yaml(), [
             '/working/dir/my-dev-operator-metadata/manifests/foo/bar.yaml',
-            '/working/dir/my-dev-operator-metadata/manifests/chunky/bacon.yaml'
+            '/working/dir/my-dev-operator-metadata/manifests/chunky/bacon.yaml',
+            '/working/dir/my-dev-operator-metadata/manifests/4.2/other.clusterserviceversion.yaml',
         ])
+
+    def test_get_file_list_from_no_art_yaml(self):
+        nvr = '...irrelevant...'
+        stream = 'dev'
+        runtime = '...irrelevant...'
+        op_md = flexmock(
+            operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime),
+            operator_art_yaml={},
+            metadata_csv_yaml_filename='some-file-name',
+        )
+
+        self.assertEqual(op_md.get_file_list_from_operator_art_yaml(), ['some-file-name'])
 
     def test_get_file_list_from_operator_art_yaml_with_variable_replacement(self):
         art_yaml_file_contents = io.BytesIO(b"""
@@ -337,7 +353,10 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
                 }
             })
         }
-        op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs)
+        op_md = flexmock(
+            operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs),
+            metadata_csv_yaml_filename='/working/dir/my-dev-operator-metadata/manifests/4.2/other.clusterserviceversion.yaml'
+        )
         self.assertEqual(op_md.get_file_list_from_operator_art_yaml(), [
             '/working/dir/my-dev-operator-metadata/manifests/4.2/other.clusterserviceversion.yaml',
             '/working/dir/my-dev-operator-metadata/manifests/filename-with-2-vars-other.yaml'
@@ -983,6 +1002,22 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
                 ]
             }
         )
+
+    def test_no_operator_art_yaml(self):
+        md = operator_metadata.OperatorMetadataBuilder(
+            nvr='...irrelevant...',
+            stream='...irrelevant...',
+            runtime='...irrelevant...',
+            working_dir='...irrelevant...',
+            operator_name='...irrelevant...',
+            operator=flexmock(config={'update-csv': {'manifests-dir': 'csv-dir'}}),
+        )
+        mock = flexmock(get_builtin_module())
+        mock.should_call('open')
+        (mock.should_receive('open')
+            .and_raise(IOError()))
+
+        self.assertEqual(md.operator_art_yaml, {})
 
     def test_operator_csv_registry(self):
         nvr = '...irrelevant...'
