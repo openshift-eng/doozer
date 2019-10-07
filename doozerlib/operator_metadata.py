@@ -332,15 +332,19 @@ class OperatorMetadataBuilder:
 
     @log
     def get_file_list_from_operator_art_yaml(self):
-        return [
+        file_list = [
             '{}/{}/{}/{}'.format(
                 self.working_dir,
                 self.metadata_repo,
                 self.metadata_manifests_dir,
                 entry['file'].format(**self.runtime.group_config.vars)
             )
-            for entry in self.operator_art_yaml['updates']
+            for entry in self.operator_art_yaml.get('updates', [])
         ]
+        csv_file = self.metadata_csv_yaml_filename
+        if csv_file not in file_list:
+            file_list.append(csv_file)
+        return file_list
 
     @log
     def fetch_image_sha(self, image):
@@ -459,11 +463,14 @@ class OperatorMetadataBuilder:
 
     @property
     def operator_art_yaml(self):
-        return yaml.safe_load(open('{}/{}/{}/art.yaml'.format(
-            self.working_dir,
-            self.operator_name,
-            self.operator_manifests_dir
-        )))
+        try:
+            return yaml.safe_load(open('{}/{}/{}/art.yaml'.format(
+                self.working_dir,
+                self.operator_name,
+                self.operator_manifests_dir
+            )))
+        except IOError:
+            return {}
 
     @property
     def operator_csv_registry(self):
