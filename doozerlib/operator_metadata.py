@@ -347,19 +347,27 @@ class OperatorMetadataBuilder:
         return file_list
 
     @log
-    def fetch_image_sha(self, image):
+    def fetch_image_sha(self, image, arch='amd64'):
         """Use skopeo to obtain the SHA of a given image
 
+        We want the image manifest shasum because internal registry/cri-o can't handle manifest lists yet.
+        More info: http://post-office.corp.redhat.com/archives/aos-team-art/2019-October/msg02010.html
+
         :param string image: Image name + version (format: openshift/my-image:v4.1.16-201901010000)
+        :param string arch: Same image has different SHAs per architecture
         :return string Digest (format: sha256:a1b2c3d4...)
         """
         registry = self.runtime.group_config.urls.brew_image_host.rstrip("/")
         ns = self.runtime.group_config.urls.brew_image_namespace
         if ns:
             image = "{}/{}".format(ns, image.replace('/', '-'))
-        cmd = 'skopeo inspect docker://{}/{}'.format(registry, image)
+        cmd = 'skopeo inspect --raw docker://{}/{}'.format(registry, image)
         rc, out, err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
-        return json.loads(out)['Digest']
+
+        def select_arch(manifests):
+            return manifests['platform']['architecture'] == arch
+
+        return filter(select_arch, json.loads(out)['manifests'])[0]['digest']
 
     @log
     def extract_brew_task_id(self, container_build_output):
