@@ -1403,7 +1403,6 @@ class ImageDistGitRepo(DistGitRepo):
         if not csv_config:
             return
 
-        raise DoozerFatalError("yo")
         csv_file, image_refs = self._get_csv_file_and_refs(csv_config)
         registry = csv_config['registry'].rstrip("/")
 
