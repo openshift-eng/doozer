@@ -363,12 +363,46 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         ])
 
     def test_fetch_image_sha_successfully(self):
-        expected_cmd = 'skopeo inspect docker://brew-img-host/brew-img-ns/openshift-my-image'
+        expected_cmd = 'skopeo inspect --raw docker://brew-img-host/brew-img-ns/openshift-my-image'
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_gather')
             .with_args(expected_cmd)
-            .and_return((0, '{"Digest": "shashasha"}', '')))
+            .and_return((0, """
+            {
+                "manifests": [
+                    {
+                        "digest": "sha256:3781665ddc79c7519d111fdc60fc881a223df8bb1d870a3b8a683d69ee7e7468",
+                        "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                        "platform": {
+                            "architecture": "ppc64le",
+                            "os": "linux"
+                        },
+                        "size": 1371
+                    },
+                    {
+                        "digest": "sha256:8922dea388e2e41ea30fd54f5f80a3530c5bb746c0136321283dd981b1441015",
+                        "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                        "platform": {
+                            "architecture": "amd64",
+                            "os": "linux"
+                        },
+                        "size": 1371
+                    },
+                    {
+                        "digest": "sha256:baa138d231382390d24c93300664b767b649bbfd16061fd74a4ad5a18abb9652",
+                        "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                        "platform": {
+                            "architecture": "s390x",
+                            "os": "linux"
+                        },
+                        "size": 1371
+                    }
+                ],
+                "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+                "schemaVersion": 2
+            }
+            """, '')))
 
         nvr = '...irrelevant...'
         stream = '...irrelevant...'
@@ -381,7 +415,10 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime)
 
-        self.assertEqual(op_md.fetch_image_sha('openshift/my-image'), 'shashasha')
+        self.assertEqual(
+            op_md.fetch_image_sha('openshift/my-image'),
+            'sha256:8922dea388e2e41ea30fd54f5f80a3530c5bb746c0136321283dd981b1441015'
+        )
 
     def test_fetch_image_sha_failed(self):
         # @TODO: test this method
