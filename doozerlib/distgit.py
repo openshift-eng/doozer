@@ -175,6 +175,13 @@ class DistGitRepo(object):
             on_retry=['git', 'reset', '--hard', target],  # in case merge failed due to storage
         )
 
+    def has_source(self):
+        """
+        Check whether this dist-git repo has source content
+        """
+        return "git" in self.config.content.source or \
+            "alias" in self.config.content.source
+
     def source_path(self):
         """
         :return: Returns the directory containing the source which should be used to populate distgit.
@@ -1756,7 +1763,7 @@ class ImageDistGitRepo(DistGitRepo):
                 os.mkdir(".oit")
 
             # If content.source is defined, pull in content from local source directory
-            if self.config.content.source is not Missing:
+            if self.has_source():
                 self._merge_source()
 
             # Source or not, we should find a Dockerfile in the root at this point or something is wrong
