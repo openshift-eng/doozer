@@ -1212,7 +1212,13 @@ class ImageDistGitRepo(DistGitRepo):
                 parent_images = image_from.builder if image_from.builder is not Missing else []
                 parent_images.append(image_from)
                 if len(parent_images) != len(dfp.parent_images):
-                    raise IOError("Dockerfile parent images not matched by configured parent images for {}. '{}' vs '{}'".format(self.config.name, dfp.parent_images, parent_images))
+                    raise IOError("Build metadata for {name} expected {count1} image parent(s), but the upstream Dockerfile contains {count2} FROM statements. These counts must match. Detail: '{meta_parents}' vs '{upstream_parents}'.".format(
+                        name=self.config.name,
+                        count1=len(parent_images),
+                        count2=len(dfp.parent_images),
+                        meta_parents=parent_images,
+                        upstream_parents=dfp.parent_images,
+                    ))
                 mapped_images = []
 
                 original_parents = dfp.parent_images
