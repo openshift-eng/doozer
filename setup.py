@@ -21,7 +21,7 @@ setup(
     description="CLI tool for managing and automating Red Hat software releases",
     long_description=open('README.md').read(),
     url="https://github.com/openshift/doozer",
-    license="Red Hat Internal",
+    license="Apache License, Version 2.0",
     packages=["doozerlib"],
     include_package_data=True,
     scripts=[
