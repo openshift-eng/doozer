@@ -1,5 +1,7 @@
 ## Doozer
 
+[![PyPI version](https://badge.fury.io/py/rh-doozer.svg)](https://badge.fury.io/py/rh-doozer)
+
 Doozer is a build management utility that currently has the capability to build RPMs and Container Images via OSBS/Brew
 
 ## Deployment
