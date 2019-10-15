@@ -17,6 +17,7 @@ from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yel
 from doozerlib import operator_metadata
 import datetime
 import click
+import copy
 import os
 import shutil
 import yaml
@@ -1506,6 +1507,280 @@ def config_gencsv(runtime, keys, as_type, output):
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)
     config.config_gen_csv(keys, as_type, output)
+
+
+@cli.command("release:gen-multiarch-payload", short_help="Generate input files for release mirroring")
+@click.option("--is-name", metavar='NAME', required=True,
+              help="ImageStream .metadata.name value. Something like '4.2-art-latest'")
+@click.option("--is-namespace", metavar='NAMESPACE', required=False, default='ocp',
+              help="ImageStream .metadata.namespace value.\ndefault=ocp")
+@click.option("--organization", metavar='ORGANIZATION', required=False, default='openshift-release-dev',
+              help="Quay ORGANIZATION to mirror into.\ndefault=openshift-release-dev")
+@click.option("--repository", metavar='REPO', required=False, default='ocp-v4.0-art-dev',
+              help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
+@pass_runtime
+def release_gen_multiarch_payload(runtime, is_name, is_namespace, organization, repository):
+    """Generates two sets of input files for `oc` commands to mirror
+content and update image streams. This command is only for versions
+that support multiple architectures. Files are generated for each arch
+defined in ocp-build-data for a version, as well as a final file for
+manifest-lists.
+
+One set of files are SRC=DEST mirroring definitions for 'oc image
+mirror'. They define what source images we will sync to which
+destination repos, and what the mirrored images will be labeled as.
+
+The other set of files are YAML image stream tags for 'oc
+apply'. Those are applied to an openshift cluster to define "release
+streams". When they are applied the release controller notices the
+update and begins generating a new payload with the images tagged in
+the image stream.
+
+For automation purposes this command generates a mirroring.yaml file
+after the arch-specific files have been generated. The yaml file
+includes names of generated content.
+
+YOU MUST PROVIDE the base name for the image streams. The generated
+files will append the -arch suffix to the given name.
+
+The ORGANIZATION and REPOSITORY options are combined into
+ORGANIZATION/REPOSITORY when preparing for mirroring.
+
+Generate files for mirroring from registry-proxy (OSBS storage) to our
+quay registry:
+
+\b
+    $ doozer --group=openshift-4.3 release:gen-multiarch-payload \\
+        --is-name=4.2-art-latest
+
+
+    """
+    runtime.initialize(clone_distgits=False, config_excludes='non_release')
+    orgrepo = "{}/{}".format(organization, repository)
+    pattern = 'registry-proxy.engineering.redhat.com/rh-osbs/openshift-{image_name_short}:{version}-{release}=quay.io/%ORGREPO%:{version}-{release}%ARCH%{image_name_short}'.replace("%ORGREPO%", orgrepo)
+    cmd = runtime.command
+    runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
+    lstate = runtime.state[cmd]  # get local convenience copy
+    arches = runtime.group_config.get('arches', ['x86_64'])
+
+    if len(arches) == 1:
+        raise click.BadParameter("Unsupported group specified: '{}'. Only one architecture defined in group.yml".format(runtime.group))
+
+    images = [i for i in runtime.image_metas()]
+    lstate['total'] = len(images)
+
+    # Template Base Image Stream object.
+    isb = {
+        'kind': 'ImageStream',
+        'apiVersion': 'image.openshift.io/v1',
+        'metadata': {
+            'name': is_name,
+            'namespace': is_namespace,
+        },
+        'spec': {
+            'tags': []
+        }
+    }
+
+    # All the items we will put in the image mirror input
+    src_dest_items = []
+    missing_source_items = []
+    invalid_name_items = []
+
+    for image in images:
+        try:
+            click.echo("###############################################################")
+            dfp = DockerfileParser(path=runtime.working_dir)
+            try:
+                dfp.content = image.fetch_cgit_file("Dockerfile")
+            except Exception:
+                err = "Error reading Dockerfile from distgit: {}".format(image.distgit_key)
+                raise state.DoozerStateError(err)
+
+            version = dfp.labels["version"]
+
+            s = pattern
+            s = s.replace("{build}", "{component}-{version}-{release}")
+            s = s.replace("{repository}", "{image}:{version}-{release}")
+            s = s.replace("{namespace}", image.namespace)
+            s = s.replace("{name}", image.name)
+            s = s.replace("{image_name}", image.image_name)
+            s = s.replace("{image_name_short}", image.image_name_short)
+            s = s.replace("{component}", image.get_component_name())
+            s = s.replace("{image}", dfp.labels["name"])
+            s = s.replace("{version}", version)
+
+            release_query_needed = '{release}' in s or '{pushes}' in s
+
+            # Since querying release takes time, check before executing replace
+            release = ''
+            if release_query_needed:
+                try:
+                    _, _, release = image.get_latest_build_info()
+                except IOError as err:
+                    err = "Error looking up build info: {}".format(str(err))
+                    red_print(err)
+                    raise state.DoozerStateError(err)
+
+            s = s.replace("{release}", release)
+
+            pushes_formatted = ''
+            for push_name in image.get_default_push_names():
+                pushes_formatted += '\t{} : [{}]\n'.format(push_name, ', '.join(image.get_default_push_tags(version, release)))
+
+            if pushes_formatted is '':
+                pushes_formatted = "(None)"
+            s = s.replace("{pushes}", '{}\n'.format(pushes_formatted))
+
+            if "{" in s:
+                if "{arch}" in s:
+                    pass
+                else:
+                    raise IOError("Unrecognized fields remaining in pattern: %s" % s)
+
+            # Per clayton:
+            """Tim Bielawa: note to self: is only for `ose-` prefixed images
+            Clayton Coleman: Yes, Get with the naming system or get out of town
+            """
+            if 'ose' in image.image_name_short and '666' not in release:
+                # Do not include test builds in the image stream. Only
+                # include 'ose-' prefixed images in the stream.
+
+                # dest, it's what we're publishing in the ImageStream
+                (src, dest) = s.split('=')
+
+                # Don't try to mirror things that don't exist
+                try:
+                    cmd = "/bin/oc image info {}".format(src)
+                    subprocess.check_output(cmd.split(' '), stderr=subprocess.STDOUT)
+                except subprocess.CalledProcessError as res:
+                    # This *should* fail because we're pointing at manifest lists
+                    result = res.output
+
+                # Querying a manifest list gives a non-0 result. Of
+                # course, any number of other things could yield non-9
+                # results. Let's make sure that was the actual thing
+                # that happened.
+                if "error: the image is a manifest list" in result:
+                    green_prefix("Verified source image exists and complies with naming conventions: ")
+                    click.echo(src)
+                else:
+                    red_prefix("NOT adding to IS, error querying image info (maybe source image does not exist?): ")
+                    click.echo(src)
+                    missing_source_items.append(src)
+                    continue
+
+                green_prefix("ADDING to IS: ")
+                click.echo(s.replace("%ARCH%", "-"))
+
+                # Add a tag spec to the image stream. The name of each tag
+                # spec does not include the 'ose-' prefix. This keeps them
+                # consistent between OKD and OCP
+                isb['spec']['tags'].append({
+                    'name': image.image_name_short.replace('ose-', ''),
+                    'from': {
+                        'kind': 'DockerImage',
+                        'name': dest
+                    }
+                })
+
+                # Add src=dest line to 'oc image mirror' input file
+                src_dest_items.append(s)
+            else:
+                red_prefix("NOT adding to IS (does not meet name/version conventions): ")
+                click.echo(s.replace("%ARCH%", "-"))
+                invalid_name_items.append(s)
+
+            state.record_image_success(lstate, image)
+
+            # End 'for image in images' loop
+            #############################################################
+        except state.DoozerStateError, serr:
+            red_print(serr.message)
+            state.record_image_fail(lstate, image, serr.message, runtime.logger)
+
+    ######################################################################
+    state.record_image_finish(lstate)
+
+    green_prefix("Multiarching: ")
+    click.echo("Generating default arch (amd64) file")
+
+    # Save the default SRC=DEST 'oc image mirror' input to a file for
+    # later. Omit the arch in the format this time, amd64=default.
+    with open('src_dest', 'w+') as out_file:
+        for line in src_dest_items:
+            out_file.write("{}\n".format(line.replace("%ARCH%", "-")))
+
+    ######################################################################
+    green_prefix("Multiarching: ")
+    click.echo("Generating arch-specific SRC=DEST files for {} arches".format(len(arches)))
+    for arch in arches:
+        # We default to amd64
+        if arch == 'x86_64': continue
+        else:
+            click.echo("Generating SRC=DEST for {}".format(arch))
+            with open("src_dest.{arch}".format(arch=arch), 'w+') as out_file:
+                for line in src_dest_items:
+                    line = line.replace("%ARCH%", "-{}-".format(arch))
+                    out_file.write("{}\n".format(line))
+
+    ######################################################################
+    green_prefix("Multiarching: ")
+    click.echo("Generating arch-specific ImageStream files for {} arches".format(len(arches)))
+    isb['spec']['tags'] = sorted(isb['spec']['tags'], key=lambda k: k['name'])
+
+    # I want to pre-apologize for all of this nonsense string
+    # manipulation code. Here's what we're trying to do:
+    #
+    # Take the DESTination string and insert "-ARCH" after the
+    # Version-Release string. BUT, we only need that for arch-specific
+    # files. The manifest-list ("base_isb") doesn't need to consider
+    # that. This is why you see a lot of copies and loops and
+    # replacements.
+
+    # Save our default amd64 image stream object. Replace the template
+    # "%ARCH%" string in each image tag with just a hyphen.
+    with open('image_stream.yaml', 'w') as is_out:
+        # Don't manipulate the source image stream. Copy and modify.
+        base_isb = copy.deepcopy(isb)
+        tags = base_isb['spec']['tags']
+        base_isb['spec']['tags'] = []
+        for t in tags:
+            # Replace the placeholder with a spacer
+            t['from']['name'] = t['from']['name'].replace("%ARCH%", '-'.format(arch))
+            base_isb['spec']['tags'].append(t)
+        yaml.safe_dump(base_isb, is_out, indent=2, default_flow_style=False)
+
+    # Now, save each individual arch specific file. Now, replace the
+    # template "%ARCH%" string with the correct architecture.
+    for arch in arches:
+        # Already written out
+        if arch == 'x86_64': continue
+        click.echo("Generating ImageStream for {}".format(arch))
+
+        # Don't manipulate the source image stream. Copy and modify.
+        this_isb = copy.deepcopy(isb)
+        this_isb['metadata']['name'] += "-{}".format(arch)
+
+        tags = this_isb['spec']['tags']
+        this_isb['spec']['tags'] = []
+        # Replace the placeholder with the specific arch
+        for t in tags:
+            t['from']['name'] = t['from']['name'].replace("%ARCH%", '-{}-'.format(arch))
+            this_isb['spec']['tags'].append(t)
+
+        with open("image_stream.{arch}.yaml".format(arch=arch), 'w+') as out_file:
+            yaml.safe_dump(this_isb, out_file, indent=2, default_flow_style=False)
+
+    yellow_prefix("Images skipped due to invalid naming:\n")
+    for img in sorted(invalid_name_items):
+        click.echo(" {}".format(img))
+        click.echo()
+
+    yellow_prefix("Images skipped due to missing source:\n")
+    for img in sorted(missing_source_items):
+        click.echo(" {}".format(img))
+        click.echo()
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
