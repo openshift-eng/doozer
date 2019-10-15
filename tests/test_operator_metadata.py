@@ -477,6 +477,21 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         (operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs)
             .merge_streams_on_top_level_package_yaml())
 
+    def test_get_default_channel(self):
+        nvr = '...irrelevant...'
+        stream = '...irrelevant...'
+        runtime = '...irrelevant...'
+        op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime)
+
+        self.assertEqual(op_md.get_default_channel({'channels': [
+            {'name': '4.0'}, {'name': '4.1'},
+            {'name': '4.2'}, {'name': 'stable'},
+            {'name': 'alpha'}, {'name': '3.11'},
+        ]}), '4.2')
+
+        self.assertEqual(op_md.get_default_channel({'channels': [{'name': 'stable'}]}), 'stable')
+        self.assertEqual(op_md.get_default_channel({'channels': [{'name': 'alpha'}]}), 'alpha')
+
     def test_merge_streams_on_top_level_package_yaml_channel_not_present(self):
         package_yaml_filename = '/tmp/my-dev-operator-metadata/manifests/my-operator.package.yaml'
         initial_package_yaml_contents = io.BytesIO(b"""
@@ -1139,6 +1154,26 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
             .and_return(('..', 'irrelevant', '..')))
 
         operator_metadata.OperatorMetadataLatestBuildReporter('my-operator', runtime).get_latest_build()
+
+
+class TestChannelVersion(unittest.TestCase):
+
+    def test_version_compare(self):
+
+        def version(raw):
+            return operator_metadata.ChannelVersion(raw)
+
+        self.assertTrue(version("5.4") > version("stable"))
+        self.assertTrue(version("5.3") > version("4.4"))
+        self.assertTrue(version("5.4") == version("5.4"))
+        self.assertTrue(version("5.4") < version("6.0"))
+        self.assertTrue(version("5.4") < version("5.5"))
+
+        self.assertFalse(version("5.4") < version("stable"))
+        self.assertFalse(version("5.3") < version("4.4"))
+        self.assertFalse(version("5.4") != version("5.4"))
+        self.assertFalse(version("5.4") > version("6.0"))
+        self.assertFalse(version("5.4") > version("5.5"))
 
 
 def get_builtin_module():

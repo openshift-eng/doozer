@@ -200,23 +200,7 @@ class OperatorMetadataBuilder:
         """
         package_yaml = yaml.safe_load(open(self.metadata_package_yaml_filename))
 
-        def get_default_channel(package_yaml):
-            """A package YAML with multiple channels must declare a defaultChannel
-
-            It usually would be the highest version, but on 4.1 the channels have
-            custom names, such as "stable", "preview", etc. That's the reason for
-            the check if '4.2' in channel_names.
-
-            # @TODO: remove that check and replace it with a version compare once
-            we stop building 4.1
-
-            :param dict package_yaml: Parsed package.yaml structure
-            :return: string with "highest" channel name
-            """
-            channel_names = [str(channel['name']) for channel in package_yaml['channels']]
-            return '4.2' if '4.2' in channel_names else self.channel_name
-
-        package_yaml['defaultChannel'] = str(get_default_channel(package_yaml))
+        package_yaml['defaultChannel'] = str(self.get_default_channel(package_yaml))
 
         def find_channel_index(package_yaml):
             for index, channel in enumerate(package_yaml['channels']):
@@ -236,6 +220,18 @@ class OperatorMetadataBuilder:
 
         with open(self.metadata_package_yaml_filename, 'w') as file:
             file.write(yaml.safe_dump(package_yaml))
+
+    def get_default_channel(self, package_yaml):
+        """A package YAML with multiple channels must declare a defaultChannel
+
+        It usually would be the highest version, but on 4.1 the channels have
+        custom names, such as "stable", "preview", etc.
+
+        :param dict package_yaml: Parsed package.yaml structure
+        :return: string with "highest" channel name
+        """
+        highest_version = max([ChannelVersion(str(ch['name'])) for ch in package_yaml['channels']])
+        return str(highest_version)
 
     @log
     def create_metadata_dockerfile(self):
@@ -577,3 +573,40 @@ class OperatorMetadataLatestBuildReporter:
     @property
     def operator(self):
         return self.runtime.image_map[self.operator_name]
+
+
+class ChannelVersion:
+    """Quick & dirty custom version comparison implementation, since buildvm
+    has drastically different versions of pkg_resources and setuptools.
+    """
+    def __init__(self, raw):
+        self.raw = raw
+        self.parse_version()
+
+    def parse_version(self):
+        parsed_version = re.match(r'^(?P<major>\d+)\.(?P<minor>\d+).*$', self.raw)
+        self.major = parsed_version.group('major') if parsed_version else 0
+        self.minor = parsed_version.group('minor') if parsed_version else 0
+
+    def __str__(self):
+        return self.raw
+
+    def __lt__(self, other):
+        if self.major < other.major:
+            return True
+        if self.major == other.major and self.minor < other.minor:
+            return True
+        return False
+
+    def __gt__(self, other):
+        if self.major > other.major:
+            return True
+        if self.major == other.major and self.minor > other.minor:
+            return True
+        return False
+
+    def __eq__(self, other):
+        return self.major == other.major and self.minor == other.minor
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
