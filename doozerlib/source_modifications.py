@@ -8,6 +8,9 @@ import requests
 
 from doozerlib.logutil import getLogger
 from doozerlib.util import mkdirs, is_in_directory
+from doozerlib.model import Missing
+from doozerlib.exceptions import DoozerFatalError
+from doozerlib.exectools import cmd_assert
 
 LOGGER = getLogger(__name__)
 
@@ -112,3 +115,66 @@ class AddModifier(object):
 
 
 SourceModifierFactory.MODIFICATIONS["add"] = AddModifier
+
+
+class ReplaceModifier(object):
+    """ A source modifier that supports replacing a substring in Dockerfile or RPM spec file.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """ Initialize ReplaceModifier
+        :param match: This is old substring to be replaced.
+        :param replacement: This is new substring, which would replace old substring.
+        """
+        self.match = kwargs["match"]
+        self.replacement = kwargs["replacement"]
+
+    def act(self, *args, **kwargs):
+        """ Run the modification action
+
+        :param context: A context dict. `context.component_name` is the dist-git repo name,
+            and `context.content` is the content of Dockerfile or RPM spec file.
+        """
+        context = kwargs["context"]
+        content = context["content"]
+        component_name = context["component_name"]
+        match = self.match
+        assert (match is not Missing)
+        replacement = self.replacement
+        assert (replacement is not Missing)
+        if replacement is None:  # Nothing follows colon in config yaml; user attempting to remove string
+            replacement = ""
+        pre = content
+        post = pre.replace(match, replacement)
+        if post == pre:
+            raise DoozerFatalError("{}: Replace ({}->{}) modification did not make a change to the Dockerfile content"
+                                   .format(component_name, match, replacement))
+        LOGGER.debug(
+            "Performed string replace '%s' -> '%s':\n%s\n" %
+            (match, replacement, post))
+        context["content"] = post
+
+
+SourceModifierFactory.MODIFICATIONS["replace"] = ReplaceModifier
+
+
+class CommandModifier(object):
+    """ A source modifier that supports running a custom command to modify the source.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """ Initialize CommandModifier
+        :param command: a `str` or `list` of the command with arguments
+        """
+        self.command = kwargs["command"]
+
+    def act(self, *args, **kwargs):
+        """ Run the command
+        :param context: A context dict. `context.set_env` is a `dict` of env vars to set for command (overriding existing).
+        """
+        context = kwargs["context"]
+        set_env = context["set_env"]
+        cmd_assert(self.command, set_env=set_env)
+
+
+SourceModifierFactory.MODIFICATIONS["command"] = CommandModifier

@@ -163,24 +163,25 @@ class RPMMetadata(Metadata):
             "About to start modifying spec file [{}]:\n{}\n".
             format(self.name, specfile_data))
 
+        # add build data modifications dir to path; we *could* add more
+        # specific paths for the group and the individual config but
+        # expect most scripts to apply across multiple groups.
+        metadata_scripts_path = self.runtime.data_dir + "/modifications"
+        path = os.pathsep.join([os.environ['PATH'], metadata_scripts_path])
+
         for modification in self.config.content.source.modifications:
-            if modification.action == "replace":
-                match = modification.match
-                assert (match is not Missing)
-                replacement = modification.replacement
-                assert (replacement is not Missing)
-                pre = specfile_data
-                specfile_data = pre.replace(match, replacement)
-                if specfile_data == pre:
-                    raise DoozerFatalError("{}: Replace ({}->{}) modification did not make a change to the spec file content"
-                                           .format(self.name, match, replacement))
-                self.logger.debug(
-                    "Performed string replace '%s' -> '%s':\n%s\n" %
-                    (match, replacement, specfile_data))
-            elif self.source_modifier_factory.supports(modification.action):
+            if self.source_modifier_factory.supports(modification.action):
                 # run additional modifications supported by source_modifier_factory
                 modifier = self.source_modifier_factory.create(**modification)
-                modifier.act(ceiling_dir=os.getcwd())
+                # pass context as a dict so that the act function can modify its content
+                context = {
+                    "component_name": self.name,
+                    "kind": "spec",
+                    "content": specfile_data,
+                    "set_env": {"PATH": path},
+                }
+                modifier.act(context=context, ceiling_dir=os.getcwd())
+                specfile_data = context["content"]
             else:
                 raise IOError("%s: Don't know how to perform modification action: %s" % (self.distgit_key, modification.action))
 
