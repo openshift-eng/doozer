@@ -200,8 +200,6 @@ class OperatorMetadataBuilder:
         """
         package_yaml = yaml.safe_load(open(self.metadata_package_yaml_filename))
 
-        package_yaml['defaultChannel'] = str(self.get_default_channel(package_yaml))
-
         def find_channel_index(package_yaml):
             for index, channel in enumerate(package_yaml['channels']):
                 if str(channel['name']) == str(self.channel_name):
@@ -217,6 +215,8 @@ class OperatorMetadataBuilder:
                 'name': str(self.channel_name),
                 'currentCSV': str(self.csv)
             })
+
+        package_yaml['defaultChannel'] = str(self.get_default_channel(package_yaml))
 
         with open(self.metadata_package_yaml_filename, 'w') as file:
             file.write(yaml.safe_dump(package_yaml))
