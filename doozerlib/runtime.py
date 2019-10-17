@@ -16,7 +16,6 @@ import functools
 import traceback
 import urlparse
 import signal
-
 import gitdata
 
 import logutil
@@ -32,6 +31,16 @@ from multiprocessing import Lock
 from repos import Repos
 import brew
 from doozerlib.exceptions import DoozerFatalError
+
+
+# Values corresponds to schema for group.yml: freeze_automation. When
+# 'yes', doozer itself will inhibit build/rebase related activity
+# (exiting with an error if someone tries). Other values can
+# be interpreted & enforced by the build pipelines (e.g. by
+# invoking config:read-config).
+FREEZE_AUTOMATION_YES = 'yes'
+FREEZE_AUTOMATION_SCHEDULED = 'scheduled'  # inform the pipeline that only manually run tasks should be permitted
+FREEZE_AUTOMATION_NO = 'no'
 
 
 # doozer cancel brew builds on SIGINT (Ctrl-C)
@@ -171,6 +180,9 @@ class Runtime(object):
         # Used to capture missing packages for 4.x build
         self.missing_pkgs = set()
 
+        # Whether to prevent builds for this group. Defaults to 'no'.
+        self.freeze_automation = FREEZE_AUTOMATION_NO
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
@@ -287,6 +299,7 @@ class Runtime(object):
             self.group_config = self.get_group_config()
             self.arches = self.group_config.get('arches', ['x86_64'])
             self.repos = Repos(self.group_config.repos, self.arches)
+            self.freeze_automation = self.group_config.freeze_automation or FREEZE_AUTOMATION_NO
 
             if validate_content_sets:
                 self.repos.validate_content_sets()
@@ -489,6 +502,15 @@ class Runtime(object):
     @staticmethod
     def timestamp():
         return datetime.datetime.utcnow().isoformat()
+
+    def assert_mutation_is_permitted(self):
+        """
+        In group.yml, it is possible to instruct doozer to prevent all builds / mutation of distgits.
+        Call this method if you are about to mutate anything. If builds are disabled, an exception will
+        be thrown.
+        """
+        if self.freeze_automation == FREEZE_AUTOMATION_YES:
+            raise DoozerFatalError('Automation (builds / mutations) for this group is currently frozen (freeze_automation set to {}). Coordinate with the group owner to change this if you believe it is incorrect.'.format(FREEZE_AUTOMATION_YES))
 
     def image_metas(self):
         return self.image_map.values()
@@ -921,6 +943,8 @@ class Runtime(object):
             n_threads=n_threads).get()
 
     def push_distgits(self, n_threads=None):
+        self.assert_mutation_is_permitted()
+
         if n_threads is None:
             n_threads = self.global_opts['distgit_threads']
         return self._parallel_exec(

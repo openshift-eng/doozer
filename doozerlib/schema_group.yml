@@ -137,3 +137,7 @@ mapping:
 
   "csv_namespace":
     type: str
+
+  "freeze_automation":
+    type: enum
+    enum: [no, scheduled, yes]
