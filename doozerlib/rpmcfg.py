@@ -10,6 +10,7 @@ from brew import watch_task
 from metadata import Metadata
 from model import Missing
 from doozerlib.exceptions import DoozerFatalError
+from doozerlib.source_modifications import SourceModifierFactory
 
 RELEASERS_CONF = """
 [{target}]
@@ -30,13 +31,14 @@ remote_git_name = {name}
 
 class RPMMetadata(Metadata):
 
-    def __init__(self, runtime, data_obj, clone_source=True):
+    def __init__(self, runtime, data_obj, clone_source=True,
+                 source_modifier_factory=SourceModifierFactory()):
         super(RPMMetadata, self).__init__('rpm', runtime, data_obj)
 
         self.source = self.config.content.source
         if self.source is Missing:
             raise ValueError('RPM config must contain source entry.')
-
+        self.source_modifier_factory = source_modifier_factory
         self.rpm_name = self.config.name
         self.version = None
         self.release = None
@@ -175,6 +177,10 @@ class RPMMetadata(Metadata):
                 self.logger.debug(
                     "Performed string replace '%s' -> '%s':\n%s\n" %
                     (match, replacement, specfile_data))
+            elif self.source_modifier_factory.supports(modification.action):
+                # run additional modifications supported by source_modifier_factory
+                modifier = self.source_modifier_factory.create(**modification)
+                modifier.act(ceiling_dir=os.getcwd())
             else:
                 raise IOError("%s: Don't know how to perform modification action: %s" % (self.distgit_key, modification.action))
 

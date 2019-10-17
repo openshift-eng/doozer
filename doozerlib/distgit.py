@@ -24,6 +24,7 @@ from model import Model, Missing
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import yellow_print
 from doozerlib import state
+from doozerlib.source_modifications import SourceModifierFactory
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -297,11 +298,13 @@ class ImageDistGitRepo(DistGitRepo):
         ),
     )
 
-    def __init__(self, metadata, autoclone=True):
+    def __init__(self, metadata, autoclone=True,
+                 source_modifier_factory=SourceModifierFactory()):
         super(ImageDistGitRepo, self).__init__(metadata, autoclone)
         self.build_lock = Lock()
         self.build_lock.acquire()
         self.logger = metadata.logger
+        self.source_modifier_factory = source_modifier_factory
 
     def clone(self, distgits_root_dir, distgit_branch):
         super(ImageDistGitRepo, self).clone(distgits_root_dir, distgit_branch)
@@ -496,7 +499,6 @@ class ImageDistGitRepo(DistGitRepo):
 
     def push_image(self, tag_list, push_to_defaults, additional_registries=[], version_release_tuple=None,
                    push_late=False, dry_run=False):
-
         """
         Pushes the most recent image built for this distgit repo. This is
         accomplished by looking at the 'version' field in the Dockerfile or
@@ -1078,7 +1080,8 @@ class ImageDistGitRepo(DistGitRepo):
     @staticmethod
     def _mangle_yum(cmd):
         # alter the arg by splicing its content
-        splice = lambda pos, replacement: cmd[:pos[0]] + replacement + cmd[pos[1]:]
+        def splice(pos, replacement):
+            return cmd[:pos[0]] + replacement + cmd[pos[1]:]
         changed = False  # were there changes aside from whitespace?
 
         # build a list of nodes we may want to alter from the AST
@@ -1737,7 +1740,10 @@ class ImageDistGitRepo(DistGitRepo):
                 metadata_scripts_path = self.runtime.data_dir + "/modifications"
                 path = ":".join([os.environ['PATH'], metadata_scripts_path])
                 exectools.cmd_assert(modification.command, set_env=dict(PATH=path))
-
+            elif self.source_modifier_factory.supports(modification.action):
+                # run additional modifications supported by source_modifier_factory
+                modifier = self.source_modifier_factory.create(**modification)
+                modifier.act(ceiling_dir=os.getcwd())
             else:
                 raise IOError("Don't know how to perform modification action: %s" % modification.action)
 
