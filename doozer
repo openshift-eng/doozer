@@ -232,6 +232,7 @@ def rpms_build(runtime, version, release, scratch):
         version = version[1:]
 
     runtime.initialize(mode='rpms', clone_distgits=False)
+    runtime.assert_mutation_is_permitted()
 
     items = runtime.rpm_metas()
     if not items:
@@ -306,6 +307,10 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
         sys.exit(1)
 
     runtime.initialize(validate_content_sets=True)
+
+    # This is ok to run if automation is frozen as long as you are not pushing
+    if push:
+        runtime.assert_mutation_is_permitted()
 
     cmd = runtime.command
     runtime.state.pop('images:rebase', None)
@@ -440,6 +445,10 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
     """
     runtime.initialize(validate_content_sets=True)
 
+    # This is ok to run if automation is frozen as long as you are not pushing
+    if push:
+        runtime.assert_mutation_is_permitted()
+
     cmd = runtime.command
     runtime.state.pop('images:update-dockerfile', None)
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
@@ -553,6 +562,10 @@ def images_foreach(runtime, cmd, message, push):
     """
     runtime.initialize(clone_distgits=True)
 
+    # This is ok to run if automation is frozen as long as you are not pushing
+    if push:
+        runtime.assert_mutation_is_permitted()
+
     # If not pushing, do not clean up our work
     runtime.remove_tmp_working_dir = push
 
@@ -600,6 +613,10 @@ def images_revert(runtime, count, message, push):
     """
     runtime.initialize()
 
+    # This is ok to run if automation is frozen as long as you are not pushing
+    if push:
+        runtime.assert_mutation_is_permitted()
+
     # If not pushing, do not clean up our work
     runtime.remove_tmp_working_dir = push
 
@@ -643,6 +660,10 @@ def images_merge(runtime, target, push, allow_overwrite):
     branch.
     """
     runtime.initialize()
+
+    # This is ok to run if automation is frozen as long as you are not pushing
+    if push:
+        runtime.assert_mutation_is_permitted()
 
     # If not pushing, do not clean up our work
     runtime.remove_tmp_working_dir = push
@@ -799,6 +820,7 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
     # ensure all build locks are acquired before the builds start and for
     # clarity in the logs.
     runtime.initialize(clone_distgits=True)
+    runtime.assert_mutation_is_permitted()
 
     cmd = runtime.command
 
@@ -911,6 +933,9 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
         exit(1)
 
     runtime.initialize()
+
+    # This might introduce unwanted mutation, so prevent if automation is frozen
+    runtime.assert_mutation_is_permitted()
 
     cmd = runtime.command
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
@@ -1328,6 +1353,12 @@ def config_commit(runtime, message, push):
     """
     _fix_runtime_mode(runtime)
     runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
+
+    # This is ok to run if automation is frozen as long as you are not pushing
+    if push:
+        runtime.assert_mutation_is_permitted()
+
+
     config = mdc(runtime)
     config.commit(message)
     if push:
@@ -1359,14 +1390,17 @@ def config_get(runtime):
     runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
 
 
-@cli.command("config:read-group", short_help="Pull latest config data into working directory")
-@click.argument("key", nargs=1, metavar="KEY", type=click.STRING, required=True)
+@cli.command("config:read-group", short_help="Output aspects of the group.yml")
+@click.argument("key", nargs=1, metavar="KEY", type=click.STRING, default=None, required=False)
+@click.option("--length", "as_len", default=False, is_flag=True, help='Print length of dict/list specified by key')
 @click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
+@click.option("--default", help="Value to print if key cannot be found", default=None)
 @click.option("--out-file", help="Specific key in config to print", default=None)
 @pass_runtime
-def config_read_group(runtime, key, as_yaml, out_file):
+def config_read_group(runtime, key, as_len, as_yaml, default, out_file):
     """
-    Read data from group.yaml for given group and key
+    Read data from group.yaml for given group and key, If key is not specified,
+    the entire group data structure will be output.
 
     Usage:
 
@@ -1375,15 +1409,35 @@ def config_read_group(runtime, key, as_yaml, out_file):
     Where [KEY] is a key inside group.yaml that you would like to read.
     Key dot-notation is supported, such as: sources.ose.branch.fallback
 
+    Examples:
+    $ doozer --group=openshift-4.3 config:read-group sources.ose.url
+
+    # Print yaml formatted list of non_release images (print empty list if not present).
+    $ doozer --group=openshift-4.3 config:read-group --default '[]' --yaml non_release.images
+
+    # How many images are in the non_release.images list (print 0 list if not present)
+    $ doozer --group=openshift-4.3 config:read-group --default 0 --len non_release.images
+
     """
     _fix_runtime_mode(runtime)
     runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
 
-    try:
+    if key is None:
+        value = runtime.raw_group_config
+    else:
         value = dict_get(runtime.raw_group_config, key, None)
-    except Exception, e:
-        raise DoozerFatalError(e.message)
-    if as_yaml:
+        if value is None:
+            if default is not None:
+                print(default)
+                exit(0)
+            raise DoozerFatalError('No default specified and unable to find key: {}'.format(key))
+
+    if as_len:
+        if hasattr(value, '__len__'):
+            value = len(value)
+        else:
+            raise DoozerFatalError('Extracted element has no length: {}'.format(key))
+    elif as_yaml:
         value = yaml.safe_dump(value, indent=2, default_flow_style=False)
 
     if out_file:
@@ -1392,7 +1446,7 @@ def config_read_group(runtime, key, as_yaml, out_file):
         with open(out_file, 'w') as f:
             f.write(value)
 
-    green_print(str(value))
+    print(str(value))
 
 
 @cli.command("config:update-mode", short_help="Update config(s) mode. enabled|disabled|wip")
@@ -1824,7 +1878,7 @@ def release_gen_payload(runtime, src_dest, image_stream, is_base, pattern):
     \b
         registry.reg-aws.openshift.com:443/{repository}=quay.io/openshift-release-dev/ocp-v4.0-art-dev:{version}-{release}-{image_name_short}
 
-    Eample base ImageStream YAML:
+    Example base ImageStream YAML:
 
     \b
         kind: ImageStream
@@ -2167,6 +2221,7 @@ def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=Fals
     $ doozer -g openshift-4.2 operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --stream prod
     """
     runtime.initialize(clone_distgits=False)
+    runtime.assert_mutation_is_permitted()
     if not merge_branch:
         merge_branch = 'rhaos-4-rhel-7'
         # @TODO: populate merge_branch from runtime once the following MRs are merged:
