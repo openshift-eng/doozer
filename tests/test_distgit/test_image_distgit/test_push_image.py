@@ -493,7 +493,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
 
-        expected_cmd = "oc image mirror  --insecure=true --filename=some-workdir/push/my-distgit-key"
+        expected_cmd = "oc image mirror --filter-by-os=amd64  --insecure=true --filename=some-workdir/push/my-distgit-key"
 
         (flexmock(distgit.exectools)
             .should_receive("cmd_gather")
