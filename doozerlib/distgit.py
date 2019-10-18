@@ -639,7 +639,7 @@ class ImageDistGitRepo(DistGitRepo):
                     with open(push_config, 'w') as pc:
                         pc.write('\n'.join(all_push_urls))
 
-                    mirror_cmd = 'oc image mirror {} {} --filename={}'.format(dr, insecure, push_config)
+                    mirror_cmd = 'oc image mirror --filter-by-os=amd64 {} {} --filename={}'.format(dr, insecure, push_config)
 
                     if dry_run:  # skip everything else if dry run
                         continue
