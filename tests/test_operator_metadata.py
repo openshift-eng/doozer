@@ -544,7 +544,6 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             .merge_streams_on_top_level_package_yaml())
 
     def test_create_metadata_dockerfile(self):
-        self.assertEqual(1,0)
         # using the real filesystem, because DockerfileParser library keeps
         # opening and closing files at every operation, really hard to mock
         exectools.cmd_assert('mkdir -p /tmp/my-operator')
@@ -575,7 +574,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             self.assertItemsEqual([l.strip() for l in f.readlines()], [
                 'FROM scratch',
                 'COPY ./manifests /manifests',
-                'LABEL version=vX.Y.Z',
+                'LABEL version=vX.Y.Z-201908261419.dev',
                 'LABEL com.redhat.delivery.appregistry=true',
                 'LABEL name=openshift/ose-my-operator-metadata',
                 'LABEL com.redhat.component=my-operator-metadata-container',
@@ -1179,6 +1178,7 @@ class TestChannelVersion(unittest.TestCase):
 
 def get_builtin_module():
     return sys.modules.get('__builtin__', sys.modules.get('builtins'))
+
 
 if __name__ == '__main__':
     unittest.main()

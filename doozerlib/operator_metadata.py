@@ -107,7 +107,7 @@ class OperatorMetadataBuilder:
 
             if rc != 0:
                 raise Exception('{} failed! rc={} stdout={} stderr={}'.format(
-                    cmd, rc, stdout, stderr
+                    cmd, rc, stdout.strip(), stderr.strip()
                 ))
 
             return self.watch_brew_task(self.extract_brew_task_id(stdout.strip())) is None
@@ -238,17 +238,15 @@ class OperatorMetadataBuilder:
         """Create a minimal Dockerfile on the metadata repository, copying all manifests
         inside the image and having nearly the same labels as its corresponding operator Dockerfile
 
-        But some modifications on the labels are neeeded:
+        But some modifications on the labels are needed:
 
         - 'com.redhat.component' label should contain the metadata component name,
            otherwise it conflicts with the operator.
-
-
         - 'com.redhat.delivery.appregistry' should always be "true", regardless of
           the value coming from the operator Dockerfile
-
         - 'release' label should be removed, because we can't build the same NVR
-        multiple times
+          multiple times
+        - 'version' label should contain both 'release' info and the target stream
         """
         operator_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.operator_name))
         metadata_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.metadata_repo))
@@ -260,10 +258,12 @@ class OperatorMetadataBuilder:
         )
         metadata_dockerfile.labels['com.redhat.delivery.appregistry'] = 'true'
         metadata_dockerfile.labels['name'] = 'openshift/ose-{}'.format(self.metadata_name)
-        try:
-            del(metadata_dockerfile.labels['release'])
-        except KeyError:
-            pass
+        # mangle version according to spec
+        metadata_dockerfile.labels['version'] = '{}-{}.{}'.format(
+            operator_dockerfile.labels['version'],
+            operator_dockerfile.labels['release'],
+            self.stream)
+        del(metadata_dockerfile.labels['release'])
 
     @log
     def commit_and_push_metadata_repo(self):
