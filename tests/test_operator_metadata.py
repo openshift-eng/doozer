@@ -544,6 +544,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             .merge_streams_on_top_level_package_yaml())
 
     def test_create_metadata_dockerfile(self):
+        self.assertEqual(1,0)
         # using the real filesystem, because DockerfileParser library keeps
         # opening and closing files at every operation, really hard to mock
         exectools.cmd_assert('mkdir -p /tmp/my-operator')
@@ -1178,3 +1179,6 @@ class TestChannelVersion(unittest.TestCase):
 
 def get_builtin_module():
     return sys.modules.get('__builtin__', sys.modules.get('builtins'))
+
+if __name__ == '__main__':
+    unittest.main()

@@ -15,3 +15,7 @@ class TestDistgitBuildImageRefName(unittest.TestCase):
         expected = "openshift/ose-kubefed-operator"
 
         self.assertEqual(actual, expected)
+
+
+if __name__ == '__main__':
+    unittest.main()

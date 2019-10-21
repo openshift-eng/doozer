@@ -35,3 +35,7 @@ class TestDistgitConvertSourceURLToHTTPS(unittest.TestCase):
         expected = "https://foo.gitlab.com/myorg/myproject"
 
         self.assertEqual(actual, expected)
+
+
+if __name__ == '__main__':
+    unittest.main()
