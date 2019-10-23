@@ -1151,9 +1151,36 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_gather')
             .with_args(expected_cmd)
+            .once()
             .and_return(('..', 'irrelevant', '..')))
 
         operator_metadata.OperatorMetadataLatestBuildReporter('my-operator', runtime).get_latest_build()
+
+
+class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
+    runtime = type('TestRuntime', (object,), {
+        'group_config': type('TestGroupConfig', (object,), {
+            'branch': 'my-target-branch'
+        }),
+        'image_map': {
+            'my-operator': type('TestImageMetadata', (object,), {
+                'config': {}
+            })
+        }
+    })
+
+    def test_unpack_operator_nvr(self):
+        nvr_reporter = operator_metadata.OperatorMetadataLatestNvrReporter('package-container-v1.2.3-20191022', 'dev', self.runtime)
+        self.assertEquals(nvr_reporter.unpack_operator_nvr(), ('package', 'v1.2.3-20191022'))
+
+    def test_get_latest_build(self):
+        nvr_reporter = operator_metadata.OperatorMetadataLatestNvrReporter('my-operator-container-v1.2.3-20191022', 'dev', self.runtime)
+
+        flexmock(nvr_reporter, get_all_builds=[
+            'my-operator-metadata-container-v1.2.3-20191022.dev-1',
+            'my-operator-metadata-container-v1.2.3-20191022.dev-2'])
+
+        self.assertEqual(nvr_reporter.get_latest_build(), 'my-operator-metadata-container-v1.2.3-20191022.dev-2')
 
 
 class TestChannelVersion(unittest.TestCase):

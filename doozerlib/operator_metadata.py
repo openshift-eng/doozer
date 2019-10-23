@@ -575,6 +575,65 @@ class OperatorMetadataLatestBuildReporter:
         return self.runtime.image_map[self.operator_name]
 
 
+class OperatorMetadataLatestNvrReporter:
+    """Query latest operator metadata based on nvr and stream"""
+
+    @log
+    def __init__(self, operator_nvr, stream, runtime):
+        self.operator_nvr = operator_nvr
+        self.stream = stream
+        self.operator_name, self.operator_version = self.unpack_operator_nvr()
+        self.metadata_name = '{}-metadata-container'.format(self.operator_name)
+        self.runtime = runtime
+
+    @log
+    def get_latest_build(self):
+        regex = r'^{}-metadata-container-{}\.{}-(?P<release>[0-9]+)$'.format(
+            re.escape(self.operator_name),
+            re.escape(self.operator_version),
+            self.stream)
+        matcher = re.compile(regex)
+        release = 0
+        candidate = None
+
+        for brew_build in self.get_all_builds():
+            result = matcher.match(brew_build)
+            try:
+                matched_release = int(result.group('release'))
+                if matched_release > release:
+                    release = matched_release
+                    candidate = brew_build
+            except AttributeError:
+                pass
+
+        if not candidate:
+            # XXX: This fallback should be removed after operator metadata containers get built with
+            # the new naming scheme. https://jira.coreos.com/browse/ART-1175
+            logger.warning('Did not find a match under the new naming scheme. Falling back to the old')
+            candidate = OperatorMetadataLatestBuildReporter(self.operator_name, self.runtime).get_latest_build()
+
+        return candidate
+
+    @log
+    def get_all_builds(self):
+        """Ask brew for all releases of a package"""
+        cmd = 'brew list-builds --package {} --state COMPLETE --quiet'.format(self.metadata_name)
+        stdout = self.ask_brew(cmd)
+
+        for line in stdout.splitlines():
+            yield line.split(' ')[0]
+
+    def ask_brew(self, cmd):
+        _rc, stdout, _stderr = exectools.cmd_gather(cmd)
+        return stdout
+
+    def unpack_operator_nvr(self):
+        unpacked = re.match(r'(?P<operator>.*)-container-(?P<version>v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+)', self.operator_nvr)
+        if not unpacked:
+            raise ValueError
+        return unpacked.group('operator'), unpacked.group('version')
+
+
 class ChannelVersion:
     """Quick & dirty custom version comparison implementation, since buildvm
     has drastically different versions of pkg_resources and setuptools.
