@@ -463,6 +463,18 @@ class ImageDistGitRepo(DistGitRepo):
 
         return config.primitive()
 
+    def _write_cvp_owners(self):
+        """
+        The Container Verification Pipeline will notify image owners when their image is
+        not passing CVP tests. ART knows these owners and needs to write them into distgit
+        for CVP to find.
+        :return:
+        """
+        self.logger.debug("Generating cvp-owners.yml for {}".format(self.metadata.distgit_key))
+        with open('cvp-owners.yml', 'w') as co:
+            if self.config.owners:  # Not missing and non-empty
+                yaml.safe_dump(self.config.owners.primitive(), co, default_flow_style=False)
+
     def _generate_repo_conf(self):
         """
         Generates a repo file in .oit/repo.conf
@@ -1164,6 +1176,8 @@ class ImageDistGitRepo(DistGitRepo):
             self._generate_repo_conf()
 
             self._manage_container_config()
+
+            self._write_cvp_owners()
 
             dfp = DockerfileParser(path="Dockerfile")
 
