@@ -574,7 +574,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             self.assertItemsEqual([l.strip() for l in f.readlines()], [
                 'FROM scratch',
                 'COPY ./manifests /manifests',
-                'LABEL version=vX.Y.Z-201908261419.dev',
+                'LABEL version=vX.Y.Z.201908261419.dev',
                 'LABEL com.redhat.delivery.appregistry=true',
                 'LABEL name=openshift/ose-my-operator-metadata',
                 'LABEL com.redhat.component=my-operator-metadata-container',
@@ -1169,18 +1169,20 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
         }
     })
 
-    def test_unpack_operator_nvr(self):
+    def test_unpack_nvr(self):
         nvr_reporter = operator_metadata.OperatorMetadataLatestNvrReporter('package-container-v1.2.3-20191022', 'dev', self.runtime)
-        self.assertEquals(nvr_reporter.unpack_operator_nvr(), ('package', 'v1.2.3-20191022'))
+        self.assertEquals(nvr_reporter.unpack_nvr(nvr_reporter.operator_nvr), ('package', 'v1.2.3', '20191022'))
+        # Add test for metadata nvr
 
     def test_get_latest_build(self):
         nvr_reporter = operator_metadata.OperatorMetadataLatestNvrReporter('my-operator-container-v1.2.3-20191022', 'dev', self.runtime)
 
         flexmock(nvr_reporter, get_all_builds=[
-            'my-operator-metadata-container-v1.2.3-20191022.dev-1',
-            'my-operator-metadata-container-v1.2.3-20191022.dev-2'])
+            'my-operator-metadata-container-v1.2.3.20191022.dev-1',
+            'my-operator-metadata-container-v1.2.3.20191022.dev-2'])
 
-        self.assertEqual(nvr_reporter.get_latest_build(), 'my-operator-metadata-container-v1.2.3-20191022.dev-2')
+        #import code; code.interact(local=dict(globals(), **locals()))
+        self.assertEqual(nvr_reporter.get_latest_build(), 'my-operator-metadata-container-v1.2.3.20191022.dev-2')
 
 
 class TestChannelVersion(unittest.TestCase):

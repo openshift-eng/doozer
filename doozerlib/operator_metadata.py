@@ -259,7 +259,7 @@ class OperatorMetadataBuilder:
         metadata_dockerfile.labels['com.redhat.delivery.appregistry'] = 'true'
         metadata_dockerfile.labels['name'] = 'openshift/ose-{}'.format(self.metadata_name)
         # mangle version according to spec
-        metadata_dockerfile.labels['version'] = '{}-{}.{}'.format(
+        metadata_dockerfile.labels['version'] = '{}.{}.{}'.format(
             operator_dockerfile.labels['version'],
             operator_dockerfile.labels['release'],
             self.stream)
@@ -582,29 +582,24 @@ class OperatorMetadataLatestNvrReporter:
     def __init__(self, operator_nvr, stream, runtime):
         self.operator_nvr = operator_nvr
         self.stream = stream
-        self.operator_name, self.operator_version = self.unpack_operator_nvr()
-        self.metadata_name = '{}-metadata-container'.format(self.operator_name)
+
+        self.operator_name, self.operator_version, self.operator_release = self.unpack_nvr(operator_nvr)
+
+        self.metadata_name = '{}-metadata'.format(self.operator_name)
+        self.metadata_version = '{}.{}.{}'.format(self.operator_version, self.operator_release, self.stream)
+
         self.runtime = runtime
 
     @log
     def get_latest_build(self):
-        regex = r'^{}-metadata-container-{}\.{}-(?P<release>[0-9]+)$'.format(
-            re.escape(self.operator_name),
-            re.escape(self.operator_version),
-            self.stream)
-        matcher = re.compile(regex)
-        release = 0
+        candidate_release = 0
         candidate = None
 
         for brew_build in self.get_all_builds():
-            result = matcher.match(brew_build)
-            try:
-                matched_release = int(result.group('release'))
-                if matched_release > release:
-                    release = matched_release
-                    candidate = brew_build
-            except AttributeError:
-                pass
+            name, version, release = self.unpack_nvr(brew_build)
+            if name == self.metadata_name and version == self.metadata_version and release > candidate_release:
+                candidate_release = release
+                candidate = brew_build
 
         if not candidate:
             # XXX: This fallback should be removed after operator metadata containers get built with
@@ -617,21 +612,33 @@ class OperatorMetadataLatestNvrReporter:
     @log
     def get_all_builds(self):
         """Ask brew for all releases of a package"""
-        cmd = 'brew list-builds --package {} --state COMPLETE --quiet'.format(self.metadata_name)
-        stdout = self.ask_brew(cmd)
+
+        cmd = 'brew list-tagged --quiet {} {}'.format(self.brew_tag, self.metadata_name)
+
+        _rc, stdout, _stderr = exectools.cmd_gather(cmd)
 
         for line in stdout.splitlines():
             yield line.split(' ')[0]
 
-    def ask_brew(self, cmd):
-        _rc, stdout, _stderr = exectools.cmd_gather(cmd)
-        return stdout
+    def unpack_nvr(self, nvr):
+        return self.name(nvr), self.version(nvr), self.release(nvr)
 
-    def unpack_operator_nvr(self):
-        unpacked = re.match(r'(?P<operator>.*)-container-(?P<version>v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+)', self.operator_nvr)
-        if not unpacked:
-            raise ValueError
-        return unpacked.group('operator'), unpacked.group('version')
+    @property
+    def brew_tag(self):
+        return '{}-candidate'.format(self.operator_branch)
+
+    @property
+    def operator_branch(self):
+        return self.runtime.group_config.branch
+
+    def name(self, nvr):
+        return '-'.join(nvr.split('-')[0:-3])
+
+    def version(self, nvr):
+        return nvr.split('-')[-2]
+
+    def release(self, nvr):
+        return nvr.split('-')[-1]
 
 
 class ChannelVersion:
