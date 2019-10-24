@@ -1181,7 +1181,6 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
             'my-operator-metadata-container-v1.2.3.20191022.dev-1',
             'my-operator-metadata-container-v1.2.3.20191022.dev-2'])
 
-        #import code; code.interact(local=dict(globals(), **locals()))
         self.assertEqual(nvr_reporter.get_latest_build(), 'my-operator-metadata-container-v1.2.3.20191022.dev-2')
 
 
