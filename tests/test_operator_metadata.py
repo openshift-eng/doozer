@@ -34,7 +34,8 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         nvr = '...irrelevant...'
         stream = '...irrelevant...'
         runtime = type('TestRuntime', (object,), {
-            'working_dir': '/my/working/dir'
+            'working_dir': '/my/working/dir',
+            'rhpkg_config': ''
         })
 
         sample_dir_obj = operator_metadata.pushd.Dir('/tmp')
@@ -55,7 +56,8 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         stream = '...irrelevant...'
         runtime = type('TestRuntime', (object,), {
             'working_dir': '/my/working/dir',
-            'user': 'my-user'
+            'user': 'my-user',
+            'rhpkg_config': ''
         })
 
         sample_dir_obj = operator_metadata.pushd.Dir('/tmp')
@@ -76,6 +78,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         stream = '...irrelevant...'
         runtime = type('TestRuntime', (object,), {
             'working_dir': '/my/working/dir',
+            'rhpkg_config': ''
         })
 
         sample_dir_obj = operator_metadata.pushd.Dir('/tmp')
@@ -599,14 +602,12 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('rhpkg commit -m "Update operator metadata"')
-            .once()
+            .with_args('rhpkg  commit -m "Update operator metadata"')
             .replace_with(lambda *_: '...irrelevant...'))
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
             .with_args('timeout 600 rhpkg push')
-            .once()
             .replace_with(lambda *_: '...irrelevant...'))
 
         nvr = '...irrelevant...'
@@ -635,13 +636,11 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
             .with_args('rhpkg --user my-user commit -m "Update operator metadata"')
-            .once()
             .replace_with(lambda *_: '...irrelevant...'))
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
             .with_args('timeout 600 rhpkg --user my-user push')
-            .once()
             .replace_with(lambda *_: '...irrelevant...'))
 
         nvr = '...irrelevant...'

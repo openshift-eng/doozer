@@ -99,7 +99,8 @@ class OperatorMetadataBuilder:
         :raise: Exception if command failed (rc != 0)
         """
         with pushd.Dir('{}/{}'.format(self.working_dir, self.metadata_repo)):
-            cmd = 'timeout 600 rhpkg {}container-build --nowait --target {}'.format(
+            cmd = 'timeout 600 rhpkg {} {}container-build --nowait --target {}'.format(
+                self.runtime.rhpkg_config,
                 ('--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''),
                 self.target
             )
@@ -123,6 +124,7 @@ class OperatorMetadataBuilder:
             self.delete_repo(repo)
 
             cmd = 'timeout 600 rhpkg '
+            cmd += self.runtime.rhpkg_config
             cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
             cmd += 'clone containers/{} --branch {}'.format(repo, branch)
             return exectools.cmd_assert(cmd)
@@ -273,7 +275,7 @@ class OperatorMetadataBuilder:
             try:
                 exectools.cmd_assert('git add .')
                 user_option = '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
-                exectools.cmd_assert('rhpkg {}commit -m "Update operator metadata"'.format(user_option))
+                exectools.cmd_assert('rhpkg {} {}commit -m "Update operator metadata"'.format(self.runtime.rhpkg_config, user_option))
                 exectools.retry(retries=3, task_f=lambda: exectools.cmd_assert('timeout 600 rhpkg {}push'.format(user_option)))
                 return True
             except Exception:

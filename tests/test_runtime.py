@@ -10,6 +10,7 @@ def stub_runtime():
         logger=logutil.getLogger(__name__),
         stage=False,
         branch=None,
+        rhpkg_config="",
     )
     rt.group_config = model.Model()
     return rt

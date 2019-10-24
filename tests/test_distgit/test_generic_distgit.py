@@ -70,7 +70,8 @@ class TestGenericDistGit(TestDistgit):
         metadata = flexmock(config=MockConfig(),
                             runtime=flexmock(local=True,
                                              branch="_irrelevant_",
-                                             command="_irrelevant_"),
+                                             command="_irrelevant_",
+                                             rhpkg_config_lst=[]),
                             name="_irrelevant_",
                             logger="_irrelevant_",
                             namespace="_irrelevant_",
@@ -119,7 +120,8 @@ class TestGenericDistGit(TestDistgit):
         metadata = flexmock(config=MockConfig(content="_irrelevant_"),
                             runtime=flexmock(local=True,
                                              command="images:rebase",
-                                             branch="_irrelevant_"),
+                                             branch="_irrelevant_",
+                                             rhpkg_config_lst=[]),
                             namespace="my-namespace",
                             distgit_key="my-distgit-key",
                             logger=logger,
@@ -165,7 +167,8 @@ class TestGenericDistGit(TestDistgit):
                                              command="images:build",
                                              global_opts={"rhpkg_clone_timeout": 999},
                                              user=None,
-                                             branch="_irrelevant_"),
+                                             branch="_irrelevant_",
+                                             rhpkg_config_lst=[]),
                             namespace="my-namespace",
                             distgit_key="my-distgit-key",
                             qualified_name="my-qualified-name",
@@ -200,12 +203,13 @@ class TestGenericDistGit(TestDistgit):
                                              command="images:build",
                                              global_opts={"rhpkg_clone_timeout": 999},
                                              user="my-user",
-                                             branch="_irrelevant_"),
+                                             branch="_irrelevant_",
+                                             rhpkg_config_lst=[]),
                             namespace="my-namespace",
                             distgit_key="my-distgit-key",
                             qualified_name="my-qualified-name",
                             logger=flexmock(info=lambda _: None),
-                            name="_irrelevant_")
+                            name="_irrelevant_",)
 
         distgit.DistGitRepo(metadata, autoclone=False).clone("my-root-dir", "my-branch")
 
@@ -244,7 +248,8 @@ class TestGenericDistGit(TestDistgit):
 
         metadata = flexmock(config=flexmock(distgit=flexmock(branch="my-branch")),
                             logger=logger,
-                            runtime=flexmock(branch="_irrelevant_"),
+                            runtime=flexmock(branch="_irrelevant_",
+                                             rhpkg_config_lst=[]),
                             name="_irrelevant_")
 
         distgit.DistGitRepo(metadata, autoclone=False).merge_branch("my-target")
@@ -284,7 +289,8 @@ class TestGenericDistGit(TestDistgit):
 
         metadata = flexmock(config=flexmock(distgit=flexmock(branch="my-branch")),
                             logger=logger,
-                            runtime=flexmock(branch="_irrelevant_"),
+                            runtime=flexmock(branch="_irrelevant_",
+                                             rhpkg_config_lst=[]),
                             name="_irrelevant_")
 
         (distgit.DistGitRepo(metadata, autoclone=False)
@@ -300,7 +306,8 @@ class TestGenericDistGit(TestDistgit):
             .replace_with(lambda *_, **__: None))
 
         metadata = flexmock(config=flexmock(distgit=flexmock(branch="my-branch")),
-                            runtime=flexmock(branch="_irrelevant_"),
+                            runtime=flexmock(branch="_irrelevant_",
+                                             rhpkg_config_lst=[]),
                             logger=flexmock(info=lambda _: None),
                             name="_irrelevant_")
 
