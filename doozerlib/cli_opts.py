@@ -34,7 +34,11 @@ CLI_OPTS = {
     'global_opts': {
         'help': 'Global option overrides that can only be set from settings.yaml',
         'default': global_opt_default_string()
-    }
+    },
+    'rhpkg_config': {
+        'env': 'DOOZER_RHPKG_CONFIG',
+        'help': 'Config file path for rhpkg calls'
+    },
 }
 
 

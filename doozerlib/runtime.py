@@ -183,6 +183,15 @@ class Runtime(object):
         # Whether to prevent builds for this group. Defaults to 'no'.
         self.freeze_automation = FREEZE_AUTOMATION_NO
 
+        self.rhpkg_config_lst = []
+        if self.rhpkg_config:
+            if not os.path.isfile(self.rhpkg_config):
+                raise DoozerFatalError('--rhpkg-config option given is not a valid file! {}'.format(self.rhpkg_config))
+            self.rhpkg_config = ' --config {} '.format(self.rhpkg_config)
+            self.rhpkg_config_lst = self.rhpkg_config.split()
+        else:
+            self.rhpkg_config = ''
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace

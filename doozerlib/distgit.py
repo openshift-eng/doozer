@@ -151,6 +151,9 @@ class DistGitRepo(object):
                                      )
                     cmd_list = ["timeout", str(self.runtime.global_opts['rhpkg_clone_timeout']), "rhpkg"]
 
+                    if self.runtime.rhpkg_config_lst:
+                        cmd_list.extend(self.runtime.rhpkg_config_lst)
+
                     if self.runtime.user is not None:
                         cmd_list.append("--user=%s" % self.runtime.user)
 
@@ -164,7 +167,11 @@ class DistGitRepo(object):
 
     def merge_branch(self, target, allow_overwrite=False):
         self.logger.info('Switching to branch: {}'.format(target))
-        exectools.cmd_assert(["rhpkg", "switch-branch", target], retries=3)
+        cmd = ["rhpkg"]
+        if self.runtime.rhpkg_config_lst:
+            cmd.extend(self.runtime.rhpkg_config_lst)
+        cmd.extend(["switch-branch", target])
+        exectools.cmd_assert(cmd, retries=3)
         if not allow_overwrite:
             if os.path.isfile('Dockerfile') or os.path.isdir('.oit'):
                 raise IOError('Unable to continue merge. Dockerfile found in target branch. Use --allow-overwrite to force.')
@@ -917,7 +924,12 @@ class ImageDistGitRepo(DistGitRepo):
         separated for clarity. Brew build version.
         """
         self.logger.info("Building image: %s" % target_image)
-        cmd_list = ["rhpkg", "--path=%s" % self.distgit_dir]
+        cmd_list = ["rhpkg"]
+
+        if self.runtime.rhpkg_config_lst:
+            cmd_list.extend(self.runtime.rhpkg_config_lst)
+
+        cmd_list.append("--path=%s" % self.distgit_dir)
 
         if self.runtime.user is not None:
             cmd_list.append("--user=%s" % self.runtime.user)
