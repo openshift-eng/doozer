@@ -105,21 +105,24 @@ class RPMMetadata(Metadata):
     def post_build(self, scratch):
         build_spec = self.config.content.build
         with Dir(self.source_path):
-            if self.build_status and not scratch:
+
+            valid_build = self.build_status and not scratch
+
+            if valid_build and build_spec.push_release_commit:
                 # success; push the tag
                 try:
                     self.push_tag()
                 except Exception:
                     raise RuntimeError('Build succeeded but failure pushing RPM tag for {}'.format(self.qualified_name))
 
-            elif build_spec.use_source_tito_config:
-                # don't leave the tag/commit lying around if not a valid build
-                exectools.cmd_assert("tito tag --undo")
-
-            if not build_spec.push_release_commit and not build_spec.use_source_tito_config:
-                # temporary tag/commit; never leave lying around
-                exectools.cmd_assert("git reset --hard HEAD~")
-                exectools.cmd_assert("git tag -d {}".format(self.tag))
+            if not build_spec.push_release_commit or not valid_build:
+                if build_spec.use_source_tito_config:
+                    # don't leave the tag/commit lying around it is not upstream in the source
+                    exectools.cmd_assert("tito tag --undo")
+                else:
+                    # temporary tag/commit; never leave lying around
+                    exectools.cmd_assert("git reset --hard HEAD~")
+                    exectools.cmd_assert("git tag -d {}".format(self.tag))
 
     def tito_setup(self):
         if self.config.content.build.use_source_tito_config:
