@@ -1742,34 +1742,25 @@ class ImageDistGitRepo(DistGitRepo):
             "About to start modifying Dockerfile [%s]:\n%s\n" %
             (self.metadata.distgit_key, dockerfile_data))
 
-        for modification in self.config.content.source.modifications:
-            if modification.action == "replace":
-                match = modification.match
-                assert (match is not Missing)
-                replacement = modification.replacement
-                assert (replacement is not Missing)
-                if replacement is None:  # Nothing follows colon in config yaml; user attempting to remove string
-                    replacement = ""
-                pre = dockerfile_data
-                dockerfile_data = pre.replace(match, replacement)
-                if dockerfile_data == pre:
-                    raise DoozerFatalError("{}: Replace ({}->{}) modification did not make a change to the Dockerfile content"
-                                           .format(self.metadata.distgit_key, match, replacement))
-                self.logger.debug(
-                    "Performed string replace '%s' -> '%s':\n%s\n" %
-                    (match, replacement, dockerfile_data))
+        # add build data modifications dir to path; we *could* add more
+        # specific paths for the group and the individual config but
+        # expect most scripts to apply across multiple groups.
+        metadata_scripts_path = self.runtime.data_dir + "/modifications"
+        path = os.pathsep.join([os.environ['PATH'], metadata_scripts_path])
 
-            elif modification.action == "command":
-                # add build data modifications dir to path; we *could* add more
-                # specific paths for the group and the individual config but
-                # expect most scripts to apply across multiple groups.
-                metadata_scripts_path = self.runtime.data_dir + "/modifications"
-                path = ":".join([os.environ['PATH'], metadata_scripts_path])
-                exectools.cmd_assert(modification.command, set_env=dict(PATH=path))
-            elif self.source_modifier_factory.supports(modification.action):
+        for modification in self.config.content.source.modifications:
+            if self.source_modifier_factory.supports(modification.action):
                 # run additional modifications supported by source_modifier_factory
                 modifier = self.source_modifier_factory.create(**modification)
-                modifier.act(ceiling_dir=os.getcwd())
+                # pass context as a dict so that the act function can modify its content
+                context = {
+                    "component_name": self.metadata.distgit_key,
+                    "kind": "Dockerfile",
+                    "content": dockerfile_data,
+                    "set_env": {"PATH": path},
+                }
+                modifier.act(context=context, ceiling_dir=os.getcwd())
+                dockerfile_data = context["content"]
             else:
                 raise IOError("Don't know how to perform modification action: %s" % modification.action)
 
