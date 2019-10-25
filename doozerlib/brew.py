@@ -11,8 +11,6 @@ from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing import cpu_count
 from multiprocessing import Lock
 import shlex
-import koji
-import koji_cli.lib
 import traceback
 
 import exceptions
@@ -21,6 +19,8 @@ import logutil
 
 # 3rd party
 import click
+import koji
+import koji_cli.lib
 import requests
 from requests_kerberos import HTTPKerberosAuth
 

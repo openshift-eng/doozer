@@ -108,7 +108,7 @@ class OperatorMetadataBuilder:
 
             if rc != 0:
                 raise Exception('{} failed! rc={} stdout={} stderr={}'.format(
-                    cmd, rc, stdout, stderr
+                    cmd, rc, stdout.strip(), stderr.strip()
                 ))
 
             return self.watch_brew_task(self.extract_brew_task_id(stdout.strip())) is None
@@ -240,17 +240,15 @@ class OperatorMetadataBuilder:
         """Create a minimal Dockerfile on the metadata repository, copying all manifests
         inside the image and having nearly the same labels as its corresponding operator Dockerfile
 
-        But some modifications on the labels are neeeded:
+        But some modifications on the labels are needed:
 
         - 'com.redhat.component' label should contain the metadata component name,
            otherwise it conflicts with the operator.
-
-
         - 'com.redhat.delivery.appregistry' should always be "true", regardless of
           the value coming from the operator Dockerfile
-
         - 'release' label should be removed, because we can't build the same NVR
-        multiple times
+          multiple times
+        - 'version' label should contain both 'release' info and the target stream
         """
         operator_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.operator_name))
         metadata_dockerfile = DockerfileParser('{}/{}/Dockerfile'.format(self.working_dir, self.metadata_repo))
@@ -262,10 +260,12 @@ class OperatorMetadataBuilder:
         )
         metadata_dockerfile.labels['com.redhat.delivery.appregistry'] = 'true'
         metadata_dockerfile.labels['name'] = 'openshift/ose-{}'.format(self.metadata_name)
-        try:
-            del(metadata_dockerfile.labels['release'])
-        except KeyError:
-            pass
+        # mangle version according to spec
+        metadata_dockerfile.labels['version'] = '{}.{}.{}'.format(
+            operator_dockerfile.labels['version'],
+            operator_dockerfile.labels['release'],
+            self.stream)
+        del(metadata_dockerfile.labels['release'])
 
     @log
     def commit_and_push_metadata_repo(self):
@@ -575,6 +575,72 @@ class OperatorMetadataLatestBuildReporter:
     @property
     def operator(self):
         return self.runtime.image_map[self.operator_name]
+
+
+class OperatorMetadataLatestNvrReporter:
+    """Query latest operator metadata based on nvr and stream"""
+
+    @log
+    def __init__(self, operator_nvr, stream, runtime):
+        self.operator_nvr = operator_nvr
+        self.stream = stream
+
+        self.operator_name, self.operator_version, self.operator_release = self.unpack_nvr(operator_nvr)
+
+        self.metadata_name = '{}-metadata'.format(self.operator_name)
+        self.metadata_version = '{}.{}.{}'.format(self.operator_version, self.operator_release, self.stream)
+
+        self.runtime = runtime
+
+    @log
+    def get_latest_build(self):
+        candidate_release = 0
+        candidate = None
+
+        for brew_build in self.get_all_builds():
+            name, version, release = self.unpack_nvr(brew_build)
+            if name == self.metadata_name and version == self.metadata_version and release > candidate_release:
+                candidate_release = release
+                candidate = brew_build
+
+        if not candidate:
+            # XXX: This fallback should be removed after operator metadata containers get built with
+            # the new naming scheme. https://jira.coreos.com/browse/ART-1175
+            logger.warning('Did not find a match under the new naming scheme. Falling back to the old')
+            candidate = OperatorMetadataLatestBuildReporter(self.operator_name, self.runtime).get_latest_build()
+
+        return candidate
+
+    @log
+    def get_all_builds(self):
+        """Ask brew for all releases of a package"""
+
+        cmd = 'brew list-tagged --quiet {} {}'.format(self.brew_tag, self.metadata_name)
+
+        _rc, stdout, _stderr = exectools.cmd_gather(cmd)
+
+        for line in stdout.splitlines():
+            yield line.split(' ')[0]
+
+    def unpack_nvr(self, nvr):
+        return self.name(nvr), self.version(nvr), self.release(nvr)
+
+    @property
+    def brew_tag(self):
+        return '{}-candidate'.format(self.operator_branch)
+
+    @property
+    def operator_branch(self):
+        return self.runtime.group_config.branch
+
+    def name(self, nvr):
+        return '-'.join(nvr.split('-')[0:-3])
+
+    def version(self, nvr):
+        return nvr.split('-')[-2]
+
+    def release(self, nvr):
+        return nvr.split('-')[-1]
 
 
 class ChannelVersion:

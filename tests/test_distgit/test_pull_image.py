@@ -44,3 +44,7 @@ class TestDistgitPullImage(unittest.TestCase):
         logger.should_receive("info").with_args("Error pulling image my-image -- retrying in 60 seconds").twice()
 
         distgit.pull_image("my-image")
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -525,3 +525,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                                  push_to_defaults,
                                  version_release_tuple=("version", "release"))
         self.assertEqual(expected, actual)
+
+
+if __name__ == '__main__':
+    unittest.main()

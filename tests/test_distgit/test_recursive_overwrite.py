@@ -37,3 +37,7 @@ class TestDistgitRecursiveOverwrite(unittest.TestCase):
         # passing a list to ignore instead of a set, because sets are unordered,
         # making this assertion unpredictable.
         distgit.recursive_overwrite("my-source", "my-dest", ignore=["ignore", "me"])
+
+
+if __name__ == '__main__':
+    unittest.main()

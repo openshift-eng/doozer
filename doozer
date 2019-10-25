@@ -2244,9 +2244,12 @@ def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=Fals
 
 
 @cli.command("operator-metadata:latest-build", short_help="Print latest metadata build of a given operator")
-@click.argument("operator_list", nargs=-1, required=True)
+@click.option("--nvr", "-n", help="Specify Name-Version-Release. Needs --stream", multiple=True)
+@click.option("--stream", "-s", type=click.Choice(['dev', 'stage', 'prod']),
+    help="Metadata stream to select. Possible values: dev, stage, prod. Needs --nvr")
+@click.argument("operator_list", nargs=-1)
 @pass_runtime
-def operator_metadata_latest_build(runtime, operator_list):
+def operator_metadata_latest_build(runtime, nvr, stream, operator_list):
     """Print the latest metadata build of a given operator
 
     operator_list: One or more operator names
@@ -2255,14 +2258,36 @@ def operator_metadata_latest_build(runtime, operator_list):
 
     $ doozer -g openshift-4.2 operator-metadata:latest-build cluster-logging-operator
 
-    Usage example with multiple operators
+    Usage example with multiple operators:
 
     $ doozer -g openshift-4.2 operator-metadata:latest-build cluster-logging-operator elasticsearch-operator
+
+    Usage example when feeding NVR and stream:
+
+    $ doozer -g openshift-4.2 operator-metadata:latest-build --stream stage --nvr cluster-logging-operator-container-v4.2.1-201910221723 --nvr sriov-network-operator-container-v4.2.0-201909131819
     """
+
+    if operator_list and (stream or nvr):
+        click.echo('Need either a list of operators, or specified by NVR and stream. Exiting.', err=True)
+        sys.exit(1)
+    if stream and not nvr:
+        click.echo('--stream needs to be accompanied by --nvr. Exiting.', err=True)
+        sys.exit(1)
+    if nvr and not stream:
+        click.echo('--nvr needs to be accompanied by --stream. Exiting.', err=True)
+        sys.exit(1)
+    if not nvr and not operator_list:
+        click.echo("Missing arguments: Need nvr's or operators to work with")
+        sys.exit(1)
+
     runtime.initialize(clone_distgits=False)
 
-    for operator in operator_list:
-        print(operator_metadata.OperatorMetadataLatestBuildReporter(operator, runtime).get_latest_build())
+    if operator_list:
+        for operator in operator_list:
+            click.echo(operator_metadata.OperatorMetadataLatestBuildReporter(operator, runtime).get_latest_build())
+    else:
+        for build in nvr:
+            click.echo(operator_metadata.OperatorMetadataLatestNvrReporter(build, stream, runtime).get_latest_build())
 
 
 def main():
