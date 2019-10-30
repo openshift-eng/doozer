@@ -4,7 +4,6 @@ dockerfile-parse >= 0.0.13
 future
 koji
 mock
-pydotconfig >= 0.1.4
 pygitdata >= 0.2.2
 pykwalify >= 1.7.0
 pyyaml >= 5.1

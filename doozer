@@ -31,7 +31,7 @@ from numbers import Number
 from multiprocessing.pool import ThreadPool
 from multiprocessing import cpu_count
 from dockerfile_parse import DockerfileParser
-import dotconfig
+from doozerlib import dotconfig
 
 CTX_GLOBAL = None
 
