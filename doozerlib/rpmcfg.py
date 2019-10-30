@@ -159,9 +159,10 @@ class RPMMetadata(Metadata):
             # one was specifically identified in the metadata, rename those
             # which we are not targeting. Tito/brew do not handle multiple .specs.
             if self.source.specfile is not Missing:
-                for f in os.listdir('.'):
-                    if os.path.isfile(f) and f.endswith('.spec') and f != self.source.specfile:
-                        self.logger.info('Renaming extraneous spec file before build: {}'.format(f))
+                for f in os.listdir(self.source_path):
+                    found_path = os.path.join(self.source_path, f)
+                    if os.path.isfile(found_path) and found_path.endswith('.spec') and found_path != self.specfile:
+                        self.logger.info('Renaming extraneous spec file before build: {} (only want {})'.format(f, self.source.specfile))
                         os.rename(f, '{}.ignore'.format(f))
 
     def _run_modifications(self):
