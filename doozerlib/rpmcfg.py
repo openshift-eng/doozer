@@ -155,6 +155,15 @@ class RPMMetadata(Metadata):
                 props.write(TITO_PROPS.format(name=self.name, target=tito_target))
                 props.flush()
 
+            # If there are multiple .spec files in the root of the project and
+            # one was specifically identified in the metadata, rename those
+            # which we are not targeting. Tito/brew do not handle multiple .specs.
+            if self.source.specfile is not Missing:
+                for f in os.listdir('.'):
+                    if os.path.isfile(f) and f.endswith('.spec') and f != self.source.specfile:
+                        self.logger.info('Renaming extraneous spec file before build: {}'.format(f))
+                        os.rename(f, '{}.ignore'.format(f))
+
     def _run_modifications(self):
         """
         Interprets and applies content.source.modify steps in the image metadata.
