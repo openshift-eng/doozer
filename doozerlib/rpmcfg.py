@@ -163,7 +163,7 @@ class RPMMetadata(Metadata):
                     found_path = os.path.join(self.source_path, f)
                     if os.path.isfile(found_path) and found_path.endswith('.spec') and found_path != self.specfile:
                         self.logger.info('Renaming extraneous spec file before build: {} (only want {})'.format(f, self.source.specfile))
-                        os.rename(f, '{}.ignore'.format(f))
+                        os.rename(found_path, '{}.ignore'.format(found_path))
 
     def _run_modifications(self):
         """
