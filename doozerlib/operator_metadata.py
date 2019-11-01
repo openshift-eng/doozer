@@ -402,7 +402,7 @@ class OperatorMetadataBuilder:
 
     @property
     def target(self):
-        return '{}-candidate'.format(self.operator_branch)
+        return self.runtime.brew_tag if self.runtime.brew_tag else '{}-candidate'.format(self.operator_branch)
 
     @property
     def operator_name(self):
@@ -555,7 +555,7 @@ class OperatorMetadataLatestBuildReporter:
 
     @property
     def target(self):
-        return '{}-candidate'.format(self.operator_branch)
+        return self.runtime.brew_tag if self.runtime.brew_tag else '{}-candidate'.format(self.operator_branch)
 
     @property
     def operator_branch(self):
@@ -627,7 +627,7 @@ class OperatorMetadataLatestNvrReporter:
 
     @property
     def brew_tag(self):
-        return '{}-candidate'.format(self.operator_branch)
+        return self.runtime.brew_tag if self.runtime.brew_tag else '{}-candidate'.format(self.operator_branch)
 
     @property
     def operator_branch(self):

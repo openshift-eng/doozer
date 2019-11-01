@@ -119,6 +119,8 @@ def print_version(ctx, param, value):
 @click.option('--local/--osbs', default=False, is_flag=True, help='--local to run in local-only mode, --osbs to run on build cluster (default)')
 @click.option("--rhpkg-config", metavar="RHPKG_CONFIG",
               help="Path to rhpkg config file to use instead of system default")
+@click.option("--brew-tag", metavar="BREW_TAG",
+              help="Override brew tag to expect for images built")
 @click.pass_context
 def cli(ctx, **kwargs):
     global CTX_GLOBAL
