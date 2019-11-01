@@ -179,9 +179,7 @@ class ImageMetadata(Metadata):
 
         component_name = self.get_component_name()
 
-        tag = "{}-candidate".format(self.branch())
-
-        rc, stdout, stderr = exectools.cmd_gather(["brew", "latest-build", tag, component_name])
+        rc, stdout, stderr = exectools.cmd_gather(["brew", "latest-build", self.brew_tag(), component_name])
 
         assertion.success(rc, "Unable to search brew builds: %s" % stderr)
 
@@ -191,7 +189,7 @@ class ImageMetadata(Metadata):
             # If no builds found, `brew latest-build` output will appear as:
             # Build                                     Tag                   Built by
             # ----------------------------------------  --------------------  ----------------
-            raise IOError("No builds detected for %s using tag: %s" % (self.qualified_name, tag))
+            raise IOError("No builds detected for %s using tag: %s" % (self.qualified_name, self.brew_tag()))
 
         # latest example: "registry-console-docker-v3.6.173.0.75-1""
         name, version, release = latest.rsplit("-", 2)  # [ "registry-console-docker", "v3.6.173.0.75", "1"]
