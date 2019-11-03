@@ -25,7 +25,7 @@
 		"-v", "${localWorkspaceFolder}/.devcontainer/brewkoji.conf:/etc/koji.conf.d/brewkoji.conf:ro",
 		"-v", "${localWorkspaceFolder}/.devcontainer/settings.yaml:/home/dev/.config/doozer/settings.yaml:ro",
 		"-v", "${env:HOME}${env:USERPROFILE}/.ssh:/home/dev/.ssh:ro",
-		"-v", "dev-doozer-working-dir:/workspace/doozer-working-dir"
+		"-v", "dev-doozer-working-dir:/workspaces/doozer-working-dir"
 	],
 
 	// Use 'settings' to set *default* container specific settings.json values on container create.
@@ -45,7 +45,7 @@
 	// "appPort": [],
 
 	// Uncomment the next line to run commands after the container is created - for example installing git.
-	"postCreateCommand": "sudo chown -R dev: /workspace/doozer-working-dir && pip install --user -r requirements.txt",
+	"postCreateCommand": "sudo chown -R dev: /workspaces/doozer-working-dir && pip install --user -r requirements-dev.txt -e .",
 
 	// Add the IDs of extensions you want installed when the container is created in the array below.
 	"extensions": [
