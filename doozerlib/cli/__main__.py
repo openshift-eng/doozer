@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 from doozerlib import version
@@ -709,11 +708,11 @@ def print_build_metrics(runtime):
         info = watch_task_info[task_id]
         runtime.logger.debug("Watch task info:\n {}\n\n".format(info))
         # Error unless all true
-        if not ('id' in info and
-                koji.TASK_STATES[info['state']] is 'CLOSED' and
-                _taskinfo_has_timestamp(info, 'create_ts') and
-                _taskinfo_has_timestamp(info, 'start_ts') and
-                _taskinfo_has_timestamp(info, 'completion_ts')
+        if not ('id' in info
+                and koji.TASK_STATES[info['state']] == 'CLOSED'
+                and _taskinfo_has_timestamp(info, 'create_ts')
+                and _taskinfo_has_timestamp(info, 'start_ts')
+                and _taskinfo_has_timestamp(info, 'completion_ts')
                 ):
             runtime.logger.error(
                 "Discarding incomplete/error task info: {}".format(info))
@@ -1003,9 +1002,9 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
             lambda (img, terminate_event):
                 img.distgit_repo().push_image(tag, to_defaults, additional_registries,
                                               version_release_tuple=version_release_tuple, dry_run=dry_run),
-                    items,
-                    n_threads=4
-                )
+            items,
+            n_threads=4
+        )
         results = results.get()
 
         failed = [name for name, r in results if not r]
@@ -1034,6 +1033,7 @@ def images_pull_image(runtime):
     runtime.initialize(clone_distgits=True)
     for image in runtime.image_metas():
         image.pull_image()
+
 
 @cli.command("images:show-tree", short_help="Display the image relationship tree")
 @click.option(
@@ -1186,7 +1186,7 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         for push_name in image.get_default_push_names():
             pushes_formatted += '\t{} : [{}]\n'.format(push_name, ', '.join(image.get_default_push_tags(version, release)))
 
-        if pushes_formatted is '':
+        if not pushes_formatted:
             pushes_formatted = "(None)"
 
         s = s.replace("{pushes}", '{}\n'.format(pushes_formatted))
@@ -1364,7 +1364,6 @@ def config_commit(runtime, message, push):
     # This is ok to run if automation is frozen as long as you are not pushing
     if push:
         runtime.assert_mutation_is_permitted()
-
 
     config = mdc(runtime)
     config.commit(message)
@@ -1689,7 +1688,7 @@ quay registry:
             for push_name in image.get_default_push_names():
                 pushes_formatted += '\t{} : [{}]\n'.format(push_name, ', '.join(image.get_default_push_tags(version, release)))
 
-            if pushes_formatted is '':
+            if not pushes_formatted:
                 pushes_formatted = "(None)"
             s = s.replace("{pushes}", '{}\n'.format(pushes_formatted))
 
@@ -1777,7 +1776,8 @@ quay registry:
     click.echo("Generating arch-specific SRC=DEST files for {} arches".format(len(arches)))
     for arch in arches:
         # We default to amd64
-        if arch == 'x86_64': continue
+        if arch == 'x86_64':
+            continue
         else:
             click.echo("Generating SRC=DEST for {}".format(arch))
             with open("src_dest.{arch}".format(arch=arch), 'w+') as out_file:
@@ -1816,7 +1816,8 @@ quay registry:
     # template "%ARCH%" string with the correct architecture.
     for arch in arches:
         # Already written out
-        if arch == 'x86_64': continue
+        if arch == 'x86_64':
+            continue
         click.echo("Generating ImageStream for {}".format(arch))
 
         # Don't manipulate the source image stream. Copy and modify.
@@ -1956,7 +1957,7 @@ def release_gen_payload(runtime, src_dest, image_stream, is_base, pattern):
             for push_name in image.get_default_push_names():
                 pushes_formatted += '\t{} : [{}]\n'.format(push_name, ', '.join(image.get_default_push_tags(version, release)))
 
-            if pushes_formatted is '':
+            if not pushes_formatted:
                 pushes_formatted = "(None)"
             s = s.replace("{pushes}", '{}\n'.format(pushes_formatted))
 
@@ -2040,6 +2041,7 @@ def release_gen_payload(runtime, src_dest, image_stream, is_base, pattern):
     for img in sorted(missing_source_items):
         click.echo(" {}".format(img))
         click.echo()
+
 
 @cli.command("beta:reposync", short_help="Sync yum repos listed in group.yaml to local directory.")
 @click.option("-o", "--output", metavar="DIR", help="Output directory to sync to", required=True)
@@ -2251,7 +2253,7 @@ def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=Fals
 @cli.command("operator-metadata:latest-build", short_help="Print latest metadata build of a given operator")
 @click.option("--nvr", "-n", help="Specify Name-Version-Release. Needs --stream", multiple=True)
 @click.option("--stream", "-s", type=click.Choice(['dev', 'stage', 'prod']),
-    help="Metadata stream to select. Possible values: dev, stage, prod. Needs --nvr")
+              help="Metadata stream to select. Possible values: dev, stage, prod. Needs --nvr")
 @click.argument("operator_list", nargs=-1)
 @pass_runtime
 def operator_metadata_latest_build(runtime, nvr, stream, operator_list):
