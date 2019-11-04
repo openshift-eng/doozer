@@ -119,6 +119,7 @@ class Runtime(object):
         self.load_disabled = False
         self.data_path = None
         self.data_dir = None
+        self.brew_tag = None
 
         for key, val in kwargs.items():
             self.__dict__[key] = val
@@ -339,6 +340,11 @@ class Runtime(object):
                             .format(val, e)
                         )
                 scanner.matches = regexen
+
+            if self.group_config.brew_tag:
+                self.brew_tag = self.group_config.brew_tag
+            else:
+                self.brew_tag = '{}-candidate'.format(self.branch)
 
             # Flattens a list like like [ 'x', 'y,z' ] into [ 'x.yml', 'y.yml', 'z.yml' ]
             # for later checking we need to remove from the lists, but they are tuples. Clone to list
@@ -983,7 +989,7 @@ class Runtime(object):
         # return a dict of all the latest builds for this group, according to
         # the branch's candidate tag in brew. each entry is name => tuple(version, release).
         output, _ = exectools.cmd_assert(
-            "brew list-tagged --quiet --latest {}-candidate".format(self.branch),
+            "brew list-tagged --quiet --latest {}".format(self.brew_tag),
             retries=3,
         )
         builds = [

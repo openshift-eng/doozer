@@ -751,7 +751,9 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
     def test_property_target(self):
         nvr = '...irrelevant...'
         stream = '...irrelevant...'
-        runtime = '...irrelevant...'
+        runtime = type('TestRuntime', (object,), {
+            'brew_tag': None
+        })
         cached_attrs = {
             'operator_branch': 'my-operator-branch'
         }

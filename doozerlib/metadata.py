@@ -105,6 +105,12 @@ class Metadata(object):
             return self.config.distgit.branch
         return self.runtime.branch
 
+    def brew_tag(self):
+        if self.runtime.brew_tag:
+            return self.runtime.brew_tag
+        else:
+            return '{}-candidate'.format(self.branch())
+
     def cgit_url(self, filename):
         rev = self.branch()
         ret = "/".join((self.runtime.group_config.urls.cgit, self.qualified_name, "plain", filename))
