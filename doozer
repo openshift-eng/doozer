@@ -492,6 +492,9 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
             )
             state.record_image_success(lstate, image)
         except Exception as ex:
+            # Only the message will recorded in the state. Make sure we print out a stacktrace in the logs.
+            traceback.print_exc()
+
             owners = image.config.owners
             owners = ",".join(list(owners) if owners is not Missing else [])
             runtime.add_record(
