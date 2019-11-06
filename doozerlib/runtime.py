@@ -16,8 +16,8 @@ import functools
 import traceback
 import urlparse
 import signal
-import gitdata
 
+from doozerlib import gitdata
 import logutil
 import assertion
 import exectools
