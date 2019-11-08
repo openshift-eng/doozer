@@ -1084,9 +1084,13 @@ def images_show_tree(runtime, imagename, yml):
 @cli.command("images:print", short_help="Print data from each distgit")
 @click.option(
     "--short", default=False, is_flag=True,
-    help="Suppress all output other than the data itself")
+    help="Suppress all stdout other than the data itself")
 @click.option('--show-non-release', default=False, is_flag=True,
               help='Include images which have been marked as non-release.')
+@click.option('--only-non-release', default=False, is_flag=True,
+              help='Only show images which have been marked as non-release.')
+@click.option('--ignore-missing-downstream', default=False, is_flag=True,
+              help='Ignore missing Dockerfile in distgit (labels may be incomplete).')
 @click.option('--show-base', default=False, is_flag=True,
               help='Include images which have been marked as base images.')
 @click.option("--output", "-o", default=None,
@@ -1095,7 +1099,7 @@ def images_show_tree(runtime, imagename, yml):
               help="The label you want to print if it exists. Empty string if n/a")
 @click.argument("pattern", default="{build}", nargs=1)
 @pass_runtime
-def images_print(runtime, short, show_non_release, show_base, output, label, pattern):
+def images_print(runtime, short, show_non_release, only_non_release, ignore_missing_downstream, show_base, output, label, pattern):
     """
     Prints data from each distgit. The pattern specified should be a string
     with replacement fields:
@@ -1112,6 +1116,9 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
     {build} - Shorthand for {component}-{version}-{release} (e.g. container-engine-v3.6.173.0.25-1)
     {repository} - Shorthand for {image}:{version}-{release}
     {label} - The label you want to print from the Dockerfile (Empty string if n/a)
+    {src} - The upstream source repo
+    {owners} - A space delimited list of owners for the image
+    {dockerfile} - The path to the upstream Dockerfile
     {lf} - Line feed
 
     If pattern contains no braces, it will be wrapped with them automatically. For example:
@@ -1140,21 +1147,41 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
     if non_release_images is Missing:
         non_release_images = []
 
-    if not show_non_release:
+    if only_non_release:
+        images = [i for i in runtime.image_metas() if i.distgit_key in non_release_images]
+    elif not show_non_release:
         images = [i for i in runtime.image_metas() if i.distgit_key not in non_release_images]
     else:
         images = list(runtime.image_metas())
 
-    for image in images:
+    def output_write(str):
+        if output is None:
+            # Print to stdout
+            click.echo(s)
+        else:
+            # Write to a file
+            with open(output, 'a') as out_file:
+                out_file.write("{}\n".format(s))
+
+    for image in sorted(images, key=lambda x: x.name):
         # skip base images unless requested
         if image.base_only and not show_base:
             continue
 
-        dfp = DockerfileParser(path=runtime.working_dir)
         try:
+            dfp = DockerfileParser(path=runtime.working_dir)
             dfp.content = image.fetch_cgit_file("Dockerfile")
+            labels = dfp.labels
         except Exception:
-            raise DoozerFatalError("Error reading Dockerfile from distgit: {}".format(image.distgit_key))
+            labels = {}
+            if ignore_missing_downstream:
+                runtime.logger.warning('Error reading Dockerfile in distgit: {}'.format(image.distgit_key))
+            else:
+                raise DoozerFatalError("Error reading Dockerfile from distgit: {}".format(image.distgit_key))
+
+        # Labels in the metadata will take precedence, so overwrite anything found in Dockerfile
+        if image.config.labels is not Missing:
+            labels.update(image.config.labels.primitive())
 
         s = pattern
         s = s.replace("{build}", "{component}-{version}-{release}")
@@ -1164,10 +1191,23 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         s = s.replace("{image_name}", image.image_name)
         s = s.replace("{image_name_short}", image.image_name_short)
         s = s.replace("{component}", image.get_component_name())
-        s = s.replace("{image}", dfp.labels["name"])
+        s = s.replace("{image}", labels.get("name", image.image_name))
+
+        s = s.replace("{owners}", ' '.join(image.config.owners or []))
+
+        if image.config.content.source is not Missing:
+            if image.config.content.source.alias is not Missing:
+                src_repo = runtime.group_config.sources[image.config.content.source.alias].url
+            else:
+                src_repo = image.config.content.source.git.url or "Unknown"
+            s = s.replace("{src}", src_repo)
+            s = s.replace("{dockerfile}", image.config.content.source.dockerfile or "Dockerfile")
+        else:
+            s = s.replace("{src}", image.cgit_url(''))
+            s = s.replace("{dockerfile}", "Dockerfile")
 
         if label is not None:
-            s = s.replace("{label}", dfp.labels.get(label, ''))
+            s = s.replace("{label}", labels.get(label, ''))
         s = s.replace("{lf}", "\n")
 
         release_query_needed = '{release}' in s or '{pushes}' in s
@@ -1194,13 +1234,7 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         if "{" in s:
             raise IOError("Unrecognized fields remaining in pattern: %s" % s)
 
-        if output is None:
-            # Print to stdout
-            click.echo(s)
-        else:
-            # Write to a file
-            with open(output, 'a') as out_file:
-                out_file.write("{}\n".format(s))
+        output_write(s)
 
         count += 1
 
@@ -1208,7 +1242,7 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
     echo_verbose("{} images".format(count))
 
     # If non-release images are being suppressed, let the user know
-    if not show_non_release and non_release_images:
+    if not show_non_release and not only_non_release and non_release_images:
         echo_verbose("\nThe following {} non-release images were excluded; use --show-non-release to include them:".format(
             len(non_release_images)))
         for image in non_release_images:

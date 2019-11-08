@@ -439,6 +439,12 @@ class Runtime(object):
 
                 self.generate_image_tree()
 
+                # Warn if we find non_releaes images that are no longer in the images metadata directory
+                if self.group_config.non_release.images is not Missing:
+                    for distgit_key in self.group_config.non_release.images:
+                        if not [image for image in self.image_map.itervalues() if image.distgit_key == distgit_key]:
+                            self.logger.warning('Found a non_release image {} that is not in images'.format(distgit_key))
+
             if mode in ['rpms', 'both']:
                 for r in rpm_data.itervalues():
                     metadata = RPMMetadata(self, r, clone_source=clone_source)
