@@ -246,8 +246,8 @@ def rpms_build(runtime, version, release, scratch):
         exit(0)
 
     results = runtime.parallel_exec(
-        lambda rpm_terminate_event: rpm_terminate_event[0].build_rpm(
-            version, release, rpm_terminate_event[1], scratch),
+        lambda rpm, terminate_event: rpm.build_rpm(
+            version, release, terminate_event, scratch),
         items)
     results = results.get()
     failed = [name for name, r in results if not r]
@@ -886,9 +886,9 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
         threads = None
 
     results = runtime.parallel_exec(
-        lambda dgr_terminate_event: dgr_terminate_event[0].build_container(
+        lambda dgr, terminate_event: dgr.build_container(
             odcs, repo_type, repo, push_to_defaults, additional_registries=push_to,
-            dgr_terminate_event[1]=dgr_terminate_event[1], scratch=scratch, realtime=(threads == 1)),
+            terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1)),
         items, n_threads=threads)
     results = results.get()
 
@@ -1002,8 +1002,8 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
         # Push early images
 
         results = runtime.parallel_exec(
-            lambda img_terminate_event:
-                img_terminate_event[0].distgit_repo().push_image(tag, to_defaults, additional_registries,
+            lambda img, terminate_event:
+                img.distgit_repo().push_image(tag, to_defaults, additional_registries,
                                               version_release_tuple=version_release_tuple, dry_run=dry_run),
             items,
             n_threads=4
