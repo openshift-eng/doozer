@@ -1,4 +1,3 @@
-from __future__ import unicode_literals
 import flexmock
 import io
 import shutil
@@ -1170,6 +1169,12 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
             })
         }
     })
+    # runtime = MagicMock(
+    #     group_config=MagicMock(branch='my-target-branch'),
+    #     image_map={
+    #         'my-operator': MagicMock(config={})
+    #     },
+    # )
 
     def test_unpack_nvr(self):
         nvr_reporter = operator_metadata.OperatorMetadataLatestNvrReporter('package-container-v1.2.3-20191022', 'dev', self.runtime)
