@@ -5,6 +5,8 @@ ordinary subprocess behaviors.
 """
 
 from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
 
 import subprocess
 import time
@@ -14,10 +16,10 @@ import os
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
 
-import logutil
-import pushd
-import assertion
-from util import red_print, green_print, yellow_print
+from . import logutil
+from . import pushd
+from . import assertion
+from .util import red_print, green_print, yellow_print
 
 SUCCESS = 0
 

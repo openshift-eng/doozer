@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import unicode_literals
 from setuptools import setup
 
 with open('./requirements.txt') as f:

@@ -1,17 +1,19 @@
+from __future__ import absolute_import
+from __future__ import unicode_literals
 import os
 import json
 import bashlex
 from dockerfile_parse import DockerfileParser
-from distgit import pull_image
-from metadata import Metadata
-from model import Missing
-from pushd import Dir
+from .distgit import pull_image
+from .metadata import Metadata
+from .model import Missing
+from .pushd import Dir
 from doozerlib.exceptions import DoozerFatalError
 
-import assertion
-import logutil
-import exectools
-import logutil
+from . import assertion
+from . import logutil
+from . import exectools
+from . import logutil
 
 logger = logutil.getLogger(__name__)
 

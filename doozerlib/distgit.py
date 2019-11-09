@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import unicode_literals
 import hashlib
 import json
 import os
@@ -15,12 +17,12 @@ from datetime import datetime, timedelta
 
 from dockerfile_parse import DockerfileParser
 
-import logutil
-import assertion
-import exectools
-from pushd import Dir
-from brew import watch_task, check_rpm_buildroot
-from model import Model, Missing
+from . import logutil
+from . import assertion
+from . import exectools
+from .pushd import Dir
+from .brew import watch_task, check_rpm_buildroot
+from .model import Model, Missing
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import yellow_print
 from doozerlib import state
