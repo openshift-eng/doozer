@@ -101,6 +101,16 @@ def wrap_exception(func):
             raise WrapException()
     return wrapper
 
+
+def _unpack_tuple_args(func):
+    """ Decorate a function for unpacking the tuple argument `args`
+        This is used to workaround Python 3 lambda not unpacking tuple arguments (PEP-3113)
+    """
+    @functools.wraps(func)
+    def wrapper(args):
+        return func(*args)
+    return wrapper
+
 # ============================================================================
 # Runtime object definition
 # ============================================================================
@@ -122,6 +132,7 @@ class Runtime(object):
         self.data_path = None
         self.data_dir = None
         self.brew_tag = None
+        self.latest_parent_version = False
 
         for key, val in kwargs.items():
             self.__dict__[key] = val
@@ -972,8 +983,11 @@ class Runtime(object):
         n_threads = n_threads if n_threads is not None else len(args)
         terminate_event = threading.Event()
         pool = ThreadPool(n_threads)
+        # Python 3 doesn't allow to unpack tuple argument in a lambdas or functions (PEP-3113).
+        # `_unpack_tuple_args` is a workaround that unpacks the tuple as arguments for the function passed to `ThreadPool.map_async`.
+        # `starmap_async` can be used in the future when we don't keep compatibility with Python 2.
         ret = pool.map_async(
-            wrap_exception(f),
+            wrap_exception(_unpack_tuple_args(f)),
             [(a, terminate_event) for a in args])
         pool.close()
         try:
@@ -1005,7 +1019,7 @@ class Runtime(object):
     def scan_distgit_sources(self):
         builds = self.builds_for_group_branch()  # query for builds only once
         return self.parallel_exec(
-            lambda m: (m[0], m[0].distgit_repo(autoclone=False).matches_source_commit(builds)),
+            lambda meta, _: (meta, meta.distgit_repo(autoclone=False).matches_source_commit(builds)),
             self.image_metas() + self.rpm_metas(),
             n_threads=100,
         ).get()

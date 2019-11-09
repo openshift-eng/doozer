@@ -163,7 +163,7 @@ class TestImageDistGit(TestDistgit):
                             name="_irrelevant_",
                             logger=flexmock(info=lambda *_: None))
 
-        expected = (metadata, "IOError('io-error',)")
+        expected = (metadata, repr(IOError("io-error")))
         actual = distgit.ImageDistGitRepo(metadata, autoclone=False).push()
 
         self.assertEqual(expected, actual)
