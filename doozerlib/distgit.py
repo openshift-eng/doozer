@@ -1460,6 +1460,9 @@ class ImageDistGitRepo(DistGitRepo):
                     nvr = '{}:{}-{}'.format(name, version, release)
                 else:
                     distgit = self.runtime.image_distgit_by_name(name)
+                    # if upstream is referring to an image we don't actually build, give up.
+                    if not distgit:
+                        raise DoozerFatalError('Unable to find {} in image-references data for {}'.format(name, self.metadata.distgit_key))
                     meta = self.runtime.image_map.get(distgit, None)
                     if meta:  # image is currently be processed
                         nvr = '{}:{}-{}'.format(meta.image_name_short, version, release)
