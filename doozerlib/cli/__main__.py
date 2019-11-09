@@ -1711,6 +1711,7 @@ quay registry:
 
                 # Don't try to mirror things that don't exist
                 try:
+                    result = ""
                     cmd = "/bin/oc image info {}".format(src)
                     subprocess.check_output(cmd.split(' '), stderr=subprocess.STDOUT)
                 except subprocess.CalledProcessError as res:
@@ -1722,10 +1723,10 @@ quay registry:
                 # results. Let's make sure that was the actual thing
                 # that happened.
                 if "error: the image is a manifest list" in result:
-                    green_prefix("Verified source image exists and complies with naming conventions: ")
+                    green_prefix("Verified source image is a manifest list and complies with naming conventions: ")
                     click.echo(src)
                 else:
-                    red_prefix("NOT adding to IS, error querying image info (maybe source image does not exist?): ")
+                    red_prefix("NOT adding to IS, error querying image info (not a manifest list or doesn't exist?): ")
                     click.echo(src)
                     missing_source_items.append(src)
                     continue
@@ -1839,7 +1840,7 @@ quay registry:
         click.echo(" {}".format(img))
         click.echo()
 
-    yellow_prefix("Images skipped due to missing source:\n")
+    yellow_prefix("Images skipped due to not being manifest lists or missing sources:\n")
     for img in sorted(missing_source_items):
         click.echo(" {}".format(img))
         click.echo()
