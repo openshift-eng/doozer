@@ -1,6 +1,8 @@
 """
 Utility functions for general interactions with Brew and Builds
 """
+from __future__ import absolute_import
+from __future__ import unicode_literals
 
 # stdlib
 import ast
@@ -13,9 +15,9 @@ from multiprocessing import Lock
 import shlex
 import traceback
 
-import exceptions
-import exectools
-import logutil
+from . import exceptions
+from . import exectools
+from . import logutil
 
 # 3rd party
 import click

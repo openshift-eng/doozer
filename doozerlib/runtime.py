@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import unicode_literals
 from multiprocessing import Lock
 from multiprocessing.dummy import Pool as ThreadPool
 from pykwalify.core import Core
@@ -18,18 +20,18 @@ import urlparse
 import signal
 
 from doozerlib import gitdata
-import logutil
-import assertion
-import exectools
-from pushd import Dir
+from . import logutil
+from . import assertion
+from . import exectools
+from .pushd import Dir
 
-from image import ImageMetadata
-from rpmcfg import RPMMetadata
+from .image import ImageMetadata
+from .rpmcfg import RPMMetadata
 from doozerlib import state
-from model import Model, Missing
+from .model import Model, Missing
 from multiprocessing import Lock
-from repos import Repos
-import brew
+from .repos import Repos
+from . import brew
 from doozerlib.exceptions import DoozerFatalError
 
 
