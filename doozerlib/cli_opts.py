@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 import yaml
 
 GLOBAL_OPT_DEFAULTS = {

@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 STATE_PEND = 'pending'
 STATE_PASS = 'passed'
 STATE_FAIL = 'failed'

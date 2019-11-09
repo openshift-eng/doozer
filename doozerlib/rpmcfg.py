@@ -1,14 +1,16 @@
+from __future__ import absolute_import
+from __future__ import unicode_literals
 import glob
 import os
 import traceback
 import re
 
-import exectools
-from pushd import Dir
-from brew import watch_task
+from . import exectools
+from .pushd import Dir
+from .brew import watch_task
 
-from metadata import Metadata
-from model import Missing
+from .metadata import Metadata
+from .model import Missing
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.source_modifications import SourceModifierFactory
 

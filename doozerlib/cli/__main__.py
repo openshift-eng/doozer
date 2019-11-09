@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
+from __future__ import unicode_literals
 from doozerlib import version
 from doozerlib import Runtime, Dir
 from doozerlib import state
@@ -244,8 +246,8 @@ def rpms_build(runtime, version, release, scratch):
         exit(0)
 
     results = runtime.parallel_exec(
-        lambda (rpm, terminate_event): rpm.build_rpm(
-            version, release, terminate_event, scratch),
+        lambda rpm_terminate_event: rpm_terminate_event[0].build_rpm(
+            version, release, rpm_terminate_event[1], scratch),
         items)
     results = results.get()
     failed = [name for name, r in results if not r]
@@ -884,9 +886,9 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
         threads = None
 
     results = runtime.parallel_exec(
-        lambda (dgr, terminate_event): dgr.build_container(
+        lambda dgr_terminate_event: dgr_terminate_event[0].build_container(
             odcs, repo_type, repo, push_to_defaults, additional_registries=push_to,
-            terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1)),
+            dgr_terminate_event[1]=dgr_terminate_event[1], scratch=scratch, realtime=(threads == 1)),
         items, n_threads=threads)
     results = results.get()
 
@@ -1000,8 +1002,8 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
         # Push early images
 
         results = runtime.parallel_exec(
-            lambda (img, terminate_event):
-                img.distgit_repo().push_image(tag, to_defaults, additional_registries,
+            lambda img_terminate_event:
+                img_terminate_event[0].distgit_repo().push_image(tag, to_defaults, additional_registries,
                                               version_release_tuple=version_release_tuple, dry_run=dry_run),
             items,
             n_threads=4
@@ -1691,6 +1693,9 @@ that particular tag.
                 add_tag_image(arch, arch_image)
 
             state.record_image_success(lstate, image)
+
+            # End 'for image in images' loop
+            #############################################################
         except state.DoozerStateError as serr:
             red_print(serr.message)
             state.record_image_fail(lstate, image, serr.message, runtime.logger)
@@ -1954,7 +1959,7 @@ def release_gen_payload(runtime, src_dest, image_stream, is_base, pattern):
 
             # End 'for image in images' loop
             #############################################################
-        except state.DoozerStateError, serr:
+        except state.DoozerStateError as serr:
             red_print(serr.message)
             state.record_image_fail(lstate, image, serr.message, runtime.logger)
 

@@ -1,13 +1,15 @@
+from __future__ import absolute_import
+from __future__ import unicode_literals
 import yaml
 import os
 import urllib
 
-import assertion
-from distgit import ImageDistGitRepo, RPMDistGitRepo
-import exectools
-import logutil
+from . import assertion
+from .distgit import ImageDistGitRepo, RPMDistGitRepo
+from . import exectools
+from . import logutil
 
-from model import Model, Missing
+from .model import Model, Missing
 
 #
 # These are used as labels to index selection of a subclass.
