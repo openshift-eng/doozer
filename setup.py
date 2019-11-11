@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open('./requirements.txt') as f:
     INSTALL_REQUIRES = f.read().splitlines()
@@ -20,7 +20,7 @@ setup(
     long_description=open('README.md').read(),
     url="https://github.com/openshift/doozer",
     license="Apache License, Version 2.0",
-    packages=["doozerlib"],
+    packages=find_packages(exclude=["tests", "tests.*"]),
     include_package_data=True,
     entry_points={
         'console_scripts': [
@@ -28,6 +28,7 @@ setup(
         ]
     },
     install_requires=INSTALL_REQUIRES,
+    test_suite='tests',
     dependency_links=[],
     classifiers=[
         "Development Status :: 4 - Beta",
