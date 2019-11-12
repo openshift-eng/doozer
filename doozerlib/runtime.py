@@ -342,9 +342,8 @@ class Runtime(object):
                 scanner.matches = regexen
 
             if self.group_config.brew_tag:
+                # setting this overrides tags made out of branches in specific configs
                 self.brew_tag = self.group_config.brew_tag
-            else:
-                self.brew_tag = '{}-candidate'.format(self.branch)
 
             # Flattens a list like like [ 'x', 'y,z' ] into [ 'x.yml', 'y.yml', 'z.yml' ]
             # for later checking we need to remove from the lists, but they are tuples. Clone to list
@@ -988,8 +987,9 @@ class Runtime(object):
     def builds_for_group_branch(self):
         # return a dict of all the latest builds for this group, according to
         # the branch's candidate tag in brew. each entry is name => tuple(version, release).
+        tag = self.brew_tag if self.brew_tag else '{}-candidate'.format(self.branch)
         output, _ = exectools.cmd_assert(
-            "brew list-tagged --quiet --latest {}".format(self.brew_tag),
+            "brew list-tagged --quiet --latest {}".format(tag),
             retries=3,
         )
         builds = [
