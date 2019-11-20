@@ -1106,6 +1106,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
     def test_get_latest_build(self):
         runtime = type('TestRuntime', (object,), {
+            'brew_tag': None,
             'group_config': type('TestGroupConfig', (object,), {
                 'branch': 'my-target-branch'
             }),
@@ -1130,6 +1131,7 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
 
     def test_get_latest_build_with_custom_component_name(self):
         runtime = type('TestRuntime', (object,), {
+            'brew_tag': None,
             'group_config': type('TestGroupConfig', (object,), {
                 'branch': 'my-target-branch'
             }),
@@ -1158,7 +1160,7 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
         operator_metadata.OperatorMetadataLatestBuildReporter('my-operator', runtime).get_latest_build()
 
 
-class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
+class TestOperatorMetadataLatestNvrReporter(unittest.TestCase):
     runtime = type('TestRuntime', (object,), {
         'group_config': type('TestGroupConfig', (object,), {
             'branch': 'my-target-branch'
@@ -1172,15 +1174,19 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
 
     def test_unpack_nvr(self):
         nvr_reporter = operator_metadata.OperatorMetadataLatestNvrReporter('package-container-v1.2.3-20191022', 'dev', self.runtime)
-        self.assertEquals(nvr_reporter.unpack_nvr(nvr_reporter.operator_nvr), ('package', 'v1.2.3', '20191022'))
+        self.assertEquals(nvr_reporter.unpack_nvr(nvr_reporter.operator_nvr), ('package-container', 'v1.2.3', '20191022'))
         # Add test for metadata nvr
 
     def test_get_latest_build(self):
         nvr_reporter = operator_metadata.OperatorMetadataLatestNvrReporter('my-operator-container-v1.2.3-20191022', 'dev', self.runtime)
+        self.assertEquals(nvr_reporter.metadata_component, 'my-operator-metadata-container')
 
+        # test ignoring builds for later operators
         flexmock(nvr_reporter, get_all_builds=[
             'my-operator-metadata-container-v1.2.3.20191022.dev-1',
-            'my-operator-metadata-container-v1.2.3.20191022.dev-2'])
+            'my-operator-metadata-container-v1.2.3.20191022.dev-2',
+            'my-operator-metadata-container-v1.2.4.20191029.dev-12',
+        ])
 
         self.assertEqual(nvr_reporter.get_latest_build(), 'my-operator-metadata-container-v1.2.3.20191022.dev-2')
 
