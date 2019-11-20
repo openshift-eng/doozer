@@ -603,12 +603,6 @@ class OperatorMetadataLatestNvrReporter:
                 candidate_release = release
                 candidate = brew_build
 
-        if not candidate:
-            # XXX: This fallback should be removed after operator metadata containers get built with
-            # the new naming scheme. https://jira.coreos.com/browse/ART-1175
-            logger.warning('Did not find a match under the new naming scheme. Falling back to the old')
-            candidate = OperatorMetadataLatestBuildReporter(self.operator_name, self.runtime).get_latest_build()
-
         return candidate
 
     @log
