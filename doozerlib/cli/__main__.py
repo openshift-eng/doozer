@@ -1986,15 +1986,18 @@ def release_gen_payload(runtime, src_dest, image_stream, is_base, pattern):
               metavar='ARCH',
               help="Arch for which the repo should be generated",
               default='x86_64', required=False)
+@click.option("--runtime-image", metavar="IMAGE_REPO", help="reposync is run within a container; you may specify the image to use", required=False, default='registry.access.redhat.com/ubi8/ubi@sha256:a7209baef64d9a6e8e87cbc2a6f27d402a04cd3750006f1338a2924b4bf585f7')
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for repo file generation (e.g. signed, unsigned).")
 @click.option("-n", "--name", "names", default=[], metavar='NAME', multiple=True,
               help="Only sync the specified repository names; if not specified all will be synced.")
+@click.option('--use-sudo', default=False, is_flag=True,
+              help='If podman needs to be run with sudo')
 @click.option('--dry-run', default=False, is_flag=True,
               help='Print derived yum configuration for sync operation and exit')
 @pass_runtime
-def beta_reposync(runtime, output, cachedir, arch, repo_type, names, dry_run):
+def beta_reposync(runtime, output, cachedir, arch, runtime_image, repo_type, names, use_sudo, dry_run):
     """Sync yum repos listed in group.yaml to local directory.
     See `doozer --help` for more.
 
@@ -2006,8 +2009,9 @@ def beta_reposync(runtime, output, cachedir, arch, repo_type, names, dry_run):
 
     Synchronize signed, x86_64, rpms from rhel-server-ose-rpms repository.
 
-        $ doozer --group=openshift-4.0 beta:reposync -o /tmp/repo_sync -c /tmp/cache/ --repo-type signed -r rhel-server-ose-rpms
+        $ doozer --group=openshift-4.0 beta:reposync -o /tmp/repo_sync -c /tmp/cache/ --repo-type signed -n rhel-server-ose-rpms
 
+    If the current user does not have access run containers with podman, you will need to run doozer with sudo.
     """
     runtime.initialize(clone_distgits=False)
     repos = runtime.repos
@@ -2023,6 +2027,8 @@ obsoletes=1
 gpgcheck=1
 plugins=1
 installonly_limit=3
+module_hotfixes=1
+module_platform_id="platform:el8"
 """.format(cachedir, runtime.working_dir)
 
     optional_fails = []
@@ -2041,16 +2047,15 @@ installonly_limit=3
     try:
         # If corrupted, reposync metadata can interfere with subsequent runs.
         # Ensure we have a clean space for each invocation.
-        metadata_dir = tempfile.mkdtemp(prefix='reposync-metadata.', dir=cachedir)
-        yc_file = tempfile.NamedTemporaryFile()
+        tempdir_path = tempfile.mkdtemp()
+        yc_file = tempfile.NamedTemporaryFile(dir=tempdir_path)
         yc_file.write(content)
 
         # must flush so it can be read
         yc_file.flush()
 
         exectools.cmd_assert('yum clean all')  # clean the cache first to avoid outdated repomd.xml files
-
-        cmd_base = 'reposync -c {} -p {} --delete --arch {} -n -r {} -e {}'
+        reposync_base = 'dnf -v reposync --download-metadata --setopt=module_platform_id="platform:el8" -c {config} -p {dest} --delete --arch noarch --arch {arch} --forcearch {arch} -n --repo {repo} --downloadcomps'
 
         for repo in repos.itervalues():
 
@@ -2059,7 +2064,18 @@ installonly_limit=3
                 continue
 
             color_print('Syncing repo {}'.format(repo.name), 'blue')
-            cmd = cmd_base.format(yc_file.name, output, arch, repo.name, metadata_dir)
+            reposync_cmd = reposync_base.format(config=yc_file.name, dest=output, arch=arch, repo=repo.name)
+
+            cmd = 'podman run --rm --user {uid}:{gid} -v {tmpdir}:{tmpdir}:Z -v {output}:{output}:Z -v {cachedir}:{cachedir}:Z {image} {reposync_cmd}'.format(uid=os.getuid(),
+                                                                                                                                                                      gid=os.getgid(),
+                                                                                                                                                                      output=output,
+                                                                                                                                                                      tmpdir=tempdir_path,
+                                                                                                                                                                      cachedir=cachedir,
+                                                                                                                                                                      image=runtime_image,
+                                                                                                                                                                      reposync_cmd=reposync_cmd)
+            if use_sudo:
+                cmd = 'sudo {}'.format(cmd)
+
             rc, out, err = exectools.cmd_gather(cmd, realtime=True)
             if rc != 0:
                 if not repo.cs_optional:
@@ -2067,17 +2083,9 @@ installonly_limit=3
                 else:
                     runtime.logger.warning('Failed to sync repo {} but marked as optional: {}'.format(repo.name, err))
                     optional_fails.append(repo.name)
-            else:
-                rc, out, err = exectools.cmd_gather('createrepo {}'.format(os.path.join(output, repo.name)))
-                if rc != 0:
-                    if not repo.cs_optional:
-                        raise DoozerFatalError(err)
-                    else:
-                        runtime.logger.warning('Failed to run createrepo on {} but marked as optional: {}'.format(repo.name, err))
-                        optional_fails.append(repo.name)
     finally:
         yc_file.close()
-        shutil.rmtree(metadata_dir, ignore_errors=True)
+        shutil.rmtree(tempdir_path, ignore_errors=True)
 
     if optional_fails:
         yellow_print('Completed with the following optional repos skipped or partial due to failure, see log.:\n{}'.format('\n'.join(optional_fails)))

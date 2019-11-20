@@ -136,6 +136,7 @@ class Repo(object):
                 line = line.format(k, v)
 
             result += line
+        result += 'module_hotfixes=1\n'
         result += '\n'
 
         return result
@@ -207,7 +208,7 @@ class Repos(object):
 
     def repo_file(self, repo_type, enabled_repos=[], empty_repos=[], arch=None):
         """
-        Returns a str defining a list of repo configuration secions for a yum configuration file.
+        Returns a str defining a list of repo configuration sections for a yum configuration file.
         :param repo_type: Whether to prefer signed or unsigned repos.
         :param enabled_repos: A list of group.yml repo names which should be enabled. If a repo is enabled==1
             in group.yml, that setting takes precedence over this list. If not enabled==1 in group.yml and not
