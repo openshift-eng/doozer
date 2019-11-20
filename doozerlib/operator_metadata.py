@@ -584,13 +584,12 @@ class OperatorMetadataLatestNvrReporter:
     def __init__(self, operator_nvr, stream, runtime):
         self.operator_nvr = operator_nvr
         self.stream = stream
-
-        self.operator_name, self.operator_version, self.operator_release = self.unpack_nvr(operator_nvr)
-
-        self.metadata_name = '{}-metadata'.format(self.operator_name)
-        self.metadata_version = '{}.{}.{}'.format(self.operator_version, self.operator_release, self.stream)
-
         self.runtime = runtime
+
+        self.operator_component, self.operator_version, self.operator_release = self.unpack_nvr(operator_nvr)
+
+        self.metadata_component = self.operator_component.replace('operator-container', 'operator-metadata-container')
+        self.metadata_version = '{}.{}.{}'.format(self.operator_version, self.operator_release, self.stream)
 
     @log
     def get_latest_build(self):
@@ -598,8 +597,8 @@ class OperatorMetadataLatestNvrReporter:
         candidate = None
 
         for brew_build in self.get_all_builds():
-            name, version, release = self.unpack_nvr(brew_build)
-            if name == self.metadata_name and version == self.metadata_version and release > candidate_release:
+            component, version, release = self.unpack_nvr(brew_build)
+            if component == self.metadata_component and version == self.metadata_version and release > candidate_release:
                 candidate_release = release
                 candidate = brew_build
 
@@ -609,7 +608,7 @@ class OperatorMetadataLatestNvrReporter:
     def get_all_builds(self):
         """Ask brew for all releases of a package"""
 
-        cmd = 'brew list-tagged --quiet {} {}'.format(self.brew_tag, self.metadata_name)
+        cmd = 'brew list-tagged --quiet {} {}'.format(self.brew_tag, self.metadata_component)
 
         _rc, stdout, _stderr = exectools.cmd_gather(cmd)
 
@@ -617,7 +616,7 @@ class OperatorMetadataLatestNvrReporter:
             yield line.split(' ')[0]
 
     def unpack_nvr(self, nvr):
-        return self.name(nvr), self.version(nvr), self.release(nvr)
+        return tuple(nvr.rsplit('-', 2))
 
     @property
     def brew_tag(self):
@@ -626,15 +625,6 @@ class OperatorMetadataLatestNvrReporter:
     @property
     def operator_branch(self):
         return self.runtime.group_config.branch
-
-    def name(self, nvr):
-        return '-'.join(nvr.split('-')[0:-3])
-
-    def version(self, nvr):
-        return nvr.split('-')[-2]
-
-    def release(self, nvr):
-        return nvr.split('-')[-1]
 
 
 class ChannelVersion:
