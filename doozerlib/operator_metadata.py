@@ -593,11 +593,12 @@ class OperatorMetadataLatestNvrReporter:
 
     @log
     def get_latest_build(self):
-        candidate_release = 0
+        candidate_release = -1
         candidate = None
 
         for brew_build in self.get_all_builds():
             component, version, release = self.unpack_nvr(brew_build)
+            release = int(re.search(r'\d+', release).group())
             if component == self.metadata_component and version == self.metadata_version and release > candidate_release:
                 candidate_release = release
                 candidate = brew_build

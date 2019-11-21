@@ -1190,6 +1190,19 @@ class TestOperatorMetadataLatestNvrReporter(unittest.TestCase):
 
         self.assertEqual(nvr_reporter.get_latest_build(), 'my-operator-metadata-container-v1.2.3.20191022.dev-2')
 
+        # test that releases are compared numerically
+        flexmock(nvr_reporter, get_all_builds=[
+            'my-operator-metadata-container-v1.2.3.20191022.dev-12',
+            'my-operator-metadata-container-v1.2.3.20191022.dev-2',
+        ])
+
+        self.assertEqual(nvr_reporter.get_latest_build(), 'my-operator-metadata-container-v1.2.3.20191022.dev-12')
+
+        # technically 0 is a valid release... but who would do that?
+        flexmock(nvr_reporter, get_all_builds=['my-operator-metadata-container-v1.2.3.20191022.dev-0'])
+
+        self.assertEqual(nvr_reporter.get_latest_build(), 'my-operator-metadata-container-v1.2.3.20191022.dev-0')
+
 
 class TestChannelVersion(unittest.TestCase):
 
