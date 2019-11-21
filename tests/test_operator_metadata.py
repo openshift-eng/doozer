@@ -587,6 +587,24 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         shutil.rmtree('/tmp/my-operator')
         shutil.rmtree('/tmp/my-dev-operator-metadata')
 
+    def test_create_container_yaml(self):
+        container_yaml_filename = '/my/working/dir/my-operator-metadata/container.yaml'
+        writer = flexmock(write=None)
+
+        mock = flexmock(get_builtin_module())
+        (mock.should_receive('open')
+            .with_args(container_yaml_filename)
+            .and_return(writer))
+        mock.should_call('open')
+
+        cached_attrs = {
+            'working_dir': '/my/working/dir',
+            'operator_name': 'my-operator',
+            'metadata_repo': 'my-operator-metadata',
+        }
+        (operator_metadata.OperatorMetadataBuilder(nvr="...", stream="...", runtime="...", **cached_attrs)
+            .create_container_yaml())
+
     def test_commit_and_push_metadata_repo(self):
         sample_dir_obj = operator_metadata.pushd.Dir('/tmp')
         (flexmock(operator_metadata.pushd)

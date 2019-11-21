@@ -89,6 +89,7 @@ class OperatorMetadataBuilder:
         self.update_current_csv_shasums()
         self.merge_streams_on_top_level_package_yaml()
         self.create_metadata_dockerfile()
+        self.create_container_yaml()
         return self.commit_and_push_metadata_repo()
 
     @log
@@ -266,6 +267,18 @@ class OperatorMetadataBuilder:
             operator_dockerfile.labels['release'],
             self.stream)
         del(metadata_dockerfile.labels['release'])
+
+    def create_container_yaml(self):
+        """Use container.yaml to disable unnecessary multiarch"""
+        filename = "{}/{}/container.yaml".format(self.working_dir, self.metadata_repo)
+        with open(filename, "w") as cyml:
+            cyml.write("""
+# metadata containers are not functional and do not need to be multiarch
+---
+platforms:
+  only:
+  - x86_64
+            """)
 
     @log
     def commit_and_push_metadata_repo(self):
