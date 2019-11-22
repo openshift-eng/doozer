@@ -1700,8 +1700,10 @@ that particular tag.
         mirror_filename = 'src_dest.{}'.format(arch)
         imagestream_filename = 'image_stream.{}'.format(arch)
         target_is_name = is_name
+        target_is_namespace = is_namespace
         if arch != 'x86_64':
             target_is_name = '{}-{}'.format(target_is_name, arch)
+            target_is_namespace = '{}-{}'.format(target_is_namespace, arch)
 
         def build_dest_name(tag_name):
             entry = mirroring[arch][tag_name]
@@ -1734,7 +1736,7 @@ that particular tag.
                 'apiVersion': 'image.openshift.io/v1',
                 'metadata': {
                     'name': target_is_name,
-                    'namespace': is_namespace,
+                    'namespace': target_is_namespace,
                 },
                 'spec': {
                     'tags': tag_list,
