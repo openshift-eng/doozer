@@ -2156,12 +2156,14 @@ def config_update_required(runtime, image_list):
 @click.argument("nvr_list", nargs=-1, required=True)
 @click.option("--stream", required=True, type=click.Choice(['dev', 'stage', 'prod']),
               help="Metadata repo to apply update. Possible values: dev, stage, prod.")
+@click.option("--image-ref-mode", required=False, type=click.Choice(['by-arch', 'manifest-list']),
+              help="Build mode for image references. Possible values: by-arch, manifest-list (default: group.yml operator_image_ref_mode)")
 @click.option("--merge-branch", required=False,
               help="Branch to be updated on the metadata repo (default: rhaos-4-rhel-7)")
 @click.option("-f", "--force", required=False, is_flag=True,
               help="Perform a build even if there is nothing new on the metadata repo")
 @pass_runtime
-def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=False):
+def update_operator_metadata(runtime, nvr_list, stream, image_ref_mode, merge_branch, force=False):
     """Update the corresponding metadata repositories of the given operators
     and build "metadata containers" with nothing but a collection of manifests on them.
 
@@ -2178,6 +2180,10 @@ def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=Fals
     """
     runtime.initialize(clone_distgits=False)
     runtime.assert_mutation_is_permitted()
+
+    if not image_ref_mode:
+        image_ref_mode = runtime.group_config.operator_image_ref_mode
+
     if not merge_branch:
         merge_branch = 'rhaos-4-rhel-7'
         # @TODO: populate merge_branch from runtime once the following MRs are merged:
@@ -2187,7 +2193,7 @@ def update_operator_metadata(runtime, nvr_list, stream, merge_branch, force=Fals
 
     try:
         ok = ThreadPool(cpu_count()).map(operator_metadata.update_and_build, [
-            (nvr, stream, runtime, merge_branch, force) for nvr in nvr_list
+            (nvr, stream, runtime, image_ref_mode, merge_branch, force) for nvr in nvr_list
         ])
         # @TODO: save state.yaml (check how to do that)
     except Exception as e:

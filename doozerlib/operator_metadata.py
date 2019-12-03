@@ -2,6 +2,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 import glob
 import json
+import os
 import re
 import shutil
 import threading
@@ -43,16 +44,17 @@ def unpack(func):
 
 
 @unpack
-def update_and_build(nvr, stream, runtime, merge_branch, force_build=False):
+def update_and_build(nvr, stream, runtime, image_ref_mode, merge_branch, force_build=False):
     """Module entrypoint, orchestrate update and build steps of metadata repos
 
     :param string nvr: Operator name-version-release
     :param string stream: Which metadata repo should be updated (dev, stage, prod)
     :param Runtime runtime: a runtime instance
+    :param string image_ref_mode: Build mode for image references (by-arch or manifest-list)
     :param string merge_branch: Which branch should be updated in the metadata repo
     :return bool True if operations succeeded, False if something went wrong
     """
-    op_md = OperatorMetadataBuilder(nvr, stream, runtime=runtime)
+    op_md = OperatorMetadataBuilder(nvr, stream, runtime=runtime, image_ref_mode=image_ref_mode)
 
     if not op_md.update_metadata_repo(merge_branch) and not force_build:
         logger.info('No changes in metadata repo, skipping build')
@@ -67,11 +69,12 @@ def update_and_build(nvr, stream, runtime, merge_branch, force_build=False):
     return True
 
 
-class OperatorMetadataBuilder:
-    def __init__(self, nvr, stream, runtime, **kwargs):
+class OperatorMetadataBuilder(object):
+    def __init__(self, nvr, stream, runtime, image_ref_mode='by-arch', **kwargs):
         self.nvr = nvr
         self.stream = stream
         self.runtime = runtime
+        self.image_ref_mode = image_ref_mode
         self._cached_attrs = kwargs
 
     @log
@@ -167,35 +170,126 @@ class OperatorMetadataBuilder:
         if not self.metadata_package_yaml_exists():
             self.copy_operator_package_yaml_to_metadata()
 
+        if self.image_ref_mode == "by-arch":
+            self.copy_manifests_for_additional_arches()
+
+    @log
+    def copy_manifests_for_additional_arches(self):
+        """Create aditional copies of current channel's manifests dir,
+        one extra copy per additional architecture.
+        """
+        for arch in self.additional_arches:
+            self.delete_metadata_arch_manifests_dir(arch)
+            self.create_manifests_copy_for_arch(arch)
+
+    @log
+    def delete_metadata_arch_manifests_dir(self, arch):
+        """Delete previous arch-specific manifests, should they exist.
+        """
+        exectools.cmd_assert('rm -rf {}/{}/{}/{}-{}'.format(
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir,
+            self.channel,
+            arch
+        ))
+
+    @log
+    def create_manifests_copy_for_arch(self, arch):
+        """Copy current channel manifests to <current channel>-<arch>
+        Example: cp /path/to/manifests/4.2 /path/to/manifests/4.2-s390x
+        """
+        exectools.cmd_assert('cp -r {}/{}/{}/{} {}/{}/{}/{}-{}'.format(
+            self.working_dir,
+            self.operator_name,
+            self.operator_manifests_dir,
+            self.channel,
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir,
+            self.channel,
+            arch
+        ))
+        self.rename_csv_yaml_filename_of_arch_copy(arch)
+
+    @log
+    def rename_csv_yaml_filename_of_arch_copy(self, arch):
+        """Rename the CSV inside an arch-specific copy of the manifests.
+        Example: /path/to/manifests/4.2-s390x/foo.v4.2.0.clusterserviceversion.yaml becomes
+                 /path/to/manifests/4.2-s390x/foo.v4.2.0-s390x.clusterserviceversion.yaml
+        """
+        original_filename = glob.glob('{}/{}/{}/{}-{}/*.clusterserviceversion.yaml'.format(
+            self.working_dir,
+            self.metadata_repo,
+            self.metadata_manifests_dir,
+            self.channel,
+            arch
+        ))[0]
+        new_filename = original_filename.replace(
+            '{}.0.'.format(self.channel),          # e.g. 4.2.0
+            '{}.0-{}.'.format(self.channel, arch)  # e.g. 4.2.0-s390x
+        )
+        exectools.cmd_assert('mv {} {}'.format(original_filename, new_filename))
+        self.change_arch_csv_metadata_name(new_filename, arch)
+
+    @log
+    def change_arch_csv_metadata_name(self, csv_filename, arch):
+        """Each CSV has a metadata > name property, that should be unique because
+        it is used to map to a channel in package.yaml; So the arch is appended
+        to the name.
+        Example: name: foo.4.2.0-12345 becomes foo.4.2.0-12345-s390x
+        """
+        with open(csv_filename, 'r') as reader:
+            contents = reader.read()
+
+        with open(csv_filename, 'w') as writer:
+            writer.write(
+                contents.replace(
+                    '  name: {}'.format(self.csv),
+                    '  name: {}-{}'.format(self.csv, arch)
+                )
+            )
+
     @log
     def update_current_csv_shasums(self):
         """Read all files listed in operator's art.yaml, search for image
         references and replace their version tags by a corresponding SHA.
         """
-        for file in self.get_file_list_from_operator_art_yaml():
-            with open(file, 'r') as reader:
-                contents = reader.read()
+        if self.image_ref_mode == "by-arch":
+            self.replace_version_by_sha_on_image_references('x86_64')
 
-            with open(file, 'w') as writer:
-                writer.write(self.replace_version_by_sha_on_image_references(contents))
+            for arch in self.additional_arches:
+                self.replace_version_by_sha_on_image_references(arch)
 
-    def replace_version_by_sha_on_image_references(self, contents):
+            return
+
+        self.replace_version_by_sha_on_image_references('manifest-list')
+
+    @log
+    def replace_version_by_sha_on_image_references(self, arch):
         """Search for image references with a version tag inside 'contents' and
         replace them by a corresponding SHA.
 
         :param string contents: File contents potentially containing image references
         :return string Same content back, with image references replaced (if any was found)
         """
-        return re.sub(
-            r'{}/([^:]+):([^\'"\s]+)'.format(self.operator_csv_registry),
-            lambda i: '{}/{}@{}'.format(
-                self.operator_csv_registry,
-                i.group(1),
-                self.fetch_image_sha('{}:{}'.format(i.group(1), i.group(2)))
-            ),
-            contents,
-            flags=re.MULTILINE
-        )
+        for file in self.get_file_list_from_operator_art_yaml(arch):
+            with open(file, 'r') as reader:
+                contents = reader.read()
+
+            new_contents = re.sub(
+                r'{}/([^:]+):([^\'"\s]+)'.format(self.operator_csv_registry),
+                lambda i: '{}/{}@{}'.format(
+                    self.operator_csv_registry,
+                    i.group(1),
+                    self.fetch_image_sha('{}:{}'.format(i.group(1), i.group(2)), arch)
+                ),
+                contents,
+                flags=re.MULTILINE
+            )
+
+            with open(file, 'w') as writer:
+                writer.write(new_contents)
 
     @log
     def merge_streams_on_top_level_package_yaml(self):
@@ -204,26 +298,40 @@ class OperatorMetadataBuilder:
         """
         package_yaml = yaml.safe_load(open(self.metadata_package_yaml_filename))
 
-        def find_channel_index(package_yaml):
-            for index, channel in enumerate(package_yaml['channels']):
-                if str(channel['name']) == str(self.channel_name):
-                    return index
-            return None
+        channel_name = self.channel_name
+        channel_csv = self.csv
+        package_yaml = self.add_channel_entry(package_yaml, channel_name, channel_csv)
 
-        index = find_channel_index(package_yaml)
-
-        if index is not None:
-            package_yaml['channels'][index]['currentCSV'] = str(self.csv)
-        else:
-            package_yaml['channels'].append({
-                'name': str(self.channel_name),
-                'currentCSV': str(self.csv)
-            })
+        if self.image_ref_mode == "by-arch":
+            for arch in self.additional_arches:
+                channel_name = '{}-{}'.format(self.channel_name, arch)
+                channel_csv = '{}-{}'.format(self.csv, arch)
+                package_yaml = self.add_channel_entry(package_yaml, channel_name, channel_csv)
 
         package_yaml['defaultChannel'] = str(self.get_default_channel(package_yaml))
 
         with open(self.metadata_package_yaml_filename, 'w') as file:
             file.write(yaml.safe_dump(package_yaml))
+
+    def add_channel_entry(self, package_yaml, channel_name, channel_csv):
+        index = self.find_channel_index(package_yaml, channel_name)
+
+        if index is not None:
+            package_yaml['channels'][index]['currentCSV'] = str(channel_csv)
+        else:
+            package_yaml['channels'].append({
+                'name': str(channel_name),
+                'currentCSV': str(channel_csv)
+            })
+
+        return package_yaml
+
+    def find_channel_index(self, package_yaml, channel_name=''):
+        channel_name = channel_name if channel_name else self.channel_name
+        for index, channel in enumerate(package_yaml['channels']):
+            if str(channel['name']) == str(channel_name):
+                return index
+        return None
 
     def get_default_channel(self, package_yaml):
         """A package YAML with multiple channels must declare a defaultChannel
@@ -331,7 +439,7 @@ class OperatorMetadataBuilder:
         ))) > 0
 
     @log
-    def get_file_list_from_operator_art_yaml(self):
+    def get_file_list_from_operator_art_yaml(self, arch):
         file_list = [
             '{}/{}/{}/{}'.format(
                 self.working_dir,
@@ -341,13 +449,26 @@ class OperatorMetadataBuilder:
             )
             for entry in self.operator_art_yaml.get('updates', [])
         ]
-        csv_file = self.metadata_csv_yaml_filename
+
+        if arch not in ['manifest-list', 'x86_64']:
+            file_list = self.change_dir_names_to_arch_specific(file_list, arch)
+
+        csv_file = self.metadata_csv_yaml_filename(arch)
         if csv_file not in file_list:
             file_list.append(csv_file)
         return file_list
 
     @log
-    def fetch_image_sha(self, image, arch='amd64'):
+    def change_dir_names_to_arch_specific(self, file_list, arch):
+        """@TODO: document
+        """
+        return filter(os.path.isfile, [
+            file.replace('{}/'.format(self.channel), '{}-{}/'.format(self.channel, arch))
+            for file in file_list
+        ])
+
+    @log
+    def fetch_image_sha(self, image, arch):
         """Use skopeo to obtain the SHA of a given image
 
         We want the image manifest shasum because internal registry/cri-o can't handle manifest lists yet.
@@ -361,8 +482,16 @@ class OperatorMetadataBuilder:
         ns = self.runtime.group_config.urls.brew_image_namespace
         if ns:
             image = "{}/{}".format(ns, image.replace('/', '-'))
+
+        if arch == 'manifest-list':
+            cmd = 'skopeo inspect docker://{}/{}'.format(registry, image)
+            rc, out, err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+            return json.loads(out)['Digest']
+
         cmd = 'skopeo inspect --raw docker://{}/{}'.format(registry, image)
         rc, out, err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+
+        arch = 'amd64' if arch == 'x86_64' else arch  # x86_64 is called amd64 in skopeo
 
         def select_arch(manifests):
             return manifests['platform']['architecture'] == arch
@@ -460,13 +589,14 @@ class OperatorMetadataBuilder:
             self.metadata_manifests_dir
         ))[0]
 
-    @property
-    def metadata_csv_yaml_filename(self):
+    @log
+    def metadata_csv_yaml_filename(self, arch='x86_64'):
+        arch_dir = self.channel if arch in ['manifest-list', 'x86_64'] else '{}-{}'.format(self.channel, arch)
         return glob.glob('{}/{}/{}/{}/*.clusterserviceversion.yaml'.format(
             self.working_dir,
             self.metadata_repo,
             self.metadata_manifests_dir,
-            self.channel
+            arch_dir
         ))[0]
 
     @property
@@ -499,6 +629,10 @@ class OperatorMetadataBuilder:
             return self.operator.config['update-csv']['channel']
         return self.channel
 
+    @property
+    def additional_arches(self):
+        return ["s390x"]
+
     def get_working_dir(self):
         return '{}/{}/{}'.format(self.runtime.working_dir, 'distgits', 'containers')
 
@@ -527,7 +661,7 @@ class OperatorMetadataBuilder:
         return exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
 
     def get_csv(self):
-        return yaml.safe_load(open(self.metadata_csv_yaml_filename))['metadata']['name']
+        return yaml.safe_load(open(self.metadata_csv_yaml_filename()))['metadata']['name']
 
     def _cache_attr(self, attr):
         """Some attribute values are time-consuming to retrieve, as they might

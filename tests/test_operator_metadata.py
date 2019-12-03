@@ -308,7 +308,9 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
     def test_get_file_list_from_no_art_yaml(self):
         nvr = '...irrelevant...'
         stream = 'dev'
-        runtime = '...irrelevant...'
+        runtime = type('TestRuntime', (object,), {
+            'group_config': type('', (object,), {'vars': {}}),
+        })
         op_md = flexmock(
             operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime),
             operator_art_yaml={},
