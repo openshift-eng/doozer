@@ -119,6 +119,12 @@ mapping:
               "=":
                 type: str
 
+          "reposync":
+            type: map
+            mapping:
+              "enabled":
+                type: bool
+
   "image_build_log_scanner":
     type: map
     mapping:

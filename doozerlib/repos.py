@@ -36,6 +36,7 @@ class Repo(object):
 
         self.repotypes = DEFAULT_REPOTYPES
         self.baseurl(DEFAULT_REPOTYPES[0], self._valid_arches[0])  # run once just to populate self.repotypes
+        self.reposync_enabled = True if self._data.reposync.enabled is Missing else self._data.reposync.enabled
 
     @property
     def enabled(self):
@@ -53,6 +54,9 @@ class Repo(object):
 
     def set_invalid_cs_arch(self, arch):
         self._invalid_cs_arches.add(arch)
+
+    def is_reposync_enabled(self):
+        return self.reposync_enabled
 
     def __repr__(self):
         """For debugging mainly, to display contents as a dict"""

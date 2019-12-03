@@ -2065,6 +2065,10 @@ installonly_limit=3
             if names and repo.name not in names:
                 continue
 
+            if not repo.is_reposync_enabled():
+                runtime.logger.info('Skipping repo {} because reposync is disabled in group.yml'.format(repo.name))
+                continue
+
             color_print('Syncing repo {}'.format(repo.name), 'blue')
             cmd = cmd_base.format(yc_file.name, output, arch, repo.name, metadata_dir)
             rc, out, err = exectools.cmd_gather(cmd, realtime=True)
