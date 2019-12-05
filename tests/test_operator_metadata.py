@@ -489,7 +489,8 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             'operator_name': 'my-operator',
             'csv': 'updated-value',
             'operator': type('', (object,), {
-                'config': {'update-csv': {}}
+                'config': {'update-csv': {}},
+                'data_obj': type('', (object,), {'data': {'arches': ['s390x']}})
             })
         }
         (operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs)
@@ -555,7 +556,8 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             'operator_name': 'my-operator',
             'csv': 'updated-value',
             'operator': type('', (object,), {
-                'config': {'update-csv': {}}
+                'config': {'update-csv': {}},
+                'data_obj': type('', (object,), {'data': {'arches': ['s390x']}})
             })
         }
         (operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs)
