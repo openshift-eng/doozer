@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
-from __future__ import unicode_literals
 from doozerlib import version
 from doozerlib import Runtime, Dir
 from doozerlib import state

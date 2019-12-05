@@ -1,5 +1,4 @@
 from __future__ import absolute_import
-from __future__ import unicode_literals
 from multiprocessing import Lock
 from multiprocessing.dummy import Pool as ThreadPool
 from pykwalify.core import Core

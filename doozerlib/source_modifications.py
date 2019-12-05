@@ -1,4 +1,4 @@
-from __future__ import unicode_literals, print_function
+from __future__ import print_function
 import os
 import io
 from future.standard_library import install_aliases

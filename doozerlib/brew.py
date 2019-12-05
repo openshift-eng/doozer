@@ -2,7 +2,6 @@
 Utility functions for general interactions with Brew and Builds
 """
 from __future__ import absolute_import
-from __future__ import unicode_literals
 
 # stdlib
 import ast

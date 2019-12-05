@@ -1,6 +1,3 @@
-from __future__ import unicode_literals
-
-
 class ModelException(Exception):
 
     def __init__(self, msg, result=None, **kwargs):
