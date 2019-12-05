@@ -631,9 +631,14 @@ class OperatorMetadataBuilder(object):
 
     @property
     def additional_arches(self):
-        arches = self.operator.data_obj.data['arches']
+        if 'arches' in self.operator.data_obj.data:
+            arches = self.operator.data_obj.data['arches']
+        else:
+            arches = self.runtime.group_config.arches
+
         if 'x86_64' in arches:
             arches.remove('x86_64')
+
         return arches
 
     def get_working_dir(self):
