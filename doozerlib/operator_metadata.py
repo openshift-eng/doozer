@@ -631,7 +631,10 @@ class OperatorMetadataBuilder(object):
 
     @property
     def additional_arches(self):
-        return ["s390x"]
+        arches = self.operator.data_obj.data['arches']
+        if 'x86_64' in arches:
+            arches.remove('x86_64')
+        return arches
 
     def get_working_dir(self):
         return '{}/{}/{}'.format(self.runtime.working_dir, 'distgits', 'containers')
