@@ -115,6 +115,10 @@ def cmd_gather(cmd, set_env=None, realtime=False):
     if set_env:
         cmd_info = '[env={}] {}'.format(set_env, cmd_info)
         env.update(set_env)
+
+    # Make sure output of launched commands is utf-8
+    env['LC_ALL'] = 'en_US.UTF-8'
+
     logger.debug("Executing:cmd_gather {}".format(cmd_info))
     try:
         proc = subprocess.Popen(
@@ -163,6 +167,9 @@ def cmd_gather(cmd, set_env=None, realtime=False):
             rc = proc.poll()
             time.sleep(0.0001)  # reduce busy-wait
 
+    # We read in bytes representing utf-8 output; decode so that python recognizes them as unicode strings
+    out = out.decode('utf-8')
+    err = err.decode('utf-8')
     logger.debug(
         "Process {}: exited with: {}\nstdout>>{}<<\nstderr>>{}<<\n".
         format(cmd_info, rc, out, err))

@@ -2192,7 +2192,17 @@ def update_operator_metadata(runtime, nvr_list, stream, image_ref_mode, merge_br
         # merge_branch = runtime.group_config.operator_metadata_branch
 
     try:
-        ok = ThreadPool(cpu_count()).map(operator_metadata.update_and_build, [
+
+        def gotta_catchem_all(*args, **kwargs):
+            # Threadpool swallow stack traces from workers; make sure to print out details if they occur
+            try:
+                operator_metadata.update_and_build(*args, **kwargs)
+            except:
+                runtime.logger.error('Error building operator metadata for: {}'.format(args))
+                traceback.print_exc()
+                raise
+
+        ok = ThreadPool(cpu_count()).map(gotta_catchem_all, [
             (nvr, stream, runtime, image_ref_mode, merge_branch, force) for nvr in nvr_list
         ])
         # @TODO: save state.yaml (check how to do that)
