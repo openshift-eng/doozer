@@ -210,27 +210,14 @@ class OperatorMetadataBuilder(object):
             self.channel,
             arch
         ))
-        self.rename_csv_yaml_filename_of_arch_copy(arch)
-
-    @log
-    def rename_csv_yaml_filename_of_arch_copy(self, arch):
-        """Rename the CSV inside an arch-specific copy of the manifests.
-        Example: /path/to/manifests/4.2-s390x/foo.v4.2.0.clusterserviceversion.yaml becomes
-                 /path/to/manifests/4.2-s390x/foo.v4.2.0-s390x.clusterserviceversion.yaml
-        """
-        original_filename = glob.glob('{}/{}/{}/{}-{}/*.clusterserviceversion.yaml'.format(
+        filename = glob.glob('{}/{}/{}/{}-{}/*.clusterserviceversion.yaml'.format(
             self.working_dir,
             self.metadata_repo,
             self.metadata_manifests_dir,
             self.channel,
             arch
         ))[0]
-        new_filename = original_filename.replace(
-            '{}.0.'.format(self.channel),          # e.g. 4.2.0
-            '{}.0-{}.'.format(self.channel, arch)  # e.g. 4.2.0-s390x
-        )
-        exectools.cmd_assert('mv {} {}'.format(original_filename, new_filename))
-        self.change_arch_csv_metadata_name(new_filename, arch)
+        self.change_arch_csv_metadata_name(filename, arch)
 
     @log
     def change_arch_csv_metadata_name(self, csv_filename, arch):
