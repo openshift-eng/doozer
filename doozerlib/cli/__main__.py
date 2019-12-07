@@ -2196,7 +2196,7 @@ def update_operator_metadata(runtime, nvr_list, stream, image_ref_mode, merge_br
         def gotta_catchem_all(*args, **kwargs):
             # Threadpool swallow stack traces from workers; make sure to print out details if they occur
             try:
-                operator_metadata.update_and_build(*args, **kwargs)
+                return operator_metadata.update_and_build(*args, **kwargs)
             except:
                 runtime.logger.error('Error building operator metadata for: {}'.format(args))
                 traceback.print_exc()
