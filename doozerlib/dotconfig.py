@@ -71,7 +71,7 @@ class Config(object):
                 else:
                     with open(self.full_path, 'w') as f:
                         if template:
-                            if isinstance(template, str):
+                            if isinstance(template, (str, unicode)):
                                 f.write(template)
                             elif isinstance(template, dict):
                                 yaml.dump(template, f, default_flow_style=False)
