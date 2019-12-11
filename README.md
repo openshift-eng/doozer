@@ -28,6 +28,19 @@ If you just want to use `doozer` checkout the [container usage doc](Container.md
 
 If you need to develop for doozer checkout the full [installation doc](Installation.md).
 
+## License
+
+Most of doozer is released under [Apache License 2.0][], except [doozerlib/dotconfig.py][] and
+[doozerlib/gitdata.py][], which are embedded copies of [dotconfig][] and [gitdata][] projects
+respectively, therefore those two files are released under [LGPL v3][].
+
 ## Usage
 
 Checkout the [Usage doc](Usage.md)
+
+[Apache License 2.0]: https://github.com/openshift/doozer/blob/master/LICENSE
+[doozerlib/dotconfig.py]: https://github.com/openshift/doozer/blob/master/doozerlib/dotconfig.py
+[doozerlib/gitdata.py]: https://github.com/openshift/doozer/blob/master/doozerlib/gitdata.py
+[dotconfig]: https://github.com/adammhaile/dotconfig
+[gitdata]: https://github.com/adammhaile/gitdata
+[LGPL v3]: https://www.gnu.org/licenses/lgpl-3.0.en.html
