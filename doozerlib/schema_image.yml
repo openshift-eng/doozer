@@ -7,6 +7,9 @@ mapping:
   "mode":
     type: str
 
+  "use_source_version":
+    type: bool
+
   "required":
     type: bool
 
