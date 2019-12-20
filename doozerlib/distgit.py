@@ -1794,6 +1794,12 @@ class ImageDistGitRepo(DistGitRepo):
             if self.has_source():
                 self._merge_source()
 
+                # before mods, check if upstream source version should be used
+                # this will override the version fetch above
+                if self.metadata.config.get('use_source_version', False):
+                    dfp = DockerfileParser("Dockerfile")
+                    version = dfp.labels["version"]
+
             # Source or not, we should find a Dockerfile in the root at this point or something is wrong
             assertion.isfile("Dockerfile", "Unable to find Dockerfile in distgit root")
 
