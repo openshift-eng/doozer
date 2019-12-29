@@ -20,7 +20,7 @@ def stub_runtime():
 class RuntimeTestCase(unittest.TestCase):
     def test_parallel_exec(self):
         ret = runtime.Runtime._parallel_exec(lambda x: x * 2, range(5), n_threads=20)
-        self.assertEqual(ret.get(), [0, 2, 4, 6, 8])
+        self.assertEqual(ret, [0, 2, 4, 6, 8])
 
     def test_parallel_exec2(self):
         items = [1, 2, 3]

@@ -35,7 +35,7 @@ from multiprocessing import Lock
 from .repos import Repos
 from . import brew
 from doozerlib.exceptions import DoozerFatalError
-
+from doozerlib import constants
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -793,11 +793,16 @@ class Runtime(object):
         clone_branch, _ = self.detect_remote_source_branch(source_details)
 
         url = source_details["url"]
+
+        self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
+        set_env = os.environ.copy()
+        set_env.update(constants.GIT_NO_PROMPTS)
         try:
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             exectools.cmd_assert(
                 # get a little history to enable finding a recent Dockerfile change, but not too much.
                 "git clone -b {} --single-branch {} --depth 50 {}".format(clone_branch, url, source_dir),
+                set_env=set_env,
                 retries=3,
                 on_retry=["rm", "-rf", source_dir],
             )
@@ -931,12 +936,16 @@ class Runtime(object):
         return re.match(r"^v\d+((\.\d+)+)?$", version) is not None
 
     @classmethod
-    def _parallel_exec(self, f, args, n_threads):
+    def _parallel_exec(cls, f, args, n_threads, timeout=None):
         pool = ThreadPool(n_threads)
         ret = pool.map_async(wrap_exception(f), args)
         pool.close()
-        pool.join()
-        return ret
+        if timeout is None:
+            # If a timeout is not specified, the KeyboardInterrupt exception won't be delivered.
+            # Use polling as a workaround. See https://stackoverflow.com/questions/1408356/keyboard-interrupts-with-pythons-multiprocessing-pool.
+            while not ret.ready():
+                ret.wait(60)
+        return ret.get(timeout)
 
     def clone_distgits(self, n_threads=None):
         if n_threads is None:
@@ -944,7 +953,7 @@ class Runtime(object):
         return self._parallel_exec(
             lambda m: m.distgit_repo(),
             self.all_metas(),
-            n_threads=n_threads).get()
+            n_threads=n_threads)
 
     def push_distgits(self, n_threads=None):
         self.assert_mutation_is_permitted()
@@ -954,7 +963,7 @@ class Runtime(object):
         return self._parallel_exec(
             lambda m: m.distgit_repo().push(),
             self.all_metas(),
-            n_threads=n_threads).get()
+            n_threads=n_threads)
 
     def parallel_exec(self, f, args, n_threads=None):
         n_threads = n_threads if n_threads is not None else len(args)

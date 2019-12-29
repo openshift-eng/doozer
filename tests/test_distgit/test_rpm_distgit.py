@@ -42,7 +42,7 @@ class TestRPMDistGit(TestDistgit):
         flexmock(self.md).should_receive("fetch_cgit_file").once().and_raise(Exception(""))
         self.assertFalse(self.rpm_dg._matches_commit("anything", {}))
 
-        test_file = u"""
+        test_file = b"""
             Version: 42
             Release: 201901020304.git.1.12spam7%{?dist}
             %global commit 5p4mm17y5p4m
@@ -54,7 +54,7 @@ class TestRPMDistGit(TestDistgit):
         self.assertFalse(self.rpm_dg._matches_commit("11eggs11", {}))  # doesn't match, returns
 
         self.assertNotIn("No Release: field found", self.stream.getvalue())
-        flexmock(self.md).should_receive("fetch_cgit_file").once().and_return("nothing")
+        flexmock(self.md).should_receive("fetch_cgit_file").once().and_return(b"nothing")
         self.assertFalse(self.rpm_dg._matches_commit("nothing", {}))
         self.assertIn("No Release: field found", self.stream.getvalue())
 

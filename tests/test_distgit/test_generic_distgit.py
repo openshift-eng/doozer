@@ -149,7 +149,7 @@ class TestGenericDistGit(TestDistgit):
 
         (flexmock(distgit.exectools)
             .should_receive("cmd_assert")
-            .with_args(expected_cmd, retries=3)
+            .with_args(expected_cmd, retries=3, set_env=object)
             .once()
             .and_return(None))
 
@@ -195,7 +195,7 @@ class TestGenericDistGit(TestDistgit):
 
         (flexmock(distgit.exectools)
             .should_receive("cmd_assert")
-            .with_args(expected_cmd, retries=3)
+            .with_args(expected_cmd, retries=3, set_env=object)
             .once()
             .and_return(None))
 
