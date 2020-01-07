@@ -731,7 +731,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     def build_container(
             self, odcs, repo_type, repo, push_to_defaults, additional_registries, terminate_event,
-            scratch=False, retries=3, realtime=False):
+            scratch=False, retries=3, realtime=False, dry_run=False):
         """
         This method is designed to be thread-safe. Multiple builds should take place in brew
         at the same time. After a build, images are pushed serially to all mirrors.
@@ -826,7 +826,7 @@ class ImageDistGitRepo(DistGitRepo):
                         retries=(1 if self.runtime.local else retries), wait_f=wait,
                         task_f=lambda: self._build_container(
                             target_image, odcs, repo_type, repo, terminate_event,
-                            scratch, record))
+                            scratch, record, dry_run=dry_run))
 
             # Just in case someone else is building an image, go ahead and find what was just
             # built so that push_image will have a fixed point of reference and not detect any
@@ -920,7 +920,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     def _build_container(
             self, target_image, odcs, repo_type, repo_list, terminate_event,
-            scratch, record):
+            scratch, record, dry_run=False):
         """
         The part of `build_container` which actually starts the build,
         separated for clarity. Brew build version.
@@ -958,6 +958,12 @@ class ImageDistGitRepo(DistGitRepo):
 
         if scratch:
             cmd_list.append("--scratch")
+
+        if dry_run:
+            # `rhpkg --dry-run container-build` doesn't really work. Print the command instread.
+            self.logger.warning("[Dry Run] Would have run command " + " ".join(cmd_list))
+            self.logger.info("[Dry Run] Successfully built image: {}".format(target_image))
+            return True
 
         # Run the build with --nowait so that we can immediately get information about the brew task
         rc, out, err = exectools.cmd_gather(cmd_list)
