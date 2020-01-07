@@ -226,8 +226,9 @@ def rpms_clone_sources(runtime, output_yml):
 @click.option("--release", metavar='RELEASE', default=None,
               help="Release label to populate in specfile.", required=True)
 @click.option('--scratch', default=False, is_flag=True, help='Perform a scratch build.')
+@click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
-def rpms_build(runtime, version, release, scratch):
+def rpms_build(runtime, version, release, scratch, dry_run):
     """
     Attempts to build rpms for all of the defined rpms
     in a group. If an rpm has already been built, it will be treated as
@@ -247,7 +248,7 @@ def rpms_build(runtime, version, release, scratch):
 
     results = runtime.parallel_exec(
         lambda rpm, terminate_event: rpm.build_rpm(
-            version, release, terminate_event, scratch),
+            version, release, terminate_event, scratch, local=runtime.local, dry_run=dry_run),
         items)
     results = results.get()
     failed = [name for name, r in results if not r]
@@ -806,8 +807,9 @@ def print_build_metrics(runtime):
 @click.option('--scratch', default=False, is_flag=True, help='Perform a scratch build.')
 @click.option("--threads", default=1, metavar="NUM_THREADS",
               help="Number of concurrent builds to execute. Only valid for --local builds.")
+@click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
-def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to, scratch, threads):
+def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to, scratch, threads, dry_run):
     """
     Attempts to build container images for all of the distgit repositories
     in a group. If an image has already been built, it will be treated as
@@ -888,7 +890,7 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
     results = runtime.parallel_exec(
         lambda dgr, terminate_event: dgr.build_container(
             odcs, repo_type, repo, push_to_defaults, additional_registries=push_to,
-            terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1)),
+            terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1), dry_run=dry_run),
         items, n_threads=threads)
     results = results.get()
 

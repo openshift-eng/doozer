@@ -264,7 +264,7 @@ class RPMMetadata(Metadata):
                 # write back new lines
                 sf.writelines(lines)
 
-    def _build_rpm(self, scratch, record, terminate_event):
+    def _build_rpm(self, scratch, record, terminate_event, dry_run=False):
         """
         The part of `build_container` which actually starts the build,
         separated for clarity.
@@ -275,6 +275,8 @@ class RPMMetadata(Metadata):
             cmd_list = ['tito', 'release', '--debug', '--yes', '--test']
             if scratch:
                 cmd_list.append('--scratch')
+            if dry_run:
+                cmd_list.append('--dry-run')
             tito_target = self.config.content.build.tito_target
             cmd_list.append(tito_target if tito_target else 'aos')
 
@@ -286,6 +288,10 @@ class RPMMetadata(Metadata):
                 self.logger.info("Unable to create brew task: out={}  ; err={}".format(out, err))
                 return False
 
+            if dry_run:
+                self.logger.info("[Dry Run] Successfully built rpm: {}".format(self.rpm_name))
+                self.logger.warning("Checking build output and downloading logs are skipped due to --dry-run.")
+                return True
             # Otherwise, we should have a brew task we can monitor listed in the stdout.
             out_lines = out.splitlines()
 
@@ -322,7 +328,7 @@ class RPMMetadata(Metadata):
             self.logger.info("Successfully built rpm: {} ; {}".format(self.rpm_name, task_url))
         return True
 
-    def build_rpm(self, version, release, terminate_event, scratch=False, retries=3):
+    def build_rpm(self, version, release, terminate_event, scratch=False, retries=3, local=False, dry_run=False):
         """
         Builds a package using tito release.
 
@@ -339,6 +345,8 @@ class RPMMetadata(Metadata):
         By default, the tag is pushed, then it and the commit are removed locally after the build.
         But optionally the commit can be pushed before the build, so that the actual commit released is in the source.
         """
+        if local:
+            raise DoozerFatalError("Local RPM build is not currently supported.")
         self.set_nvr(version, release)
         self.tito_setup()
         self.update_spec()
@@ -367,7 +375,7 @@ class RPMMetadata(Metadata):
                 exectools.retry(
                     retries=3, wait_f=wait,
                     task_f=lambda: self._build_rpm(
-                        scratch, record, terminate_event))
+                        scratch, record, terminate_event, dry_run))
             except exectools.RetryException as err:
                 self.logger.error(str(err))
                 return (self.distgit_key, False)
