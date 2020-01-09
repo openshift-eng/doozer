@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from __future__ import unicode_literals
 import glob
+import io
 import os
 import traceback
 import re
@@ -237,7 +238,7 @@ class RPMMetadata(Metadata):
                 self._run_modifications()
 
             # second, update with NVR
-            with open(self.specfile, 'r+') as sf:
+            with io.open(self.specfile, 'r+', encoding='utf-8') as sf:
                 lines = sf.readlines()
                 for i in range(len(lines)):
 
