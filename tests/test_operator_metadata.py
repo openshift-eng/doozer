@@ -202,7 +202,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         }
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, image_ref_mode, **cached_attrs).update_metadata_manifests_dir()
 
-    def skip_test_replace_version_by_sha_on_image_references(self):  # broken for now, i changed the method's API
+    def test_find_and_replace_image_versions_by_sha(self):
         initial = """
         apiVersion: operators.coreos.com/v1alpha1
         kind: ClusterServiceVersion
@@ -221,9 +221,6 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         other:
         - reference: image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111
         """
-        mock = flexmock(get_builtin_module())
-        mock.should_call('open')
-        mock.should_receive('open').and_return(initial)
 
         expected = """
         apiVersion: operators.coreos.com/v1alpha1
@@ -266,7 +263,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             })
         }
         op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, image_ref_mode, **cached_attrs)
-        actual = op_md.replace_version_by_sha_on_image_references('manifest-list')
+        actual = op_md.find_and_replace_image_versions_by_sha(initial, 'manifest-list')
         self.assertMultiLineEqual(actual, expected)
 
     def test_get_file_list_from_operator_art_yaml(self):
