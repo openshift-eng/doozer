@@ -264,19 +264,23 @@ class OperatorMetadataBuilder(object):
             with open(file, 'r') as reader:
                 contents = reader.read().decode('utf-8')
 
-            new_contents = re.sub(
-                r'{}/([^:]+):([^\'"\s]+)'.format(self.operator_csv_registry),
-                lambda i: '{}/{}@{}'.format(
-                    self.operator_csv_registry,
-                    i.group(1),
-                    self.fetch_image_sha('{}:{}'.format(i.group(1), i.group(2)), arch)
-                ),
-                contents,
-                flags=re.MULTILINE
-            )
+            new_contents = self.find_and_replace_image_versions_by_sha(contents, arch)
 
             with open(file, 'w') as writer:
                 writer.write(new_contents.encode('utf-8'))
+
+    @log
+    def find_and_replace_image_versions_by_sha(self, contents, arch):
+        return re.sub(
+            r'{}/([^:]+):([^\'"\s]+)'.format(self.operator_csv_registry),
+            lambda i: '{}/{}@{}'.format(
+                self.operator_csv_registry,
+                i.group(1),
+                self.fetch_image_sha('{}:{}'.format(i.group(1), i.group(2)), arch)
+            ),
+            contents,
+            flags=re.MULTILINE
+        )
 
     @log
     def merge_streams_on_top_level_package_yaml(self):
