@@ -1574,7 +1574,7 @@ def config_gencsv(runtime, keys, as_type, output):
     config.config_gen_csv(keys, as_type, output)
 
 
-@cli.command("release:gen-multiarch-payload", short_help="Generate input files for release mirroring")
+@cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
 @click.option("--is-name", metavar='NAME', required=True,
               help="ImageStream .metadata.name value. Something like '4.2-art-latest'")
 @click.option("--is-namespace", metavar='NAMESPACE', required=False, default='ocp',
@@ -1584,10 +1584,9 @@ def config_gencsv(runtime, keys, as_type, output):
 @click.option("--repository", metavar='REPO', required=False, default='ocp-v4.0-art-dev',
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
 @pass_runtime
-def release_gen_multiarch_payload(runtime, is_name, is_namespace, organization, repository):
+def release_gen_payload(runtime, is_name, is_namespace, organization, repository):
     """Generates two sets of input files for `oc` commands to mirror
-content and update image streams. This command is only for versions
-that support multiple architectures. Files are generated for each arch
+content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
 manifest-lists.
 
@@ -1615,7 +1614,7 @@ Generate files for mirroring from registry-proxy (OSBS storage) to our
 quay registry:
 
 \b
-    $ doozer --group=openshift-4.3 release:gen-multiarch-payload \\
+    $ doozer --group=openshift-4.2 release:gen-payload \\
         --is-name=4.2-art-latest
 
 Note that if you use -i to include specific images, you should also include
@@ -1628,10 +1627,6 @@ that particular tag.
     cmd = runtime.command
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
     lstate = runtime.state[cmd]  # get local convenience copy
-    arches = runtime.group_config.get('arches', ['x86_64'])
-
-    if len(arches) == 1:
-        raise click.BadParameter("Unsupported group specified: '{}'. Only one architecture defined in group.yml".format(runtime.group))
 
     images = [i for i in runtime.image_metas()]
     lstate['total'] = len(images)
@@ -1788,204 +1783,6 @@ that particular tag.
         yellow_print("Images skipped due to invalid naming:")
         for img in sorted(invalid_name_items):
             click.echo("   {}".format(img))
-
-
-@cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
-@click.option("--src-dest", "--sd", default="img-mirror.txt", required=True,
-              help="The SRC=DEST file to write to\ndefault=img-mirror.txt")
-@click.option("--image-stream", "--is", default="release-is.yaml", required=True,
-              help="The ImageStream object YAML file to write to\ndefault=release-is.yaml")
-@click.option("--is-base", "--isb", default=None, required=True,
-              help="The base ImageStream YAML file up to an empty '.spec.tags' array\n(see --help for an example)")
-@click.argument("pattern")
-@pass_runtime
-def release_gen_payload(runtime, src_dest, image_stream, is_base, pattern):
-    """Generates input for `oc` commands to mirror content and publish
-    image streams. One output is a SRC=DEST input for `oc image
-    mirror`, the other is an ImageStream YAML file used by `oc apply`.
-
-    Prints to STDOUT everything that is written to the output
-    files. This functions similar to how the `images:print` command
-    works. You MUST provide a format string for the SRC=DEST image
-    mirror PATTERN parameter. Multiple '=' characters are not allowed.
-
-    Allowed formatting keywords for PATTERN:
-
-    \b
-    {build} - Shorthand for {component}-{version}-{release} (e.g. container-engine-v3.6.173.0.25-1)
-    {component} - The component identified in the Dockerfile
-    {image_name_short} - The container image name without the registry (e.g. ose-ansible)
-    {image_name} - The container registry image name (e.g. openshift3/ose-ansible)
-    {image} - The image name in the Dockerfile
-    {name} - The name of the distgit repository (e.g. openshift-enterprise)
-    {namespace} - The image namespace ('containers' or 'rpms')
-    {release} - The release field in the Dockerfile
-    {repository} - Shorthand for {image}:{version}-{release}
-    {type} - The type of the distgit (e.g. rpms)
-    {version} - The version field in the Dockerfile
-
-    The output SRC=DEST file is simply a new line separated file where
-    the LHS is a source image and the RHS is the destination to mirror
-    the image to. For example:
-
-    \b
-        registry.reg-aws.openshift.com:443/{repository}=quay.io/openshift-release-dev/ocp-v4.0-art-dev:{version}-{release}-{image_name_short}
-
-    Example base ImageStream YAML:
-
-    \b
-        kind: ImageStream
-        apiVersion: image.openshift.io/v1
-        metadata:
-          name: 4.0-art-latest
-          namespace: ocp
-        spec:
-          tags: []
-
-    """
-    runtime.initialize(clone_distgits=False, config_excludes='non_release')
-    cmd = runtime.command
-    runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
-    lstate = runtime.state[cmd]  # get local convenience copy
-
-    images = [i for i in runtime.image_metas()]
-
-    lstate['total'] = len(images)
-
-    # Load the ImageStream stub file
-    with open(is_base) as fp:
-        isb = yaml.safe_load(fp)
-
-    # All the items we will put in the image mirror input
-    src_dest_items = []
-    missing_source_items = []
-    invalid_name_items = []
-
-    for image in images:
-        try:
-            click.echo("###############################################################")
-            dfp = DockerfileParser(path=runtime.working_dir)
-            try:
-                dfp.content = image.fetch_cgit_file("Dockerfile")
-            except Exception:
-                err = "Error reading Dockerfile from distgit: {}".format(image.distgit_key)
-                raise state.DoozerStateError(err)
-
-            version = dfp.labels["version"]
-
-            s = pattern
-            s = s.replace("{build}", "{component}-{version}-{release}")
-            s = s.replace("{repository}", "{image}:{version}-{release}")
-            s = s.replace("{namespace}", image.namespace)
-            s = s.replace("{name}", image.name)
-            s = s.replace("{image_name}", image.image_name)
-            s = s.replace("{image_name_short}", image.image_name_short)
-            s = s.replace("{component}", image.get_component_name())
-            s = s.replace("{image}", dfp.labels["name"])
-            s = s.replace("{version}", version)
-
-            release_query_needed = '{release}' in s or '{pushes}' in s
-
-            # Since querying release takes time, check before executing replace
-            release = ''
-            if release_query_needed:
-                try:
-                    _, _, release = image.get_latest_build_info()
-                except IOError as err:
-                    err = "Error looking up build info: {}".format(str(err))
-                    red_print(err)
-                    raise state.DoozerStateError(err)
-
-            s = s.replace("{release}", release)
-
-            pushes_formatted = ''
-            for push_name in image.get_default_push_names():
-                pushes_formatted += '\t{} : [{}]\n'.format(push_name, ', '.join(image.get_default_push_tags(version, release)))
-
-            if not pushes_formatted:
-                pushes_formatted = "(None)"
-            s = s.replace("{pushes}", '{}\n'.format(pushes_formatted))
-
-            if "{" in s:
-                raise IOError("Unrecognized fields remaining in pattern: %s" % s)
-
-            # Per clayton:
-            """Tim Bielawa: note to self: is only for `ose-` prefixed images
-            Clayton Coleman: Yes, Get with the naming system or get out of town
-            """
-            if 'ose' in image.image_name_short and '666' not in release:
-                # Do not include test builds in the image stream. Only
-                # include 'ose-' prefixed images in the stream.
-
-                # dest, it's what we're publishing in the ImageStream
-                (src, dest) = s.split('=')
-
-                # Don't try to mirror things that don't exist # --tls-verify=false
-                try:
-                    if subprocess.call("/bin/skopeo inspect docker://{} >/dev/null".format(src),
-                                       shell=True) == 0:
-                        green_prefix("Verified source image exists and complies with naming conventions: ")
-                        click.echo(src)
-                    else:
-                        red_prefix("NOT adding to IS (source image does not exist): ")
-                        click.echo(src)
-                        missing_source_items.append(src)
-                        continue
-                except OSError as e:
-                    err = str(e)
-                    click.echo("Error! {}".format(err))
-                    raise state.DoozerStateError(err)
-
-                green_prefix("ADDING to IS: ")
-                print(s)
-
-                # Add a tag spec to the image stream. The name of each tag
-                # spec does not include the 'ose-' prefix. This keeps them
-                # consistent between OKD and OCP
-                isb['spec']['tags'].append({
-                    'name': image.image_name_short.replace('ose-', ''),
-                    'from': {
-                        'kind': 'DockerImage',
-                        'name': dest
-                    }
-                })
-
-                # Add src=dest line to 'oc image mirror' input file
-                src_dest_items.append(s)
-            else:
-                red_prefix("NOT adding to IS (does not meet name/version conventions): ")
-                print(s)
-                invalid_name_items.append(s)
-
-            state.record_image_success(lstate, image)
-
-            # End 'for image in images' loop
-            #############################################################
-        except state.DoozerStateError as serr:
-            red_print(serr.message)
-            state.record_image_fail(lstate, image, serr.message, runtime.logger)
-
-    state.record_image_finish(lstate)
-
-    # Save the SRC=DEST 'oc image mirror' input to a file for later
-    with open(src_dest, 'w+') as out_file:
-        out_file.write("{}\n".format('\n'.join(src_dest_items)))
-
-    isb['spec']['tags'] = sorted(isb['spec']['tags'], key=lambda k: k['name'])
-
-    # Save our image stream object
-    with open(image_stream, 'w') as is_out:
-        yaml.safe_dump(isb, is_out, indent=2, default_flow_style=False)
-
-    yellow_prefix("Images skipped due to invalid naming:\n")
-    for img in sorted(invalid_name_items):
-        click.echo(" {}".format(img))
-        click.echo()
-
-    yellow_prefix("Images skipped due to missing source:\n")
-    for img in sorted(missing_source_items):
-        click.echo(" {}".format(img))
-        click.echo()
 
 
 @cli.command("beta:reposync", short_help="Sync yum repos listed in group.yaml to local directory.")
