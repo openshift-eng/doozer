@@ -1,8 +1,11 @@
 from __future__ import absolute_import
 from __future__ import unicode_literals
+from future import standard_library
+standard_library.install_aliases
 import yaml
 import os
-import urllib
+import urllib.parse
+import requests
 
 from . import assertion
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
@@ -20,12 +23,14 @@ DISTGIT_TYPES = {
 }
 
 
-def tag_exists(registry, name, tag, fetch_f=None):
-    def assert_200(url):
-        return urllib.urlopen(url).code == 200
-    if fetch_f is None:
-        fetch_f = assert_200
-    return fetch_f("/".join((registry, "v1/repositories", name, "tags", tag)))
+def tag_exists(registry, namespace, name, tag):
+    url = registry + "/v1/repositories/" + urllib.parse.quote(namespace) + "/" + urllib.parse.quote(name) + "/tags/" + urllib.parse.quote(tag)
+    resp = requests.get(url)
+    if resp.status_code == 200:
+        return True
+    if resp.status_code == 404:
+        return False
+    raise IOError("Couldn't determine if tag {} exists: {} returns HTTP {}.".format(tag, url, resp.status_code))
 
 
 CONFIG_MODES = [
@@ -128,7 +133,11 @@ class Metadata(object):
         return req.read()
 
     def tag_exists(self, tag):
-        return tag_exists("http://" + self.runtime.group_config.urls.brew_image_host, self.config.name, tag)
+        return tag_exists("https://" + self.runtime.group_config.urls.brew_image_host, self.runtime.group_config.urls.brew_image_namespace, self.get_brew_image_name_short(), tag)
+
+    def get_brew_image_name_short(self):
+        # Get image name in the Brew pullspec. e.g. openshift3/ose-ansible --> openshift3-ose-ansible
+        return self.image_name.replace("/", "-")
 
     def get_component_name(self):
         # By default, the bugzilla component is the name of the distgit,
