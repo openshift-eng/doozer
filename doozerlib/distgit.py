@@ -1484,13 +1484,13 @@ class ImageDistGitRepo(DistGitRepo):
                     raise DoozerFatalError('csv_namespace is required in group.yaml when any image defines update-csv')
                 replace = '{}/{}/{}'.format(registry, namespace, nvr)
 
-                with open(csv_file, 'r+') as f:
-                    content = f.read()
+                with open(csv_file, 'r+b') as f:
+                    content = f.read().decode('utf-8')
                     content = content.replace(spec + '\n', replace + '\n')
                     content = content.replace(spec + '\"', replace + '\"')
                     f.seek(0)
                     f.truncate()
-                    f.write(content)
+                    f.write(content.encode('utf-8'))
             except Exception as e:
                 self.runtime.logger.error(e)
                 raise
@@ -1514,7 +1514,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         if os.path.isfile(art_yaml):
             with open(art_yaml, 'r') as art_file:
-                art_yaml_str = art_file.read()
+                art_yaml_str = art_file.read().decode('utf-8')
 
             try:
                 art_yaml_str = art_yaml_str.format(**replace_args)
@@ -1540,7 +1540,7 @@ class ImageDistGitRepo(DistGitRepo):
 
                 self.runtime.logger.info('Updating {}'.format(f_path))
                 with open(f_path, 'r+') as sr_file:
-                    sr_file_str = sr_file.read()
+                    sr_file_str = sr_file.read().decode('utf-8')
                     for sr in u_list:
                         s = sr.get('search', None)
                         r = sr.get('replace', None)
@@ -1550,7 +1550,7 @@ class ImageDistGitRepo(DistGitRepo):
                         sr_file_str = sr_file_str.replace(s, r)
                     sr_file.seek(0)
                     sr_file.truncate()
-                    sr_file.write(sr_file_str)
+                    sr_file.write(sr_file_str.encode('utf-8'))
 
     def _reflow_labels(self, filename="Dockerfile"):
         """
