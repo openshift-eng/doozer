@@ -1,5 +1,4 @@
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
 standard_library.install_aliases
 import yaml
@@ -128,7 +127,7 @@ class Metadata(object):
     def fetch_cgit_file(self, filename):
         url = self.cgit_url(filename)
         req = exectools.retry(
-            3, lambda: urllib.urlopen(url),
+            3, lambda: urllib.request.urlopen(url),
             check_f=lambda req: req.code == 200)
         return req.read()
 

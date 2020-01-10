@@ -1,7 +1,12 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
+from future import standard_library
+standard_library.install_aliases()
 import unittest
-
-import StringIO
+try:
+    from importlib import reload
+except ImportError:
+    pass
+import io
 import logging
 import tempfile
 import shutil
@@ -84,7 +89,7 @@ class TestDistgit(unittest.TestCase):
         """
         Define and provide mock logging for test/response
         """
-        self.stream = StringIO.StringIO()
+        self.stream = io.StringIO()
         logging.basicConfig(level=logging.DEBUG, stream=self.stream)
         self.logger = logging.getLogger()
         self.logs_dir = tempfile.mkdtemp()

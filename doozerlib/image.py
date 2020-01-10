@@ -1,5 +1,4 @@
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 import os
 import json
 import bashlex
@@ -106,7 +105,7 @@ class ImageMetadata(Metadata):
 
         def env_replace(envs, val):
             # find $VAR and ${VAR} style replacements
-            for k, v in envs.iteritems():
+            for k, v in envs.items():
                 opts = ['${}'.format(k), '${{{}}}'.format(k)]
                 for opt in opts:
                     if opt in val:

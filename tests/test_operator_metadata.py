@@ -1,3 +1,4 @@
+from __future__ import absolute_import, print_function
 import flexmock
 import io
 import shutil
@@ -288,10 +289,10 @@ other:
                 replace: bacon
         """)
 
-        mock = flexmock(get_builtin_module())
+        mock = flexmock(io)
         mock.should_call('open')
         (mock.should_receive('open')
-            .with_args('/working/dir/my-operator/deploy/olm/manifests/art.yaml')
+            .with_args('/working/dir/my-operator/deploy/olm/manifests/art.yaml', encoding='utf-8')
             .and_return(art_yaml_file_contents))
 
         nvr = '...irrelevant...'
@@ -349,10 +350,10 @@ other:
                 replace: bacon
         """)
 
-        mock = flexmock(get_builtin_module())
+        mock = flexmock(io)
         mock.should_call('open')
         (mock.should_receive('open')
-            .with_args('/working/dir/my-operator/deploy/olm/manifests/art.yaml')
+            .with_args('/working/dir/my-operator/deploy/olm/manifests/art.yaml', encoding='utf-8')
             .and_return(art_yaml_file_contents))
 
         nvr = '...irrelevant...'
@@ -458,22 +459,21 @@ other:
             currentCSV: should-remain-unchanged
         """)
 
-        mock = flexmock(get_builtin_module())
+        mock = flexmock(io)
         mock.should_call('open')
 
         (flexmock(operator_metadata.glob)
             .should_receive('glob')
             .with_args('/tmp/my-dev-operator-metadata/manifests/*package.yaml')
             .and_return([package_yaml_filename]))
-
         (mock.should_receive('open')
-            .with_args(package_yaml_filename)
+            .with_args(package_yaml_filename, encoding='utf-8')
             .and_return(initial_package_yaml_contents))
 
         expected_package_yaml_contents = {
             'channels': [
-                {'name': 4.1, 'currentCSV': 'updated-value'},
-                {'name': 4.2, 'currentCSV': 'should-remain-unchanged'}
+                {'name': '4.1', 'currentCSV': 'updated-value'},
+                {'name': '4.2', 'currentCSV': 'should-remain-unchanged'}
             ],
             'defaultChannel': '4.2'
         }
@@ -484,7 +484,7 @@ other:
             .replace_with(lambda *_: None))
 
         (mock.should_receive('open')
-            .with_args(package_yaml_filename, 'w')
+            .with_args(package_yaml_filename, 'w', encoding='utf-8')
             .and_return(flexmock(write=lambda *_: None, __exit__=None)))
 
         nvr = 'my-operator-container-v4.1.2-201901010000'
@@ -525,7 +525,7 @@ other:
             currentCSV: should-remain-unchanged
         """)
 
-        mock = flexmock(get_builtin_module())
+        mock = flexmock(io)
         mock.should_call('open')
 
         (flexmock(operator_metadata.glob)
@@ -534,12 +534,12 @@ other:
             .and_return([package_yaml_filename]))
 
         (mock.should_receive('open')
-            .with_args(package_yaml_filename)
+            .with_args(package_yaml_filename, encoding='utf-8')
             .and_return(initial_package_yaml_contents))
 
         expected_package_yaml_contents = {
             'channels': [
-                {'name': 0.2, 'currentCSV': 'should-remain-unchanged'},
+                {'name': '0.2', 'currentCSV': 'should-remain-unchanged'},
                 {'name': '0.1', 'currentCSV': 'updated-value'}
             ],
             'defaultChannel': '0.1'
@@ -551,7 +551,7 @@ other:
             .replace_with(lambda *_: None))
 
         (mock.should_receive('open')
-            .with_args(package_yaml_filename, 'w')
+            .with_args(package_yaml_filename, 'w', encoding='utf-8')
             .and_return(flexmock(write=lambda *_: None, __exit__=None)))
 
         nvr = 'my-operator-container-v0.1.2-201901010000'
@@ -597,14 +597,14 @@ other:
         }
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).create_metadata_dockerfile()
         with open('/tmp/my-dev-operator-metadata/Dockerfile', 'r') as f:
-            self.assertItemsEqual([l.strip() for l in f.readlines()], [
+            self.assertSetEqual({l.strip() for l in f.readlines()}, {
                 'FROM scratch',
                 'COPY ./manifests /manifests',
                 'LABEL version=vX.Y.Z.201908261419.dev',
                 'LABEL com.redhat.delivery.appregistry=true',
                 'LABEL name=openshift/ose-my-operator-metadata',
                 'LABEL com.redhat.component=my-operator-metadata-container',
-            ])
+            })
 
         # Cleaning up
         shutil.rmtree('/tmp/my-operator')
@@ -966,10 +966,10 @@ other:
             .with_args('/tmp/my-dev-operator-metadata/manifests/0.1/*.clusterserviceversion.yaml')
             .and_return([metadata_csv_yaml_filename]))
 
-        mock = flexmock(get_builtin_module())
+        mock = flexmock(io)
         mock.should_call('open')
         (mock.should_receive('open')
-            .with_args(metadata_csv_yaml_filename)
+            .with_args(metadata_csv_yaml_filename, encoding='utf-8')
             .and_return(csv_yaml_file_contents))
 
         nvr = 'my-operator-container-v0.1.2-201901010000'
@@ -1049,10 +1049,10 @@ other:
                 replace: bacon
         """)
 
-        mock = flexmock(get_builtin_module())
+        mock = flexmock(io)
         mock.should_call('open')
         (mock.should_receive('open')
-            .with_args('/working/dir/my-operator/deploy/olm/manifests/art.yaml')
+            .with_args('/working/dir/my-operator/deploy/olm/manifests/art.yaml', encoding='utf-8')
             .and_return(art_yaml_file_contents))
 
         nvr = '...irrelevant...'
@@ -1088,7 +1088,7 @@ other:
             operator_name='...irrelevant...',
             operator=flexmock(config={'update-csv': {'manifests-dir': 'csv-dir'}}),
         )
-        mock = flexmock(get_builtin_module())
+        mock = flexmock(io)
         mock.should_call('open')
         (mock.should_receive('open')
             .and_raise(IOError()))
@@ -1203,12 +1203,12 @@ class TestOperatorMetadataLatestNvrReporter(unittest.TestCase):
 
     def test_unpack_nvr(self):
         nvr_reporter = operator_metadata.OperatorMetadataLatestNvrReporter('package-container-v1.2.3-20191022', 'dev', self.runtime)
-        self.assertEquals(nvr_reporter.unpack_nvr(nvr_reporter.operator_nvr), ('package-container', 'v1.2.3', '20191022'))
+        self.assertEqual(nvr_reporter.unpack_nvr(nvr_reporter.operator_nvr), ('package-container', 'v1.2.3', '20191022'))
         # Add test for metadata nvr
 
     def test_get_latest_build(self):
         nvr_reporter = operator_metadata.OperatorMetadataLatestNvrReporter('my-operator-container-v1.2.3-20191022', 'dev', self.runtime)
-        self.assertEquals(nvr_reporter.metadata_component, 'my-operator-metadata-container')
+        self.assertEqual(nvr_reporter.metadata_component, 'my-operator-metadata-container')
 
         # test ignoring builds for later operators
         flexmock(nvr_reporter, get_all_builds=[
@@ -1251,10 +1251,6 @@ class TestChannelVersion(unittest.TestCase):
         self.assertFalse(version("5.4") != version("5.4"))
         self.assertFalse(version("5.4") > version("6.0"))
         self.assertFalse(version("5.4") > version("5.5"))
-
-
-def get_builtin_module():
-    return sys.modules.get('__builtin__', sys.modules.get('builtins'))
 
 
 if __name__ == '__main__':

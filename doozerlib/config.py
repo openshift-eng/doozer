@@ -1,33 +1,19 @@
-from __future__ import print_function
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
+from future.utils import bytes_to_native_str
 from . import metadata
 import yaml
-from pykwalify.core import Core
 import os
 import shutil
 from .pushd import Dir
 from . import exectools
 import sys
 import csv
+import io
 
 
 VALID_UPDATES = {
     'mode': metadata.CONFIG_MODES,
 }
-
-
-# Used in oit.py to print out valid update options
-# in --help output
-def valid_updates():
-    res = '\n\tKey\tValid Options\n\n'
-    for k, v in VALID_UPDATES.iteritems():
-        opts = ""
-        if v:
-            v = [str(i) for i in v]
-            opts = ':\t{}'.format(','.join(v))
-        res += '\t{}{}\n\n'.format(k, opts)
-    return res
 
 
 class MetaDataConfig(object):
@@ -107,7 +93,7 @@ class MetaDataConfig(object):
                 return
             print('')
             print('********* {} *********'.format(kind))
-            for name, entry in output.iteritems():
+            for name, entry in output.items():
                 if name_only:
                     print(entry)
                 else:
@@ -155,12 +141,12 @@ class MetaDataConfig(object):
                 w.writerow(value_list)
 
         if output is None:
-            writer = csv.writer(sys.stdout, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            writer = csv.writer(sys.stdout, delimiter=bytes_to_native_str(b','), quotechar=bytes_to_native_str(b'"'), quoting=csv.QUOTE_MINIMAL)
             _write_rows(writer)
             return
 
-        with open(output, mode='w') as csv_file:
-            writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        with io.open(output, mode='w', encoding="utf-8") as csv_file:
+            writer = csv.writer(csv_file, delimiter=bytes_to_native_str(b','), quotechar=bytes_to_native_str(b'"'), quoting=csv.QUOTE_MINIMAL)
             _write_rows(writer)
 
     def commit(self, msg):

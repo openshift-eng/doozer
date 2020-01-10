@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 import errno
 import os
 import unittest
@@ -321,7 +321,7 @@ class TestGenericDistGit(TestDistgit):
             expected_msg = ("Unable to continue merge. "
                             "Dockerfile found in target branch. "
                             "Use --allow-overwrite to force.")
-            self.assertEqual(expected_msg, e.message)
+            self.assertEqual(expected_msg, str(e))
 
     def test_source_path(self):
         # preventing tests from interacting with the real filesystem
@@ -388,7 +388,7 @@ class TestGenericDistGit(TestDistgit):
         except IOError as e:
             expected_msg = ("Command returned non-zero exit status: "
                             "Failed fetching distgit diff")
-            self.assertEqual(expected_msg, e.message)
+            self.assertEqual(expected_msg, str(e))
 
     def test_commit_log_diff_succeeded(self):
         # preventing tests from interacting with the real filesystem
@@ -521,7 +521,7 @@ class TestGenericDistGit(TestDistgit):
         except IOError as e:
             expected_msg = ("Command returned non-zero exit status: "
                             "Failure fetching commit SHA for my-distgit-dir")
-            self.assertEqual(expected_msg, e.message)
+            self.assertEqual(expected_msg, str(e))
 
     def test_tag_local(self):
         flexmock(distgit.exectools).should_receive("cmd_gather").times(0)

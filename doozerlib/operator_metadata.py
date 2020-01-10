@@ -1,5 +1,5 @@
-from __future__ import print_function
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
+from future.utils import as_native_str
 import glob
 import json
 import os
@@ -7,6 +7,7 @@ import re
 import shutil
 import threading
 import yaml
+import io
 
 from functools import wraps
 from dockerfile_parse import DockerfileParser
@@ -226,15 +227,15 @@ class OperatorMetadataBuilder(object):
         to the name.
         Example: name: foo.4.2.0-12345 becomes foo.4.2.0-12345-s390x
         """
-        with open(csv_filename, 'r') as reader:
-            contents = reader.read().decode('utf-8')
+        with io.open(csv_filename, 'r', encoding="utf-8") as reader:
+            contents = reader.read()
 
-        with open(csv_filename, 'w') as writer:
+        with io.open(csv_filename, 'w', encoding="utf-8") as writer:
             writer.write(
                 contents.replace(
                     '  name: {}'.format(self.csv),
                     '  name: {}-{}'.format(self.csv, arch)
-                ).encode('utf-8')
+                )
             )
 
     @log
@@ -261,13 +262,13 @@ class OperatorMetadataBuilder(object):
         :return string Same content back, with image references replaced (if any was found)
         """
         for file in self.get_file_list_from_operator_art_yaml(arch):
-            with open(file, 'r') as reader:
-                contents = reader.read().decode('utf-8')
+            with io.open(file, 'r', encoding="utf-8") as reader:
+                contents = reader.read()
 
             new_contents = self.find_and_replace_image_versions_by_sha(contents, arch)
 
-            with open(file, 'w') as writer:
-                writer.write(new_contents.encode('utf-8'))
+            with io.open(file, 'w', encoding="utf-8") as writer:
+                writer.write(new_contents)
 
     @log
     def find_and_replace_image_versions_by_sha(self, contents, arch):
@@ -326,8 +327,7 @@ class OperatorMetadataBuilder(object):
         """Update (or create) a channel entry on the top-level package YAML file,
         pointing to the current CSV
         """
-        package_yaml = yaml.safe_load(open(self.metadata_package_yaml_filename))
-
+        package_yaml = yaml.safe_load(io.open(self.metadata_package_yaml_filename, encoding="utf-8"))
         channel_name = self.channel_name
         channel_csv = self.csv
         package_yaml = self.add_channel_entry(package_yaml, channel_name, channel_csv)
@@ -340,8 +340,8 @@ class OperatorMetadataBuilder(object):
 
         package_yaml['defaultChannel'] = str(self.get_default_channel(package_yaml))
 
-        with open(self.metadata_package_yaml_filename, 'w') as file:
-            file.write(yaml.safe_dump(package_yaml).encode('utf-8'))
+        with io.open(self.metadata_package_yaml_filename, 'w', encoding="utf-8") as f:
+            yaml.safe_dump(package_yaml, f)
 
     def add_channel_entry(self, package_yaml, channel_name, channel_csv):
         index = self.find_channel_index(package_yaml, channel_name)
@@ -492,10 +492,10 @@ class OperatorMetadataBuilder(object):
     def change_dir_names_to_arch_specific(self, file_list, arch):
         """@TODO: document
         """
-        return filter(os.path.isfile, [
+        return list(filter(os.path.isfile, [
             file.replace('{}/'.format(self.channel), '{}-{}/'.format(self.channel, arch))
             for file in file_list
-        ])
+        ]))
 
     @log
     def fetch_image_sha(self, image, arch):
@@ -526,7 +526,7 @@ class OperatorMetadataBuilder(object):
         def select_arch(manifests):
             return manifests['platform']['architecture'] == arch
 
-        return filter(select_arch, json.loads(out)['manifests'])[0]['digest']
+        return list(filter(select_arch, json.loads(out)['manifests']))[0]['digest']
 
     @log
     def extract_brew_task_id(self, container_build_output):
@@ -632,11 +632,11 @@ class OperatorMetadataBuilder(object):
     @property
     def operator_art_yaml(self):
         try:
-            return yaml.safe_load(open('{}/{}/{}/art.yaml'.format(
+            return yaml.safe_load(io.open('{}/{}/{}/art.yaml'.format(
                 self.working_dir,
                 self.operator_name,
                 self.operator_manifests_dir
-            )))
+            ), encoding="utf-8"))
         except IOError:
             return {}
 
@@ -699,7 +699,7 @@ class OperatorMetadataBuilder(object):
         return exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
 
     def get_csv(self):
-        return yaml.safe_load(open(self.metadata_csv_yaml_filename()))['metadata']['name']
+        return yaml.safe_load(io.open(self.metadata_csv_yaml_filename(), encoding="utf-8"))['metadata']['name']
 
     def _cache_attr(self, attr):
         """Some attribute values are time-consuming to retrieve, as they might
@@ -715,7 +715,7 @@ class OperatorMetadataBuilder(object):
         return self._cached_attrs[attr]
 
 
-class OperatorMetadataLatestBuildReporter:
+class OperatorMetadataLatestBuildReporter(object):
     @log
     def __init__(self, operator_name, runtime):
         self.operator_name = operator_name
@@ -751,7 +751,7 @@ class OperatorMetadataLatestBuildReporter:
         return self.runtime.image_map[self.operator_name]
 
 
-class OperatorMetadataLatestNvrReporter:
+class OperatorMetadataLatestNvrReporter(object):
     """Query latest operator metadata based on nvr and stream"""
 
     @log
@@ -802,7 +802,7 @@ class OperatorMetadataLatestNvrReporter:
         return self.runtime.group_config.branch
 
 
-class ChannelVersion:
+class ChannelVersion(object):
     """Quick & dirty custom version comparison implementation, since buildvm
     has drastically different versions of pkg_resources and setuptools.
     """
@@ -812,9 +812,10 @@ class ChannelVersion:
 
     def parse_version(self):
         parsed_version = re.match(r'^(?P<major>\d+)\.(?P<minor>\d+).*$', self.raw)
-        self.major = parsed_version.group('major') if parsed_version else 0
-        self.minor = parsed_version.group('minor') if parsed_version else 0
+        self.major = int(parsed_version.group('major')) if parsed_version else 0
+        self.minor = int(parsed_version.group('minor')) if parsed_version else 0
 
+    @as_native_str()
     def __str__(self):
         return self.raw
 

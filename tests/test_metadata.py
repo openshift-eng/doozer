@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 import unittest
 import mock
 import os
@@ -8,6 +8,10 @@ import tempfile
 import logging
 import shutil
 from doozerlib import metadata
+try:
+    from importlib import reload
+except ImportError:
+    pass
 
 TEST_YAML = """---
 name: 'test'

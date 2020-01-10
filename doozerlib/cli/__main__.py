@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
+from future import standard_library
+standard_library.install_aliases()
 from doozerlib import version
 from doozerlib import Runtime, Dir
 from doozerlib import state
@@ -10,8 +11,7 @@ from doozerlib.model import Missing
 from doozerlib.brew import get_watch_task_info_copy
 from doozerlib import metadata
 from doozerlib.config import MetaDataConfig as mdc
-from doozerlib.config import valid_updates
-from doozerlib import cli_opts
+from doozerlib.cli import cli_opts
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
 from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
@@ -25,15 +25,18 @@ import yaml
 import json
 import sys
 import subprocess
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import tempfile
 import traceback
 import koji
+import io
 from numbers import Number
 from multiprocessing.pool import ThreadPool
 from multiprocessing import cpu_count
 from dockerfile_parse import DockerfileParser
 from doozerlib import dotconfig
+
+click.disable_unicode_literals_warning = True
 
 CTX_GLOBAL = None
 
@@ -77,8 +80,10 @@ def print_version(ctx, param, value):
     if not value or ctx.resilient_parsing:
         return
     click.echo('Doozer v{}'.format(version()))
+    click.echo('Python v{}'.format(sys.version))
     click.echo(VERSION_QUOTE)
     ctx.exit()
+
 
 # ============================================================================
 # GLOBAL OPTIONS: parameters for all commands
@@ -170,7 +175,7 @@ def cli(ctx, **kwargs):
     global_opts = runtime_args['global_opts']
     if global_opts is None:
         global_opts = {}
-    for k, v in cli_opts.GLOBAL_OPT_DEFAULTS.iteritems():
+    for k, v in cli_opts.GLOBAL_OPT_DEFAULTS.items():
         if k not in global_opts or global_opts[k] is None:
             global_opts[k] = v
     runtime_args['global_opts'] = global_opts
@@ -357,8 +362,6 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
             try:
                 msg = ex.strerror
             except:
-                msg = ex.message
-            if not msg:
                 msg = str(ex)
 
             state.record_image_fail(lstate, image, msg, runtime.logger)
@@ -377,7 +380,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
     state.record_image_finish(lstate)
 
     failed = []
-    for img, status in lstate['images'].iteritems():
+    for img, status in lstate['images'].items():
         if status is not True:  # anything other than true is fail
             failed.append(img)
 
@@ -505,15 +508,13 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
                 distgit=image.qualified_name,
                 image=image.config.name,
                 owners=owners,
-                message=ex.message.replace("|", ""),
+                message=str(ex).replace("|", ""),
             )
 
             msg = None
             try:
                 msg = ex.strerror
             except:
-                msg = ex.message
-            if not msg:
                 msg = str(ex)
 
             state.record_image_fail(lstate, image, msg, runtime.logger)
@@ -532,7 +533,7 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
     state.record_image_finish(lstate)
 
     failed = []
-    for img, status in lstate['images'].iteritems():
+    for img, status in lstate['images'].items():
         if status is not True:  # anything other than true is fail
             failed.append(img)
 
@@ -708,7 +709,7 @@ def print_build_metrics(runtime):
 
     # Make sure all the tasks have the expected timestamps:
     # https://github.com/openshift/enterprise-images/pull/178#discussion_r173812940
-    for task_id in watch_task_info.keys():
+    for task_id in watch_task_info:
         info = watch_task_info[task_id]
         runtime.logger.debug("Watch task info:\n {}\n\n".format(info))
         # Error unless all true
@@ -743,7 +744,7 @@ def print_build_metrics(runtime):
     max_completion_ts = 0
 
     # Loop through all koji task infos and calculate min
-    for task_id, info in watch_task_info.iteritems():
+    for task_id, info in watch_task_info.items():
         create_ts = info['create_ts']
         completion_ts = info['completion_ts']
         start_ts = info['start_ts']
@@ -769,9 +770,9 @@ def print_build_metrics(runtime):
         # was created but still waiting to start (i.e. in FREE state). If there is a build
         # waiting, include that minute in the elapsed wait time.
 
-        for ts in xrange(int(min_create_ts), int(max_completion_ts), 60):
+        for ts in range(int(min_create_ts), int(max_completion_ts), 60):
             # See if any of the tasks were created but not started during this minute
-            for info in watch_task_info.itervalues():
+            for info in watch_task_info.values():
                 create_ts = int(info['create_ts'])
                 start_ts = int(info['start_ts'])
                 # Was the build waiting to start during this minute?
@@ -848,7 +849,7 @@ def images_build_image(runtime, odcs, repo_type, repo, push_to_defaults, push_to
     failed = []
 
     if pre_step:
-        for img, status in pre_step['images'].iteritems():
+        for img, status in pre_step['images'].items():
             if status is not True:  # anything other than true is fail
                 img_obj = runtime.image_map[img]
                 failed.append(img)
@@ -958,7 +959,7 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
     pre_failed = []
 
     if pre_step:
-        for img, status in pre_step['images'].iteritems():
+        for img, status in pre_step['images'].items():
             if status is not True:  # anything other than true is fail
                 img_obj = runtime.image_map[img]
                 pre_failed.append(img)
@@ -1204,7 +1205,7 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
             click.echo(s)
         else:
             # Write to a file
-            with open(output, 'a') as out_file:
+            with io.open(output, 'a', encoding="utf-8") as out_file:
                 out_file.write("{}\n".format(s))
 
         count += 1
@@ -1228,7 +1229,7 @@ def distgit_config_template(url):
     for a config yaml for the image.
     """
 
-    f = urllib.urlopen(url)
+    f = urllib.request.urlopen(url)
     if f.code != 200:
         click.echo("Error fetching {}: {}".format(url, f.code), err=True)
         exit(1)
@@ -1454,7 +1455,7 @@ def config_read_group(runtime, key, as_len, as_yaml, default, out_file):
     if out_file:
         # just in case
         out_file = os.path.expanduser(out_file)
-        with open(out_file, 'w') as f:
+        with io.open(out_file, 'w', encoding="utf-8") as f:
             f.write(value)
 
     print(str(value))
@@ -1694,8 +1695,8 @@ that particular tag.
             # End 'for image in images' loop
             #############################################################
         except state.DoozerStateError as serr:
-            red_print(serr.message)
-            state.record_image_fail(lstate, image, serr.message, runtime.logger)
+            red_print(str(serr))
+            state.record_image_fail(lstate, image, str(serr), runtime.logger)
 
     for arch in mirroring:
 
@@ -1721,12 +1722,12 @@ that particular tag.
 
         # Save the default SRC=DEST 'oc image mirror' input to a file for
         # later.
-        with open(mirror_filename, 'w+') as out_file:
+        with io.open(mirror_filename, 'w+', encoding="utf-8") as out_file:
             for tag_name in mirroring[arch]:
                 dest = build_dest_name(tag_name)
                 out_file.write("{}={}\n".format(mirroring[arch][tag_name]['image_src'], dest))
 
-        with open("{}.yaml".format(imagestream_filename), 'w+') as out_file:
+        with io.open("{}.yaml".format(imagestream_filename), 'w+', encoding="utf-8") as out_file:
             # Add a tag spec to the image stream. The name of each tag
             # spec does not include the 'ose-' prefix. This keeps them
             # consistent between OKD and OCP
@@ -1858,7 +1859,7 @@ installonly_limit=3
 
         cmd_base = 'reposync -c {} -p {} --delete --arch {} -n -r {} -e {}'
 
-        for repo in repos.itervalues():
+        for repo in repos.values():
 
             # If specific names were specified, only synchronize them.
             if names and repo.name not in names:
@@ -1905,7 +1906,7 @@ def config_update_required(runtime, image_list):
     _fix_runtime_mode(runtime)
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
 
-    with open(image_list, 'r') as il:
+    with io.open(image_list, 'r', encoding="utf-8") as il:
         image_list = [i.strip() for i in il.readlines() if i.strip()]
 
     resolved = []
@@ -1926,6 +1927,7 @@ def config_update_required(runtime, image_list):
                 break
         if not found:
             optional.append(img)
+            red_print('yuxzhu: {}'.format(name))
 
     missing = list(set(image_list) - set(resolved))
     if missing:
@@ -2060,6 +2062,9 @@ def operator_metadata_latest_build(runtime, nvr, stream, operator_list):
 
 
 def main():
+    if sys.version_info.major < 3:
+        yellow_print("DEPRECATION: Python 2.7 will reach the end of its life on January 1st, 2020. Please upgrade your Python as Python 2.7 won't be maintained after that date. A future version of Doozer will drop support for Python 2.7.",
+                     file=sys.stderr)
     try:
         if 'REQUESTS_CA_BUNDLE' not in os.environ:
             os.environ['REQUESTS_CA_BUNDLE'] = '/etc/pki/tls/certs/ca-bundle.crt'
@@ -2070,11 +2075,11 @@ def main():
         # nicely instead of a gross stack-trace.
         # All internal errors that should simply cause the app
         # to exit with an error code should use DoozerFatalError
-        red_print('\nDoozer Failed With Error:\n' + ex.message)
+        red_print('\nDoozer Failed With Error:\n' + str(ex))
 
         if CTX_GLOBAL and CTX_GLOBAL.obj:
             CTX_GLOBAL.obj.state['status'] = state.STATE_FAIL
-            CTX_GLOBAL.obj.state['msg'] = ex.message
+            CTX_GLOBAL.obj.state['msg'] = str(ex)
 
         sys.exit(1)
     finally:
