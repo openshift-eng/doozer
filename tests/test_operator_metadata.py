@@ -204,41 +204,46 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
     def test_find_and_replace_image_versions_by_sha(self):
         initial = """
-        apiVersion: operators.coreos.com/v1alpha1
-        kind: ClusterServiceVersion
-        metadata:
-          name: clusterlogging.4.1.16-201901010000
-          namespace: placeholder
-        spec:
-          version: 4.1.16-201901010000
-          displayName: Cluster Logging
-          image: image-registry.svc:5000/openshift/ose-cluster-logging-operator:v4.1.6-201901010000
-          some:
-            key:
-            - item: "image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111"
-            - item: "image-registry.svc:5000/openshift/dependency-c:v1.1.1-1111"
-            - item: "image-registry.svc:5000/openshift/dependency-d:v1.1.1-1111"
-        other:
-        - reference: image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: clusterlogging.4.1.16-201901010000
+  namespace: placeholder
+spec:
+  version: 4.1.16-201901010000
+  displayName: Cluster Logging
+  image: image-registry.svc:5000/openshift/ose-cluster-logging-operator:v4.1.6-201901010000
+  some:
+  key:
+    - item: "image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111"
+    - item: "image-registry.svc:5000/openshift/dependency-c:v1.1.1-1111"
+    - item: "image-registry.svc:5000/openshift/dependency-d:v1.1.1-1111"
+other:
+  - reference: image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111
         """
 
         expected = """
-        apiVersion: operators.coreos.com/v1alpha1
-        kind: ClusterServiceVersion
-        metadata:
-          name: clusterlogging.4.1.16-201901010000
-          namespace: placeholder
-        spec:
-          version: 4.1.16-201901010000
-          displayName: Cluster Logging
-          image: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
-          some:
-            key:
-            - item: "image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb"
-            - item: "image-registry.svc:5000/openshift/dependency-c@sha256:cccccccccccccc"
-            - item: "image-registry.svc:5000/openshift/dependency-d@sha256:dddddddddddddd"
-        other:
-        - reference: image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: clusterlogging.4.1.16-201901010000
+  namespace: placeholder
+spec:
+  relatedImages:
+    dependency-b: image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb
+    dependency-c: image-registry.svc:5000/openshift/dependency-c@sha256:cccccccccccccc
+    dependency-d: image-registry.svc:5000/openshift/dependency-d@sha256:dddddddddddddd
+    ose-cluster-logging-operator: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
+  version: 4.1.16-201901010000
+  displayName: Cluster Logging
+  image: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
+  some:
+  key:
+    - item: "image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb"
+    - item: "image-registry.svc:5000/openshift/dependency-c@sha256:cccccccccccccc"
+    - item: "image-registry.svc:5000/openshift/dependency-d@sha256:dddddddddddddd"
+other:
+  - reference: image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb
         """
 
         flexmock(operator_metadata.OperatorMetadataBuilder).should_receive('fetch_image_sha').with_args('openshift/ose-cluster-logging-operator:v4.1.6-201901010000', 'manifest-list').and_return('sha256:aaaaaaaaaaaaaa')
