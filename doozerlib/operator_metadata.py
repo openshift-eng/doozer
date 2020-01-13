@@ -271,15 +271,53 @@ class OperatorMetadataBuilder(object):
 
     @log
     def find_and_replace_image_versions_by_sha(self, contents, arch):
-        return re.sub(
-            r'{}/([^:]+):([^\'"\s]+)'.format(self.operator_csv_registry),
-            lambda i: '{}/{}@{}'.format(
+        """Read "contents" collecting all image references, query the corresponding
+        SHA for each found image and replace them inline.
+
+        :param contents: a string with the contents of a YAML file that might have image references
+        :param arch: string with an architecture or "manifests-list", used when picking SHAs
+        :return: contents string back, with image references replaced + "relatedImages" node under "spec"
+        """
+        found_images = {}
+
+        def collect_replaced_image(match):
+            image = '{}/{}@{}'.format(
                 self.operator_csv_registry,
-                i.group(1),
-                self.fetch_image_sha('{}:{}'.format(i.group(1), i.group(2)), arch)
-            ),
+                match.group(1),
+                self.fetch_image_sha('{}:{}'.format(match.group(1), match.group(2)), arch)
+            )
+            key = u'{}'.format(re.search(r'([^/]+)/(.+)', match.group(1)).group(2))
+            found_images[key] = u'{}'.format(image)
+            return image
+
+        new_contents = re.sub(
+            r'{}/([^:]+):([^\'"\s]+)'.format(self.operator_csv_registry),
+            collect_replaced_image,
             contents,
             flags=re.MULTILINE
+        )
+
+        new_contents = self.append_related_images_spec(new_contents, found_images)
+        return new_contents
+
+    @log
+    def append_related_images_spec(self, contents, images):
+        """Create a new node inside "spec" listing all related images, without
+        parsing the YAML, to avoid unwanted modifications when re-serializing it.
+
+        :param contents: CSV YAML string
+        :param images: a dict containing images (key: name, value: image)
+        :return: contents string back with "relatedImages" node under "spec"
+        """
+        related_images = []
+        for name, image in images.items():
+            related_images.append('    {}: {}'.format(name, image))
+        related_images.sort()
+
+        return contents.replace(
+            'spec:\n',
+            'spec:\n  relatedImages:\n{}\n'.format('\n'.join(related_images)),
+            1
         )
 
     @log
