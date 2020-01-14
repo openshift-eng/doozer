@@ -227,14 +227,14 @@ class OperatorMetadataBuilder(object):
         Example: name: foo.4.2.0-12345 becomes foo.4.2.0-12345-s390x
         """
         with open(csv_filename, 'r') as reader:
-            contents = reader.read()
+            contents = reader.read().decode('utf-8')
 
         with open(csv_filename, 'w') as writer:
             writer.write(
                 contents.replace(
                     '  name: {}'.format(self.csv),
                     '  name: {}-{}'.format(self.csv, arch)
-                )
+                ).encode('utf-8')
             )
 
     @log
@@ -262,7 +262,7 @@ class OperatorMetadataBuilder(object):
         """
         for file in self.get_file_list_from_operator_art_yaml(arch):
             with open(file, 'r') as reader:
-                contents = reader.read()
+                contents = reader.read().decode('utf-8')
 
             new_contents = re.sub(
                 r'{}/([^:]+):([^\'"\s]+)'.format(self.operator_csv_registry),
@@ -276,7 +276,7 @@ class OperatorMetadataBuilder(object):
             )
 
             with open(file, 'w') as writer:
-                writer.write(new_contents)
+                writer.write(new_contents.encode('utf-8'))
 
     @log
     def merge_streams_on_top_level_package_yaml(self):
@@ -298,7 +298,7 @@ class OperatorMetadataBuilder(object):
         package_yaml['defaultChannel'] = str(self.get_default_channel(package_yaml))
 
         with open(self.metadata_package_yaml_filename, 'w') as file:
-            file.write(yaml.safe_dump(package_yaml))
+            file.write(yaml.safe_dump(package_yaml).encode('utf-8'))
 
     def add_channel_entry(self, package_yaml, channel_name, channel_csv):
         index = self.find_channel_index(package_yaml, channel_name)
