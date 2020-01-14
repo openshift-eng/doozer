@@ -139,9 +139,15 @@ class RPMMetadata(Metadata):
 
         with Dir(self.source_path):
             if not os.path.isdir(tito_dir):
+                pre_init_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()
                 exectools.cmd_assert('tito init')
-                # roll the init changes into the others
-                exectools.cmd_assert('git reset HEAD~')
+                # tito init will try to create a commit. We want this commit to be ignored
+                # from the perspective of any builds about to occur. So, we want to reset
+                # back to the original HEAD. The complexity here is that tito init will NOT
+                # make a commit if .gitignore is configured to somehow ignores the the .tito
+                # directory it creates. Thus, we store the SHA before running tito init
+                # and use that as a means to return to the upstream HEAD.
+                exectools.cmd_assert('git reset {}'.format(pre_init_sha))
 
             with open(os.path.join(tito_dir, 'releasers.conf'), 'w') as r:
                 branch = self.config.get('distgit', {}).get('branch', self.runtime.branch)

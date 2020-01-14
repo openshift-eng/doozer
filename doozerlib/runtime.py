@@ -868,7 +868,6 @@ class Runtime(object):
         returns SHA of head.
         :param parent: Name of parent requesting the source
         :param meta: The MetaData object to resolve source for
-        :param required: Whether an error should be thrown or None returned if it cannot be determined
         :return: The name of the checked out branch or None (if required=False)
         """
         source_dir = self.resolve_source(parent, meta)
