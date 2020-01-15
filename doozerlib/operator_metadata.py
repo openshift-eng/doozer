@@ -314,10 +314,11 @@ class OperatorMetadataBuilder(object):
             related_images.append('    {}: {}'.format(name, image))
         related_images.sort()
 
-        return contents.replace(
-            'spec:\n',
+        return re.sub(
+            r'^spec:\n',
             'spec:\n  relatedImages:\n{}\n'.format('\n'.join(related_images)),
-            1
+            contents,
+            flags=re.MULTILINE
         )
 
     @log
