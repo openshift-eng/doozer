@@ -311,7 +311,7 @@ class OperatorMetadataBuilder(object):
         """
         related_images = []
         for name, image in images.items():
-            related_images.append('    {}: {}'.format(name, image))
+            related_images.append('    - name: {}\n      image: {}'.format(name, image))
         related_images.sort()
 
         return re.sub(

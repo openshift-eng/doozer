@@ -230,10 +230,14 @@ metadata:
   namespace: placeholder
 spec:
   relatedImages:
-    dependency-b: image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb
-    dependency-c: image-registry.svc:5000/openshift/dependency-c@sha256:cccccccccccccc
-    dependency-d: image-registry.svc:5000/openshift/dependency-d@sha256:dddddddddddddd
-    ose-cluster-logging-operator: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
+    - name: dependency-b
+      image: image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb
+    - name: dependency-c
+      image: image-registry.svc:5000/openshift/dependency-c@sha256:cccccccccccccc
+    - name: dependency-d
+      image: image-registry.svc:5000/openshift/dependency-d@sha256:dddddddddddddd
+    - name: ose-cluster-logging-operator
+      image: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
   version: 4.1.16-201901010000
   displayName: Cluster Logging
   image: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
