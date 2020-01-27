@@ -422,11 +422,11 @@ class ImageDistGitRepo(DistGitRepo):
 
         # create package list for ODCS, see https://osbs.readthedocs.io/en/latest/users.html#compose
         if package_mode == 'auto':
-            if config["compose"].get("packages") is list:
+            if isinstance(config["compose"].get("packages"), list):
                 # container.yaml with packages was given from source
                 self.logger.info("Use ODCS package list from source")
             else:
-                config["compose"]["packages"] = []  # empty list donates all packages from the current Koji target
+                config["compose"]["packages"] = []  # empty list composes all packages from the current Koji target
         elif package_mode == 'manual':
             if not odcs.packages.list:
                 raise ValueError('odcs.packages.mode == manual but none specified in odcs.packages.list')
