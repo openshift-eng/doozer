@@ -4,7 +4,7 @@ ENV PYCURL_SSL_LIBRARY=openssl
 
 RUN dnf install -y \
     # runtime dependencies
-    krb5-workstation git rsync koji skopeo podman docker \
+    krb5-workstation git rsync koji skopeo podman docker tito \
     python2 python2-certifi python2-rpm python2-koji \
     python3 python3-certifi python3-rpm \
     # development dependencies
