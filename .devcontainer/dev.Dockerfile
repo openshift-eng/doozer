@@ -2,8 +2,8 @@ FROM fedora:31
 
 RUN dnf install -y \
     # runtime dependencies
-    krb5-workstation git rsync skopeo podman docker \
-    python2 python2-certifi python2-rpm \
+    krb5-workstation git rsync koji skopeo podman docker tito \
+    python2 python2-certifi python2-rpm python2-koji \
     python3 python3-certifi python3-rpm \
     # development dependencies
     gcc krb5-devel openssl-devel \

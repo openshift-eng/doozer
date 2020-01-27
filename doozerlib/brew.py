@@ -82,27 +82,3 @@ def watch_task(brew_hub, log_f, task_id, terminate_event):
     log_f(error + ", canceling build")
     subprocess.check_call(("brew", "cancel", str(task_id)))
     return error
-
-
-def check_rpm_buildroot(name, branch, arch='x86_64'):
-    """
-    Query the buildroot used by ODCS to determine if a given RPM name
-    is provided by ODCS for the given arch.
-    :param str name: RPM name
-    :param str branch: Current building branch, such as rhaos-3.10-rhel-7
-    :param str arch: CPU architecture to search
-    """
-    args = locals()
-    query = 'repoquery --repofrompath foo,"http://download-node-02.eng.bos.redhat.com/brewroot/repos/{branch}-ppc64le-container-build/latest/{arch}" --repoid=foo --arch {arch},noarch --whatprovides {name}'
-    rc, stdout, stderr = exectools.cmd_gather(query.format(**args))
-    if rc == 0:
-        result = []
-        stdout = stdout.strip()
-        for rpm in stdout.strip().splitlines():
-            n = rpm.split(':')[0]
-            n = '-'.join(n.split('-')[0:-1])
-            result.append(n)
-
-        return result
-    else:
-        raise ValueError(stderr)

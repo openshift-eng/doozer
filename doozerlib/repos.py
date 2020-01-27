@@ -157,7 +157,7 @@ name = {0}
 
 # Base header for all content_sets.yml output
 CONTENT_SETS = """
-# This file is managed by the doozer build tool: https://gitlab.cee.redhat.com/openshift-art/tools/doozer,
+# This file is managed by the doozer build tool: https://github.com/openshift/doozer,
 # by the OpenShift Automated Release Team (#aos-art on CoreOS Slack).
 # Any manual changes will be overwritten by doozer on the next build.
 #
@@ -287,7 +287,7 @@ class Repos(object):
             'Cache-Control': "no-cache"
         }
 
-        response = requests.request("POST", url, data=json.dumps(payload), headers=headers, verify=False)
+        response = requests.request("POST", url, data=json.dumps(payload), headers=headers)
 
         resp_dict = response.json()
 
