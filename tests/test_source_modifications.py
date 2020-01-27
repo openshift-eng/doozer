@@ -1,4 +1,4 @@
-from __future__ import unicode_literals, with_statement
+from __future__ import absolute_import, print_function, unicode_literals
 
 import unittest
 import tempfile
@@ -37,7 +37,7 @@ class AddModifierTestCase(unittest.TestCase):
             "path": os.path.join(self.temp_dir, "gating.yaml"),
             "overwriting": True,
         }
-        expected_content = "some\ncontent"
+        expected_content = b"some\ncontent"
         modifier = AddModifier(**params)
         with mock.patch("requests.Session") as MockSession:
             session = MockSession()
@@ -62,8 +62,9 @@ class AddModifierTestCase(unittest.TestCase):
             session = MockSession()
             response = session.get.return_value
             response.content = expected_content
-            with self.assertRaisesRegexp(IOError, "overwriting"):
+            with self.assertRaises(IOError) as cm:
                 modifier.act(ceiling_dir=self.temp_dir, session=session)
+            self.assertIn("overwrite", repr(cm.exception))
 
 
 if __name__ == "__main__":

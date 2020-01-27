@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 from setuptools import setup, find_packages
 
 with open('./requirements.txt') as f:
@@ -34,6 +34,9 @@ setup(
     classifiers=[
         "Development Status :: 4 - Beta",
         "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
         "Environment :: Console",
         "Operating System :: POSIX",
         "License :: OSI Approved :: Apache Software License",

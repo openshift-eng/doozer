@@ -42,7 +42,7 @@ To dive further into what the above install script is doing, `doozer` requires a
 
 ### **devel packages***
 
-`[dnf|yum] install krb5-devel python2-devel libffi`
+`[dnf|yum] install gcc krb5-devel python3-devel python3-rpm python3-pip libffi`
 
 ### **git**
 

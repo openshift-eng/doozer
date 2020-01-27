@@ -1,4 +1,4 @@
-from __future__ import unicode_literals, print_function
+from __future__ import absolute_import, print_function, unicode_literals
 import os
 import io
 from future.standard_library import install_aliases
@@ -18,6 +18,7 @@ LOGGER = getLogger(__name__)
 class SourceModifierFactory(object):
     """A factory class for creating source modifier objects."""
     MODIFICATIONS = {}
+
     @classmethod
     def supports(cls, action_name):
         """Test if specified modification action is supported"""

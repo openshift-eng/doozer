@@ -1,5 +1,4 @@
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 from .model import Model, ModelException, Missing
 import yaml
 import requests
@@ -74,7 +73,7 @@ class Repo(object):
                 bu_sub = bu
             else:
                 if repotype not in bu:
-                    raise ValueError('{} is not a valid repotype option in {}'.format(repotype, bu.keys()))
+                    raise ValueError('{} is not a valid repotype option in {}'.format(repotype, list(bu.keys())))
                 self.repotypes = list(bu.keys())
                 bu_sub = bu[repotype]
             if isinstance(bu_sub, str):
@@ -130,7 +129,7 @@ class Repo(object):
 
         result = '[{}]\n'.format(section_name)
 
-        for k, v in self._data.conf.iteritems():
+        for k, v in self._data.conf.items():
             line = '{} = {}\n'
             if k == 'baseurl':
                 line = line.format(k, self.baseurl(repotype, arch))
@@ -188,7 +187,7 @@ class Repos(object):
         self._repos = {}
         repotypes = []
         names = []
-        for name, repo in repos.iteritems():
+        for name, repo in repos.items():
             names.append(name)
             self._repos[name] = Repo(name, repo, self._arches)
             repotypes.extend(self._repos[name].repotypes)
@@ -201,11 +200,11 @@ class Repos(object):
             raise ValueError('{} is not a valid repo name!'.format(item))
         return self._repos[item]
 
-    def iteritems(self):
-        return self._repos.iteritems()
+    def items(self):
+        return self._repos.items()
 
-    def itervalues(self):
-        return self._repos.itervalues()
+    def values(self):
+        return self._repos.values()
 
     def __repr__(self):
         """Mainly for debugging to dump a dict representation of the collection"""
@@ -224,7 +223,7 @@ class Repos(object):
         """
 
         result = ''
-        for r in self._repos.itervalues():
+        for r in self._repos.values():
 
             enabled = r.enabled  # If enabled in group.yml, it will always be enabled.
             if enabled_repos and r.name in enabled_repos:
@@ -245,29 +244,6 @@ class Repos(object):
 
         return result
 
-    def empty_repo_file_from_list(self, repos, odcs=False):
-        full_cs = self.full_content_sets_list()
-        result = ''
-        for er in repos:
-            if not odcs or er not in full_cs:
-                result += EMPTY_REPO.format(er)
-        return result
-
-    def full_content_sets_dict(self):
-        result = {}
-        for a in self._arches:
-            result[a] = {}
-            for r in self._repos.itervalues():
-                result[a][r.name] = r.content_set(a)
-        return result
-
-    def full_content_sets_list(self):
-        result = []
-        for a in self._arches:
-            for r in self._repos.itervalues():
-                result.append(r.content_set(a))
-        return list(set(result))  # make unique list
-
     def content_sets(self, enabled_repos=[]):
         """Generates a valid content_sets.yml file based on the currently
         configured and enabled repos in the collection. Using the correct
@@ -276,7 +252,7 @@ class Repos(object):
         result = {}
         for a in self._arches:
             result[a] = []
-            for r in self._repos.itervalues():
+            for r in self._repos.values():
                 if r.enabled or r.name in enabled_repos:
                     cs = r.content_set(a)
                     if cs:  # possible to be forced off by setting to null
@@ -325,15 +301,15 @@ class Repos(object):
         invalid = []
         for arch in self._arches:
             cs_names = {}
-            for name, repo in self._repos.iteritems():
+            for name, repo in self._repos.items():
                 cs = repo.content_set(arch)
                 cs_names[name] = cs
 
-            arch_cs_values = cs_names.values()
+            arch_cs_values = list(cs_names.values())
             if arch_cs_values:
                 # no point in making empty call
                 valid = self._validate_content_sets(arch, arch_cs_values)
-                for name, cs in cs_names.iteritems():
+                for name, cs in cs_names.items():
                     if cs not in valid:
                         if not self._repos[name].cs_optional:
                             invalid.append('{}/{}'.format(arch, cs))

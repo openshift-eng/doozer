@@ -1,10 +1,12 @@
-from __future__ import absolute_import
-from __future__ import unicode_literals
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, print_function, unicode_literals
+
 import glob
 import io
 import os
 import traceback
 import re
+import io
 
 from . import exectools
 from .pushd import Dir
@@ -149,7 +151,7 @@ class RPMMetadata(Metadata):
                 # and use that as a means to return to the upstream HEAD.
                 exectools.cmd_assert('git reset {}'.format(pre_init_sha))
 
-            with open(os.path.join(tito_dir, 'releasers.conf'), 'w') as r:
+            with io.open(os.path.join(tito_dir, 'releasers.conf'), 'w', encoding='utf-8') as r:
                 branch = self.config.get('distgit', {}).get('branch', self.runtime.branch)
                 r.write(RELEASERS_CONF.format(
                     branch=branch,
@@ -160,7 +162,7 @@ class RPMMetadata(Metadata):
                 r.flush()
 
             # fix for tito 0.6.10 which looks like remote_git_name in wrong place
-            with open(os.path.join(tito_dir, 'tito.props'), 'a') as props:
+            with io.open(os.path.join(tito_dir, 'tito.props'), 'a', encoding='utf-8') as props:
                 props.write(TITO_PROPS.format(name=self.name, target=tito_target))
                 props.flush()
 
@@ -178,7 +180,7 @@ class RPMMetadata(Metadata):
         """
         Interprets and applies content.source.modify steps in the image metadata.
         """
-        with open(self.specfile, 'r') as df:
+        with io.open(self.specfile, 'r', encoding='utf-8') as df:
             specfile_data = df.read()
 
         self.logger.debug(
@@ -207,7 +209,7 @@ class RPMMetadata(Metadata):
             else:
                 raise IOError("%s: Don't know how to perform modification action: %s" % (self.distgit_key, modification.action))
 
-        with open(self.specfile, 'w') as df:
+        with io.open(self.specfile, 'w', encoding='utf-8') as df:
             df.write(specfile_data)
 
     def update_spec(self):
@@ -234,7 +236,7 @@ class RPMMetadata(Metadata):
         if self.release.startswith("0."):
             full += "-{}".format(self.release)
 
-        replace_keys = replace.keys()
+        replace_keys = list(replace.keys())
 
         with Dir(self.source_path):
             commit_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()
@@ -247,7 +249,6 @@ class RPMMetadata(Metadata):
             with io.open(self.specfile, 'r+', encoding='utf-8') as sf:
                 lines = sf.readlines()
                 for i in range(len(lines)):
-
                     if "%global os_git_vars " in lines[i]:
                         lines[i] = "%global os_git_vars OS_GIT_VERSION={version} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit} OS_GIT_TREE_STATE=clean\n".format(
                             version=full, major=major, minor=minor, patch=patch, commit=commit_sha

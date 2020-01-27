@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 import re
 import tempfile
 import unittest
@@ -117,7 +117,7 @@ class TestImageDistGit(TestDistgit):
             self.fail("Should have raised IOError")
         except IOError as e:
             expected = "Error building image: my-qualified-name (i-am-waiting was waiting)"
-            actual = e.message
+            actual = str(e)
             self.assertEqual(expected, actual)
 
     def test_push(self):
@@ -205,8 +205,9 @@ class TestImageDistGit(TestDistgit):
         output = self.stream.getvalue()
         self.assertIn("No task logs found under", output)
 
-        self.img_dg._logs_dir = lambda: str(tempfile.TemporaryFile())  # search a dir that won't be there
-        self.assertIsNone(self.img_dg._detect_permanent_build_failures(scanner))
+        with tempfile.NamedTemporaryFile() as temp:
+            self.img_dg._logs_dir = lambda: temp.name  # search a dir that won't be there
+            self.assertIsNone(self.img_dg._detect_permanent_build_failures(scanner))
         output = self.stream.getvalue()
         self.assertIn("Exception while trying to analyze build logs", output)
 
@@ -244,7 +245,7 @@ class TestImageDistGit(TestDistgit):
         for cmd, expect in changes.items():
             changed, result = distgit.ImageDistGitRepo._mangle_yum(cmd)
             self.assertTrue(changed)
-            self.assertEquals(result, expect)
+            self.assertEqual(result, expect)
 
     def test_mangle_yum_parse_err(self):
         with self.assertRaises(IOError) as e:

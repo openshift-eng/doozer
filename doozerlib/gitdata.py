@@ -1,13 +1,15 @@
 # This file is part of gitdata project <https://github.com/adammhaile/gitdata>
 # and released under LGPL v3 <https://www.gnu.org/licenses/lgpl-3.0.en.html>
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
+from future import standard_library
+standard_library.install_aliases()
 import yaml
 import logging
-import urlparse
+import urllib.parse
 import os
 import shutil
+import io
 from . import exectools
 from .pushd import Dir
 
@@ -45,11 +47,11 @@ class DataObj(object):
         return str(result)
 
     def reload(self):
-        with open(self.path, 'r') as f:
+        with io.open(self.path, 'r', encoding="utf-8") as f:
             self.data = yaml.full_load(f)
 
     def save(self):
-        with open(self.path, 'w') as f:
+        with io.open(self.path, 'w', encoding="utf-8") as f:
             yaml.safe_dump(self.data, f, default_flow_style=False)
 
 
@@ -87,7 +89,7 @@ class GitData(object):
         """
         self.data_path = data_path
 
-        data_url = urlparse.urlparse(self.data_path)
+        data_url = urllib.parse.urlparse(self.data_path)
         if data_url.scheme in SCHEMES or (data_url.scheme == '' and ':' in data_url.path):
             data_name = os.path.splitext(os.path.basename(data_url.path))[0]
             data_destination = os.path.join(self.clone_dir, data_name)
@@ -198,7 +200,7 @@ class GitData(object):
             if ext.lower() in self.exts:
                 data_file = os.path.join(full_path, name)
                 if os.path.isfile(data_file):
-                    with open(data_file, 'r') as f:
+                    with io.open(data_file, 'r', encoding="utf-8") as f:
                         raw_text = f.read()
                         if replace_vars:
                             try:

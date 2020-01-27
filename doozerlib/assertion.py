@@ -5,20 +5,20 @@ the asserted condition is not met.
 The use of the FileNotFound exception makes this Python3 ready.
 Making them functions keeps the exception definition localized.
 """
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 import os
 import errno
 
 # Create FileNotFound for Python2
 try:
-    FileNotFoundError
-except NameError:
+    import FileNotFoundError
+except ImportError:
     FileNotFoundError = IOError
 
 # Create ChildProcessError for Python2
 try:
-    ChildProcessError
-except NameError:
+    import ChildProcessError
+except ImportError:
     ChildProcessError = IOError
 
 

@@ -1,4 +1,4 @@
-from __future__ import absolute_import, unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 from doozerlib.distgit import pull_image
 from doozerlib.metadata import Metadata
 from doozerlib.model import Missing

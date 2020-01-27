@@ -1,7 +1,8 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 import errno
 import os
 import sys
+import io
 import unittest
 
 import flexmock
@@ -62,7 +63,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(True)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -99,7 +100,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(True)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -135,7 +136,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(True)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -175,7 +176,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(True)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -213,7 +214,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(False)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -249,7 +250,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(False)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -289,7 +290,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(False).and_return(True)
         flexmock(distgit.os.path).should_receive("isfile").and_return(False)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -331,7 +332,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(True)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -368,7 +369,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
             self.fail("Should have raised an exception, but didn't")
         except IOError as e:
             expected_msg = "Error pushing image: stderr"
-            self.assertEqual(expected_msg, e.message)
+            self.assertEqual(expected_msg, str(e))
 
     def test_push_image_to_defaults_with_lstate(self):
         # preventing tests from interacting with the real filesystem
@@ -377,7 +378,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(True)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -423,7 +424,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(True)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
@@ -480,7 +481,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                             version_release_tuple=version_release_tuple)
             self.fail("Should have raised an exception, but didn't")
         except IOError as e:
-            self.assertEqual(expected_msg, e.message)
+            self.assertEqual(expected_msg, str(e))
 
     def test_push_image_insecure_source(self):
         # preventing tests from interacting with the real filesystem
@@ -489,7 +490,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         flexmock(distgit.os.path).should_receive("isdir").and_return(True)
         flexmock(distgit.os.path).should_receive("isfile").and_return(True)
         flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
-        (flexmock(sys.modules["__builtin__"])
+        (flexmock(io)
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))

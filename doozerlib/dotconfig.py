@@ -1,10 +1,12 @@
 # This file is part of dotconfig project <https://github.com/adammhaile/dotconfig>
 # and released under LGPL v3 <https://www.gnu.org/licenses/lgpl-3.0.en.html>
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
+from future.utils import string_types
 import yaml
 import os
 import shutil
+import io
 
 
 VALID_EXT = [
@@ -72,34 +74,34 @@ class Config(object):
                 if template_file:
                     shutil.copyfile(template_file, self.full_path)
                 else:
-                    with open(self.full_path, 'w') as f:
+                    with io.open(self.full_path, 'w', encoding="utf-8") as f:
                         if template:
-                            if isinstance(template, (str, unicode)):
+                            if isinstance(template, string_types):
                                 f.write(template)
                             elif isinstance(template, dict):
-                                yaml.dump(template, f, default_flow_style=False)
+                                yaml.safe_dump(template, f, default_flow_style=False)
                         else:
-                            yaml.dump({}, f, default_flow_style=False)
+                            yaml.safe_dump({}, f, default_flow_style=False)
 
         self._data = defaults
-        with open(self.full_path, 'r') as f:
+        with io.open(self.full_path, 'r', encoding="utf-8") as f:
             data = yaml.full_load(f)
             self._data.update(data)
             # load envvars if given and override
-            for k, v in envvars.iteritems():
+            for k, v in envvars.items():
                 if v in os.environ:
                     self._data[k] = os.environ[v]
 
             # finally, override with given cli args
-            for k, v in cli_args.iteritems():
+            for k, v in cli_args.items():
                 if k not in self._data or v is not None:
                     self._data[k] = v
 
     def __getitem__(self, item):
         return self._data[item]
 
-    def iteritems(self):
-        return self._data.iteritems()
+    def items(self):
+        return self._data.items()
 
     def to_dict(self):
         return dict(self._data)

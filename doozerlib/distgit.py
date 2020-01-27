@@ -1,5 +1,4 @@
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 import hashlib
 import os
 import shutil
@@ -12,6 +11,7 @@ import logging
 import bashlex
 import glob
 import re
+import io
 import copy
 from datetime import datetime, timedelta
 
@@ -345,7 +345,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         # generate yaml data with header
         content_yml = yaml.safe_dump(container_config, default_flow_style=False)
-        with open('container.yaml', 'w') as rc:
+        with io.open('container.yaml', 'w', encoding="utf-8") as rc:
             rc.write(CONTAINER_YAML_HEADER + content_yml)
 
     def _generate_osbs_image_config(self):
@@ -444,7 +444,7 @@ class ImageDistGitRepo(DistGitRepo):
         :return:
         """
         self.logger.debug("Generating cvp-owners.yml for {}".format(self.metadata.distgit_key))
-        with open('cvp-owners.yml', 'w') as co:
+        with io.open('cvp-owners.yml', 'w', encoding="utf-8") as co:
             if self.config.owners:  # Not missing and non-empty
                 yaml.safe_dump(self.config.owners.primitive(), co, default_flow_style=False)
 
@@ -462,11 +462,11 @@ class ImageDistGitRepo(DistGitRepo):
         repos = self.runtime.repos
         enabled_repos = self.config.get('enabled_repos', [])
         for t in repos.repotypes:
-            with open('.oit/{}.repo'.format(t), 'w') as rc:
+            with io.open('.oit/{}.repo'.format(t), 'w', encoding="utf-8") as rc:
                 content = repos.repo_file(t, enabled_repos=enabled_repos)
                 rc.write(content)
 
-        with open('content_sets.yml', 'w') as rc:
+        with io.open('content_sets.yml', 'w', encoding="utf-8") as rc:
             rc.write(repos.content_sets(enabled_repos=enabled_repos))
 
     def _read_master_data(self):
@@ -621,7 +621,7 @@ class ImageDistGitRepo(DistGitRepo):
                         # just delete it to ease creating new config
                         os.remove(push_config)
 
-                    with open(push_config, 'w') as pc:
+                    with io.open(push_config, 'w', encoding="utf-8") as pc:
                         pc.write('\n'.join(all_push_urls))
 
                     mirror_cmd = 'oc image mirror --filter-by-os=amd64 {} {} --filename={}'.format(dr, insecure, push_config)
@@ -901,7 +901,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         cmd_list += (
             "container-build",
-            "--nowait",
+            "--nowait",  # Run the build with --nowait so that we can immediately get information about the brew task
         )
 
         # Determine if ODCS is enabled by looking at container.yaml.
@@ -1020,7 +1020,7 @@ class ImageDistGitRepo(DistGitRepo):
                 ])
                 if rc == 0 and output:
                     extracted = os.path.join(logs_dir, "container-build-" + filename)
-                    with open(extracted, "w") as extracted_file:
+                    with io.open(extracted, "w", encoding="utf-8") as extracted_file:
                         extracted_file.write(output)
         except OSError as e:
             self.logger.warning("Exception while trying to extract build logs in {}: {}".format(logs_dir, e))
@@ -1058,7 +1058,7 @@ class ImageDistGitRepo(DistGitRepo):
             for log_file in os.listdir(latest_dir):
                 if log_file not in scanner.files:
                     continue
-                with open(os.path.join(latest_dir, log_file)) as log:
+                with io.open(os.path.join(latest_dir, log_file), encoding="utf-8") as log:
                     for line in log:
                         for regex in scanner.matches:
                             match = regex.search(line)
@@ -1193,7 +1193,7 @@ class ImageDistGitRepo(DistGitRepo):
             uuid_tag = "%s.%s" % (version, self.runtime.uuid)
 
             if not self.runtime.local:
-                with open('additional-tags', 'w') as at:
+                with io.open('additional-tags', 'w', encoding="utf-8") as at:
                     at.write("%s\n" % uuid_tag)  # The uuid which we ensure we get the right
                     vsplit = version.split(".")
                     if len(vsplit) > 1:
@@ -1203,12 +1203,12 @@ class ImageDistGitRepo(DistGitRepo):
                             at.write("{}\n".format(tag))
 
             self.logger.debug("Dockerfile contains the following labels:")
-            for k, v in dfp.labels.iteritems():
+            for k, v in dfp.labels.items():
                 self.logger.debug("  '%s'='%s'" % (k, v))
 
             # Set all labels in from config into the Dockerfile content
             if self.config.labels is not Missing:
-                for k, v in self.config.labels.iteritems():
+                for k, v in self.config.labels.items():
                     dfp.labels[k] = v
 
             # Set the image name
@@ -1342,7 +1342,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             # specify new env vars in the dockerfile
             if env_vars:
-                env_line = "ENV " + " ".join(map(lambda it: it[0] + "=" + it[1], env_vars.iteritems()))
+                env_line = "ENV " + " ".join([key + "=" + val for key, val in env_vars.items()])
                 dfp.add_lines(env_line, all_stages=True, at_start=True)
 
             # Remove any programmatic oit comments from previous management
@@ -1375,7 +1375,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             df_content = "\n".join(df_lines)
 
-            with open('Dockerfile', 'w') as df:
+            with io.open('Dockerfile', 'w', encoding="utf-8") as df:
                 for comment in oit_comments:
                     df.write("%s %s\n" % (OIT_COMMENT_PREFIX, comment))
                 df.write(df_content)
@@ -1407,7 +1407,7 @@ class ImageDistGitRepo(DistGitRepo):
         refs = os.path.join(manifests, 'image-references')
         if not os.path.isfile(refs):
             raise DoozerFatalError('{}: file does not exist: {}'.format(self.metadata.distgit_key, refs))
-        with open(refs, 'r') as f_ref:
+        with io.open(refs, 'r', encoding="utf-8") as f_ref:
             ref_data = yaml.full_load(f_ref)
         image_refs = ref_data.get('spec', {}).get('tags', {})
         if not image_refs:
@@ -1459,13 +1459,13 @@ class ImageDistGitRepo(DistGitRepo):
                     raise DoozerFatalError('csv_namespace is required in group.yaml when any image defines update-csv')
                 replace = '{}/{}/{}'.format(registry, namespace, nvr)
 
-                with open(csv_file, 'r+b') as f:
-                    content = f.read().decode('utf-8')
+                with io.open(csv_file, 'r+', encoding="utf-8") as f:
+                    content = f.read()
                     content = content.replace(spec + '\n', replace + '\n')
                     content = content.replace(spec + '\"', replace + '\"')
                     f.seek(0)
                     f.truncate()
-                    f.write(content.encode('utf-8'))
+                    f.write(content)
             except Exception as e:
                 self.runtime.logger.error(e)
                 raise
@@ -1488,8 +1488,8 @@ class ImageDistGitRepo(DistGitRepo):
         art_yaml = os.path.join(manifests_base, 'art.yaml')
 
         if os.path.isfile(art_yaml):
-            with open(art_yaml, 'r') as art_file:
-                art_yaml_str = art_file.read().decode('utf-8')
+            with io.open(art_yaml, 'r', encoding="utf-8") as art_file:
+                art_yaml_str = art_file.read()
 
             try:
                 art_yaml_str = art_yaml_str.format(**replace_args)
@@ -1514,8 +1514,8 @@ class ImageDistGitRepo(DistGitRepo):
                     raise DoozerFatalError('{} does not exist as defined in art.yaml'.format(f_path))
 
                 self.runtime.logger.info('Updating {}'.format(f_path))
-                with open(f_path, 'r+') as sr_file:
-                    sr_file_str = sr_file.read().decode('utf-8')
+                with io.open(f_path, 'r+', encoding="utf-8") as sr_file:
+                    sr_file_str = sr_file.read()
                     for sr in u_list:
                         s = sr.get('search', None)
                         r = sr.get('replace', None)
@@ -1525,7 +1525,7 @@ class ImageDistGitRepo(DistGitRepo):
                         sr_file_str = sr_file_str.replace(s, r)
                     sr_file.seek(0)
                     sr_file.truncate()
-                    sr_file.write(sr_file_str.encode('utf-8'))
+                    sr_file.write(sr_file_str)
 
     def _reflow_labels(self, filename="Dockerfile"):
         """
@@ -1546,11 +1546,11 @@ class ImageDistGitRepo(DistGitRepo):
         df_content = dfp.content.strip()
 
         # Write the file back out and append the labels to the end
-        with open(filename, 'w') as df:
+        with io.open(filename, 'w', encoding="utf-8") as df:
             df.write("%s\n\n" % df_content)
             if labels:
                 df.write("LABEL")
-                for k, v in labels.iteritems():
+                for k, v in labels.items():
                     df.write(" \\\n")  # All but the last line should have line extension backslash "\"
                     escaped_v = v.replace('"', '\\"')  # Escape any " with \"
                     df.write("        %s=\"%s\"" % (k, escaped_v))
@@ -1629,7 +1629,7 @@ class ImageDistGitRepo(DistGitRepo):
                                            .format(self.metadata.distgit_key, dockerfile_name, url, options))
                 os.rename(dockerfile_name, "Dockerfile")
             except OSError as err:
-                raise DoozerFatalError(err.message)
+                raise DoozerFatalError(str(err))
 
         # Clean up any extraneous Dockerfile.* that might be distractions (e.g. Dockerfile.centos)
         for ent in os.listdir("."):
@@ -1655,7 +1655,7 @@ class ImageDistGitRepo(DistGitRepo):
         # owner as we toggled back and forth between the two versions for the alternating
         # builds. Instead, we now keep around an history of all past reconciled files.
 
-        source_dockerfile_hash = hashlib.sha256(open(source_dockerfile_path, 'rb').read()).hexdigest()
+        source_dockerfile_hash = hashlib.sha256(io.open(source_dockerfile_path, 'rb').read()).hexdigest()
 
         if not os.path.isdir(".oit/reconciled"):
             os.mkdir(".oit/reconciled")
@@ -1721,7 +1721,7 @@ class ImageDistGitRepo(DistGitRepo):
         Interprets and applies content.source.modify steps in the image metadata.
         """
 
-        with open("Dockerfile", 'r') as df:
+        with io.open("Dockerfile", 'r', encoding="utf-8") as df:
             dockerfile_data = df.read()
 
         self.logger.debug(
@@ -1750,7 +1750,7 @@ class ImageDistGitRepo(DistGitRepo):
             else:
                 raise IOError("Don't know how to perform modification action: %s" % modification.action)
 
-        with open('Dockerfile', 'w') as df:
+        with io.open('Dockerfile', 'w', encoding="utf-8") as df:
             df.write(dockerfile_data)
 
     def rebase_dir(self, version, release):

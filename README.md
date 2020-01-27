@@ -11,7 +11,7 @@ _**Note**: This is for running the full, local python `doozer` client, not the c
 
 For local development pull the code and run:
 
-`python setup.py develop`
+`pip3 install --user -e .`
 
 For new releases, Jenkins is already setup and deployment to PyPi is easy:
 

@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 STATE_PEND = 'pending'
 STATE_PASS = 'passed'
 STATE_FAIL = 'failed'

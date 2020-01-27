@@ -1,6 +1,4 @@
-FROM fedora:30
-
-ENV PYCURL_SSL_LIBRARY=openssl
+FROM fedora:31
 
 RUN dnf install -y \
     # runtime dependencies
@@ -26,7 +24,7 @@ RUN wget -O /etc/yum.repos.d/rcm-tools-fedora.repo https://download.devel.redhat
   && dnf install -y rhpkg \
   && dnf clean all
 
-ARG OC_VERSION=4.2.12
+ARG OC_VERSION=4.2.16
 # include oc client
 RUN wget -O /tmp/openshift-client-linux-"$OC_VERSION".tar.gz https://mirror.openshift.com/pub/openshift-v4/clients/ocp/"$OC_VERSION"/openshift-client-linux-"$OC_VERSION".tar.gz \
   && tar -C /usr/local/bin -xzf  /tmp/openshift-client-linux-"$OC_VERSION".tar.gz oc kubectl \
@@ -49,5 +47,11 @@ RUN groupadd --gid "$USER_GID" "$USERNAME" \
 
 # Configure Kerberos
 COPY .devcontainer/krb5-redhat.conf /etc/krb5.conf.d/
+
+# Preinstall dependencies
+COPY ./requirements.txt ./requirements-dev.txt /tmp/doozer/
+RUN pushd /tmp/doozer \
+  && sudo -u "$USERNAME" pip3 install --user -r ./requirements.txt -r requirements-dev.txt \
+  && popd && rm -rf /tmp/doozer
 
 USER "$USER_UID"

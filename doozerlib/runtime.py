@@ -1,8 +1,9 @@
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
+from future import standard_library
+standard_library.install_aliases()
+from future.utils import as_native_str
 from multiprocessing import Lock
 from multiprocessing.dummy import Pool as ThreadPool
-from pykwalify.core import Core
 import os
 import sys
 import tempfile
@@ -16,8 +17,9 @@ import click
 import logging
 import functools
 import traceback
-import urlparse
+import urllib.parse
 import signal
+import io
 
 from doozerlib import gitdata
 from . import logutil
@@ -59,17 +61,6 @@ def close_file(f):
     f.close()
 
 
-# Iterates through a list of strings, detecting if any entries have a
-# comma delimited entry. If an entry contains a comma, it is split into
-# multiple entries.
-# The extended list is returned.
-def flatten_comma_delimited_entries(l):
-    nl = []
-    for e in l:
-        nl.extend(e.split(","))
-    return nl
-
-
 def remove_tmp_working_dir(runtime):
     if runtime.remove_tmp_working_dir:
         shutil.rmtree(runtime.working_dir)
@@ -86,9 +77,9 @@ class WrapException(Exception):
         self.formatted = "".join(
             traceback.format_exception(exc_type, exc_value, exc_tb))
 
+    @as_native_str()
     def __str__(self):
-        return "{}\nOriginal traceback:\n{}".format(
-            Exception.__str__(self), self.formatted)
+        return "{}\nOriginal traceback:\n{}".format(Exception.__str__(self), self.formatted)
 
 
 def wrap_exception(func):
@@ -133,6 +124,7 @@ class Runtime(object):
         self.data_dir = None
         self.brew_tag = None
         self.latest_parent_version = False
+        self.rhpkg_config = None
 
         for key, val in kwargs.items():
             self.__dict__[key] = val
@@ -227,12 +219,12 @@ class Runtime(object):
         self.state_file = os.path.join(self.working_dir, 'state.yaml')
         self.state = dict(state.TEMPLATE_BASE_STATE)
         if os.path.isfile(self.state_file):
-            with open(self.state_file, 'r') as f:
+            with io.open(self.state_file, 'r', encoding='utf-8') as f:
                 self.state = yaml.full_load(f)
             self.state.update(state.TEMPLATE_BASE_STATE)
 
     def save_state(self):
-        with open(self.state_file, 'w') as f:
+        with io.open(self.state_file, 'w', encoding='utf-8') as f:
             yaml.safe_dump(self.state, f, default_flow_style=False)
 
     def initialize(self, mode='images', clone_distgits=True,
@@ -289,7 +281,7 @@ class Runtime(object):
         self.resolve_metadata()
 
         self.record_log_path = os.path.join(self.working_dir, "record.log")
-        self.record_log = open(self.record_log_path, 'a')
+        self.record_log = io.open(self.record_log_path, 'a', encoding='utf-8')
         atexit.register(close_file, self.record_log)
 
         # Directory where brew-logs will be downloaded after a build
@@ -311,7 +303,7 @@ class Runtime(object):
             self.register_source_alias(r[0], r[1])
 
         if self.sources:
-            with open(self.sources, 'r') as sf:
+            with io.open(self.sources, 'r', encoding='utf-8') as sf:
                 source_dict = yaml.full_load(sf)
                 if not isinstance(source_dict, dict):
                     raise ValueError('--sources param must be a yaml file containing a single dict.')
@@ -409,7 +401,7 @@ class Runtime(object):
             # name or distgit. For now this is used elsewhere
             image_name_data = self.gitdata.load_data(path='images')
 
-            for img in image_name_data.itervalues():
+            for img in image_name_data.values():
                 name = img.data.get('name')
                 short_name = name.split('/')[1]
                 self.image_name_map[name] = img.key
@@ -429,22 +421,22 @@ class Runtime(object):
                 # some older versions have no RPMs, that's ok.
                 rpm_data = {}
 
-            missed_include = set(image_keys + rpm_keys) - set(image_data.keys() + rpm_data.keys())
+            missed_include = set(image_keys + rpm_keys) - set(list(image_data.keys()) + list(rpm_data.keys()))
             if len(missed_include) > 0:
                 raise DoozerFatalError('The following images or rpms were either missing or filtered out: {}'.format(', '.join(missed_include)))
 
             if mode in ['images', 'both']:
-                for i in image_data.itervalues():
+                for i in image_data.values():
                     metadata = ImageMetadata(self, i)
                     self.image_map[metadata.distgit_key] = metadata
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
 
-                for image in self.image_map.itervalues():
+                for image in self.image_map.values():
                     image.resolve_parent()
 
                 # now that ancestry is defined, make sure no cyclic dependencies
-                for image in self.image_map.itervalues():
+                for image in self.image_map.values():
                     for child in image.children:
                         if image.is_ancestor(child):
                             raise DoozerFatalError('{} cannot be both a parent and dependent of {}'.format(child.distgit_key, image.distgit_key))
@@ -452,7 +444,7 @@ class Runtime(object):
                 self.generate_image_tree()
 
             if mode in ['rpms', 'both']:
-                for r in rpm_data.itervalues():
+                for r in rpm_data.values():
                     metadata = RPMMetadata(self, r, clone_source=clone_source)
                     self.rpm_map[metadata.distgit_key] = metadata
                 if not self.rpm_map:
@@ -461,7 +453,7 @@ class Runtime(object):
         # Make sure that the metadata is not asking us to check out the same exact distgit & branch.
         # This would almost always indicate someone has checked in duplicate metadata into a group.
         no_collide_check = {}
-        for meta in self.rpm_map.values() + self.image_map.values():
+        for meta in list(self.rpm_map.values()) + list(self.image_map.values()):
             key = '{}/{}/#{}'.format(meta.namespace, meta.name, meta.branch())
             if key in no_collide_check:
                 raise IOError('Complete duplicate distgit & branch; something wrong with metadata: {} from {} and {}'.format(key, meta.config_filename, no_collide_check[key].config_filename))
@@ -540,7 +532,7 @@ class Runtime(object):
             raise DoozerFatalError('Automation (builds / mutations) for this group is currently frozen (freeze_automation set to {}). Coordinate with the group owner to change this if you believe it is incorrect.'.format(FREEZE_AUTOMATION_YES))
 
     def image_metas(self):
-        return self.image_map.values()
+        return list(self.image_map.values())
 
     def ordered_image_metas(self):
         return [self.image_map[dg] for dg in self.image_order]
@@ -573,13 +565,13 @@ class Runtime(object):
                 image_lists[level].append(sub_child.distgit_key)
                 add_child_branch(sub_child, branch[sub_child.distgit_key], level + 1)
 
-        for image in self.image_map.itervalues():
+        for image in self.image_map.values():
             if not image.parent:
                 self.image_tree[image.distgit_key] = {}
                 image_lists[0].append(image.distgit_key)
                 add_child_branch(image, self.image_tree[image.distgit_key])
 
-        levels = image_lists.keys()
+        levels = list(image_lists.keys())
         levels.sort()
         self.image_order = []
         for l in levels:
@@ -592,7 +584,7 @@ class Runtime(object):
         return self.image_name_map.get(name, None)
 
     def rpm_metas(self):
-        return self.rpm_map.values()
+        return list(self.rpm_map.values())
 
     def all_metas(self):
         return self.image_metas() + self.rpm_metas()
@@ -680,7 +672,7 @@ class Runtime(object):
         # synchronize output to the file.
         with self.log_lock:
             record = "%s|" % record_type
-            for k, v in kwargs.iteritems():
+            for k, v in kwargs.items():
                 assert ("\n" not in str(k))
                 # Make sure the values have no linefeeds as this would interfere with simple parsing.
                 v = str(v).replace("\n", " ;;; ").replace("\r", "")
@@ -695,7 +687,7 @@ class Runtime(object):
         Records the diff of changes applied to a distgit repo.
         """
 
-        with open(os.path.join(self.distgits_diff_dir, distgit + '.patch'), 'w') as f:
+        with io.open(os.path.join(self.distgits_diff_dir, distgit + '.patch'), 'w', encoding='utf-8') as f:
             f.write(diff)
 
     def resolve_image(self, distgit_name, required=True):
@@ -760,7 +752,7 @@ class Runtime(object):
 
         source_details = None
         if 'git' in source:
-            git_url = urlparse.urlparse(source.git.url)
+            git_url = urllib.parse.urlparse(source.git.url)
             name = os.path.splitext(os.path.basename(git_url.path))[0]
             alias = '{}_{}'.format(parent, name)
             source_details = dict(source.git)
@@ -810,7 +802,7 @@ class Runtime(object):
                 on_retry=["rm", "-rf", source_dir],
             )
         except IOError as e:
-            self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, e.message))
+            self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, str(e)))
             raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
 
         # Store so that the next attempt to resolve the source hits the map
@@ -875,7 +867,7 @@ class Runtime(object):
         if not source_dir:
             return None
 
-        with open(os.path.join(source_dir, '.git/HEAD')) as f:
+        with io.open(os.path.join(source_dir, '.git/HEAD'), encoding="utf-8") as f:
             head_content = f.read().strip()
             # This will either be:
             # a SHA like: "52edbcd8945af0dc728ad20f53dcd78c7478e8c2"
@@ -888,22 +880,8 @@ class Runtime(object):
 
     def export_sources(self, output):
         self.logger.info('Writing sources to {}'.format(output))
-        with open(output, 'w') as sources_file:
+        with io.open(output, 'w', encoding='utf-8') as sources_file:
             yaml.dump(self.source_paths, sources_file, default_flow_style=False)
-
-    def _flag_file(self, flag_name):
-        return os.path.join(self.flags_dir, flag_name)
-
-    def flag_create(self, flag_name, msg=""):
-        with open(self._flag_file(flag_name), 'w') as f:
-            f.write(msg)
-
-    def flag_exists(self, flag_name):
-        return os.path.isfile(self._flag_file(flag_name))
-
-    def flag_remove(self, flag_name):
-        if self.flag_exists(flag_name):
-            os.remove(self._flag_file(flag_name))
 
     def auto_version(self, repo_type):
         """
@@ -1045,4 +1023,4 @@ class Runtime(object):
                                            branch=self.group, logger=self.logger)
             self.data_dir = self.gitdata.data_dir
         except gitdata.GitDataException as ex:
-            raise DoozerFatalError(ex.message)
+            raise DoozerFatalError(str(ex))

@@ -4,7 +4,6 @@ dockerfile-parse >= 0.0.13
 future
 koji
 mock
-pykwalify >= 1.7.0
 pyyaml >= 5.1
 requests
 requests_kerberos

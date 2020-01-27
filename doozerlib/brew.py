@@ -1,8 +1,7 @@
 """
 Utility functions for general interactions with Brew and Builds
 """
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
 # stdlib
 import ast
@@ -15,7 +14,6 @@ from multiprocessing import Lock
 import shlex
 import traceback
 
-from . import exceptions
 from . import exectools
 from . import logutil
 
@@ -23,8 +21,6 @@ from . import logutil
 import click
 import koji
 import koji_cli.lib
-import requests
-from requests_kerberos import HTTPKerberosAuth
 
 logger = logutil.getLogger(__name__)
 

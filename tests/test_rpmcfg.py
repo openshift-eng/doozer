@@ -2,14 +2,17 @@
 """
 Test the ImageMetadata class
 """
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 import unittest
 
 import os
 import logging
 import tempfile
 import shutil
-
+try:
+    from importlib import reload
+except ImportError:
+    pass
 
 TEST_YAML = """---
 name: 'test'

@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 import unittest
 
 import flexmock
@@ -26,7 +26,7 @@ class TestRPMDistGit(TestDistgit):
             self.fail("Should have raised a ValueError")
         except ValueError as e:
             expected = "Must specify spec file name for RPMs."
-            actual = e.message
+            actual = str(e)
             self.assertEqual(expected, actual)
 
     def test_pkg_find_in_spec(self):
