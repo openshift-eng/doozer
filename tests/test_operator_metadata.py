@@ -202,46 +202,52 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
         }
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, image_ref_mode, **cached_attrs).update_metadata_manifests_dir()
 
-    def skip_test_replace_version_by_sha_on_image_references(self):  # broken for now, i changed the method's API
+    def test_find_and_replace_image_versions_by_sha(self):
         initial = """
-        apiVersion: operators.coreos.com/v1alpha1
-        kind: ClusterServiceVersion
-        metadata:
-          name: clusterlogging.4.1.16-201901010000
-          namespace: placeholder
-        spec:
-          version: 4.1.16-201901010000
-          displayName: Cluster Logging
-          image: image-registry.svc:5000/openshift/ose-cluster-logging-operator:v4.1.6-201901010000
-          some:
-            key:
-            - item: "image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111"
-            - item: "image-registry.svc:5000/openshift/dependency-c:v1.1.1-1111"
-            - item: "image-registry.svc:5000/openshift/dependency-d:v1.1.1-1111"
-        other:
-        - reference: image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: clusterlogging.4.1.16-201901010000
+  namespace: placeholder
+spec:
+  version: 4.1.16-201901010000
+  displayName: Cluster Logging
+  image: image-registry.svc:5000/openshift/ose-cluster-logging-operator:v4.1.6-201901010000
+  some:
+  key:
+    - item: "image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111"
+    - item: "image-registry.svc:5000/openshift/dependency-c:v1.1.1-1111"
+    - item: "image-registry.svc:5000/openshift/dependency-d:v1.1.1-1111"
+other:
+  - reference: image-registry.svc:5000/openshift/dependency-b:v1.1.1-1111
         """
-        mock = flexmock(get_builtin_module())
-        mock.should_call('open')
-        mock.should_receive('open').and_return(initial)
 
         expected = """
-        apiVersion: operators.coreos.com/v1alpha1
-        kind: ClusterServiceVersion
-        metadata:
-          name: clusterlogging.4.1.16-201901010000
-          namespace: placeholder
-        spec:
-          version: 4.1.16-201901010000
-          displayName: Cluster Logging
-          image: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
-          some:
-            key:
-            - item: "image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb"
-            - item: "image-registry.svc:5000/openshift/dependency-c@sha256:cccccccccccccc"
-            - item: "image-registry.svc:5000/openshift/dependency-d@sha256:dddddddddddddd"
-        other:
-        - reference: image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: clusterlogging.4.1.16-201901010000
+  namespace: placeholder
+spec:
+  relatedImages:
+    - name: dependency-b
+      image: image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb
+    - name: dependency-c
+      image: image-registry.svc:5000/openshift/dependency-c@sha256:cccccccccccccc
+    - name: dependency-d
+      image: image-registry.svc:5000/openshift/dependency-d@sha256:dddddddddddddd
+    - name: ose-cluster-logging-operator
+      image: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
+  version: 4.1.16-201901010000
+  displayName: Cluster Logging
+  image: image-registry.svc:5000/openshift/ose-cluster-logging-operator@sha256:aaaaaaaaaaaaaa
+  some:
+  key:
+    - item: "image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb"
+    - item: "image-registry.svc:5000/openshift/dependency-c@sha256:cccccccccccccc"
+    - item: "image-registry.svc:5000/openshift/dependency-d@sha256:dddddddddddddd"
+other:
+  - reference: image-registry.svc:5000/openshift/dependency-b@sha256:bbbbbbbbbbbbbb
         """
 
         flexmock(operator_metadata.OperatorMetadataBuilder).should_receive('fetch_image_sha').with_args('openshift/ose-cluster-logging-operator:v4.1.6-201901010000', 'manifest-list').and_return('sha256:aaaaaaaaaaaaaa')
@@ -266,7 +272,7 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
             })
         }
         op_md = operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, image_ref_mode, **cached_attrs)
-        actual = op_md.replace_version_by_sha_on_image_references('manifest-list')
+        actual = op_md.find_and_replace_image_versions_by_sha(initial, 'manifest-list')
         self.assertMultiLineEqual(actual, expected)
 
     def test_get_file_list_from_operator_art_yaml(self):
