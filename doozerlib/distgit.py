@@ -1868,7 +1868,7 @@ class RPMDistGitRepo(DistGitRepo):
         # download the latest spec file from dist-git
         specfile = self.source.specfile
         try:
-            spec = self.metadata.fetch_cgit_file(specfile)
+            spec = self.metadata.fetch_cgit_file(specfile).decode('utf-8')
         except Exception as e:
             self.logger.error("failed to retrieve valid specfile '{}' to compare: {}".format(specfile, e))
             return False  # assume it's not a match
