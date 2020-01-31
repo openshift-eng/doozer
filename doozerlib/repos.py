@@ -135,6 +135,11 @@ class Repo(object):
                 line = line.format(k, self.baseurl(repotype, arch))
             elif k == 'name':
                 line = line.format(k, section_name)
+            elif k == 'extra_options':
+                opt_lines = ''
+                for opt, val in v.items():
+                    opt_lines += "{} = {}\n".format(opt, val)
+                line = opt_lines
             else:
                 if k == 'enabled' and enabled is not None:
                     v = 1 if enabled else 0
