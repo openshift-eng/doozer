@@ -132,8 +132,8 @@ def cmd_gather(cmd, set_env=None, realtime=False):
         out, err = proc.communicate()
         rc = proc.returncode
     else:
-        out = ""
-        err = ""
+        out = b''
+        err = b''
 
         # Many thanks to http://eyalarubas.com/python-subproc-nonblock.html
         # setup non-blocking read
