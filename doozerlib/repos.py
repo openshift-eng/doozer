@@ -129,7 +129,11 @@ class Repo(object):
 
         result = '[{}]\n'.format(section_name)
 
-        for k, v in self._data.conf.items():
+        # Sort keys so they are always in the same order, makes unit
+        # testing much easier
+        for k in sorted(self._data.conf.keys()):
+            v = self._data.conf[k]
+
             line = '{} = {}\n'
             if k == 'baseurl':
                 line = line.format(k, self.baseurl(repotype, arch))
