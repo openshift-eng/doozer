@@ -1848,7 +1848,7 @@ installonly_limit=3
         # Ensure we have a clean space for each invocation.
         metadata_dir = tempfile.mkdtemp(prefix='reposync-metadata.', dir=cachedir)
         yc_file = tempfile.NamedTemporaryFile()
-        yc_file.write(content)
+        yc_file.write(content.encode('utf-8'))
 
         # must flush so it can be read
         yc_file.flush()
