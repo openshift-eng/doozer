@@ -12,6 +12,7 @@ import shutil
 import io
 from . import exectools
 from .pushd import Dir
+from doozerlib import constants
 
 
 SCHEMES = ['ssh', 'ssh+git', "http", "https"]
@@ -140,8 +141,10 @@ class GitData(object):
                     shutil.rmtree(data_destination)
                 self.logger.info('Cloning config data from {}'.format(self.data_path))
                 if not os.path.isdir(data_destination):
+                    set_env = os.environ.copy()
+                    set_env.update(constants.GIT_NO_PROMPTS)
                     cmd = "git clone -b {} --depth 1 {} {}".format(self.branch, self.data_path, data_destination)
-                    rc, out, err = exectools.cmd_gather(cmd)
+                    rc, out, err = exectools.cmd_gather(cmd, set_env=set_env)
                     if rc:
                         raise GitDataException('Error while cloning data: {}'.format(err))
 

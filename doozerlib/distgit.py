@@ -27,6 +27,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import yellow_print
 from doozerlib import state
 from doozerlib.source_modifications import SourceModifierFactory
+from doozerlib import constants
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -165,7 +166,9 @@ class DistGitRepo(object):
                     self.logger.info("Cloning distgit repository [branch:%s] into: %s" % (distgit_branch, self.distgit_dir))
 
                     # Clone the distgit repository. Occasional flakes in clone, so use retry.
-                    exectools.cmd_assert(cmd_list, retries=3)
+                    set_env = os.environ.copy()
+                    set_env.update(constants.GIT_NO_PROMPTS)
+                    exectools.cmd_assert(cmd_list, retries=3, set_env=set_env)
 
     def merge_branch(self, target, allow_overwrite=False):
         self.logger.info('Switching to branch: {}'.format(target))
