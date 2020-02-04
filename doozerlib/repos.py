@@ -129,12 +129,21 @@ class Repo(object):
 
         result = '[{}]\n'.format(section_name)
 
-        for k, v in self._data.conf.items():
+        # Sort keys so they are always in the same order, makes unit
+        # testing much easier
+        for k in sorted(self._data.conf.keys()):
+            v = self._data.conf[k]
+
             line = '{} = {}\n'
             if k == 'baseurl':
                 line = line.format(k, self.baseurl(repotype, arch))
             elif k == 'name':
                 line = line.format(k, section_name)
+            elif k == 'extra_options':
+                opt_lines = ''
+                for opt, val in v.items():
+                    opt_lines += "{} = {}\n".format(opt, val)
+                line = opt_lines
             else:
                 if k == 'enabled' and enabled is not None:
                     v = 1 if enabled else 0
