@@ -4,6 +4,7 @@ standard_library.install_aliases
 import yaml
 import os
 import urllib.parse
+from retry import retry
 import requests
 
 from . import assertion
@@ -22,14 +23,19 @@ DISTGIT_TYPES = {
 }
 
 
-def tag_exists(registry, namespace, name, tag):
-    url = registry + "/v1/repositories/" + urllib.parse.quote(namespace) + "/" + urllib.parse.quote(name) + "/tags/" + urllib.parse.quote(tag)
+def query(url):
     resp = requests.get(url)
     if resp.status_code == 200:
         return True
     if resp.status_code == 404:
         return False
-    raise IOError("Couldn't determine if tag {} exists: {} returns HTTP {}.".format(tag, url, resp.status_code))
+    raise IOError("Couldn't determine if tag exists: {} returns HTTP {}.".format(url, resp.status_code))
+
+
+@retry(IOError, tries=10, delay=1, backoff=1)
+def tag_exists(registry, namespace, name, tag):
+    url = registry + "/v1/repositories/" + urllib.parse.quote(namespace) + "/" + urllib.parse.quote(name) + "/tags/" + urllib.parse.quote(tag)
+    return query(url)
 
 
 CONFIG_MODES = [

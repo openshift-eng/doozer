@@ -7,6 +7,7 @@ import os
 import tempfile
 import logging
 import shutil
+from flexmock import flexmock
 from doozerlib import metadata
 try:
     from importlib import reload
@@ -38,6 +39,11 @@ class TestMetadataModule(unittest.TestCase):
             with self.assertRaises(IOError) as cm:
                 metadata.tag_exists(registry, namespace, image_name, tag)
                 self.assertIn("HTTP 403", str(cm.exception))
+
+    def test_backoff(self):
+        m = flexmock(metadata)
+        m.should_receive('query').and_raise(IOError).and_raise(IOError).and_return(True)
+        self.assertEqual(m.tag_exists('registry', 'namespace', 'name', 'tag'), True)
 
 
 class TestMetadataClass(unittest.TestCase):
