@@ -1110,9 +1110,9 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
     {image_name} - The container registry image name (e.g. openshift3/ose-ansible)
     {image_name_short} - The container image name without the registry (e.g. ose-ansible)
     {component} - The component identified in the Dockerfile
-    {image} - The image name in the Dockerfile
-    {version} - The version field in the Dockerfile
-    {release} - The release field in the Dockerfile
+    {image} - The image name according to distgit Dockerfile (image_name / image_name_short are faster)
+    {version} - The version of the latest brew build
+    {release} - The release of the latest brew build
     {build} - Shorthand for {component}-{version}-{release} (e.g. container-engine-v3.6.173.0.25-1)
     {repository} - Shorthand for {image}:{version}-{release}
     {label} - The label you want to print from the Dockerfile (Empty string if n/a)
@@ -1154,11 +1154,20 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         if image.base_only and not show_base:
             continue
 
-        dfp = DockerfileParser(path=runtime.working_dir)
-        try:
-            dfp.content = image.fetch_cgit_file("Dockerfile")
-        except Exception:
-            raise DoozerFatalError("Error reading Dockerfile from distgit: {}".format(image.distgit_key))
+        dfp = None
+
+        # Method to lazily load the remote dockerfile content.
+        # Avoiding it when the content is not necessary speeds up most print operations.
+        def get_dfp():
+            nonlocal dfp
+            if dfp:
+                return dfp
+            dfp = DockerfileParser(path=runtime.working_dir)
+            try:
+                dfp.content = image.fetch_cgit_file("Dockerfile")
+                return dfp
+            except Exception:
+                raise DoozerFatalError("Error reading Dockerfile from distgit: {}".format(image.distgit_key))
 
         s = pattern
         s = s.replace("{build}", "{component}-{version}-{release}")
@@ -1168,10 +1177,12 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         s = s.replace("{image_name}", image.image_name)
         s = s.replace("{image_name_short}", image.image_name_short)
         s = s.replace("{component}", image.get_component_name())
-        s = s.replace("{image}", dfp.labels["name"])
+
+        if '{image}' in s:
+            s = s.replace("{image}", get_dfp().labels["name"])
 
         if label is not None:
-            s = s.replace("{label}", dfp.labels.get(label, ''))
+            s = s.replace("{label}", get_dfp().labels.get(label, ''))
         s = s.replace("{lf}", "\n")
 
         release_query_needed = '{release}' in s or '{pushes}' in s
