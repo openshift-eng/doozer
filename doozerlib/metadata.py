@@ -27,7 +27,7 @@ def query(url):
     resp = requests.get(url)
     if resp.status_code == 200:
         return True
-    if resp.status_code == 404:
+    if resp.status_code in [404, 403]:
         return False
     raise IOError("Couldn't determine if tag exists: {} returns HTTP {}.".format(url, resp.status_code))
 
