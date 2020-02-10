@@ -709,7 +709,7 @@ def print_build_metrics(runtime):
 
     # Make sure all the tasks have the expected timestamps:
     # https://github.com/openshift/enterprise-images/pull/178#discussion_r173812940
-    for task_id in watch_task_info:
+    for task_id in list(watch_task_info.keys()):
         info = watch_task_info[task_id]
         runtime.logger.debug("Watch task info:\n {}\n\n".format(info))
         # Error unless all true
