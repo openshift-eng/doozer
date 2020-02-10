@@ -1181,7 +1181,15 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         version = ''
         release = ''
         if release_query_needed or version_query_needed:
-            _, version, release = image.get_latest_build_info()
+            try:
+                _, version, release = image.get_latest_build_info()
+            except IOError as err:
+                err_msg = str(err)
+                if err_msg.find("No builds detected") >= 0:
+                    # ignore "No builds detected" error
+                    runtime.logger.warning("No builds delected for {}: {}".format(image.name, err_msg))
+                else:
+                    raise err
 
         s = s.replace("{version}", version)
         s = s.replace("{release}", release)
