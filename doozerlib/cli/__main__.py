@@ -1093,13 +1093,15 @@ def images_show_tree(runtime, imagename, yml):
               help='Include images which have been marked as non-release.')
 @click.option('--show-base', default=False, is_flag=True,
               help='Include images which have been marked as base images.')
+@click.option('--ignore-missing', default=False, is_flag=True,
+              help='Ignore images which have no Dockerfile on distgit')
 @click.option("--output", "-o", default=None,
               help="Write data to FILE instead of STDOUT")
 @click.option("--label", "-l", default=None,
               help="The label you want to print if it exists. Empty string if n/a")
 @click.argument("pattern", default="{build}", nargs=1)
 @pass_runtime
-def images_print(runtime, short, show_non_release, show_base, output, label, pattern):
+def images_print(runtime, short, show_non_release, show_base, ignore_missing, output, label, pattern):
     """
     Prints data from each distgit. The pattern specified should be a string
     with replacement fields:
@@ -1154,20 +1156,16 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         if image.base_only and not show_base:
             continue
 
-        dfp = None
+        _dfp = [None]
 
         # Method to lazily load the remote dockerfile content.
         # Avoiding it when the content is not necessary speeds up most print operations.
         def get_dfp():
-            nonlocal dfp
-            if dfp:
-                return dfp
-            dfp = DockerfileParser(path=runtime.working_dir)
-            try:
-                dfp.content = image.fetch_cgit_file("Dockerfile")
-                return dfp
-            except Exception:
-                raise DoozerFatalError("Error reading Dockerfile from distgit: {}".format(image.distgit_key))
+            if _dfp[0]:
+                return _dfp[0]
+            _dfp[0] = DockerfileParser(path=runtime.working_dir)
+            _dfp[0].content = image.fetch_cgit_file("Dockerfile")
+            return _dfp[0]
 
         s = pattern
         s = s.replace("{build}", "{component}-{version}-{release}")
@@ -1178,11 +1176,19 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         s = s.replace("{image_name_short}", image.image_name_short)
         s = s.replace("{component}", image.get_component_name())
 
-        if '{image}' in s:
-            s = s.replace("{image}", get_dfp().labels["name"])
+        try:
+            if '{image}' in s:
+                s = s.replace("{image}", get_dfp().labels["name"])
+            if label is not None:
+                s = s.replace("{label}", get_dfp().labels.get(label, ''))
+        except urllib.error.HTTPError as ex:
+            if ignore_missing and ex.code == 404:
+                runtime.logger.warning("No Dockerfile found on distgit {}: {}".format(image.distgit_key, str(ex)))
+                continue
+            raise DoozerFatalError("No Dockerfile found on distgit {}: {}".format(image.distgit_key, str(ex)))
+        except Exception as ex:
+            raise DoozerFatalError("Error reading Dockerfile from distgit repo {}: {}".format(image.distgit_key, str(ex)))
 
-        if label is not None:
-            s = s.replace("{label}", get_dfp().labels.get(label, ''))
         s = s.replace("{lf}", "\n")
 
         release_query_needed = '{release}' in s or '{pushes}' in s
