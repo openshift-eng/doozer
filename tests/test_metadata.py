@@ -36,9 +36,12 @@ class TestMetadataModule(unittest.TestCase):
             actual = metadata.tag_exists(registry, namespace, image_name, tag)
             self.assertEqual(False, actual)
             mocked_get.return_value = mock.MagicMock(status_code=403)
+            actual = metadata.tag_exists(registry, namespace, image_name, tag)
+            self.assertEqual(False, actual)
+            mocked_get.return_value = mock.MagicMock(status_code=500)
             with self.assertRaises(IOError) as cm:
                 metadata.tag_exists(registry, namespace, image_name, tag)
-                self.assertIn("HTTP 403", str(cm.exception))
+                self.assertIn("HTTP 500", str(cm.exception))
 
     def test_backoff(self):
         m = flexmock(metadata)
