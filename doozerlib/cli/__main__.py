@@ -128,6 +128,7 @@ def print_version(ctx, param, value):
               help="Path to rhpkg config file to use instead of system default")
 @click.option("--brew-tag", metavar="BREW_TAG",
               help="Override brew tag to expect for images built")
+@click.option("--profile", metavar="NAME", default="", help="Name of build profile")
 @click.pass_context
 def cli(ctx, **kwargs):
     global CTX_GLOBAL
@@ -795,7 +796,7 @@ def print_build_metrics(runtime):
 
 @cli.command("images:build", short_help="Build images for the group.")
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
-              default='unsigned',
+              default='',
               help="Repo type (e.g. signed, unsigned).")
 @click.option("--repo", default=[], metavar="REPO_URL",
               multiple=True, help="Custom repo URL to supply to brew build.")
@@ -878,17 +879,29 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
             runtime.logger.info("No images left to build after failures and children filtered out.")
             exit(1)
 
-    # Without one of these two arguments, brew would not enable any repos.
-    if not repo_type and not repo:
-        runtime.logger.info("No repos specified. --repo-type or --repo is required.")
-        exit(1)
-
     if not runtime.local:
         threads = None
 
+    # load active build profile
+    profiles = runtime.group_config.build_profiles
+    active_profile = {}
+    profile_name = runtime.profile or runtime.group_config.default_image_build_profile
+    if profile_name:
+        active_profile = profiles.primitive()["image"][profile_name]
+    # provide build profile defaults
+    active_profile.setdefault("targets", [])
+    active_profile.setdefault("repo_type", "unsigned")
+    active_profile.setdefault("repo_list", [])
+    active_profile.setdefault("signing_intent", "unsigned")
+
+    if repo_type:  # backward compatible with --repo-type option
+        active_profile["repo_type"] = repo_type
+        active_profile["signing_intent"] = "release" if repo_type == "signed" else repo_type
+    if repo:
+        active_profile["repo_list"] = list(repo)
     results = runtime.parallel_exec(
         lambda dgr, terminate_event: dgr.build_container(
-            repo_type, repo, push_to_defaults, additional_registries=push_to,
+            active_profile, push_to_defaults, additional_registries=push_to,
             terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1), dry_run=dry_run),
         items, n_threads=threads)
     results = results.get()

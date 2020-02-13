@@ -697,14 +697,13 @@ class ImageDistGitRepo(DistGitRepo):
             raise KeyboardInterrupt()
 
     def build_container(
-            self, repo_type, repo, push_to_defaults, additional_registries, terminate_event,
+            self, profile, push_to_defaults, additional_registries, terminate_event,
             scratch=False, retries=3, realtime=False, dry_run=False):
         """
         This method is designed to be thread-safe. Multiple builds should take place in brew
         at the same time. After a build, images are pushed serially to all mirrors.
         DONT try to change cwd during this time, all threads active will change cwd
-        :param repo_type: Repo type to choose from group.yml
-        :param repo: A list/tuple of custom repo URLs to include for build
+        :param profile: image build profile
         :param push_to_defaults: If default registries should be pushed to.
         :param additional_registries: A list of non-default registries resultant builds should be pushed to.
         :param terminate_event: Allows the main thread to interrupt the build.
@@ -747,8 +746,9 @@ class ImageDistGitRepo(DistGitRepo):
         target_image = ":".join((self.org_image_name, target_tag))
 
         try:
-            if not self.runtime.local and not scratch and self.org_release is not None \
-                    and self.metadata.tag_exists(target_tag):
+            # if not self.runtime.local and not scratch and self.org_release is not None \
+            #         and self.metadata.tag_exists(target_tag):
+            if False:
                 self.logger.info("Image already built for: {}".format(target_image))
             else:
                 # If this image is FROM another group member, we need to wait on that group member
@@ -766,7 +766,7 @@ class ImageDistGitRepo(DistGitRepo):
                     self._set_wait_for(self.config.wait_for, terminate_event)
 
                 if self.runtime.local:
-                    self.build_status = self._build_container_local(target_image, repo_type, realtime)
+                    self.build_status = self._build_container_local(target_image, profile["repo_type"], realtime)
                     if not self.build_status:
                         state.record_image_fail(self.runtime.state[self.runtime.command], self.metadata, 'Build failure', self.runtime.logger)
                     else:
@@ -789,10 +789,16 @@ class ImageDistGitRepo(DistGitRepo):
                         if terminate_event.wait(timeout=5 * 60):
                             raise KeyboardInterrupt()
 
+                    if len(profile["targets"]) > 1:
+                        # FIXME: Currently we don't really suppport building images against multiple targets,
+                        # or we would overwrite the image tag when pushing to the registry.
+                        # `targets` is defined as an array just because we want to keep consistency with RPM build.
+                        raise DoozerFatalError("Building images against multiple targets is not currently supported.")
+                    target = '' if not profile["targets"] else profile["targets"][0]
                     exectools.retry(
                         retries=(1 if self.runtime.local else retries), wait_f=wait,
                         task_f=lambda: self._build_container(
-                            target_image, repo_type, repo, terminate_event,
+                            target_image, target, profile["signing_intent"], profile["repo_type"], profile["repo_list"], terminate_event,
                             scratch, record, dry_run=dry_run))
 
             # Just in case someone else is building an image, go ahead and find what was just
@@ -886,7 +892,7 @@ class ImageDistGitRepo(DistGitRepo):
         return True
 
     def _build_container(
-            self, target_image, repo_type, repo_list, terminate_event,
+            self, target_image, target, signing_intent, repo_type, repo_list, terminate_event,
             scratch, record, dry_run=False):
         """
         The part of `build_container` which actually starts the build,
@@ -907,6 +913,10 @@ class ImageDistGitRepo(DistGitRepo):
             "--nowait",  # Run the build with --nowait so that we can immediately get information about the brew task
         )
 
+        if target:
+            cmd_list.append("--target")
+            cmd_list.append(target)
+
         # Determine if ODCS is enabled by looking at container.yaml.
         odcs_enabled = False
         osbs_image_config_path = os.path.join(self.distgit_dir, "container.yaml")
@@ -916,14 +926,9 @@ class ImageDistGitRepo(DistGitRepo):
             odcs_enabled = "compose" in image_config
 
         if odcs_enabled:
-            self.logger.info("About to build image in ODCS mode.")
-            if repo_type == 'signed':
-                signing_intent = 'release'
-            else:
-                signing_intent = repo_type
-            if signing_intent:
-                cmd_list.append('--signing-intent')
-                cmd_list.append(signing_intent)
+            self.logger.info("About to build image in ODCS mode with signing intent {}.".format(signing_intent))
+            cmd_list.append('--signing-intent')
+            cmd_list.append(signing_intent)
         else:
             if repo_type:
                 repo_list = list(repo_list)  # In case we get a tuple
