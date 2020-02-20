@@ -429,10 +429,11 @@ def config_scan_source_changes(runtime, as_yaml):
     Print a list of configs that were scanned and whether the source differs from the distgit.
     """
     _fix_runtime_mode(runtime)
-    CONFIG_RUNTIME_OPTS['disabled'] = False  # unless explicitly indicated, ignore disabled configs
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     results = dict(rpms=[], images=[])
     for meta, matches in runtime.scan_distgit_sources():
+        if not (meta.enabled or meta.mode == "disabled" and runtime.load_disabled):
+            continue  # An enabled image's dependents are always loaded. Ignore disabled configs unless explicitly indicated
         results['rpms' if meta.meta_type == 'rpm' else 'images'].append(
             dict(name=meta.distgit_key, changed=not matches)
         )
