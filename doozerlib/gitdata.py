@@ -143,7 +143,8 @@ class GitData(object):
                 if not os.path.isdir(data_destination):
                     set_env = os.environ.copy()
                     set_env.update(constants.GIT_NO_PROMPTS)
-                    cmd = "git clone -b {} --depth 1 {} {}".format(self.branch, self.data_path, data_destination)
+                    # Clone all branches as we must sometimes reference master /OWNERS for maintainer information
+                    cmd = "git clone --no-single-branch -b {} --depth 1 {} {}".format(self.branch, self.data_path, data_destination)
                     rc, out, err = exectools.cmd_gather(cmd, set_env=set_env)
                     if rc:
                         raise GitDataException('Error while cloning data: {}'.format(err))

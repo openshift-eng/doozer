@@ -30,7 +30,7 @@ class MockRuntime(object):
         self.tmpdir = tmpdir
         self.logger = logger
 
-    def resolve_source(self, parent, meta):
+    def resolve_source(self, meta):
         return self.tmpdir
 
 

@@ -206,7 +206,7 @@ class DistGitRepo(object):
         :return: Returns the directory containing the source which should be used to populate distgit.
         """
 
-        source_root = self.runtime.resolve_source(self.name, self.metadata)
+        source_root = self.runtime.resolve_source(self.metadata)
         sub_path = self.config.content.source.path
 
         path = source_root
@@ -1253,6 +1253,11 @@ class ImageDistGitRepo(DistGitRepo):
                 'OS_GIT_TREE_STATE': 'clean',
             })
 
+            # For each bit of maintainer information we have, create a new label in the image
+            maintainer = self.metadata.get_maintainer_info()
+            for k, v in maintainer.items():
+                dfp.labels[f'io.openshift.maintainer.{k}'] = v
+
             if 'from' in self.config:
                 image_from = Model(self.config.get('from', None))
 
@@ -1438,7 +1443,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             self._update_csv(version, release)
 
-            return (version, release)
+            return version, release
 
     def _get_csv_file_and_refs(self, csv_config):
         gvars = self.runtime.group_config.vars
@@ -1706,17 +1711,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         notify_owner = False
 
-        # In a previous implementation, we tracked a single file in .oit/Dockerfile.source.last
-        # which provided a reference for the last time a Dockerfile was reconciled. If
-        # we reconciled a file that did not match the Dockerfile.source.last, we would send
-        # an email the Dockerfile owner that a fundamentally new reconciliation had taken place.
-        # There was a problem with this approach:
-        # During a sprint, we might have multiple build streams running side-by-side.
-        # e.g. builds from a master branch and builds from a stage branch. If the
-        # Dockerfile in these two branches happened to differ, we would notify the
-        # owner as we toggled back and forth between the two versions for the alternating
-        # builds. Instead, we now keep around an history of all past reconciled files.
-
+        # Create a sha for Dockerfile. We use this to determined if we've reconciled it before.
         source_dockerfile_hash = hashlib.sha256(io.open(source_dockerfile_path, 'rb').read()).hexdigest()
 
         if not os.path.isdir(".oit/reconciled"):
@@ -1767,7 +1762,7 @@ class ImageDistGitRepo(DistGitRepo):
         else:
             source_dockerfile_subpath = "{}/{}".format(sub_path, dockerfile_name)
         # there ought to be a better way to determine the source alias that was registered:
-        source_root = self.runtime.resolve_source(self.name, self.metadata)
+        source_root = self.runtime.resolve_source(self.metadata)
         source_alias = self.config.content.source.get('alias', os.path.basename(source_root))
 
         self.runtime.add_record("dockerfile_notify",

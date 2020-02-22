@@ -742,7 +742,7 @@ class Runtime(object):
 
         return self.streams[stream_name]
 
-    def resolve_source(self, parent, meta):
+    def resolve_source(self, meta):
         """
         Looks up a source alias and returns a path to the directory containing
         that source. Sources can be specified on the command line, or, failing
@@ -750,12 +750,15 @@ class Runtime(object):
         If a source specified in group.yaml has not be resolved before,
         this method will clone that source to checkout the group's desired
         branch before returning a path to the cloned repo.
-        :param parent: Name of parent the source belongs to
         :param meta: The MetaData object to resolve source for
-        :return: Returns the source path
+        :return: Returns the source path or None if upstream source is not defined
         """
-
         source = meta.config.content.source
+
+        if not source:
+            return None
+
+        parent = f'{meta.namespace}_{meta.name}'
 
         # This allows passing `--source <distgit_key> path` to
         # override any source to something local without it
@@ -776,12 +779,9 @@ class Runtime(object):
         else:
             raise DoozerFatalError('Error while processing source for {}'.format(parent))
 
-        self.logger.debug("Resolving local source directory for alias {}".
-                          format(alias))
+        self.logger.debug("Resolving local source directory for alias {}".format(alias))
         if alias in self.source_paths:
-            self.logger.debug(
-                "returning previously resolved path for alias {}: {}".
-                format(alias, self.source_paths[alias]))
+            self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, self.source_paths[alias]))
             return self.source_paths[alias]
 
         # Where the source will land, check early so we know if old or new style
@@ -789,20 +789,17 @@ class Runtime(object):
         source_dir = os.path.join(self.sources_dir, sub_path)
 
         if not source_details:  # old style alias was given
-            if (self.group_config.sources is Missing or alias not in self.group_config.sources):
+            if self.group_config.sources is Missing or alias not in self.group_config.sources:
                 raise DoozerFatalError("Source alias not found in specified sources or in the current group: %s" % alias)
             source_details = self.group_config.sources[alias]
 
-        self.logger.debug("checking for source directory in source_dir: {}".
-                          format(source_dir))
+        self.logger.debug("checking for source directory in source_dir: {}".format(source_dir))
 
         # If this source has already been extracted for this working directory
         if os.path.isdir(source_dir):
             # Store so that the next attempt to resolve the source hits the map
             self.source_paths[alias] = source_dir
-            self.logger.info(
-                "Source '{}' already exists in (skipping clone): {}".
-                format(alias, source_dir))
+            self.logger.info("Source '{}' already exists in (skipping clone): {}".format(alias, source_dir))
             return source_dir
 
         clone_branch, _ = self.detect_remote_source_branch(source_details)
@@ -816,11 +813,13 @@ class Runtime(object):
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             exectools.cmd_assert(
                 # get a little history to enable finding a recent Dockerfile change, but not too much.
-                "git clone -b {} --single-branch {} --depth 50 {}".format(clone_branch, url, source_dir),
+                # clone all branches as we must sometimes reference master /OWNERS for maintainer information
+                "git clone --no-single-branch -b {} {} --depth 50 {}".format(clone_branch, url, source_dir),
                 set_env=set_env,
                 retries=3,
                 on_retry=["rm", "-rf", source_dir],
             )
+
         except IOError as e:
             self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, str(e)))
             raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
@@ -874,15 +873,14 @@ class Runtime(object):
         result = out.strip()  # any result means the branch is found
         return result.split()[0] if result else None
 
-    def resolve_source_head(self, parent, meta):
+    def resolve_source_head(self, meta):
         """
         Attempts to resolve the branch a given source alias has checked out. If not on a branch
         returns SHA of head.
-        :param parent: Name of parent requesting the source
         :param meta: The MetaData object to resolve source for
         :return: The name of the checked out branch or None (if required=False)
         """
-        source_dir = self.resolve_source(parent, meta)
+        source_dir = self.resolve_source(meta)
 
         if not source_dir:
             return None

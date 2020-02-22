@@ -58,8 +58,8 @@ class RPMMetadata(Metadata):
         self.extra_os_git_vars = {}
 
         if clone_source:
-            self.source_path = self.runtime.resolve_source('rpm_{}'.format(self.rpm_name), self)
-            self.source_head = self.runtime.resolve_source_head('rpm_{}'.format(self.rpm_name), self)
+            self.source_path = self.runtime.resolve_source(self)
+            self.source_head = self.runtime.resolve_source_head(self)
 
             # If this is a go project, parse the Godeps for points of interest
             godeps_file = pathlib.Path(self.source_path, 'Godeps', 'Godeps.json')
@@ -255,8 +255,16 @@ class RPMMetadata(Metadata):
             # tito tag will handle updating specfile
             return
 
+        maintainer = self.get_maintainer_info()
+        maintainer_string = ''
+        if maintainer:
+            flattened_info = ', '.join(f"{k}: {v}" for (k, v) in maintainer.items())
+            # The space before the [Maintainer] information is actual rpm spec formatting
+            # clue to preserve the line instead of assuming it is part of a paragraph.
+            maintainer_string = f'[Maintainer] {flattened_info}'
+
         # otherwise, make changes similar to tito tagging
-        replace = {
+        rpm_spec_tags = {
             'Name:': 'Name:           {}\n'.format(self.config.name),
             'Version:': 'Version:        {}\n'.format(self.version),
             'Release:': 'Release:        {}%{{?dist}}\n'.format(self.release),
@@ -274,8 +282,6 @@ class RPMMetadata(Metadata):
         if self.release.startswith("0."):
             full += "-{}".format(self.release)
 
-        replace_keys = list(replace.keys())
-
         with Dir(self.source_path):
             commit_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()
 
@@ -283,10 +289,17 @@ class RPMMetadata(Metadata):
             if self.config.content.source.modifications is not Missing:
                 self._run_modifications()
 
-            # second, update with NVR
+            # second, update with NVR, env vars, and descriptions
+            described = False
             with io.open(self.specfile, 'r+', encoding='utf-8') as sf:
                 lines = sf.readlines()
                 for i in range(len(lines)):
+
+                    # If an RPM has sub packages, there can be multiple %description directives
+                    if lines[i].strip().lower().startswith('%description'):
+                        lines[i] = f'{lines[i].strip()}\n{maintainer_string}\n'
+                        described = True
+
                     if "%global os_git_vars " in lines[i]:
                         lines[i] = f"%global os_git_vars OS_GIT_VERSION={major}.{minor}.{patch}-{self.release}-{commit_sha[0:7]} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit_sha} OS_GIT_TREE_STATE=clean"
                         for k, v in self.extra_os_git_vars.items():
@@ -296,13 +309,22 @@ class RPMMetadata(Metadata):
                     elif "%global commit" in lines[i]:
                         lines[i] = re.sub(r'commit\s+\w+', "commit {}".format(commit_sha), lines[i])
 
-                    elif replace_keys:  # If there are keys left to replace
-                        for k in replace_keys:
-                            v = replace[k]
-                            if lines[i].startswith(k):
+                    elif rpm_spec_tags:  # If there are keys left to replace
+                        for k in list(rpm_spec_tags.keys()):
+                            v = rpm_spec_tags[k]
+                            # Note that tags are not case sensitive
+                            if lines[i].lower().startswith(k.lower()):
                                 lines[i] = v
-                                replace_keys.remove(k)
+                                del rpm_spec_tags[k]
                                 break
+
+                # If there are still rpm tags to inject, do so
+                for v in rpm_spec_tags.values():
+                    lines.insert(0, v)
+
+                # If we didn't find a description, create one
+                if not described:
+                    lines.insert(0, f'%description\n{maintainer_string}\n')
 
                 # truncate the original file
                 sf.seek(0)
