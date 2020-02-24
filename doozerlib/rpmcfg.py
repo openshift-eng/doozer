@@ -258,7 +258,7 @@ class RPMMetadata(Metadata):
                         lines[i] = re.sub(r'commit\s+\w+', "commit {}".format(commit_sha), lines[i])
 
                     elif replace_keys:  # If there are keys left to replace
-                        for k in list(replace_keys.keys()):
+                        for k in replace_keys:
                             v = replace[k]
                             if lines[i].startswith(k):
                                 lines[i] = v
