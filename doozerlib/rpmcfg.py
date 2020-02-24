@@ -252,15 +252,13 @@ class RPMMetadata(Metadata):
                 lines = sf.readlines()
                 for i in range(len(lines)):
                     if "%global os_git_vars " in lines[i]:
-                        lines[i] = "%global os_git_vars OS_GIT_VERSION={version} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit} OS_GIT_TREE_STATE=clean\n".format(
-                            version=full, major=major, minor=minor, patch=patch, commit=commit_sha
-                        )
+                        lines[i] = f"%global os_git_vars OS_GIT_VERSION={major}.{minor}.{patch}-{self.release}-{commit_sha[0:7]} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit_sha} OS_GIT_TREE_STATE=clean\n"
 
                     elif "%global commit" in lines[i]:
                         lines[i] = re.sub(r'commit\s+\w+', "commit {}".format(commit_sha), lines[i])
 
                     elif replace_keys:  # If there are keys left to replace
-                        for k in replace_keys:
+                        for k in list(replace_keys.keys()):
                             v = replace[k]
                             if lines[i].startswith(k):
                                 lines[i] = v

@@ -6,7 +6,6 @@ standard_library.install_aliases()
 from doozerlib import version
 from doozerlib import Runtime, Dir
 from doozerlib import state
-from doozerlib.image import pull_image
 from doozerlib.model import Missing
 from doozerlib.brew import get_watch_task_info_copy
 from doozerlib import metadata
@@ -16,9 +15,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
 from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
 from doozerlib import operator_metadata
-import datetime
 import click
-import copy
 import os
 import shutil
 import yaml
@@ -186,6 +183,33 @@ def cli(ctx, **kwargs):
     return ctx
 
 
+def validate_semver_major_minor_patch(ctx, param, version):
+    """
+    For non-None, non-auto values, ensures that the incoming parameter meets the criteria vX.Y.Z or X.Y.Z.
+    If minor or patch is not supplied, the value is modified to possess
+    minor.major to meet semver requirements.
+    :param ctx: Click context
+    :param param: The parameter specified on the command line
+    :param version: The version specified on the command line
+    :return:
+    """
+    if version == 'auto' or version is None:
+        return version
+
+    vsplit = version.split(".")
+    try:
+        int(vsplit[0].lstrip('v'))
+        minor_version = int('0' if len(vsplit) < 2 else vsplit[1])
+        patch_version = int('0' if len(vsplit) < 3 else vsplit[2])
+    except ValueError:
+        raise click.BadParameter('Expected integers in version fields')
+
+    if len(vsplit) > 3:
+        raise click.BadParameter('Expected X, X.Y, or X.Y.Z (with optional "v" prefix)')
+
+    return f'{vsplit[0]}.{minor_version}.{patch_version}'
+
+
 option_commit_message = click.option("--message", "-m", cls=RemoteRequired, metavar='MSG', help="Commit message for dist-git.")
 option_push = click.option('--push/--no-push', default=False, is_flag=True,
                            help='Pushes to distgit after local changes (--no-push by default).')
@@ -227,7 +251,7 @@ def rpms_clone_sources(runtime, output_yml):
 
 
 @cli.command("rpms:build", help="Build rpms in the group or given by --rpms.")
-@click.option("--version", metavar='VERSION', default=None,
+@click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
               help="Version string to populate in specfile.", required=True)
 @click.option("--release", metavar='RELEASE', default=None,
               help="Release label to populate in specfile.", required=True)
@@ -290,7 +314,7 @@ def images_push_distgit(runtime):
 @cli.command("images:update-dockerfile", short_help="Update a group's distgit Dockerfile from metadata.")
 @click.option("--stream", metavar="ALIAS REPO/NAME:TAG", nargs=2, multiple=True,
               help="Associate an image name with a given stream alias.  [multiple]")
-@click.option("--version", metavar='VERSION', default=None,
+@click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
               help="Version string to populate in Dockerfiles. \"auto\" gets version from atomic-openshift RPM")
 @click.option("--release", metavar='RELEASE', default=None,
               help="Release label to populate in Dockerfiles (or + to bump).")
@@ -429,7 +453,7 @@ def config_scan_source_changes(runtime, as_yaml):
 @cli.command("images:rebase", short_help="Refresh a group's distgit content from source content.")
 @click.option("--stream", metavar="ALIAS REPO/NAME:TAG", nargs=2, multiple=True,
               help="Associate an image name with a given stream alias.  [multiple]")
-@click.option("--version", metavar='VERSION', default=None,
+@click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
               help="Version string to populate in Dockerfiles. \"auto\" gets version from atomic-openshift RPM")
 @click.option("--release", metavar='RELEASE', default=None, help="Release string to populate in Dockerfiles.")
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
