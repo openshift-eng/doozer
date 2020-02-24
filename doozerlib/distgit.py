@@ -1200,10 +1200,17 @@ class ImageDistGitRepo(DistGitRepo):
 
             uuid_tag = "%s.%s" % (version, self.runtime.uuid)
 
+            # Split the version number v4.3.4 => [ 'v4', '3, '4' ]
+            vsplit = version.split(".")
+
+            major_version = vsplit[0].lstrip('v')
+            # Click validation should have ensured user specified semver, but double check because of version=None flow.
+            minor_version = int('0' if len(vsplit) < 2 else vsplit[1])
+            patch_version = int('0' if len(vsplit) < 3 else vsplit[2])
+
             if not self.runtime.local:
                 with io.open('additional-tags', 'w', encoding="utf-8") as at:
                     at.write("%s\n" % uuid_tag)  # The uuid which we ensure we get the right
-                    vsplit = version.split(".")
                     if len(vsplit) > 1:
                         at.write("%s.%s\n" % (vsplit[0], vsplit[1]))  # e.g. "v3.7.0" -> "v3.7"
                     if self.metadata.config.additional_tags is not Missing:
@@ -1229,8 +1236,16 @@ class ImageDistGitRepo(DistGitRepo):
             if "com.redhat.delivery.appregistry" in dfp.labels:
                 dfp.labels["com.redhat.delivery.appregistry"] = "false"
 
-            # record env vars that we need to set in the dockerfile
-            env_vars = {}
+            # Environment variables that will be injected into the Dockerfile.
+            # The baseline variables are those that OpenShift relied on historically during builds
+            # in the mono-repo / rpm days.
+            env_vars = {
+                'OS_GIT_MAJOR': major_version,
+                'OS_GIT_MINOR': minor_version,
+                'OS_GIT_PATCH': patch_version,
+                'OS_GIT_VERSION': f'{major_version}.{minor_version}.{patch_version}-{release}',
+                'OS_GIT_TREE_STATE': 'clean',
+            }
 
             if 'from' in self.config:
                 image_from = Model(self.config.get('from', None))
@@ -1298,6 +1313,7 @@ class ImageDistGitRepo(DistGitRepo):
                     SOURCE_GIT_TAG=self.source_latest_tag,
                     SOURCE_GIT_URL=self.source_url,
                     SOURCE_DATE_EPOCH=self.source_date_epoch,
+                    OS_GIT_VERSION=f'{env_vars["OS_GIT_VERSION"]}-{self.source_full_sha}',
                 ))
 
             # Set image name in case it has changed
