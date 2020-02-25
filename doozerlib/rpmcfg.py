@@ -7,6 +7,9 @@ import os
 import traceback
 import re
 import io
+import pathlib
+import json
+import logging
 
 from . import exectools
 from .pushd import Dir
@@ -50,9 +53,33 @@ class RPMMetadata(Metadata):
         self.tag = None
         self.build_status = False
 
+        # If populated, extra variables that will added as os_git_vars
+        self.extra_os_git_vars = {}
+
         if clone_source:
             self.source_path = self.runtime.resolve_source('rpm_{}'.format(self.rpm_name), self)
             self.source_head = self.runtime.resolve_source_head('rpm_{}'.format(self.rpm_name), self)
+
+            # If this is a go project, parse the Godeps for points of interest
+            godeps_file = pathlib.Path(self.source_path, 'Godeps', 'Godeps.json')
+            if godeps_file.is_file():
+                try:
+                    with open(str(godeps_file)) as f:
+                        godeps = json.load(f)
+                        # Reproduce https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/hack/lib/build/version.sh#L82
+                        # Example of what we are after: https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/Godeps/Godeps.json#L10-L15
+                        for dep in godeps.get('Deps', []):
+                            if dep.get('ImportPath', '') == 'k8s.io/kubernetes/pkg/api':
+                                kube_version = dep.get('Comment', '')
+                                kube_version_fields = kube_version.lstrip('v').split('.')  # v1.17.1 => [ '1', '17', '1' ]
+                                self.extra_os_git_vars['KUBE_GIT_VERSION'] = kube_version
+                                self.extra_os_git_vars['KUBE_GIT_COMMIT'] = dep.get('Rev', '')
+                                self.extra_os_git_vars['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
+                                self.extra_os_git_vars['KUBE_GIT_MINOR'] = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
+                except:
+                    runtime.logger.error(f'Error parsing godeps {str(godeps_file)}')
+                    traceback.print_exc()
+
             if self.source.specfile:
                 self.specfile = os.path.join(self.source_path, self.source.specfile)
                 if not os.path.isfile(self.specfile):
@@ -252,7 +279,10 @@ class RPMMetadata(Metadata):
                 lines = sf.readlines()
                 for i in range(len(lines)):
                     if "%global os_git_vars " in lines[i]:
-                        lines[i] = f"%global os_git_vars OS_GIT_VERSION={major}.{minor}.{patch}-{self.release}-{commit_sha[0:7]} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit_sha} OS_GIT_TREE_STATE=clean\n"
+                        lines[i] = f"%global os_git_vars OS_GIT_VERSION={major}.{minor}.{patch}-{self.release}-{commit_sha[0:7]} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit_sha} OS_GIT_TREE_STATE=clean"
+                        for k, v in self.extra_os_git_vars.items():
+                            lines[i] += f' {k}={v}'
+                        lines[i] += '\n'
 
                     elif "%global commit" in lines[i]:
                         lines[i] = re.sub(r'commit\s+\w+', "commit {}".format(commit_sha), lines[i])
