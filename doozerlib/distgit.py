@@ -1313,7 +1313,8 @@ class ImageDistGitRepo(DistGitRepo):
                     SOURCE_GIT_TAG=self.source_latest_tag,
                     SOURCE_GIT_URL=self.source_url,
                     SOURCE_DATE_EPOCH=self.source_date_epoch,
-                    OS_GIT_VERSION=f'{env_vars["OS_GIT_VERSION"]}-{self.source_full_sha}',
+                    OS_GIT_VERSION=f'{env_vars["OS_GIT_VERSION"]}-{self.source_full_sha[0:7]}',
+                    OS_GIT_COMMIT=f'{self.source_full_sha[0:7]}'
                 ))
 
             # Set image name in case it has changed
