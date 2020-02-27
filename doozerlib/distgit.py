@@ -1609,7 +1609,7 @@ class ImageDistGitRepo(DistGitRepo):
             self.source_url = convert_source_url_to_https(out)
 
             # If this is a go project, parse the Godeps for points of interest
-            godeps_file = pathlib.Path(self.source_path, 'Godeps', 'Godeps.json')
+            godeps_file = pathlib.Path(self.source_path(), 'Godeps', 'Godeps.json')
             if godeps_file.is_file():
                 try:
                     with open(str(godeps_file)) as f:
