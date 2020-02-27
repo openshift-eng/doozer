@@ -746,9 +746,8 @@ class ImageDistGitRepo(DistGitRepo):
         target_image = ":".join((self.org_image_name, target_tag))
 
         try:
-            # if not self.runtime.local and not scratch and self.org_release is not None \
-            #         and self.metadata.tag_exists(target_tag):
-            if False:
+            if not self.runtime.local and not scratch and self.org_release is not None \
+                    and self.metadata.tag_exists(target_tag):
                 self.logger.info("Image already built for: {}".format(target_image))
             else:
                 # If this image is FROM another group member, we need to wait on that group member
