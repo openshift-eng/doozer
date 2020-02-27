@@ -13,6 +13,8 @@ import glob
 import re
 import io
 import copy
+import pathlib
+import json
 from datetime import datetime, timedelta
 
 from dockerfile_parse import DockerfileParser
@@ -106,6 +108,10 @@ class DistGitRepo(object):
         self.source_latest_tag = None
         self.source_date_epoch = None
         self.source_url = None
+
+        # Extra environment variables that will be injected into the
+        # distgit Dockerfile.
+        self.extra_os_git_vars = {}
 
         # Allow the config yaml to override branch
         # This is primarily useful for a sync only group.
@@ -1238,13 +1244,14 @@ class ImageDistGitRepo(DistGitRepo):
             # Environment variables that will be injected into the Dockerfile.
             # The baseline variables are those that OpenShift relied on historically during builds
             # in the mono-repo / rpm days.
-            env_vars = {
+            env_vars = self.extra_os_git_vars
+            env_vars.update({
                 'OS_GIT_MAJOR': major_version,
                 'OS_GIT_MINOR': minor_version,
                 'OS_GIT_PATCH': patch_version,
                 'OS_GIT_VERSION': f'{major_version}.{minor_version}.{patch_version}-{release}',
                 'OS_GIT_TREE_STATE': 'clean',
-            }
+            })
 
             if 'from' in self.config:
                 image_from = Model(self.config.get('from', None))
@@ -1600,6 +1607,26 @@ class ImageDistGitRepo(DistGitRepo):
             rc, out, _ = exectools.cmd_gather(["git", "remote", "get-url", "origin"])
             out = out.strip()
             self.source_url = convert_source_url_to_https(out)
+
+            # If this is a go project, parse the Godeps for points of interest
+            godeps_file = pathlib.Path(self.source_path, 'Godeps', 'Godeps.json')
+            if godeps_file.is_file():
+                try:
+                    with open(str(godeps_file)) as f:
+                        godeps = json.load(f)
+                        # Reproduce https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/hack/lib/build/version.sh#L82
+                        # Example of what we are after: https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/Godeps/Godeps.json#L10-L15
+                        for dep in godeps.get('Deps', []):
+                            if dep.get('ImportPath', '') == 'k8s.io/kubernetes/pkg/api':
+                                kube_version = dep.get('Comment', '')
+                                kube_version_fields = kube_version.lstrip('v').split('.')  # v1.17.1 => [ '1', '17', '1' ]
+                                self.extra_os_git_vars['KUBE_GIT_VERSION'] = kube_version
+                                self.extra_os_git_vars['KUBE_GIT_COMMIT'] = dep.get('Rev', '')
+                                self.extra_os_git_vars['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
+                                self.extra_os_git_vars['KUBE_GIT_MINOR'] = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
+                except:
+                    self.runtime.logger.error(f'Error parsing godeps {str(godeps_file)}')
+                    traceback.print_exc()
 
         # See if the config is telling us a file other than "Dockerfile" defines the
         # distgit image content.
