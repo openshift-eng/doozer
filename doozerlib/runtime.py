@@ -2,7 +2,6 @@ from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
 standard_library.install_aliases()
 from future.utils import as_native_str
-from multiprocessing import Lock
 from multiprocessing.dummy import Pool as ThreadPool
 import os
 import sys
@@ -20,6 +19,7 @@ import traceback
 import urllib.parse
 import signal
 import io
+import pathlib
 
 from doozerlib import gitdata
 from . import logutil
@@ -33,7 +33,6 @@ from doozerlib import state
 from .model import Model, Missing
 from multiprocessing import Lock
 from .repos import Repos
-from . import brew
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 
@@ -126,6 +125,12 @@ class Runtime(object):
         self.latest_parent_version = False
         self.rhpkg_config = None
 
+        # Cooperative threads can request exclusive access to directories.
+        # This is usually only necessary if two threads want to make modifications
+        # to the same global source alias. The empty string key serves as a lock for the
+        # data structure.
+        self.dir_locks = {'': Lock()}
+
         for key, val in kwargs.items():
             self.__dict__[key] = val
 
@@ -197,6 +202,16 @@ class Runtime(object):
             self.rhpkg_config_lst = self.rhpkg_config.split()
         else:
             self.rhpkg_config = ''
+
+    def get_dir_lock(self, absolute_path):
+        with self.dir_locks['']:
+            p = pathlib.Path(absolute_path).absolute()  # normalize (e.g. strip trailing /)
+            if p in self.dir_locks:
+                return self.dir_locks[p]
+            else:
+                new_lock = Lock()
+                self.dir_locks[p] = new_lock
+                return new_lock
 
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
