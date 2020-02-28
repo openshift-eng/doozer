@@ -113,6 +113,13 @@ class RPMMetadata(Metadata):
     def commit_changes(self, scratch):
         if not self.tag:
             raise ValueError('Must run set_nvr() before calling!')
+
+        # If not using tito, you can operate in different modes:
+        #  do_push_commit: push new commit and tag to origin
+        do_push_commit = self.config.content.build.push_release_commit and not scratch
+        #  do_push_tag: only push a tag
+        do_push_tag = self.config.content.build.push_release_tag and not scratch
+
         with Dir(self.source_path):
             if self.config.content.build.use_source_tito_config:
                 # just use the tito tagger to change spec and tag
@@ -123,16 +130,22 @@ class RPMMetadata(Metadata):
                     "--use-version", self.version,
                     "--use-release", "{}%{{?dist}}".format(self.release)
                 ])
-                if self.config.content.build.push_release_commit and not scratch:
-                    exectools.cmd_assert("git push origin")
-                return
 
-            exectools.cmd_assert(["git", "tag", "-am", "Release with doozer", self.tag])
-            exectools.cmd_assert("git add .")
-            commit_msg = "Automatic commit of package [{name}] release [{version}-{release}].".format(
-                name=self.config.name, version=self.version, release=self.release
-            )
-            exectools.cmd_assert(['git', 'commit', '-m', commit_msg])
+                # If you are using source, tito, you are going to want your tags/commits in origin
+                exectools.cmd_assert("git push origin")
+
+            else:
+                if do_push_tag:
+                    exectools.cmd_assert(["git", "tag", "-am", "Release with doozer", self.tag])
+                    exectools.cmd_assert(f"git push origin {self.tag}")
+
+                if do_push_commit:
+                    exectools.cmd_assert("git add .")
+                    commit_msg = "Automatic commit of package [{name}] release [{version}-{release}].".format(
+                        name=self.config.name, version=self.version, release=self.release
+                    )
+                    exectools.cmd_assert(['git', 'commit', '-m', commit_msg])
+                    exectools.cmd_assert("git push origin")
 
     def post_build(self, scratch):
         build_spec = self.config.content.build
@@ -384,52 +397,53 @@ class RPMMetadata(Metadata):
         """
         if local:
             raise DoozerFatalError("Local RPM build is not currently supported.")
-        self.set_nvr(version, release)
-        self.tito_setup()
-        self.update_spec()
-        self.commit_changes(scratch)
-        action = "build_rpm"
-        record = {
-            "specfile": self.specfile,
-            "source_head": self.source_head,
-            "distgit_key": self.distgit_key,
-            "rpm": self.rpm_name,
-            "version": self.version,
-            "release": self.release,
-            "message": "Unknown failure",
-            "status": -1,
-            # Status defaults to failure until explicitly set by succcess. This handles raised exceptions.
-        }
 
-        try:
-            def wait(n):
-                self.logger.info("Async error in rpm build thread [attempt #{}]: {}".format(n + 1, self.qualified_name))
-                # Brew does not handle an immediate retry correctly, wait
-                # before trying another build, terminating if interrupted.
-                if terminate_event.wait(timeout=5 * 60):
-                    raise KeyboardInterrupt()
+        with self.runtime.get_dir_lock(self.source_path):
+            self.set_nvr(version, release)
+            self.tito_setup()
+            self.update_spec()
+            self.commit_changes(scratch)
+            action = "build_rpm"
+            record = {
+                "specfile": self.specfile,
+                "source_head": self.source_head,
+                "distgit_key": self.distgit_key,
+                "rpm": self.rpm_name,
+                "version": self.version,
+                "release": self.release,
+                "message": "Unknown failure",
+                "status": -1,
+                # Status defaults to failure until explicitly set by succcess. This handles raised exceptions.
+            }
+
             try:
-                exectools.retry(
-                    retries=3, wait_f=wait,
-                    task_f=lambda: self._build_rpm(
-                        scratch, record, terminate_event, dry_run))
-            except exectools.RetryException as err:
-                self.logger.error(str(err))
-                return (self.distgit_key, False)
+                def wait(n):
+                    self.logger.info("Async error in rpm build thread [attempt #{}]: {}".format(n + 1, self.qualified_name))
+                    # Brew does not handle an immediate retry correctly, wait
+                    # before trying another build, terminating if interrupted.
+                    if terminate_event.wait(timeout=5 * 60):
+                        raise KeyboardInterrupt()
+                try:
+                    exectools.retry(
+                        retries=3, wait_f=wait,
+                        task_f=lambda: self._build_rpm(
+                            scratch, record, terminate_event, dry_run))
+                except exectools.RetryException as err:
+                    self.logger.error(str(err))
+                    return (self.distgit_key, False)
 
-            record["message"] = "Success"
-            record["status"] = 0
-            self.build_status = True
+                record["message"] = "Success"
+                record["status"] = 0
+                self.build_status = True
 
-        except (Exception, KeyboardInterrupt):
-            tb = traceback.format_exc()
-            record["message"] = "Exception occurred:\n{}".format(tb)
-            self.logger.info("Exception occurred during build:\n{}".format(tb))
-            # This is designed to fall through to finally. Since this method is designed to be
-            # threaded, we should not throw an exception; instead return False.
-        finally:
-            self.runtime.add_record(action, **record)
+            except (Exception, KeyboardInterrupt):
+                tb = traceback.format_exc()
+                record["message"] = "Exception occurred:\n{}".format(tb)
+                self.logger.info("Exception occurred during build:\n{}".format(tb))
+                # This is designed to fall through to finally. Since this method is designed to be
+                # threaded, we should not throw an exception; instead return False.
+            finally:
+                self.runtime.add_record(action, **record)
 
-        self.post_build(scratch)
-
-        return (self.distgit_key, self.build_status)
+            self.post_build(scratch)
+            return self.distgit_key, self.build_status
