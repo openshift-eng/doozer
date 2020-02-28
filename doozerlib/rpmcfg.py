@@ -52,6 +52,7 @@ class RPMMetadata(Metadata):
         self.release = None
         self.tag = None
         self.build_status = False
+        self.pre_init_sha = None
 
         # If populated, extra variables that will added as os_git_vars
         self.extra_os_git_vars = {}
@@ -114,11 +115,10 @@ class RPMMetadata(Metadata):
         if not self.tag:
             raise ValueError('Must run set_nvr() before calling!')
 
-        # If not using tito, you can operate in different modes:
-        #  do_push_commit: push new commit and tag to origin
-        do_push_commit = self.config.content.build.push_release_commit and not scratch
-        #  do_push_tag: only push a tag
-        do_push_tag = self.config.content.build.push_release_tag and not scratch
+        # For tito to do its thing, you must have a commit locally.
+        # Whether we push that commit comes later in post_build.
+        # If we don't push it, we want to revert the commit so that subsequent
+        # rpm / image builds don't think the sha is valid in origin.
 
         with Dir(self.source_path):
             if self.config.content.build.use_source_tito_config:
@@ -131,21 +131,13 @@ class RPMMetadata(Metadata):
                     "--use-release", "{}%{{?dist}}".format(self.release)
                 ])
 
-                # If you are using source, tito, you are going to want your tags/commits in origin
-                exectools.cmd_assert("git push origin")
-
             else:
-                if do_push_tag:
-                    exectools.cmd_assert(["git", "tag", "-am", "Release with doozer", self.tag])
-                    exectools.cmd_assert(f"git push origin {self.tag}")
-
-                if do_push_commit:
-                    exectools.cmd_assert("git add .")
-                    commit_msg = "Automatic commit of package [{name}] release [{version}-{release}].".format(
-                        name=self.config.name, version=self.version, release=self.release
-                    )
-                    exectools.cmd_assert(['git', 'commit', '-m', commit_msg])
-                    exectools.cmd_assert("git push origin")
+                # We must have a local commit for tito to do its thing.
+                exectools.cmd_assert("git add .")
+                commit_msg = "Automatic commit of package [{name}] release [{version}-{release}].".format(
+                    name=self.config.name, version=self.version, release=self.release
+                )
+                exectools.cmd_assert(['git', 'commit', '-m', commit_msg])
 
     def post_build(self, scratch):
         build_spec = self.config.content.build
@@ -153,21 +145,25 @@ class RPMMetadata(Metadata):
 
             valid_build = self.build_status and not scratch
 
-            if valid_build and build_spec.push_release_commit:
-                # success; push the tag
-                try:
-                    self.push_tag()
-                except Exception:
-                    raise RuntimeError('Build succeeded but failure pushing RPM tag for {}'.format(self.qualified_name))
+            if not valid_build:
+                # Reset everything we have done to allow others to use potentially global source.
+                exectools.cmd_assert(f'git reset --hard {self.pre_init_sha}')
+                return
 
-            if not build_spec.push_release_commit or not valid_build:
-                if build_spec.use_source_tito_config:
-                    # don't leave the tag/commit lying around it is not upstream in the source
-                    exectools.cmd_assert("tito tag --undo")
-                else:
-                    # temporary tag/commit; never leave lying around
-                    exectools.cmd_assert("git reset --hard HEAD~")
-                    exectools.cmd_assert("git tag -d {}".format(self.tag))
+            if not build_spec.push_release_tag:
+                # If we are configured to push a tag back to the repo, tag the sha we know is there (pre-init)
+                # and push it back.
+                exectools.cmd_assert(["git", "tag", "-am", "Release with doozer", self.tag, self.pre_init_sha])
+                exectools.cmd_assert(['git', 'push', 'origin', self.tag], retries=3)
+
+            if build_spec.push_release_commit:
+                # If tito from source ran OR our on-demand tito made a commit that the
+                # origin wants to see, go ahead and push it.
+                exectools.cmd_assert(['git', 'push', 'origin'], retries=3)
+            else:
+                # Otherwise, reset everything we did so that subsequent builds out
+                # of this source will have a trusted sha.
+                exectools.cmd_assert(f'git reset --hard {self.pre_init_sha}')
 
     def tito_setup(self):
         if self.config.content.build.use_source_tito_config:
@@ -187,11 +183,10 @@ class RPMMetadata(Metadata):
             if os.path.isdir(tito_dir):
                 shutil.rmtree(tito_dir)
 
-            pre_init_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()
             exectools.cmd_assert('tito init')
             # clear out anything tito may have added by reverting to captured HEAD. It may not have
             # added anything depending .gitignore, so don't try to improve this with HEAD^.
-            exectools.cmd_assert('git reset {}'.format(pre_init_sha))
+            exectools.cmd_assert('git reset {}'.format(self.pre_init_sha))
 
             with io.open(os.path.join(tito_dir, 'releasers.conf'), 'w', encoding='utf-8') as r:
                 branch = self.config.get('distgit', {}).get('branch', self.runtime.branch)
@@ -399,6 +394,12 @@ class RPMMetadata(Metadata):
             raise DoozerFatalError("Local RPM build is not currently supported.")
 
         with self.runtime.get_dir_lock(self.source_path):
+
+            with Dir(self.source_path):
+                # Remember what we were at before tito activity. We may need to revert
+                # to this if we don't push changes back to origin.
+                self.pre_init_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()
+
             self.set_nvr(version, release)
             self.tito_setup()
             self.update_spec()
