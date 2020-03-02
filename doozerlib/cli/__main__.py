@@ -429,6 +429,7 @@ def config_scan_source_changes(runtime, as_yaml):
     Print a list of configs that were scanned and whether the source differs from the distgit.
     """
     _fix_runtime_mode(runtime)
+    CONFIG_RUNTIME_OPTS.pop('disabled')  # let runtime opts govern (defaults to ignore disabled configs)
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     results = dict(rpms=[], images=[])
     for meta, matches in runtime.scan_distgit_sources():
