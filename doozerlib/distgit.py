@@ -1371,14 +1371,12 @@ class ImageDistGitRepo(DistGitRepo):
                 if deprecated in dfp.labels:
                     del dfp.labels[deprecated]
 
-            # specify new env vars in the dockerfile
-            if env_vars:
-                env_line = "ENV " + " ".join([key + "=" + val for key, val in env_vars.items()])
-                dfp.add_lines(env_line, all_stages=True, at_start=True)
-
             # Remove any programmatic oit comments from previous management
             df_lines = dfp.content.splitlines(False)
             df_lines = [line for line in df_lines if not line.strip().startswith(OIT_COMMENT_PREFIX)]
+
+            # Build up a line with environment variables we want to inject into each stage.
+            env_line = "ENV " + " ".join([key + "=" + val for key, val in env_vars.items()]) if env_vars else None
 
             filtered_content = []
             in_mod_block = False
@@ -1396,11 +1394,23 @@ class ImageDistGitRepo(DistGitRepo):
                 if in_mod_block:
                     continue
 
+                # If we are injecting environment variables, remove any line
+                # from the Dockerfile that may be trying to set the same name. This is also
+                # necessary for us to clean up our older env injections if this is a dist-git only
+                # Dockerfile.
+                if line.lower().startswith('env '):
+                    if any(f' {var_name}=' in line for var_name in env_vars):
+                        continue
+
                 # remove any old instances of empty.repo mods that aren't in mod block
                 if 'empty.repo' not in line:
                     if line.endswith('\n'):
                         line = line[0:-1]  # remove trailing newline, if exists
                     filtered_content.append(line)
+
+                # after each stage, re-establish environment variables
+                if env_line and line.lower().startswith('from '):
+                    filtered_content.append(env_line)
 
             df_lines = filtered_content
 
