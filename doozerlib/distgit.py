@@ -1633,7 +1633,8 @@ class ImageDistGitRepo(DistGitRepo):
                                 self.extra_os_git_vars['KUBE_GIT_VERSION'] = kube_version
                                 self.extra_os_git_vars['KUBE_GIT_COMMIT'] = dep.get('Rev', '')
                                 self.extra_os_git_vars['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
-                                self.extra_os_git_vars['KUBE_GIT_MINOR'] = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
+                                godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
+                                self.extra_os_git_vars['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, add a + since OCP patches its vendor kube.
                 except:
                     self.runtime.logger.error(f'Error parsing godeps {str(godeps_file)}')
                     traceback.print_exc()
