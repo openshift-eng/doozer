@@ -35,6 +35,7 @@ from multiprocessing import Lock
 from .repos import Repos
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
+from doozerlib import util
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -741,6 +742,43 @@ class Runtime(object):
             raise IOError("Unable to find definition for stream: %s" % stream_name)
 
         return self.streams[stream_name]
+
+    def get_public_upstream(self, remote_git):
+        """
+        Some upstream repo are private in order to allow CVE workflows. While we
+        may want to build from a private upstream, we don't necessarily want to confuse
+        end-users by referencing it in our public facing image labels / etc.
+        In group.yaml, you can specify a mapping in "public_upstreams". It
+        represents private_url_prefix => public_url_prefix. Remote URLs passed to this
+        method which contain one of the private url prefixes will be translated
+        into a new string with the public prefix in its place. If there is not
+        applicable mapping, the incoming url will still be normalized into https.
+        :param remote_git: The URL to analyze for private repo patterns.
+        :return: An https normalized remote address with private repo information replaced.
+        """
+        remote_https = util.convert_remote_git_to_https(remote_git)
+
+        if self.group_config.public_upstreams:
+
+            # We prefer the longest match in the mapping, so iterate through the entire
+            # map and keep track of the longest matching private remote.
+            target_priv_prefix = None
+            target_pub_prefix = None
+            for priv, pub in self.group_config.public_upstreams.items():
+                # priv can be a full repo, or an organization (e.g. git@github.com:openshift)
+                # It will be treated as a prefix to be replaced
+                https_priv_prefix = util.convert_remote_git_to_https(priv)  # Normalize whatever is specified in group.yaml
+                https_pub_prefix = util.convert_remote_git_to_https(pub)
+                if remote_https.startswith(f'{https_priv_prefix}/') or remote_https == https_priv_prefix:
+                    # If we have not set the prefix yet, or if it is longer than the current contender
+                    if not target_priv_prefix or len(https_priv_prefix) > len(target_pub_prefix):
+                        target_priv_prefix = https_priv_prefix
+                        target_pub_prefix = https_pub_prefix
+
+            if target_priv_prefix:
+                return f'{target_pub_prefix}{remote_https[len(target_priv_prefix):]}'
+
+        return remote_https
 
     def resolve_source(self, meta):
         """

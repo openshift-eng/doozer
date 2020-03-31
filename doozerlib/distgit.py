@@ -30,6 +30,7 @@ from doozerlib.util import yellow_print
 from doozerlib import state
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib import constants
+from doozerlib import util
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -76,15 +77,6 @@ def pull_image(url):
     exectools.retry(
         3, wait_f=wait,
         task_f=lambda: exectools.cmd_gather(["podman", "pull", url])[0] == 0)
-
-
-def convert_source_url_to_https(source):
-    url = re.sub(
-        pattern=r'git@([^:]+):([^\.]+)',
-        repl='https://\\1/\\2',
-        string=source,
-    )
-    return re.sub(string=url, pattern=r'\.git$', repl='')
 
 
 def build_image_ref_name(name):
@@ -1621,7 +1613,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             rc, out, _ = exectools.cmd_gather(["git", "remote", "get-url", "origin"])
             out = out.strip()
-            self.source_url = convert_source_url_to_https(out)
+            self.source_url = self.runtime.get_public_upstream(out)  # Point to public upstream if there are private components to the URL
 
             # If this is a go project, parse the Godeps for points of interest
             godeps_file = pathlib.Path(self.source_path(), 'Godeps', 'Godeps.json')
