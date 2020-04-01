@@ -379,18 +379,7 @@ class ImageDistGitRepo(DistGitRepo):
         """
 
         # list of platform (architecture) names to build this image for
-        arches = []  # type: list
-        global_arches = set(self.metadata.runtime.arches)
-        image_specific_arches = set(self.metadata.config.arches)
-        if not image_specific_arches:
-            # assume all global arches if no image specific arches are defined
-            arches = list(global_arches)
-        else:
-            # only include arches from metadata that are valid globally
-            missing_arches = image_specific_arches - global_arches
-            if missing_arches:
-                raise ValueError("Image specific arches ({}) are not enabled in group.yml.".format(", ".join(missing_arches)))
-            arches = list(image_specific_arches)
+        arches = self.metadata.get_arches()
 
         # override image config with this dict
         config_overrides = {}

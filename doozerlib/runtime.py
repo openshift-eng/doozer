@@ -326,8 +326,37 @@ class Runtime(object):
                     self.register_source_alias(key, val)
 
         with Dir(self.group_dir):
+
+            # Flattens multiple comma/space delimited lists like [ 'x', 'y,z' ] into [ 'x', 'y', 'z' ]
+            def flatten_list(names):
+                if not names:
+                    return []
+                # split csv values
+                result = []
+                for n in names:
+                    result.append([x for x in n.replace(' ', ',').split(',') if x != ''])
+                # flatten result and remove dupes using set
+                return list(set([y for x in result for y in x]))
+
+            def filter_wip(n, d):
+                return d.get('mode', 'enabled') in ['wip', 'enabled']
+
+            def filter_enabled(n, d):
+                return d.get('mode', 'enabled') == 'enabled'
+
+            def filter_disabled(n, d):
+                return d.get('mode', 'enabled') in ['enabled', 'disabled']
+
             self.group_config = self.get_group_config()
-            self.arches = self.group_config.get('arches', ['x86_64'])
+            cli_arches_override = flatten_list(self.arches)
+
+            if cli_arches_override:  # Highest priority overrides on command line
+                self.arches = cli_arches_override
+            elif self.group_config.arches_override:  # Allow arches_override in group.yaml to temporarily override GA architectures
+                self.arches = self.group_config.arches_override
+            else:
+                self.arches = self.group_config.get('arches', ['x86_64'])
+
             self.repos = Repos(self.group_config.repos, self.arches)
             self.freeze_automation = self.group_config.freeze_automation or FREEZE_AUTOMATION_NO
 
@@ -364,27 +393,6 @@ class Runtime(object):
             if self.group_config.brew_tag:
                 # setting this overrides tags made out of branches in specific configs
                 self.brew_tag = self.group_config.brew_tag
-
-            # Flattens a list like like [ 'x', 'y,z' ] into [ 'x.yml', 'y.yml', 'z.yml' ]
-            # for later checking we need to remove from the lists, but they are tuples. Clone to list
-            def flatten_list(names):
-                if not names:
-                    return []
-                # split csv values
-                result = []
-                for n in names:
-                    result.append([x for x in n.replace(' ', ',').split(',') if x != ''])
-                # flatten result and remove dupes
-                return list(set([y for x in result for y in x]))
-
-            def filter_wip(n, d):
-                return d.get('mode', 'enabled') in ['wip', 'enabled']
-
-            def filter_enabled(n, d):
-                return d.get('mode', 'enabled') == 'enabled'
-
-            def filter_disabled(n, d):
-                return d.get('mode', 'enabled') in ['enabled', 'disabled']
 
             exclude_keys = flatten_list(self.exclude)
             image_ex = list(exclude_keys)
@@ -551,6 +559,12 @@ class Runtime(object):
 
     def ordered_image_metas(self):
         return [self.image_map[dg] for dg in self.image_order]
+
+    def get_global_arches(self):
+        """
+        :return: Returns a list of architectures that are enabled globally in group.yml.
+        """
+        return list(self.arches)
 
     def filter_failed_image_trees(self, failed):
         for i in self.ordered_image_metas():
@@ -1040,9 +1054,6 @@ class Runtime(object):
                  "* Environment variable DOOZER_DATA_PATH\n"
                  ).format(self.cfg_obj.full_path))
 
-        try:
-            self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
-                                           branch=self.group, logger=self.logger)
-            self.data_dir = self.gitdata.data_dir
-        except gitdata.GitDataException as ex:
-            raise DoozerFatalError(str(ex))
+        self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
+                                       branch=self.group, logger=self.logger)
+        self.data_dir = self.gitdata.data_dir
