@@ -78,7 +78,7 @@ def dict_get(dct, path, default=DICT_EMPTY):
 
 def convert_remote_git_to_https(source):
     """
-    Accepts a source git URL in ssh or https format and return is in a normalized
+    Accepts a source git URL in ssh or https format and return it in a normalized
     https format:
         - https protocol
         - no trailing /
