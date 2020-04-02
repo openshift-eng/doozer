@@ -16,6 +16,7 @@ import copy
 import pathlib
 import json
 from datetime import datetime, timedelta
+import koji
 
 from dockerfile_parse import DockerfileParser
 
@@ -23,7 +24,7 @@ from . import logutil
 from . import assertion
 from . import exectools
 from .pushd import Dir
-from .brew import watch_task
+from .brew import watch_task, get_build_objects
 from .model import Model, Missing
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import yellow_print
@@ -975,9 +976,17 @@ class ImageDistGitRepo(DistGitRepo):
 
         # Looking for something like the following to conclude the image has already been built:
         # BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
-        if error is not None and "already exists" in error:
-            self.logger.info("Image already built against this dist-git commit (or version-release tag): {}".format(target_image))
-            error = None
+        # Note it is possible that a Brew task fails with a build record left (https://issues.redhat.com/browse/ART-1723).
+        # Didn't find a variable in the context to get the Brew NVR or ID. Extracting the build ID from the error message.
+        # Hope the error message format will not change.
+        match = None
+        if error:
+            match = re.search(r"already exists, id (\d+)", error)
+        if match:
+            builds = get_build_objects([int(match[1])], koji.ClientSession(self.runtime.group_config.urls.brewhub))
+            if builds and builds[0] and builds[0].get('state') == 1:  # State 1 means complete.
+                self.logger.info("Image already built against this dist-git commit (or version-release tag): {}".format(target_image))
+                error = None
 
         # Gather brew-logs
         logs_rc, _, logs_err = exectools.cmd_gather(["brew", "download-logs", "-d", self._logs_dir(), task_id])
