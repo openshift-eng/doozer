@@ -3,6 +3,7 @@ import click
 import copy
 import os
 import errno
+import re
 
 
 def stringify(val):
@@ -73,6 +74,23 @@ def dict_get(dct, path, default=DICT_EMPTY):
                 raise Exception('Unable to follow key path {}'.format(path))
             return default
     return dct
+
+
+def convert_remote_git_to_https(source):
+    """
+    Accepts a source git URL in ssh or https format and return it in a normalized
+    https format:
+        - https protocol
+        - no trailing /
+    :param source: Git remote
+    :return: Normalized https git URL
+    """
+    url = re.sub(
+        pattern=r'git@([^:]+):([^\.]+)',
+        repl='https://\\1/\\2',
+        string=source.strip(),
+    )
+    return re.sub(string=url, pattern=r'\.git$', repl='').rstrip('/')
 
 
 def is_in_directory(path, directory):
