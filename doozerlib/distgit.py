@@ -448,7 +448,9 @@ class ImageDistGitRepo(DistGitRepo):
         self.logger.debug("Generating cvp-owners.yml for {}".format(self.metadata.distgit_key))
         with io.open('cvp-owners.yml', 'w', encoding="utf-8") as co:
             if self.config.owners:  # Not missing and non-empty
-                yaml.safe_dump(self.config.owners.primitive(), co, default_flow_style=False)
+                # only spam owners on failure; ref. https://red.ht/2x0edYd
+                owners = {owner: "FAILURE" for owner in self.config.owners}
+                yaml.safe_dump(owners, co, default_flow_style=False)
 
     def _generate_repo_conf(self):
         """
