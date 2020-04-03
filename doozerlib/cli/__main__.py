@@ -32,6 +32,7 @@ from multiprocessing.pool import ThreadPool
 from multiprocessing import cpu_count
 from dockerfile_parse import DockerfileParser
 from doozerlib import dotconfig
+from doozerlib import gitdata
 
 click.disable_unicode_literals_warning = True
 
@@ -103,6 +104,8 @@ def print_version(ctx, param, value):
               help="Name of group image member to include in operation (all by default). Can be comma delimited list.")
 @click.option("-r", "--rpms", default=[], metavar='NAME', multiple=True,
               help="Name of group rpm member to include in operation (all by default). Can be comma delimited list.")
+@click.option("-a", "--arches", default=[], metavar='ARCH', multiple=True,
+              help="CPU arches to operate on (group.yaml provides default). Can be comma delimited list.")
 @click.option('--load-wip', default=False, is_flag=True, help='Load WIP RPMs/Images in addition to those specified, if any')
 @click.option("-x", "--exclude", default=[], metavar='NAME', multiple=True,
               help="Name of group image or rpm member to exclude in operation (none by default). Can be comma delimited list.")
@@ -1464,10 +1467,11 @@ def config_get(runtime):
 @click.argument("key", nargs=1, metavar="KEY", type=click.STRING, default=None, required=False)
 @click.option("--length", "as_len", default=False, is_flag=True, help='Print length of dict/list specified by key')
 @click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
+@click.option("--permit-missing-group", default=False, is_flag=True, help='Show default if group is missing')
 @click.option("--default", help="Value to print if key cannot be found", default=None)
 @click.option("--out-file", help="Specific key in config to print", default=None)
 @pass_runtime
-def config_read_group(runtime, key, as_len, as_yaml, default, out_file):
+def config_read_group(runtime, key, as_len, as_yaml, permit_missing_group, default, out_file):
     """
     Read data from group.yaml for given group and key, If key is not specified,
     the entire group data structure will be output.
@@ -1490,7 +1494,17 @@ def config_read_group(runtime, key, as_len, as_yaml, default, out_file):
 
     """
     _fix_runtime_mode(runtime)
-    runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
+    try:
+        runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
+    except gitdata.GitDataException:
+        # This may happen if someone if trying to get data for a branch that does not exist.
+        # This may be perfectly OK if they are just trying to check the next minor's branch,
+        # but that branch does not exist yet. Caller must specify --permit-missing to allow
+        # this behavior.
+        if permit_missing_group and default:
+            print(default)
+            exit(0)
+        raise
 
     if key is None:
         value = runtime.raw_group_config

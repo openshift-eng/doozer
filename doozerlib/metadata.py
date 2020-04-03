@@ -123,6 +123,22 @@ class Metadata(object):
         else:
             return '{}-candidate'.format(self.branch())
 
+    def get_arches(self):
+        """
+        :return: Returns the list of architecture this image/rpm should build for. This is an intersection
+        of config specific arches & globally enabled arches in group.yml
+        """
+        if self.config.arches:
+            ca = self.config.arches
+            intersection = list(set(self.runtime.get_global_arches()) & set(ca))
+            if len(intersection) != len(ca):
+                self.logger.info(f'Arches are being pruned by group.yml. Using computed {intersection} vs config list {ca}')
+            if not intersection:
+                raise ValueError(f'No arches remained enabled in {self.qualified_key}')
+            return intersection
+        else:
+            return list(self.runtime.get_global_arches())
+
     def cgit_url(self, filename):
         rev = self.branch()
         ret = "/".join((self.runtime.group_config.urls.cgit, self.qualified_name, "plain", filename))

@@ -496,6 +496,7 @@ other:
             'csv': 'updated-value',
             'operator': type('', (object,), {
                 'config': {'update-csv': {}},
+                'get_arches': lambda: ['s390x'],
                 'data_obj': type('', (object,), {'data': {'arches': ['s390x']}})
             })
         }
@@ -563,6 +564,7 @@ other:
             'csv': 'updated-value',
             'operator': type('', (object,), {
                 'config': {'update-csv': {}},
+                'get_arches': lambda: ['s390x'],
                 'data_obj': type('', (object,), {'data': {'arches': ['s390x']}})
             })
         }
