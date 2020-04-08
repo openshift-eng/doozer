@@ -161,6 +161,9 @@ class DistGitRepo(object):
 
                     cmd_list.extend(["clone", self.metadata.qualified_name, self.distgit_dir])
                     cmd_list.extend(["--branch", distgit_branch])
+                    rhpkg_clone_depth = int(self.runtime.global_opts.get('rhpkg_clone_depth', '1'))
+                    if rhpkg_clone_depth > 0:
+                        cmd_list.extend(["--depth", str(rhpkg_clone_depth)])
 
                     self.logger.info("Cloning distgit repository [branch:%s] into: %s" % (distgit_branch, self.distgit_dir))
 
