@@ -13,7 +13,7 @@ from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.cli import cli_opts
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
-from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
+from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, mkdirs
 from doozerlib import operator_metadata
 import click
 import os
@@ -128,6 +128,8 @@ def print_version(ctx, param, value):
               help="Path to rhpkg config file to use instead of system default")
 @click.option("--brew-tag", metavar="BREW_TAG",
               help="Override brew tag to expect for images built")
+@click.option("--cache-dir", metavar="DIR", required=False, default=None,
+              help="A directory in which reference git repos can be stored for caching purposes")
 @click.option("--profile", metavar="NAME", default="", help="Name of build profile")
 @click.pass_context
 def cli(ctx, **kwargs):
@@ -222,7 +224,6 @@ option_push = click.option('--push/--no-push', default=False, is_flag=True,
 # CLI Commands
 #
 # =============================================================================
-
 
 @cli.command("images:clone", help="Clone a group's image distgit repos locally.")
 @pass_runtime

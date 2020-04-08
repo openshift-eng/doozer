@@ -86,7 +86,7 @@ def convert_remote_git_to_https(source):
     :return: Normalized https git URL
     """
     url = re.sub(
-        pattern=r'git@([^:]+):([^\.]+)',
+        pattern=r'[^@]+@([^:/]+)[:/]([^\.]+)',
         repl='https://\\1/\\2',
         string=source.strip(),
     )

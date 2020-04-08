@@ -107,6 +107,11 @@ class Metadata(object):
         self.data_obj.data = self.config.primitive()
         self.data_obj.save()
 
+    def distgit_remote_url(self):
+        pkgs_host = self.runtime.group_config.urls.get('pkgs_host', 'pkgs.devel.redhat.com')
+        # rhpkg uses a remote named like this to pull content from distgit
+        return f'ssh://{self.runtime.user}@{pkgs_host}/{self.qualified_name}'
+
     def distgit_repo(self, autoclone=True):
         if self._distgit_repo is None:
             self._distgit_repo = DISTGIT_TYPES[self.meta_type](self, autoclone=autoclone)

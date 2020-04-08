@@ -141,6 +141,8 @@ class Runtime(object):
         self._remove_tmp_working_dir = False
         self.group_config = None
 
+        self.cwd = os.getcwd()
+
         # If source needs to be cloned by oit directly, the directory in which it will be placed.
         self.sources_dir = None
 
@@ -309,6 +311,9 @@ class Runtime(object):
         self.flags_dir = os.path.join(self.working_dir, "flags")
         if not os.path.isdir(self.flags_dir):
             os.mkdir(self.flags_dir)
+
+        if self.cache_dir:
+            self.cache_dir = os.path.abspath(self.cache_dir)
 
         self.group_dir = self.gitdata.data_dir
 
@@ -794,6 +799,59 @@ class Runtime(object):
 
         return remote_https
 
+    def git_clone(self, remote_url, target_dir, gitargs=None, set_env=None, timeout=0):
+        gitargs = gitargs or []
+        set_env = set_env or []
+
+        if self.cache_dir:
+            git_cache_dir = os.path.join(self.cache_dir, self.user, 'git')
+            util.mkdirs(git_cache_dir)
+            normalized_url = util.convert_remote_git_to_https(remote_url)
+            # Strip special chars out of normalized url to create a human friendly, but unique filename
+            file_friendly_url = normalized_url.split('//')[-1].replace('/', '_')
+            repo_dir = os.path.join(git_cache_dir, file_friendly_url)
+            self.logger.info(f'Cache for {remote_url} going to f{repo_dir}')
+
+            if not os.path.exists(repo_dir):
+                self.logger.info(f'Initializing cache directory for git remote: {remote_url}')
+
+                # If the cache directory for this repo does not exist yet, we will create one.
+                # But we must do so carefully to minimize races with any other doozer instance
+                # running on the machine.
+                with self.get_dir_lock(repo_dir):  # also make sure we cooperate with other threads in this process.
+                    tmp_repo_dir = tempfile.mkdtemp(dir=git_cache_dir)
+                    exectools.cmd_assert(f'git init --bare {tmp_repo_dir}')
+                    with Dir(tmp_repo_dir):
+                        exectools.cmd_assert(f'git remote add origin {remote_url}')
+
+                    try:
+                        os.rename(tmp_repo_dir, repo_dir)
+                    except:
+                        # There are two categories of failure
+                        # 1. Another doozer instance already created the directory, in which case we are good to go.
+                        # 2. Something unexpected is preventing the rename.
+                        if not os.path.exists(repo_dir):
+                            # Not sure why the rename failed. Raise to user.
+                            raise
+
+            # If we get here, we have a bare repo with a remote set
+            with Dir(repo_dir):
+                # Pull content to update the cache. This should be safe for multiple doozer instances to perform.
+                self.logger.info(f'Updating cache directory for git remote: {remote_url}')
+                exectools.cmd_assert(f'git fetch --all', retries=3, set_env=set_env)
+                gitargs.extend(['--reference-if-able', repo_dir])
+
+        self.logger.info(f'Cloning to: {target_dir}')
+
+        # Perform the clone (including --reference args if cache_dir was set)
+        cmd = []
+        if timeout:
+            cmd.extend(['timeout', f'{timeout}'])
+        cmd.extend(['git', 'clone', remote_url])
+        cmd.extend(gitargs)
+        cmd.append(target_dir)
+        exectools.cmd_assert(cmd, retries=3, on_retry=["rm", "-rf", target_dir], set_env=set_env)
+
     def resolve_source(self, meta):
         """
         Looks up a source alias and returns a path to the directory containing
@@ -863,14 +921,11 @@ class Runtime(object):
         set_env.update(constants.GIT_NO_PROMPTS)
         try:
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
-            exectools.cmd_assert(
-                # get a little history to enable finding a recent Dockerfile change, but not too much.
-                # clone all branches as we must sometimes reference master /OWNERS for maintainer information
-                "git clone --no-single-branch -b {} {} --depth 50 {}".format(clone_branch, url, source_dir),
-                set_env=set_env,
-                retries=3,
-                on_retry=["rm", "-rf", source_dir],
-            )
+            # clone all branches as we must sometimes reference master /OWNERS for maintainer information
+            gitargs = [
+                '--no-single-branch', '--branch', clone_branch, '--depth', 1
+            ]
+            self.git_clone(url, source_dir, gitargs=gitargs, set_env=set_env)
 
         except IOError as e:
             self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, str(e)))

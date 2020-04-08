@@ -151,26 +151,44 @@ class DistGitRepo(object):
                                      'local build will be sourced from the current dist-git '
                                      'contents and not the typical GitHub source. '
                                      )
-                    cmd_list = ["timeout", str(self.runtime.global_opts['rhpkg_clone_timeout']), "rhpkg"]
-
-                    if self.runtime.rhpkg_config_lst:
-                        cmd_list.extend(self.runtime.rhpkg_config_lst)
-
-                    if self.runtime.user is not None:
-                        cmd_list.append("--user=%s" % self.runtime.user)
-
-                    cmd_list.extend(["clone", self.metadata.qualified_name, self.distgit_dir])
-                    cmd_list.extend(["--branch", distgit_branch])
-                    rhpkg_clone_depth = int(self.runtime.global_opts.get('rhpkg_clone_depth', '1'))
-                    if rhpkg_clone_depth > 0:
-                        cmd_list.extend(["--depth", str(rhpkg_clone_depth)])
 
                     self.logger.info("Cloning distgit repository [branch:%s] into: %s" % (distgit_branch, self.distgit_dir))
 
-                    # Clone the distgit repository. Occasional flakes in clone, so use retry.
+                    timeout = str(self.runtime.global_opts['rhpkg_clone_timeout'])
+                    rhpkg_clone_depth = int(self.runtime.global_opts.get('rhpkg_clone_depth', '1'))
                     set_env = os.environ.copy()
                     set_env.update(constants.GIT_NO_PROMPTS)
-                    exectools.cmd_assert(cmd_list, retries=3, set_env=set_env)
+
+                    print(f'here {self.metadata.namespace} {self.runtime.cache_dir}')
+                    if self.metadata.namespace == 'containers' and self.runtime.cache_dir:
+                        # Containers don't generally require distgit lookaside. We can rely on normal
+                        # git clone & leverage git caches to greatly accelerate things if the user supplied it.
+                        gitargs = ['--branch', distgit_branch, '--single-branch']
+
+                        if rhpkg_clone_depth > 0:
+                            gitargs.extend(["--depth", str(rhpkg_clone_depth)])
+
+                        self.runtime.git_clone(self.metadata.distgit_remote_url(), self.distgit_dir, gitargs=gitargs,
+                                               set_env=set_env, timeout=timeout)
+                    else:
+                        # Use rhpkg -- presently no idea how to cache.
+                        cmd_list = ["timeout", timeout]
+                        cmd_list.append("rhpkg")
+
+                        if self.runtime.rhpkg_config_lst:
+                            cmd_list.extend(self.runtime.rhpkg_config_lst)
+
+                        if self.runtime.user is not None:
+                            cmd_list.append("--user=%s" % self.runtime.user)
+
+                        cmd_list.extend(["clone", self.metadata.qualified_name, self.distgit_dir])
+                        cmd_list.extend(["--branch", distgit_branch])
+
+                        if rhpkg_clone_depth > 0:
+                            cmd_list.extend(["--depth", str(rhpkg_clone_depth)])
+
+                        # Clone the distgit repository. Occasional flakes in clone, so use retry.
+                        exectools.cmd_assert(cmd_list, retries=3, set_env=set_env)
 
     def merge_branch(self, target, allow_overwrite=False):
         self.logger.info('Switching to branch: {}'.format(target))
