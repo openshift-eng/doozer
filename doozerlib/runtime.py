@@ -20,6 +20,7 @@ import urllib.parse
 import signal
 import io
 import pathlib
+import subprocess
 
 from doozerlib import gitdata
 from . import logutil
@@ -835,11 +836,11 @@ class Runtime(object):
                             raise
 
             # If we get here, we have a bare repo with a remote set
-            with Dir(repo_dir):
-                # Pull content to update the cache. This should be safe for multiple doozer instances to perform.
-                self.logger.info(f'Updating cache directory for git remote: {remote_url}')
-                exectools.cmd_assert(f'git fetch --all', retries=3, set_env=set_env)
-                gitargs.extend(['--reference-if-able', repo_dir])
+            # Pull content to update the cache. This should be safe for multiple doozer instances to perform.
+            self.logger.info(f'Updating cache directory for git remote: {remote_url}')
+            # Fire and forget this fetch -- just used to keep cache as fresh as possible
+            exectools.fire_and_forget(repo_dir, 'git fetch --all')
+            gitargs.extend(['--reference-if-able', repo_dir])
 
         self.logger.info(f'Cloning to: {target_dir}')
 
@@ -917,15 +918,13 @@ class Runtime(object):
         url = source_details["url"]
 
         self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
-        set_env = os.environ.copy()
-        set_env.update(constants.GIT_NO_PROMPTS)
         try:
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             # clone all branches as we must sometimes reference master /OWNERS for maintainer information
             gitargs = [
-                '--no-single-branch', '--branch', clone_branch, '--depth', 1
+                '--no-single-branch', '--branch', clone_branch, '--depth', '1'
             ]
-            self.git_clone(url, source_dir, gitargs=gitargs, set_env=set_env)
+            self.git_clone(url, source_dir, gitargs=gitargs, set_env=constants.GIT_NO_PROMPTS)
 
         except IOError as e:
             self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, str(e)))
@@ -1068,12 +1067,13 @@ class Runtime(object):
         return ret.get(timeout)
 
     def clone_distgits(self, n_threads=None):
-        if n_threads is None:
-            n_threads = self.global_opts['distgit_threads']
-        return self._parallel_exec(
-            lambda m: m.distgit_repo(),
-            self.all_metas(),
-            n_threads=n_threads)
+        with util.timer(self.logger.info, 'Full runtime clone'):
+            if n_threads is None:
+                n_threads = self.global_opts['distgit_threads']
+            return self._parallel_exec(
+                lambda m: m.distgit_repo(),
+                self.all_metas(),
+                n_threads=n_threads)
 
     def push_distgits(self, n_threads=None):
         self.assert_mutation_is_permitted()

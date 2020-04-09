@@ -4,6 +4,9 @@ import copy
 import os
 import errno
 import re
+from datetime import datetime
+from contextlib import contextmanager
+from inspect import getframeinfo, stack
 
 
 def stringify(val):
@@ -114,3 +117,89 @@ def mkdirs(path):
     except OSError as e:
         if e.errno != errno.EEXIST:  # ignore if dest_dir exists
             raise
+
+
+@contextmanager
+def timer(out_method, msg):
+    caller = getframeinfo(stack()[2][0])  # Line that called this method
+    caller_caller = getframeinfo(stack()[3][0])   # Line that called the method calling this method
+    start_time = datetime.now()
+    try:
+        yield
+    finally:
+        time_elapsed = datetime.now() - start_time
+        entry = f'Time elapsed (hh:mm:ss.ms) {time_elapsed} in {caller.filename}:{caller.lineno} from {caller_caller.filename}:{caller_caller.lineno}:{caller_caller.code_context[0].strip()} : {msg}'
+        out_method(entry)
+
+
+def analyze_debug_timing(file):
+    peal = re.compile(r'^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d),\d\d\d \w+ [(](\d+)[)] (.*)')
+
+    thread_names = {}
+    event_timings = {}  # maps internal to { <thread_name> => [event list] }
+    first_interval = None
+
+    def get_thread_name(thread):
+        if thread in thread_names:
+            return thread_names[thread]
+        c = chr(ord('A') + len(thread_names))
+        thread_names[thread] = c
+        return c
+
+    def get_interval_map(interval):
+        nonlocal first_interval
+        if first_interval is None:
+            first_interval = interval
+        interval = interval - first_interval
+        if interval in event_timings:
+            return event_timings[interval]
+        mapping = {}
+        event_timings[interval] = mapping
+        return mapping
+
+    def get_thread_event_list(interval, thread):
+        thread_name = get_thread_name(thread)
+        interval_map = get_interval_map(interval)
+        if thread_name in interval_map:
+            return interval_map[thread_name]
+        event_list = []
+        interval_map[thread_name] = event_list
+        return event_list
+
+    def add_thread_event(interval, thread, event):
+        get_thread_event_list(int(interval), thread).append(event)
+
+    with open(file, 'r') as f:
+        for line in f:
+            m = peal.match(line.strip())
+            if m:
+                thread = m.group(2)  # thread id (e.g. 139770552305472)
+                datestr = m.group(1)  # 2020-04-09 10:17:03,092
+                event = m.group(3)
+                date_time_obj = datetime.strptime(datestr, '%Y-%m-%d %H:%M:%S')
+                minute_mark = int(int(date_time_obj.strftime("%s")) / 10)  # ten second intervals
+                add_thread_event(minute_mark, thread, event)
+
+    def print_em(*args):
+        for a in args:
+            print(str(a).ljust(5), end="")
+        print('')
+
+    print('Thread timelines')
+    names = sorted(list(thread_names.values()))
+    print_em('*', *names)
+
+    sorted_intervals = sorted(list(event_timings.keys()))
+    for interval in range(0, sorted_intervals[-1]+1):
+        print_em(interval, *names)
+        if interval in event_timings:
+            interval_map = event_timings[interval]
+            for i, thread_name in enumerate(names):
+                events = interval_map.get(thread_name, [])
+                for event in events:
+                    with_event = list(names)
+                    with_event[i] = thread_name + ': ' + event
+                    print_em(f' {interval}', *with_event[:i+1])
+
+
+

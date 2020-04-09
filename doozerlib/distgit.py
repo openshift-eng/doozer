@@ -156,8 +156,6 @@ class DistGitRepo(object):
 
                     timeout = str(self.runtime.global_opts['rhpkg_clone_timeout'])
                     rhpkg_clone_depth = int(self.runtime.global_opts.get('rhpkg_clone_depth', '1'))
-                    set_env = os.environ.copy()
-                    set_env.update(constants.GIT_NO_PROMPTS)
 
                     print(f'here {self.metadata.namespace} {self.runtime.cache_dir}')
                     if self.metadata.namespace == 'containers' and self.runtime.cache_dir:
@@ -169,7 +167,7 @@ class DistGitRepo(object):
                             gitargs.extend(["--depth", str(rhpkg_clone_depth)])
 
                         self.runtime.git_clone(self.metadata.distgit_remote_url(), self.distgit_dir, gitargs=gitargs,
-                                               set_env=set_env, timeout=timeout)
+                                               set_env=constants.GIT_NO_PROMPTS, timeout=timeout)
                     else:
                         # Use rhpkg -- presently no idea how to cache.
                         cmd_list = ["timeout", timeout]
@@ -188,7 +186,7 @@ class DistGitRepo(object):
                             cmd_list.extend(["--depth", str(rhpkg_clone_depth)])
 
                         # Clone the distgit repository. Occasional flakes in clone, so use retry.
-                        exectools.cmd_assert(cmd_list, retries=3, set_env=set_env)
+                        exectools.cmd_assert(cmd_list, retries=3, set_env=constants.GIT_NO_PROMPTS)
 
     def merge_branch(self, target, allow_overwrite=False):
         self.logger.info('Switching to branch: {}'.format(target))

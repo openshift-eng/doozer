@@ -13,7 +13,7 @@ from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.cli import cli_opts
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
-from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, mkdirs
+from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, analyze_debug_timing
 from doozerlib import operator_metadata
 import click
 import os
@@ -27,6 +27,7 @@ import tempfile
 import traceback
 import koji
 import io
+import datetime
 from numbers import Number
 from multiprocessing.pool import ThreadPool
 from multiprocessing import cpu_count
@@ -347,7 +348,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
         yellow_print('images:update-dockerfile is not valid when using --local, use images:rebase instead')
         sys.exit(1)
 
-    runtime.initialize(validate_content_sets=True)
+    runtime.initialize(validate_content_sets=True, clone_distgits=True)
 
     # This is ok to run if automation is frozen as long as you are not pushing
     if push:
@@ -375,7 +376,6 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
             "invalid version string: {}, expecting like v3.4 or v1.2.3".format(version)
         )
 
-    runtime.clone_distgits()
     metas = runtime.image_metas()
     lstate['total'] = len(metas)
 
@@ -2132,6 +2132,13 @@ def operator_metadata_latest_build(runtime, nvr, stream, operator_list):
     else:
         for build in nvr:
             click.echo(operator_metadata.OperatorMetadataLatestNvrReporter(build, stream, runtime).get_latest_build())
+
+
+@cli.command("analyze:debug-log", short_help="Output an analysis of the debug log")
+@click.argument("debug_log", nargs=1)
+def analyze_debug_log(debug_log):
+    f = os.path.abspath(debug_log)
+    analyze_debug_timing(f)
 
 
 def main():

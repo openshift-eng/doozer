@@ -38,12 +38,10 @@ class TestDistgitConvertSourceURLToHTTPS(unittest.TestCase):
         self.assertEqual(actual, expected)
 
     def test_conversion_from_ssh_org_source(self):
-        source = "git@github.com:myorg/"
-
-        actual = util.convert_remote_git_to_https(source)
         expected = "https://github.com/myorg"
-
-        self.assertEqual(actual, expected)
+        for source in ["git@github.com:myorg/", "git@github.com/myorg/", 'ssh://someone@github.com/myorg', 'ssh://someone@github.com:myorg']:
+            actual = util.convert_remote_git_to_https(source)
+            self.assertEqual(actual, expected)
 
     def test_conversion_from_https_org_source(self):
         source = "https://github.com/myorg/"
