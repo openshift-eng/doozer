@@ -112,8 +112,11 @@ def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], session: koji
     tasks = []
     with session.multicall(strict=True) as m:
         for tag, component_name in tag_component_tuples:
+            if not (tag and component_name):
+                tasks.append(None)
+                continue
             tasks.append(m.getLatestBuilds(tag, package=component_name))
-    return [task.result for task in tasks]
+    return [task.result if task else None for task in tasks]
 
 
 def list_archives_by_builds(build_ids: List[int], build_type: str, session: koji.ClientSession) -> List[Optional[List[Dict]]]:
@@ -128,5 +131,6 @@ def list_archives_by_builds(build_ids: List[int], build_type: str, session: koji
         for build_id in build_ids:
             if not build_id:
                 tasks.append(None)
+                continue
             tasks.append(m.listArchives(buildID=build_id, type=build_type))
     return [task.result if task else None for task in tasks]

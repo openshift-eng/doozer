@@ -1711,7 +1711,7 @@ that particular tag.
         """Tim Bielawa: note to self: is only for `ose-` prefixed images
         Clayton Coleman: Yes, Get with the naming system or get out of town
         """
-        if 'ose' not in image.image_name_short:
+        if not image.image_name_short.startswith("ose-"):
             invalid_name_items.append(image.image_name_short)
             red_print("NOT adding to IS (does not meet name/version conventions): {}".format(image.image_name_short))
             continue
@@ -1730,21 +1730,30 @@ that particular tag.
     for i, image in enumerate(ose_prefixed_images):
         latest_build = latest_builds[i]
         archives = archives_list[i]
+        error = None
         if not (latest_build and archives):  # build or archive doesn't exist
             error = f"Unable to find build for: {image.image_name_short}"
-            red_print(error, file=sys.stderr)
             no_build_items.append(image.image_name_short)
             state.record_image_fail(lstate, image, error, runtime.logger)
-            continue
-        for archive in archives:
-            arch = archive["arch"]
-            pullspecs = archive["extra"]["docker"]["repositories"]
-            mirroring.setdefault(arch, {})
-            # The tag that will be used in the imagestreams
-            tag_name = image.image_name_short.lstrip('ose-')
-            runtime.logger.info(f"Adding image {pullspecs[-1]} to the {arch} mirroring list with imagestream tag {tag_name}...")
-            mirroring[arch][tag_name] = {'version': latest_build[0]["version"], 'release': latest_build[0]["release"], 'image_src': pullspecs[-1]}
-        state.record_image_success(lstate, image)
+        else:
+            for archive in archives:
+                arch = archive["arch"]
+                pullspecs = archive["extra"]["docker"]["repositories"]
+                if not pullspecs or ":" not in pullspecs[-1]:  # in case of no pullspecs or invalid format
+                    error = f"Unable to find pullspecs for: {image.image_name_short}"
+                    red_print(error, file=sys.stderr)
+                    state.record_image_fail(lstate, image, error, runtime.logger)
+                    break
+                # The tag that will be used in the imagestreams
+                tag_name = image.image_name_short
+                tag_name = tag_name[4:] if tag_name.startswith("ose-") else tag_name  # it _should_ but... to be safe
+                runtime.logger.info(f"Adding image {pullspecs[-1]} to the {arch} mirroring list with imagestream tag {tag_name}...")
+                mirroring.setdefault(arch, {})[tag_name] = {'version': latest_build[0]["version"], 'release': latest_build[0]["release"], 'image_src': pullspecs[-1]}
+        if not error:
+            state.record_image_success(lstate, image)
+        else:
+            red_print(error, file=sys.stderr)
+            state.record_image_fail(lstate, image, error, runtime.logger)
 
     for arch in mirroring:
 

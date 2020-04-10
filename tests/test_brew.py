@@ -21,3 +21,52 @@ class TestBrew(unittest.TestCase):
         expected = list(build_infos.values())
         actual = brew.get_build_objects(build_infos.keys(), fake_session)
         self.assertListEqual(actual, expected)
+
+    def test_get_latest_builds(self):
+        tag_component_tuples = [
+            ("faketag1", "component1"),
+            ("faketag2", "component2"),
+            ("faketag2", None),
+            ("faketag1", "component4"),
+            ("", "component5"),
+            ("faketag2", "component6"),
+        ]
+        expected = [
+            {"name": "component1", "nvr": "component1-v1.0.0-1.faketag1"},
+            {"name": "component2", "nvr": "component2-v1.0.0-1.faketag2"},
+            None,
+            {"name": "component4", "nvr": "component4-v1.0.0-1.faketag1"},
+            None,
+            {"name": "component6", "nvr": "component6-v1.0.0-1.faketag2"},
+        ]
+
+        def fake_response(tag, package):
+            return mock.MagicMock(result={"name": package, "nvr": f"{package}-v1.0.0-1.{tag}"})
+
+        fake_session = mock.MagicMock()
+        fake_context_manager = fake_session.multicall.return_value.__enter__.return_value
+        fake_context_manager.getLatestBuilds.side_effect = fake_response
+        actual = brew.get_latest_builds(tag_component_tuples, fake_session)
+        self.assertListEqual(actual, expected)
+
+    def test_list_archives_by_builds(self):
+        build_ids = [1, 2, 3, None, 4, 0, 5, None]
+        expected = [
+            [{"build_id": 1, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 1000000}],
+            [{"build_id": 2, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 2000000}],
+            [{"build_id": 3, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 3000000}],
+            None,
+            [{"build_id": 4, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 4000000}],
+            None,
+            [{"build_id": 5, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 5000000}],
+            None,
+        ]
+
+        def fake_response(buildID, type):
+            return mock.MagicMock(result=[{"build_id": buildID, "type_name": "tar", "arch": "x86_64", "btype": type, "id": buildID * 1000000}])
+
+        fake_session = mock.MagicMock()
+        fake_context_manager = fake_session.multicall.return_value.__enter__.return_value
+        fake_context_manager.listArchives.side_effect = fake_response
+        actual = brew.list_archives_by_builds(build_ids, "image", fake_session)
+        self.assertListEqual(actual, expected)
