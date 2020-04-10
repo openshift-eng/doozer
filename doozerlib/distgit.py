@@ -103,9 +103,9 @@ class DistGitRepo(object):
         self.source_date_epoch = None
         self.source_url = None
 
-        # Extra environment variables that will be injected into the
-        # distgit Dockerfile.
-        self.extra_os_git_vars = {}
+        # If we are rebasing, this map can be populated with
+        # variables acquired from the source path.
+        self.env_vars_from_source = None
 
         # Allow the config yaml to override branch
         # This is primarily useful for a sync only group.
@@ -1254,16 +1254,18 @@ class ImageDistGitRepo(DistGitRepo):
                 dfp.labels["com.redhat.delivery.appregistry"] = "false"
 
             # Environment variables that will be injected into the Dockerfile.
-            # The baseline variables are those that OpenShift relied on historically during builds
-            # in the mono-repo / rpm days.
-            env_vars = self.extra_os_git_vars
-            env_vars.update({
+            # There are two distinct sets of environment variables:
+            # Set A) those which we calculate on every update
+            # Set B) those which we can calculate only when upstream source code is available
+            #        (self.env_vars_from_source). If self.env_vars_from_source=None, no merge
+            #        has occurred and we should not try to update envs from source we find in distgit.
+            env_vars = {  # Set A
                 'OS_GIT_MAJOR': major_version,
                 'OS_GIT_MINOR': minor_version,
                 'OS_GIT_PATCH': patch_version,
                 'OS_GIT_VERSION': f'{major_version}.{minor_version}.{patch_version}-{release}',
                 'OS_GIT_TREE_STATE': 'clean',
-            })
+            }
 
             # For each bit of maintainer information we have, create a new label in the image
             maintainer = self.metadata.get_maintainer_info()
@@ -1319,7 +1321,7 @@ class ImageDistGitRepo(DistGitRepo):
 
                     elif image.stream is not Missing:
                         stream = self.runtime.resolve_stream(image.stream)
-                        # TODO: implement expriring images?
+                        # TODO: implement expiring images?
                         mapped_images.append(stream.image)
 
                     else:
@@ -1328,17 +1330,6 @@ class ImageDistGitRepo(DistGitRepo):
                     count += 1
 
                 dfp.parent_images = mapped_images
-
-            if self.source_sha is not None:
-                # in a rebase, add ENV vars to each stage to relay source repo metadata
-                env_vars.update(dict(
-                    SOURCE_GIT_COMMIT=self.source_full_sha,
-                    SOURCE_GIT_TAG=self.source_latest_tag,
-                    SOURCE_GIT_URL=self.source_url,
-                    SOURCE_DATE_EPOCH=self.source_date_epoch,
-                    OS_GIT_VERSION=f'{env_vars["OS_GIT_VERSION"]}-{self.source_full_sha[0:7]}',
-                    OS_GIT_COMMIT=f'{self.source_full_sha[0:7]}'
-                ))
 
             # Set image name in case it has changed
             dfp.labels["name"] = self.config.name
@@ -1392,8 +1383,39 @@ class ImageDistGitRepo(DistGitRepo):
             df_lines = dfp.content.splitlines(False)
             df_lines = [line for line in df_lines if not line.strip().startswith(OIT_COMMENT_PREFIX)]
 
-            # Build up a line with environment variables we want to inject into each stage.
-            env_line = "ENV " + " ".join([key + "=" + val for key, val in env_vars.items()]) if env_vars else None
+            all_env_vars = dict(env_vars)  # make a copy
+            all_env_vars.update(self.env_vars_from_source or {})
+
+            env_update_line_flag = '__doozer=update'
+            env_merge_line_flag = '__doozer=merge'
+
+            def get_env_set_list(env_dict):
+                """
+                Returns a list of 'key1=value1 key2=value2'. Used mainly to ensure
+                ENV lines we inject don't change because of key iteration order.
+                """
+                sets = ''
+                for key in sorted(env_dict.keys()):
+                    sets += f'{key}={env_dict[key]} '
+                return sets
+
+            # Build up an UPDATE mode environment variable line we want to inject into each stage.
+            env_line = None
+            if env_vars:
+                env_line = f"ENV {env_update_line_flag} " + get_env_set_list(env_vars)
+
+            # If a merge has occurred, build up a MERGE mode environment variable line we want to inject into each stage.
+            source_env_line = None
+            if self.env_vars_from_source is not None:  # If None, no merge has occurred. Anything else means it has.
+                self.env_vars_from_source.update(dict(
+                    SOURCE_GIT_COMMIT=self.source_full_sha,
+                    SOURCE_GIT_TAG=self.source_latest_tag,
+                    SOURCE_GIT_URL=self.source_url,
+                    SOURCE_DATE_EPOCH=self.source_date_epoch,
+                    OS_GIT_VERSION=f'{env_vars["OS_GIT_VERSION"]}-{self.source_full_sha[0:7]}',
+                    OS_GIT_COMMIT=f'{self.source_full_sha[0:7]}'
+                ))
+                source_env_line = f"ENV {env_merge_line_flag} " + get_env_set_list(self.env_vars_from_source)
 
             filtered_content = []
             in_mod_block = False
@@ -1411,13 +1433,32 @@ class ImageDistGitRepo(DistGitRepo):
                 if in_mod_block:
                     continue
 
-                # If we are injecting environment variables, remove any line
-                # from the Dockerfile that may be trying to set the same name. This is also
-                # necessary for us to clean up our older env injections if this is a dist-git only
-                # Dockerfile.
+                # If we are injecting environment variables, mangle
+                # environment variables with the same name so that doozer has the last say.
                 if line.lower().startswith('env '):
-                    if any(f' {var_name}=' in line for var_name in env_vars):
+
+                    # IF this line is a set of environment variables introduced by updates,
+                    # discard the line. We will inject the vars later.
+                    # The check for OS_GIT_MAJOR cleans up pre-flag doozer injected vars.
+                    if env_update_line_flag in line or 'OS_GIT_MAJOR' in line:
                         continue
+
+                    # If this line is a set of environment variables introduced from source
+                    # previously AND we have new items from source, discard the line entirely.
+                    # We will inject the new vars later.
+                    if self.env_vars_from_source is not None and env_merge_line_flag in line:
+                        continue
+
+                    # Otherwise, this is an env line that doozer did not create.
+                    # Split:
+                    #     "env  a=1 b=2 c=3" into [ 'env', 'a=1', ...]
+                    # or  "env a 1" into ['env', 'a', '1' ]  . Dockerfiles support both forms.
+                    env_comp = line.split()
+                    for i, comp in enumerate(env_comp[1:], 1):
+                        if comp.split('=')[0] in env_vars:
+                            # Make the old value be ignored
+                            env_comp[i] = f'__overridden_{comp}'
+                    line = ' '.join(env_comp)   # Reformulate the line
 
                 # remove any old instances of empty.repo mods that aren't in mod block
                 if 'empty.repo' not in line:
@@ -1426,8 +1467,11 @@ class ImageDistGitRepo(DistGitRepo):
                     filtered_content.append(line)
 
                 # after each stage, re-establish environment variables
-                if env_line and line.lower().startswith('from '):
-                    filtered_content.append(env_line)
+                if line.lower().startswith('from '):
+                    if env_line:
+                        filtered_content.append(env_line)
+                    if source_env_line:
+                        filtered_content.append(source_env_line)
 
             df_lines = filtered_content
 
@@ -1621,6 +1665,10 @@ class ImageDistGitRepo(DistGitRepo):
         clone with content from that source.
         """
 
+        # Initialize env_vars_from source.
+        # update_distgit_dir makes a distinction between None and {}
+        self.env_vars_from_source = {}
+
         with Dir(self.source_path()):
             # gather source repo short sha for audit trail
             rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "--short", "HEAD"])
@@ -1648,11 +1696,11 @@ class ImageDistGitRepo(DistGitRepo):
                             if dep.get('ImportPath', '') == 'k8s.io/kubernetes/pkg/api':
                                 kube_version = dep.get('Comment', '')
                                 kube_version_fields = kube_version.lstrip('v').split('.')  # v1.17.1 => [ '1', '17', '1' ]
-                                self.extra_os_git_vars['KUBE_GIT_VERSION'] = kube_version
-                                self.extra_os_git_vars['KUBE_GIT_COMMIT'] = dep.get('Rev', '')
-                                self.extra_os_git_vars['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
+                                self.env_vars_from_source['KUBE_GIT_VERSION'] = kube_version
+                                self.env_vars_from_source['KUBE_GIT_COMMIT'] = dep.get('Rev', '')
+                                self.env_vars_from_source['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
                                 godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
-                                self.extra_os_git_vars['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, add a + since OCP patches its vendor kube.
+                                self.env_vars_from_source['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, add a + since OCP patches its vendor kube.
                 except:
                     self.runtime.logger.error(f'Error parsing godeps {str(godeps_file)}')
                     traceback.print_exc()
