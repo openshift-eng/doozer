@@ -109,11 +109,11 @@ def is_in_directory(path, directory):
 
 def mkdirs(path):
     """ Make sure a directory exists. Similar to shell command `mkdir -p`.
-
+    :param path: Str path or pathlib.Path
     This function will not be necessary when fully migrated to Python 3.
     """
     try:
-        os.makedirs(path)
+        os.makedirs(str(path))
     except OSError as e:
         if e.errno != errno.EEXIST:  # ignore if dest_dir exists
             raise
@@ -142,7 +142,7 @@ def analyze_debug_timing(file):
     def get_thread_name(thread):
         if thread in thread_names:
             return thread_names[thread]
-        c = chr(ord('A') + len(thread_names))
+        c = f'T{len(thread_names)}'
         thread_names[thread] = c
         return c
 
@@ -186,11 +186,11 @@ def analyze_debug_timing(file):
         print('')
 
     print('Thread timelines')
-    names = sorted(list(thread_names.values()))
+    names = sorted(list(thread_names.values()), key=lambda e: int(e[1:]))  # sorts as T1, T2, T3, .... by removing 'T'
     print_em('*', *names)
 
     sorted_intervals = sorted(list(event_timings.keys()))
-    for interval in range(0, sorted_intervals[-1]+1):
+    for interval in range(0, sorted_intervals[-1] + 1):
         print_em(interval, *names)
         if interval in event_timings:
             interval_map = event_timings[interval]
@@ -199,7 +199,4 @@ def analyze_debug_timing(file):
                 for event in events:
                     with_event = list(names)
                     with_event[i] = thread_name + ': ' + event
-                    print_em(f' {interval}', *with_event[:i+1])
-
-
-
+                    print_em(f' {interval}', *with_event[:i + 1])

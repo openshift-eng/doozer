@@ -226,6 +226,7 @@ option_push = click.option('--push/--no-push', default=False, is_flag=True,
 #
 # =============================================================================
 
+
 @cli.command("images:clone", help="Clone a group's image distgit repos locally.")
 @pass_runtime
 def images_clone(runtime):
@@ -379,13 +380,17 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
     metas = runtime.image_metas()
     lstate['total'] = len(metas)
 
-    for image in metas:
+    def dgr_update(image_meta):
         try:
-            dgr = image.distgit_repo()
+            dgr = image_meta.distgit_repo()
             (real_version, real_release) = dgr.update_distgit_dir(version, release)
             dgr.commit(message)
             dgr.tag(real_version, real_release)
-            state.record_image_success(lstate, image)
+            state.record_image_success(lstate, image_meta)
+            if push:
+                (meta, success) = dgr.push()
+                if success is not True:
+                    state.record_image_fail(lstate, meta, success)
         except Exception as ex:
             msg = None
             try:
@@ -393,20 +398,15 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
             except:
                 msg = str(ex)
 
-            state.record_image_fail(lstate, image, msg, runtime.logger)
+            state.record_image_fail(lstate, image_meta, msg, runtime.logger)
+            return False
+        return True
 
-    try:
-        if push:
-            res = runtime.push_distgits()
-
-            for name, r in res:
-                if r is not True:
-                    state.record_image_fail(lstate, name, r)
-    except Exception as ex:
-        lstate['status'] = state.STATE_FAIL
-        raise DoozerFatalError(getattr(ex, 'message', repr(ex)))
-
-    state.record_image_finish(lstate)
+    jobs = runtime.parallel_exec(
+        lambda image_meta, terminate_event: dgr_update(image_meta),
+        metas,
+    )
+    jobs.get()
 
     failed = []
     for img, status in lstate['images'].items():
@@ -515,29 +515,36 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
     runtime.clone_distgits()
     metas = runtime.image_metas()
     lstate['total'] = len(metas)
-    for image in metas:
+
+    def dgr_rebase(image_meta):
         try:
-            dgr = image.distgit_repo()
+            dgr = image_meta.distgit_repo()
             (real_version, real_release) = dgr.rebase_dir(version, release)
             sha = dgr.commit(message, log_diff=True)
             dgr.tag(real_version, real_release)
             runtime.add_record(
                 "distgit_commit",
-                distgit=image.qualified_name,
-                image=image.config.name,
+                distgit=image_meta.qualified_name,
+                image=image_meta.config.name,
                 sha=sha,
             )
-            state.record_image_success(lstate, image)
+            state.record_image_success(lstate, image_meta)
+
+            if push:
+                (meta, success) = dgr.push()
+                if success is not True:
+                    state.record_image_fail(lstate, meta, success)
+
         except Exception as ex:
             # Only the message will recorded in the state. Make sure we print out a stacktrace in the logs.
             traceback.print_exc()
 
-            owners = image.config.owners
+            owners = image_meta.config.owners
             owners = ",".join(list(owners) if owners is not Missing else [])
             runtime.add_record(
                 "distgit_commit_failure",
-                distgit=image.qualified_name,
-                image=image.config.name,
+                distgit=image_meta.qualified_name,
+                image=image_meta.config.name,
                 owners=owners,
                 message=str(ex).replace("|", ""),
             )
@@ -548,18 +555,15 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
             except:
                 msg = str(ex)
 
-            state.record_image_fail(lstate, image, msg, runtime.logger)
+            state.record_image_fail(lstate, image_meta, msg, runtime.logger)
+            return False
+        return True
 
-    try:
-        if push:
-            res = runtime.push_distgits()
-
-            for name, r in res:
-                if r is not True:
-                    state.record_image_fail(lstate, name, r)
-    except Exception as ex:
-        lstate['status'] = state.STATE_FAIL
-        raise DoozerFatalError(repr(ex))
+    jobs = runtime.parallel_exec(
+        lambda image_meta, terminate_event: dgr_rebase(image_meta),
+        metas,
+    )
+    jobs.get()
 
     state.record_image_finish(lstate)
 
@@ -2137,6 +2141,29 @@ def operator_metadata_latest_build(runtime, nvr, stream, operator_list):
 @cli.command("analyze:debug-log", short_help="Output an analysis of the debug log")
 @click.argument("debug_log", nargs=1)
 def analyze_debug_log(debug_log):
+    """
+    Specify a doozer working directory debug.log as the argument. A table with be printed to stdout.
+    The top row of the table will be all the threads that existed during the doozer runtime.
+    T1, T2, T3, ... each represent an independent thread which was created and performed some action.
+
+    The first column of the graph indicates a time interval. Each interval is 10 seconds. Actions
+    performed by each thread are grouped into the interval in which those actions occurred. The
+    action performed by a thread is aligned and printed under the thread's column.
+
+    Example 1:
+    *     T1    T2    T3
+    0     loading metadata A                          # During the first 10 seconds, T1 is perform actions.
+     0    loading metaddata B                         # Multiple events can happen during the same interval.
+     0    loading metaddata C
+
+    Example 2:
+    *     T1    T2    T3
+    0     loading metadata A                          # During the first 10 seconds, T1 is perform actions.
+     0    loading metaddata B                         # Multiple events can happen during the same interval.
+    1           cloning                               # During seconds 10-20, three threads start cloning.
+     1    cloning
+     1                cloning
+    """
     f = os.path.abspath(debug_log)
     analyze_debug_timing(f)
 

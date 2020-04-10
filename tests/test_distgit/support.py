@@ -51,6 +51,7 @@ class MockRuntime(object):
         self.logger = logger
         self.mutex = SimpleMockLock()
         self.missing_pkgs = set()
+        self.cache_dir = None
 
     def detect_remote_source_branch(self, _):
         pass

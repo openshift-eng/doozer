@@ -91,6 +91,7 @@ class DistGitRepo(object):
         self.runtime = metadata.runtime
         self.name = self.metadata.name
         self.distgit_dir = None
+        self.dg_path = None
         self.build_status = False
         self.push_status = False
 
@@ -127,6 +128,7 @@ class DistGitRepo(object):
             # scenarios where this is a user error. In either case, make sure we
             # don't conflict by stomping on the same git directory.
             self.distgit_dir = os.path.join(namespace_dir, self.metadata.distgit_key)
+            self.dg_path = pathlib.Path(self.distgit_dir)
 
             fake_distgit = (self.runtime.local and 'content' in self.metadata.config)
 
@@ -155,9 +157,8 @@ class DistGitRepo(object):
                     self.logger.info("Cloning distgit repository [branch:%s] into: %s" % (distgit_branch, self.distgit_dir))
 
                     timeout = str(self.runtime.global_opts['rhpkg_clone_timeout'])
-                    rhpkg_clone_depth = int(self.runtime.global_opts.get('rhpkg_clone_depth', '1'))
+                    rhpkg_clone_depth = int(self.runtime.global_opts.get('rhpkg_clone_depth', '0'))
 
-                    print(f'here {self.metadata.namespace} {self.runtime.cache_dir}')
                     if self.metadata.namespace == 'containers' and self.runtime.cache_dir:
                         # Containers don't generally require distgit lookaside. We can rely on normal
                         # git clone & leverage git caches to greatly accelerate things if the user supplied it.
@@ -454,7 +455,7 @@ class ImageDistGitRepo(DistGitRepo):
         :return:
         """
         self.logger.debug("Generating cvp-owners.yml for {}".format(self.metadata.distgit_key))
-        with io.open('cvp-owners.yml', 'w', encoding="utf-8") as co:
+        with self.dg_path.joinpath('cvp-owners.yml').open('w', encoding="utf-8") as co:
             if self.config.owners:  # Not missing and non-empty
                 # only spam owners on failure; ref. https://red.ht/2x0edYd
                 owners = {owner: "FAILURE" for owner in self.config.owners}
@@ -468,17 +469,16 @@ class ImageDistGitRepo(DistGitRepo):
         self.logger.debug("Generating repo file for Dockerfile {}".format(self.metadata.distgit_key))
 
         # Make our metadata directory if it does not exist
-        if not os.path.isdir(".oit"):
-            os.mkdir(".oit")
+        util.mkdirs(self.dg_path.joinpath('.oit'))
 
         repos = self.runtime.repos
         enabled_repos = self.config.get('enabled_repos', [])
         for t in repos.repotypes:
-            with io.open('.oit/{}.repo'.format(t), 'w', encoding="utf-8") as rc:
+            with self.dg_path.joinpath('.oit', f'{t}.repo').open('w', encoding="utf-8") as rc:
                 content = repos.repo_file(t, enabled_repos=enabled_repos)
                 rc.write(content)
 
-        with io.open('content_sets.yml', 'w', encoding="utf-8") as rc:
+        with self.dg_path.joinpath('content_sets.yml').open('w', encoding="utf-8") as rc:
             rc.write(repos.content_sets(enabled_repos=enabled_repos))
 
     def _read_master_data(self):
@@ -1188,9 +1188,10 @@ class ImageDistGitRepo(DistGitRepo):
         # will be prefix by the OIT_COMMENT_PREFIX and followed by newlines in the Dockerfile.
         oit_comments = []
 
+        dg_path = self.dg_path
         with Dir(self.distgit_dir):
             # Source or not, we should find a Dockerfile in the root at this point or something is wrong
-            assertion.isfile("Dockerfile", "Unable to find Dockerfile in distgit root")
+            assertion.isfile(dg_path.joinpath("Dockerfile"), "Unable to find Dockerfile in distgit root")
 
             self._generate_repo_conf()
 
@@ -1198,7 +1199,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             self._write_cvp_owners()
 
-            dfp = DockerfileParser(path="Dockerfile")
+            dfp = DockerfileParser(path=str(dg_path.joinpath('Dockerfile')))
 
             self._clean_repos(dfp)
 
@@ -1225,7 +1226,7 @@ class ImageDistGitRepo(DistGitRepo):
             patch_version = '0' if len(vsplit) < 3 else vsplit[2]
 
             if not self.runtime.local:
-                with io.open('additional-tags', 'w', encoding="utf-8") as at:
+                with dg_path.joinpath('additional-tags').open('w', encoding="utf-8") as at:
                     at.write("%s\n" % uuid_tag)  # The uuid which we ensure we get the right
                     if len(vsplit) > 1:
                         at.write("%s.%s\n" % (vsplit[0], vsplit[1]))  # e.g. "v3.7.0" -> "v3.7"
@@ -1432,7 +1433,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             df_content = "\n".join(df_lines)
 
-            with io.open('Dockerfile', 'w', encoding="utf-8") as df:
+            with dg_path.joinpath('Dockerfile').open('w', encoding="utf-8") as df:
                 for comment in oit_comments:
                     df.write("%s %s\n" % (OIT_COMMENT_PREFIX, comment))
                 df.write(df_content)
@@ -1470,13 +1471,12 @@ class ImageDistGitRepo(DistGitRepo):
         if not image_refs:
             raise DoozerFatalError('Data in {} not valid'.format(refs))
 
-        with Dir(manifests):
-            csvs = glob.glob('*.clusterserviceversion.yaml')
-            if len(csvs) < 1:
-                raise DoozerFatalError('{}: did not find a *.clusterserviceversion.yaml file @ {}'.format(self.metadata.distgit_key, manifests))
-            elif len(csvs) > 1:
-                raise DoozerFatalError('{}: Must be exactly one *.clusterserviceversion.yaml file but found more than one @ {}'.format(self.metadata.distgit_key, manifests))
-            return os.path.join(manifests, csvs[0]), image_refs
+        csvs = list(pathlib.Path(manifests).glob('*.clusterserviceversion.yaml'))
+        if len(csvs) < 1:
+            raise DoozerFatalError('{}: did not find a *.clusterserviceversion.yaml file @ {}'.format(self.metadata.distgit_key, manifests))
+        elif len(csvs) > 1:
+            raise DoozerFatalError('{}: Must be exactly one *.clusterserviceversion.yaml file but found more than one @ {}'.format(self.metadata.distgit_key, manifests))
+        return str(csvs[0]), image_refs
 
     def _update_csv(self, version, release):
         # AMH - most of this method really shouldn't be in Doozer itself
@@ -1592,7 +1592,9 @@ class ImageDistGitRepo(DistGitRepo):
         labels at the end in a single statement.
         """
 
-        dfp = DockerfileParser(path=filename)
+        dg_path = self.dg_path
+        df_path = dg_path.joinpath(filename)
+        dfp = DockerfileParser(str(df_path))
         labels = dict(dfp.labels)  # Make a copy of the labels we need to add back
 
         # Delete any labels from the modeled content
@@ -1603,7 +1605,7 @@ class ImageDistGitRepo(DistGitRepo):
         df_content = dfp.content.strip()
 
         # Write the file back out and append the labels to the end
-        with io.open(filename, 'w', encoding="utf-8") as df:
+        with df_path.open('w', encoding="utf-8") as df:
             df.write("%s\n\n" % df_content)
             if labels:
                 df.write("LABEL")
@@ -1638,7 +1640,7 @@ class ImageDistGitRepo(DistGitRepo):
             godeps_file = pathlib.Path(self.source_path(), 'Godeps', 'Godeps.json')
             if godeps_file.is_file():
                 try:
-                    with open(str(godeps_file)) as f:
+                    with godeps_file.open('r', encoding='utf-8') as f:
                         godeps = json.load(f)
                         # Reproduce https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/hack/lib/build/version.sh#L82
                         # Example of what we are after: https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/Godeps/Godeps.json#L10-L15
@@ -1670,72 +1672,64 @@ class ImageDistGitRepo(DistGitRepo):
         ignore_list.extend(self.runtime.group_config.get('dist_git_ignore', []))
         ignore_list.extend(self.config.get('dist_git_ignore', []))
 
-        for ent in os.listdir("."):
+        dg_path = self.dg_path
+        for ent in dg_path.iterdir():
 
-            if ent in ignore_list:
+            if ent.name in ignore_list:
                 continue
 
             # Otherwise, clean up the entry
-            if os.path.isfile(ent) or os.path.islink(ent):
-                os.remove(ent)
+            if ent.is_file() or ent.is_symlink():
+                ent.unlink()
             else:
-                shutil.rmtree(ent)
+                shutil.rmtree(str(ent.resolve()))
 
         # Copy all files and overwrite where necessary
         recursive_overwrite(self.source_path(), self.distgit_dir)
 
         if dockerfile_name != "Dockerfile":
+
             # Does a non-distgit Dockerfile already exist from copying source; remove if so
-            if os.path.isfile("Dockerfile"):
-                os.remove("Dockerfile")
+            df_path = dg_path.joinpath('Dockerfile')
+            if df_path.is_file():
+                df_path.unlink()
 
             try:
                 # Rename our distgit source Dockerfile appropriately
-                if not os.path.isfile(dockerfile_name):
-                    options = glob.glob('Dockerfile*')
-                    if options:
-                        options = '\nTry one of these{}\n'.format(options)
-                    else:
-                        options = ''
-
-                    url = self.source_url
-                    if self.config.content.source.path is not Missing:
-                        rc, out, err = exectools.cmd_gather(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-                        branch = out.strip()
-                        url = '{}/tree/{}/{}'.format(url, branch, self.config.content.source.path)
-                    raise DoozerFatalError('{}:{} does not exist in @ {}{}'
-                                           .format(self.metadata.distgit_key, dockerfile_name, url, options))
-                os.rename(dockerfile_name, "Dockerfile")
+                df_path = dg_path.joinpath(dockerfile_name)
+                if not df_path.is_file():
+                    self.logger.error(f'Unable to find dockerfile: {str(df_path)}')
+                    raise DoozerFatalError('{}:{} does not exist'
+                                           .format(self.metadata.distgit_key, dockerfile_name))
+                df_path.rename(dg_path.joinpath('Dockerfile'))
             except OSError as err:
                 raise DoozerFatalError(str(err))
 
         # Clean up any extraneous Dockerfile.* that might be distractions (e.g. Dockerfile.centos)
-        for ent in os.listdir("."):
-            if ent.startswith("Dockerfile."):
-                os.remove(ent)
+        for ent in dg_path.iterdir():
+            if ent.name.startswith("Dockerfile."):
+                ent.unlink()
 
         # Delete .gitignore since it may block full sync and is not needed here
-        try:
-            os.remove("./.gitignore")
-        except OSError:
-            pass
+        gitignore_path = dg_path.joinpath('.gitignore')
+        if gitignore_path.is_file():
+            gitignore_path.unlink()
 
         notify_owner = False
 
         # Create a sha for Dockerfile. We use this to determined if we've reconciled it before.
         source_dockerfile_hash = hashlib.sha256(io.open(source_dockerfile_path, 'rb').read()).hexdigest()
 
-        if not os.path.isdir(".oit/reconciled"):
-            os.mkdir(".oit/reconciled")
-
-        dockerfile_already_reconciled_path = '.oit/reconciled/{}.Dockerfile'.format(source_dockerfile_hash)
+        reconciled_path = dg_path.joinpath('.oit', 'reconciled')
+        util.mkdirs(reconciled_path)
+        reconciled_df_path = reconciled_path.joinpath(f'{source_dockerfile_hash}.Dockerfile')
 
         # If the file does not exist, the source file has not been reconciled before.
-        if not os.path.isfile(dockerfile_already_reconciled_path):
+        if not reconciled_df_path.is_file():
             # Something has changed about the file in source control
             notify_owner = True
             # Record that we've reconciled against this source file so that we do not notify the owner again.
-            shutil.copy(source_dockerfile_path, dockerfile_already_reconciled_path)
+            shutil.copy(str(source_dockerfile_path), str(reconciled_df_path))
 
         # Leave a record for external processes that owners will need to be notified.
 
@@ -1782,14 +1776,16 @@ class ImageDistGitRepo(DistGitRepo):
                                 owners=','.join(owners),
                                 source_alias=source_alias,
                                 source_dockerfile_subpath=source_dockerfile_subpath,
-                                dockerfile=os.path.abspath("Dockerfile"))
+                                dockerfile=str(dg_path.joinpath('Dockerfile')))
 
     def _run_modifications(self):
         """
         Interprets and applies content.source.modify steps in the image metadata.
         """
 
-        with io.open("Dockerfile", 'r', encoding="utf-8") as df:
+        dg_path = self.dg_path
+        df_path = dg_path.joinpath('Dockerfile')
+        with df_path.open('r', encoding="utf-8") as df:
             dockerfile_data = df.read()
 
         self.logger.debug(
@@ -1803,6 +1799,7 @@ class ImageDistGitRepo(DistGitRepo):
         path = os.pathsep.join([os.environ['PATH'], metadata_scripts_path])
 
         for modification in self.config.content.source.modifications:
+            modification['distgit_path'] = self.dg_path
             if self.source_modifier_factory.supports(modification.action):
                 # run additional modifications supported by source_modifier_factory
                 modifier = self.source_modifier_factory.create(**modification)
@@ -1812,22 +1809,24 @@ class ImageDistGitRepo(DistGitRepo):
                     "kind": "Dockerfile",
                     "content": dockerfile_data,
                     "set_env": {"PATH": path},
+                    "distgit_path": self.dg_path,
                 }
-                modifier.act(context=context, ceiling_dir=os.getcwd())
+                modifier.act(context=context, ceiling_dir=str(dg_path))
                 dockerfile_data = context["content"]
             else:
                 raise IOError("Don't know how to perform modification action: %s" % modification.action)
 
-        with io.open('Dockerfile', 'w', encoding="utf-8") as df:
+        with df_path.open('w', encoding="utf-8") as df:
             df.write(dockerfile_data)
 
     def rebase_dir(self, version, release):
-
+        dg_path = self.dg_path
         with Dir(self.distgit_dir):
 
             prev_release = None
-            if os.path.isfile("Dockerfile"):
-                dfp = DockerfileParser("Dockerfile")
+            df_path = dg_path.joinpath('Dockerfile')
+            if df_path.is_file():
+                dfp = DockerfileParser(str(df_path))
                 # extract previous release to enable incrementing it
                 prev_release = dfp.labels.get("release")
 
@@ -1836,8 +1835,7 @@ class ImageDistGitRepo(DistGitRepo):
                     version = dfp.labels["version"]
 
             # Make our metadata directory if it does not exist
-            if not os.path.isdir(".oit"):
-                os.mkdir(".oit")
+            util.mkdirs(dg_path.joinpath('.oit'))
 
             # If content.source is defined, pull in content from local source directory
             if self.has_source():
@@ -1846,11 +1844,11 @@ class ImageDistGitRepo(DistGitRepo):
                 # before mods, check if upstream source version should be used
                 # this will override the version fetch above
                 if self.metadata.config.get('use_source_version', False):
-                    dfp = DockerfileParser("Dockerfile")
+                    dfp = DockerfileParser(str(df_path))
                     version = dfp.labels["version"]
 
             # Source or not, we should find a Dockerfile in the root at this point or something is wrong
-            assertion.isfile("Dockerfile", "Unable to find Dockerfile in distgit root")
+            assertion.isfile(df_path, "Unable to find Dockerfile in distgit root")
 
             if self.config.content.source.modifications is not Missing:
                 self._run_modifications()

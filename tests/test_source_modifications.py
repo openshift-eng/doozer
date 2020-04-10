@@ -5,6 +5,7 @@ import tempfile
 import os
 import shutil
 import mock
+import pathlib
 
 from doozerlib.source_modifications import SourceModifierFactory, AddModifier
 
@@ -43,7 +44,8 @@ class AddModifierTestCase(unittest.TestCase):
             session = MockSession()
             response = session.get.return_value
             response.content = expected_content
-            modifier.act(ceiling_dir=self.temp_dir, session=session)
+            context = {"distgit_path": pathlib.Path(self.temp_dir)}
+            modifier.act(ceiling_dir=self.temp_dir, session=session, context=context)
         with open(params["path"], "rb") as f:
             actual = f.read()
         self.assertEqual(actual, expected_content)
@@ -63,7 +65,8 @@ class AddModifierTestCase(unittest.TestCase):
             response = session.get.return_value
             response.content = expected_content
             with self.assertRaises(IOError) as cm:
-                modifier.act(ceiling_dir=self.temp_dir, session=session)
+                context = {"distgit_path": pathlib.Path(self.temp_dir)}
+                modifier.act(ceiling_dir=self.temp_dir, session=session, context=context)
             self.assertIn("overwrite", repr(cm.exception))
 
 

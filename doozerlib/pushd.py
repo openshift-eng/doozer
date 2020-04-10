@@ -39,7 +39,7 @@ class Dir(object):
     _tl = threading.local()
 
     def __init__(self, newdir):
-        self.dir = newdir
+        self.dir = str(newdir)
         self.previous_dir = None
 
     def __enter__(self):

@@ -745,7 +745,7 @@ class Runtime(object):
             replace_vars = self.group_config.vars.primitive()
         data_obj = self.gitdata.load_data(path='images', key=distgit_name, replace_vars=replace_vars)
         if not data_obj:
-            raise DoozerFatalError('Unable to resovle image metadata for {}'.format(distgit_name))
+            raise DoozerFatalError('Unable to resolve image metadata for {}'.format(distgit_name))
 
         meta = ImageMetadata(self, data_obj)
         if add:

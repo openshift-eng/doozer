@@ -31,6 +31,7 @@ def isdir(path, message):
 
     :raises: FileNotFoundError
     """
+    path = str(path)  # Convert from pathlib.Path if necessary
     if not os.path.isdir(path):
         raise FileNotFoundError(
             errno.ENOENT,
@@ -41,11 +42,12 @@ def isfile(path, message):
     """
     Raise an exception if the given file does not exist.
 
-    :param path: The path to a file to be tested
+    :param path: The str or pathlib path to a file to be tested
     :param message: A custom message to report in the exception
 
     :raises: FileNotFoundError
     """
+    path = str(path)  # Convert from pathlib.Path if necessary
     if not os.path.isfile(path):
         raise FileNotFoundError(
             errno.ENOENT,
