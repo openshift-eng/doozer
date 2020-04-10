@@ -1745,6 +1745,10 @@ class ImageDistGitRepo(DistGitRepo):
         self.env_vars_from_source = {}
 
         with Dir(self.source_path()):
+            if self.metadata.commitish:
+                self.runtime.logger.info(f"Rebasing image {self.name} from speicified commit-ish {self.metadata.commitish}...")
+                cmd = ["git", "checkout", self.metadata.commitish]
+                exectools.cmd_assert(cmd)
             # gather source repo short sha for audit trail
             rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "--short", "HEAD"])
             self.source_sha = out.strip()

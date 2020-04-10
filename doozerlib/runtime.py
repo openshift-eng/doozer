@@ -249,7 +249,8 @@ class Runtime(object):
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
                    no_group=False, clone_source=True, disabled=None,
-                   config_excludes=None):
+                   config_excludes=None,
+                   upstream_commitish_overrides={}):
 
         if self.initialized:
             return
@@ -411,6 +412,9 @@ class Runtime(object):
             image_ex = list(exclude_keys)
             rpm_ex = list(exclude_keys)
             image_keys = flatten_list(self.images)
+
+            self.upstream_commitish_overrides = upstream_commitish_overrides
+
             rpm_keys = flatten_list(self.rpms)
 
             filter_func = None
@@ -463,7 +467,7 @@ class Runtime(object):
 
             if mode in ['images', 'both']:
                 for i in image_data.values():
-                    metadata = ImageMetadata(self, i)
+                    metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key))
                     self.image_map[metadata.distgit_key] = metadata
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
@@ -753,7 +757,7 @@ class Runtime(object):
         if not data_obj:
             raise DoozerFatalError('Unable to resolve image metadata for {}'.format(distgit_name))
 
-        meta = ImageMetadata(self, data_obj)
+        meta = ImageMetadata(self, data_obj, self.upstream_commitish_overrides.get(data_obj.key))
         if add:
             self.image_map[distgit_name] = meta
         return meta
@@ -811,7 +815,7 @@ class Runtime(object):
         set_env = set_env or []
 
         if self.cache_dir:
-            git_cache_dir = os.path.join(self.cache_dir, self.user, 'git')
+            git_cache_dir = os.path.join(self.cache_dir, self.user or "default", 'git')
             util.mkdirs(git_cache_dir)
             normalized_url = util.convert_remote_git_to_https(remote_url)
             # Strip special chars out of normalized url to create a human friendly, but unique filename
@@ -936,6 +940,15 @@ class Runtime(object):
                     '--no-single-branch', '--branch', clone_branch, '--depth', '1'
                 ]
                 self.git_clone(url, source_dir, gitargs=gitargs, set_env=constants.GIT_NO_PROMPTS)
+                if meta.commitish:
+                    # Commit-ish may not be in the history because of shallow clone. Fetch from upstream if not existing.
+                    self.logger.info(f"Determining if commit-ish {meta.commitish} exists")
+                    cmd = ["git", "-C", source_dir, "branch", "--contains", meta.commitish]
+                    rc, _, _ = exectools.cmd_gather(cmd)
+                    if rc != 0:  # commit-ish does not exist
+                        self.logger.info(f"Fetching commit-ish {meta.commitish} from upstream")
+                        cmd = ["git", "-C", source_dir, "fetch", "origin", "--depth", "1", meta.commitish]
+                        exectools.cmd_assert(cmd)
 
             except IOError as e:
                 self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, str(e)))
