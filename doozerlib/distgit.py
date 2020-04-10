@@ -798,7 +798,7 @@ class ImageDistGitRepo(DistGitRepo):
                             raise KeyboardInterrupt()
 
                     if len(profile["targets"]) > 1:
-                        # FIXME: Currently we don't really suppport building images against multiple targets,
+                        # FIXME: Currently we don't really support building images against multiple targets,
                         # or we would overwrite the image tag when pushing to the registry.
                         # `targets` is defined as an array just because we want to keep consistency with RPM build.
                         raise DoozerFatalError("Building images against multiple targets is not currently supported.")
@@ -956,66 +956,111 @@ class ImageDistGitRepo(DistGitRepo):
             self.logger.info("[Dry Run] Successfully built image: {}".format(target_image))
             return True
 
-        # Run the build with --nowait so that we can immediately get information about the brew task
-        rc, out, err = exectools.cmd_gather(cmd_list)
+        with Dir(self.distgit_dir):
+            commit_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()[:8]
 
-        if rc != 0:
-            # Probably no point in continuing.. can't contact brew?
-            self.logger.info("Unable to create brew task: out={}  ; err={}".format(out, err))
-            return False
+        doozer_tag = {
+            'jenkins_build': os.getenv('BUILD_URL', '')
+        }
 
-        # Otherwise, we should have a brew task we can monitor listed in the stdout.
-        out_lines = out.splitlines()
+        invoke_ts = datetime.now().strftime("%H%M%S")
 
-        # Look for a line like: "Created task: 13949050" . Extract the identifier.
-        task_id = next((created_line.split(":")[1]).strip() for created_line in out_lines if
-                       created_line.startswith("Created task:"))
+        def update_tag(build_state):
+            if scratch:
+                return
 
-        record["task_id"] = task_id
+            with Dir(self.distgit_dir):
+                ts = str(datetime.now())
+                doozer_tag['state'] = build_state
+                doozer_tag['time'] = ts
+                doozer_tag['uuid'] = self.runtime.uuid
+                messages = []
+                for k in sorted(doozer_tag.keys()):
+                    messages.extend(['-m', f'{k}={doozer_tag[k]}'])
 
-        # Look for a line like: "Task info: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=13948942"
-        task_url = next((info_line.split(":", 1)[1]).strip() for info_line in out_lines if
-                        info_line.startswith("Task info:"))
+                # Keep in mind that distgit does not let normal users overwrite tags. It would be
+                # nice to have a floating tag showing the last success/failure, but this should
+                # be an adequate analog. Each build attempt will get its own tag.
+                tag_cmd = ['git', 'tag', '-f', '-a',
+                           f'doozer-{build_state}-{commit_sha}-{invoke_ts}',
+                           '-m', f'{build_state} from {self.runtime.uuid}'
+                           ]
+                tag_cmd.extend(messages)
+                exectools.cmd_assert(tag_cmd, retries=3)
 
-        self.logger.info("Build running: {}".format(task_url))
+        try:
 
-        record["task_url"] = task_url
+            # Run the build with --nowait so that we can immediately get information about the brew task
+            rc, out, err = exectools.cmd_gather(cmd_list)
 
-        # Now that we have the basics about the task, wait for it to complete
-        error = watch_task(self.runtime.group_config.urls.brewhub, self.logger.info, task_id, terminate_event)
+            if rc != 0:
+                # Probably no point in continuing.. can't contact brew?
+                self.logger.info("Unable to create brew task: out={}  ; err={}".format(out, err))
+                update_tag('failure')
+                return False
 
-        # Looking for something like the following to conclude the image has already been built:
-        # BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
-        # Note it is possible that a Brew task fails with a build record left (https://issues.redhat.com/browse/ART-1723).
-        # Didn't find a variable in the context to get the Brew NVR or ID. Extracting the build ID from the error message.
-        # Hope the error message format will not change.
-        match = None
-        if error:
-            match = re.search(r"already exists, id (\d+)", error)
-        if match:
-            builds = get_build_objects([int(match[1])], koji.ClientSession(self.runtime.group_config.urls.brewhub))
-            if builds and builds[0] and builds[0].get('state') == 1:  # State 1 means complete.
-                self.logger.info("Image already built against this dist-git commit (or version-release tag): {}".format(target_image))
-                error = None
+            # Otherwise, we should have a brew task we can monitor listed in the stdout.
+            out_lines = out.splitlines()
 
-        # Gather brew-logs
-        logs_rc, _, logs_err = exectools.cmd_gather(["brew", "download-logs", "-d", self._logs_dir(), task_id])
+            # Look for a line like: "Created task: 13949050" . Extract the identifier.
+            task_id = next((created_line.split(":")[1]).strip() for created_line in out_lines if
+                           created_line.startswith("Created task:"))
 
-        if logs_rc != 0:
-            self.logger.info("Error downloading build logs from brew for task %s: %s" % (task_id, logs_err))
-        else:
-            self._extract_container_build_logs(task_id)
-            if error is None:
-                # even if the build completed without error, check the logs for problems
-                error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
+            record["task_id"] = task_id
+            doozer_tag['task_id'] = task_id
 
-        if error is not None:
-            # An error occurred. We don't have a viable build.
-            self.logger.info("Error building image: {}, {}".format(task_url, error))
-            return False
+            # Look for a line like: "Task info: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=13948942"
+            task_url = next((info_line.split(":", 1)[1]).strip() for info_line in out_lines if
+                            info_line.startswith("Task info:"))
 
-        self.logger.info("Successfully built image: {} ; {}".format(target_image, task_url))
-        return True
+            self.logger.info("Build running: {}".format(task_url))
+
+            record["task_url"] = task_url
+            doozer_tag['task_url'] = task_url
+
+            # Now that we have the basics about the task, wait for it to complete
+            error = watch_task(self.runtime.group_config.urls.brewhub, self.logger.info, task_id, terminate_event)
+
+            # Looking for something like the following to conclude the image has already been built:
+            # BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
+            # Note it is possible that a Brew task fails with a build record left (https://issues.redhat.com/browse/ART-1723).
+            # Didn't find a variable in the context to get the Brew NVR or ID. Extracting the build ID from the error message.
+            # Hope the error message format will not change.
+            match = None
+            if error:
+                match = re.search(r"already exists, id (\d+)", error)
+            if match:
+                builds = get_build_objects([int(match[1])], koji.ClientSession(self.runtime.group_config.urls.brewhub))
+                if builds and builds[0] and builds[0].get('state') == 1:  # State 1 means complete.
+                    self.logger.info("Image already built against this dist-git commit (or version-release tag): {}".format(target_image))
+                    error = None
+
+            # Gather brew-logs
+            logs_rc, _, logs_err = exectools.cmd_gather(["brew", "download-logs", "-d", self._logs_dir(), task_id])
+
+            if logs_rc != 0:
+                self.logger.info("Error downloading build logs from brew for task %s: %s" % (task_id, logs_err))
+            else:
+                self._extract_container_build_logs(task_id)
+                if error is None:
+                    # even if the build completed without error, check the logs for problems
+                    error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
+
+            if error is not None:
+                # An error occurred. We don't have a viable build.
+                update_tag('failure')
+                self.logger.info("Error building image: {}, {}".format(task_url, error))
+                return False
+
+            update_tag('success')
+            self.logger.info("Successfully built image: {} ; {}".format(target_image, task_url))
+            return True
+        finally:
+            try:
+                with Dir(self.distgit_dir):
+                    exectools.cmd_assert(['git', 'push', '--tags', '--force'], retries=3)
+            except:
+                self.logger.error('Unable to push tags to distgit!')
 
     def _logs_dir(self, task_id=None):
         segments = [self.runtime.brew_logs_dir, self.metadata.distgit_key]
