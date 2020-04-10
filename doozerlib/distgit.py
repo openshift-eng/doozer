@@ -755,59 +755,55 @@ class ImageDistGitRepo(DistGitRepo):
         target_image = ":".join((self.org_image_name, target_tag))
 
         try:
-            if not self.runtime.local and not scratch and self.org_release is not None \
-                    and self.metadata.tag_exists(target_tag):
-                self.logger.info("Image already built for: {}".format(target_image))
-            else:
-                # If this image is FROM another group member, we need to wait on that group member
-                # Use .get('from',None) since from is a reserved word.
-                image_from = Model(self.config.get('from', None))
-                if image_from.member is not Missing:
-                    self._set_wait_for(image_from.member, terminate_event)
-                for builder in image_from.get('builder', []):
-                    if 'member' in builder:
-                        self._set_wait_for(builder['member'], terminate_event)
+            # If this image is FROM another group member, we need to wait on that group member
+            # Use .get('from',None) since from is a reserved word.
+            image_from = Model(self.config.get('from', None))
+            if image_from.member is not Missing:
+                self._set_wait_for(image_from.member, terminate_event)
+            for builder in image_from.get('builder', []):
+                if 'member' in builder:
+                    self._set_wait_for(builder['member'], terminate_event)
 
-                # Allow an image to wait on an arbitrary image in the group. This is presently
-                # just a workaround for: https://projects.engineering.redhat.com/browse/OSBS-5592
-                if self.config.wait_for is not Missing:
-                    self._set_wait_for(self.config.wait_for, terminate_event)
+            # Allow an image to wait on an arbitrary image in the group. This is presently
+            # just a workaround for: https://projects.engineering.redhat.com/browse/OSBS-5592
+            if self.config.wait_for is not Missing:
+                self._set_wait_for(self.config.wait_for, terminate_event)
 
-                if self.runtime.local:
-                    self.build_status = self._build_container_local(target_image, profile["repo_type"], realtime)
-                    if not self.build_status:
-                        state.record_image_fail(self.runtime.state[self.runtime.command], self.metadata, 'Build failure', self.runtime.logger)
-                    else:
-                        state.record_image_success(self.runtime.state[self.runtime.command], self.metadata)
-                    return (self.metadata.distgit_key, self.build_status)  # do nothing more since it's local only
+            if self.runtime.local:
+                self.build_status = self._build_container_local(target_image, profile["repo_type"], realtime)
+                if not self.build_status:
+                    state.record_image_fail(self.runtime.state[self.runtime.command], self.metadata, 'Build failure', self.runtime.logger)
                 else:
-                    def wait(n):
-                        self.logger.info("Async error in image build thread [attempt #{}]".format(n + 1))
-                        # No need to retry if the failure will just recur
-                        error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
-                        if error is not None:
-                            for match in re.finditer("No package (.*) available", error):
-                                self._add_missing_pkgs(match.group(1))
-                            raise exectools.RetryException(
-                                "Saw permanent error in build logs:\n{}\nWill not retry after {} failed attempt(s)"
-                                .format(error, n + 1)
-                            )
-                        # Brew does not handle an immediate retry correctly, wait
-                        # before trying another build, terminating if interrupted.
-                        if terminate_event.wait(timeout=5 * 60):
-                            raise KeyboardInterrupt()
+                    state.record_image_success(self.runtime.state[self.runtime.command], self.metadata)
+                return (self.metadata.distgit_key, self.build_status)  # do nothing more since it's local only
+            else:
+                def wait(n):
+                    self.logger.info("Async error in image build thread [attempt #{}]".format(n + 1))
+                    # No need to retry if the failure will just recur
+                    error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
+                    if error is not None:
+                        for match in re.finditer("No package (.*) available", error):
+                            self._add_missing_pkgs(match.group(1))
+                        raise exectools.RetryException(
+                            "Saw permanent error in build logs:\n{}\nWill not retry after {} failed attempt(s)"
+                            .format(error, n + 1)
+                        )
+                    # Brew does not handle an immediate retry correctly, wait
+                    # before trying another build, terminating if interrupted.
+                    if terminate_event.wait(timeout=5 * 60):
+                        raise KeyboardInterrupt()
 
-                    if len(profile["targets"]) > 1:
-                        # FIXME: Currently we don't really support building images against multiple targets,
-                        # or we would overwrite the image tag when pushing to the registry.
-                        # `targets` is defined as an array just because we want to keep consistency with RPM build.
-                        raise DoozerFatalError("Building images against multiple targets is not currently supported.")
-                    target = '' if not profile["targets"] else profile["targets"][0]
-                    exectools.retry(
-                        retries=(1 if self.runtime.local else retries), wait_f=wait,
-                        task_f=lambda: self._build_container(
-                            target_image, target, profile["signing_intent"], profile["repo_type"], profile["repo_list"], terminate_event,
-                            scratch, record, dry_run=dry_run))
+                if len(profile["targets"]) > 1:
+                    # FIXME: Currently we don't really support building images against multiple targets,
+                    # or we would overwrite the image tag when pushing to the registry.
+                    # `targets` is defined as an array just because we want to keep consistency with RPM build.
+                    raise DoozerFatalError("Building images against multiple targets is not currently supported.")
+                target = '' if not profile["targets"] else profile["targets"][0]
+                exectools.retry(
+                    retries=retries, wait_f=wait,
+                    task_f=lambda: self._build_container(
+                        target_image, target, profile["signing_intent"], profile["repo_type"], profile["repo_list"], terminate_event,
+                        scratch, record, dry_run=dry_run))
 
             # Just in case someone else is building an image, go ahead and find what was just
             # built so that push_image will have a fixed point of reference and not detect any

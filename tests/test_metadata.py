@@ -20,35 +20,6 @@ distgit:
   namespace: 'hello'"""
 
 
-class TestMetadataModule(unittest.TestCase):
-    def test_tag_exists(self):
-        with mock.patch("requests.get") as mocked_get:
-            mocked_get.return_value = mock.MagicMock(status_code=200)
-            registry = "https://registry.example.com"
-            namespace = "fake_namespace"
-            image_name = "fake_image"
-            tag = "fake_tag"
-            expected_url = "https://registry.example.com/v1/repositories/fake_namespace/fake_image/tags/fake_tag"
-            actual = metadata.tag_exists(registry, namespace, image_name, tag)
-            mocked_get.assert_called_with(expected_url)
-            self.assertEqual(True, actual)
-            mocked_get.return_value = mock.MagicMock(status_code=404)
-            actual = metadata.tag_exists(registry, namespace, image_name, tag)
-            self.assertEqual(False, actual)
-            mocked_get.return_value = mock.MagicMock(status_code=403)
-            actual = metadata.tag_exists(registry, namespace, image_name, tag)
-            self.assertEqual(False, actual)
-            mocked_get.return_value = mock.MagicMock(status_code=500)
-            with self.assertRaises(IOError) as cm:
-                metadata.tag_exists(registry, namespace, image_name, tag)
-                self.assertIn("HTTP 500", str(cm.exception))
-
-    def test_backoff(self):
-        m = flexmock(metadata)
-        m.should_receive('query').and_raise(IOError).and_raise(IOError).and_return(True)
-        self.assertEqual(m.tag_exists('registry', 'namespace', 'name', 'tag'), True)
-
-
 class TestMetadataClass(unittest.TestCase):
     def test_get_brew_image_name_short(self):
         with mock.patch("doozerlib.metadata.Metadata.__init__", return_value=None):
@@ -65,17 +36,6 @@ class TestMetadataClass(unittest.TestCase):
             expected = "openshift3-ose-ansible"
             actual = metadata.Metadata.get_brew_image_name_short.__call__(obj)
             self.assertEqual(expected, actual)
-
-    def test_tag_exists(self):
-        with mock.patch("doozerlib.metadata.Metadata.__init__", return_value=None), mock.patch("doozerlib.metadata.tag_exists", return_value=True) as mocked_module_tag_exists:
-            obj = metadata.Metadata()
-            obj.runtime = mock.MagicMock()
-            obj.runtime.group_config.urls.brew_image_host = "registry.example.com"
-            obj.runtime.group_config.urls.brew_image_namespace = "fake_namespace"
-            obj.get_brew_image_name_short = mock.MagicMock(return_value="fake_image_name")
-            actual = obj.tag_exists("fake_tag")
-            self.assertTrue(actual)
-            mocked_module_tag_exists.assert_called_with("https://registry.example.com", "fake_namespace", "fake_image_name", "fake_tag")
 
 
 class MockRuntime(object):

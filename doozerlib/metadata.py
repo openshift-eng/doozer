@@ -22,22 +22,6 @@ DISTGIT_TYPES = {
     'rpm': RPMDistGitRepo
 }
 
-
-def query(url):
-    resp = requests.get(url)
-    if resp.status_code == 200:
-        return True
-    if resp.status_code in [404, 403]:
-        return False
-    raise IOError("Couldn't determine if tag exists: {} returns HTTP {}.".format(url, resp.status_code))
-
-
-@retry(IOError, tries=10, delay=1, backoff=1)
-def tag_exists(registry, namespace, name, tag):
-    url = registry + "/v1/repositories/" + urllib.parse.quote(namespace) + "/" + urllib.parse.quote(name) + "/tags/" + urllib.parse.quote(tag)
-    return query(url)
-
-
 CONFIG_MODES = [
     'enabled',  # business as usual
     'disabled',  # manually disabled from automatically building
@@ -157,9 +141,6 @@ class Metadata(object):
             3, lambda: urllib.request.urlopen(url),
             check_f=lambda req: req.code == 200)
         return req.read()
-
-    def tag_exists(self, tag):
-        return tag_exists("https://" + self.runtime.group_config.urls.brew_image_host, self.runtime.group_config.urls.brew_image_namespace, self.get_brew_image_name_short(), tag)
 
     def get_brew_image_name_short(self):
         # Get image name in the Brew pullspec. e.g. openshift3/ose-ansible --> openshift3-ose-ansible
