@@ -392,12 +392,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
                 if success is not True:
                     state.record_image_fail(lstate, meta, success)
         except Exception as ex:
-            msg = None
-            try:
-                msg = ex.strerror
-            except:
-                msg = str(ex)
-
+            msg = str(ex)
             state.record_image_fail(lstate, image_meta, msg, runtime.logger)
             return False
         return True
@@ -407,6 +402,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
         metas,
     )
     jobs.get()
+    state.record_image_finish(lstate)
 
     failed = []
     for img, status in lstate['images'].items():
@@ -548,13 +544,7 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
                 owners=owners,
                 message=str(ex).replace("|", ""),
             )
-
-            msg = None
-            try:
-                msg = ex.strerror
-            except:
-                msg = str(ex)
-
+            msg = str(ex)
             state.record_image_fail(lstate, image_meta, msg, runtime.logger)
             return False
         return True

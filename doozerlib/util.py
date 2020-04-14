@@ -110,7 +110,6 @@ def is_in_directory(path, directory):
 def mkdirs(path):
     """ Make sure a directory exists. Similar to shell command `mkdir -p`.
     :param path: Str path or pathlib.Path
-    This function will not be necessary when fully migrated to Python 3.
     """
     try:
         os.makedirs(str(path))
