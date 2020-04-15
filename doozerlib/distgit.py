@@ -1299,11 +1299,6 @@ class ImageDistGitRepo(DistGitRepo):
                 dfp.labels["com.redhat.delivery.appregistry"] = "false"
 
             # Environment variables that will be injected into the Dockerfile.
-            # There are two distinct sets of environment variables:
-            # Set A) those which we calculate on every update
-            # Set B) those which we can calculate only when upstream source code is available
-            #        (self.env_vars_from_source). If self.env_vars_from_source=None, no merge
-            #        has occurred and we should not try to update envs from source we find in distgit.
             env_vars = {  # Set A
                 'OS_GIT_MAJOR': major_version,
                 'OS_GIT_MINOR': minor_version,
@@ -1424,43 +1419,22 @@ class ImageDistGitRepo(DistGitRepo):
                 if deprecated in dfp.labels:
                     del dfp.labels[deprecated]
 
+            # remove old labels from dist-git
+            for label in self.source_labels['old']:
+                if label in dfp.labels:
+                    del dfp.labels[label]
+
+            # set with new source if known, otherwise leave alone for a refresh
+            srclab = self.source_labels['now']
+            if self.source_full_sha:
+                dfp.labels[srclab['sha']] = self.source_full_sha
+                if self.source_url:
+                    dfp.labels[srclab['source']] = self.source_url
+                    dfp.labels[srclab['source_commit']] = '{}/commit/{}'.format(self.source_url, self.source_full_sha)
+
             # Remove any programmatic oit comments from previous management
             df_lines = dfp.content.splitlines(False)
             df_lines = [line for line in df_lines if not line.strip().startswith(OIT_COMMENT_PREFIX)]
-
-            all_env_vars = dict(env_vars)  # make a copy
-            all_env_vars.update(self.env_vars_from_source or {})
-
-            env_update_line_flag = '__doozer=update'
-            env_merge_line_flag = '__doozer=merge'
-
-            def get_env_set_list(env_dict):
-                """
-                Returns a list of 'key1=value1 key2=value2'. Used mainly to ensure
-                ENV lines we inject don't change because of key iteration order.
-                """
-                sets = ''
-                for key in sorted(env_dict.keys()):
-                    sets += f'{key}={env_dict[key]} '
-                return sets
-
-            # Build up an UPDATE mode environment variable line we want to inject into each stage.
-            env_line = None
-            if env_vars:
-                env_line = f"ENV {env_update_line_flag} " + get_env_set_list(env_vars)
-
-            # If a merge has occurred, build up a MERGE mode environment variable line we want to inject into each stage.
-            source_env_line = None
-            if self.env_vars_from_source is not None:  # If None, no merge has occurred. Anything else means it has.
-                self.env_vars_from_source.update(dict(
-                    SOURCE_GIT_COMMIT=self.source_full_sha,
-                    SOURCE_GIT_TAG=self.source_latest_tag,
-                    SOURCE_GIT_URL=self.source_url,
-                    SOURCE_DATE_EPOCH=self.source_date_epoch,
-                    OS_GIT_VERSION=f'{env_vars["OS_GIT_VERSION"]}-{self.source_full_sha[0:7]}',
-                    OS_GIT_COMMIT=f'{self.source_full_sha[0:7]}'
-                ))
-                source_env_line = f"ENV {env_merge_line_flag} " + get_env_set_list(self.env_vars_from_source)
 
             filtered_content = []
             in_mod_block = False
@@ -1478,45 +1452,11 @@ class ImageDistGitRepo(DistGitRepo):
                 if in_mod_block:
                     continue
 
-                # If we are injecting environment variables, mangle
-                # environment variables with the same name so that doozer has the last say.
-                if line.lower().startswith('env '):
-
-                    # IF this line is a set of environment variables introduced by updates,
-                    # discard the line. We will inject the vars later.
-                    # The check for OS_GIT_MAJOR cleans up pre-flag doozer injected vars.
-                    if env_update_line_flag in line or 'OS_GIT_MAJOR' in line:
-                        continue
-
-                    # If this line is a set of environment variables introduced from source
-                    # previously AND we have new items from source, discard the line entirely.
-                    # We will inject the new vars later.
-                    if self.env_vars_from_source is not None and env_merge_line_flag in line:
-                        continue
-
-                    # Otherwise, this is an env line that doozer did not create.
-                    # Split:
-                    #     "env  a=1 b=2 c=3" into [ 'env', 'a=1', ...]
-                    # or  "env a 1" into ['env', 'a', '1' ]  . Dockerfiles support both forms.
-                    env_comp = line.split()
-                    for i, comp in enumerate(env_comp[1:], 1):
-                        if comp.split('=')[0] in env_vars:
-                            # Make the old value be ignored
-                            env_comp[i] = f'__overridden_{comp}'
-                    line = ' '.join(env_comp)   # Reformulate the line
-
                 # remove any old instances of empty.repo mods that aren't in mod block
                 if 'empty.repo' not in line:
                     if line.endswith('\n'):
                         line = line[0:-1]  # remove trailing newline, if exists
                     filtered_content.append(line)
-
-                # after each stage, re-establish environment variables
-                if line.lower().startswith('from '):
-                    if env_line:
-                        filtered_content.append(env_line)
-                    if source_env_line:
-                        filtered_content.append(source_env_line)
 
             df_lines = filtered_content
 
@@ -1527,18 +1467,7 @@ class ImageDistGitRepo(DistGitRepo):
                     df.write("%s %s\n" % (OIT_COMMENT_PREFIX, comment))
                 df.write(df_content)
 
-            # remove old labels from dist-git
-            for label in self.source_labels['old']:
-                if label in dfp.labels:
-                    del dfp.labels[label]
-
-            # set with new source if known, otherwise leave alone for a refresh
-            srclab = self.source_labels['now']
-            if self.source_full_sha:
-                dfp.labels[srclab['sha']] = self.source_full_sha
-                if self.source_url:
-                    dfp.labels[srclab['source']] = self.source_url
-                    dfp.labels[srclab['source_commit']] = '{}/commit/{}'.format(self.source_url, self.source_full_sha)
+            self._update_environment_variables(env_vars)
 
             self._reflow_labels()
 
@@ -1672,6 +1601,110 @@ class ImageDistGitRepo(DistGitRepo):
                     sr_file.seek(0)
                     sr_file.truncate()
                     sr_file.write(sr_file_str)
+
+    def _update_environment_variables(self, update_envs, filename='Dockerfile'):
+        """
+        There are three distinct sets of environment variables we need to consider
+        in a Dockerfile:
+        Set A) those which doozer calculates on every update
+        Set B) those which doozer can calculate only when upstream source code is available
+               (self.env_vars_from_source). If self.env_vars_from_source=None, no merge
+               has occurred and we should not try to update envs from source we find in distgit.
+        Set C) those which the Dockerfile author has set for their own purposes (these cannot
+               override doozer's env, but they are free to use other variables names).
+
+        :param update_envs: The update environment variables to set (Set A).
+        :param filename: The Dockerfile name in the distgit dir to edit.
+        :return: N/A
+        """
+        dg_path = self.dg_path
+        df_path = dg_path.joinpath(filename)
+
+        # The DockerfileParser can find & set environment variables, but is written such that it only updates the
+        # last instance of the env in the Dockerfile. For example, if, at different build stages, A=1 and later A=2
+        # are set, DockerfileParser will only manage the A=2 instance. We want to remove variables that doozer is
+        # going to set. To do so, we repeatedly load the Dockerfile and remove the env variable.
+        # In this way, from our example, on the second load and removal, A=1 should be removed.
+
+        # Build a dict of everything we want to set.
+        all_envs = dict(update_envs)
+        all_envs.update(self.env_vars_from_source or {})
+
+        while True:
+            dfp = DockerfileParser(str(df_path))
+            # Find the intersection between envs we want to set and those present in parser
+            envs_intersect = set(list(all_envs.keys())).intersection(set(list(dfp.envs.keys())))
+
+            if not envs_intersect:  # We've removed everything we want to ultimately set
+                break
+
+            self.logger.debug(f'Removing old env values from Dockerfile: {envs_intersect}')
+
+            for k in envs_intersect:
+                del dfp.envs[k]
+
+            dfp_content = dfp.content
+            # Write the file back out
+            with df_path.open('w', encoding="utf-8") as df:
+                df.write(dfp_content)
+
+        # The env vars we want to set have been removed from the target Dockerfile.
+        # Now, we want to inject the values we have available. In a Dockerfile, ENV must
+        # be set for each build stage. So the ENVs must be set after each FROM.
+
+        env_update_line_flag = '__doozer=update'
+        env_merge_line_flag = '__doozer=merge'
+
+        def get_env_set_list(env_dict):
+            """
+            Returns a list of 'key1=value1 key2=value2'. Used mainly to ensure
+            ENV lines we inject don't change because of key iteration order.
+            """
+            sets = ''
+            for key in sorted(env_dict.keys()):
+                sets += f'{key}={env_dict[key]} '
+            return sets
+
+        # Build up an UPDATE mode environment variable line we want to inject into each stage.
+        update_env_line = None
+        if update_envs:
+            update_env_line = f"ENV {env_update_line_flag} " + get_env_set_list(update_envs)
+
+        # If a merge has occurred, build up a MERGE mode environment variable line we want to inject into each stage.
+        merge_env_line = None
+        if self.env_vars_from_source is not None:  # If None, no merge has occurred. Anything else means it has.
+            self.env_vars_from_source.update(dict(
+                SOURCE_GIT_COMMIT=self.source_full_sha,
+                SOURCE_GIT_TAG=self.source_latest_tag,
+                SOURCE_GIT_URL=self.source_url,
+                SOURCE_DATE_EPOCH=self.source_date_epoch,
+                OS_GIT_VERSION=f'{update_envs["OS_GIT_VERSION"]}-{self.source_full_sha[0:7]}',
+                OS_GIT_COMMIT=f'{self.source_full_sha[0:7]}'
+            ))
+            merge_env_line = f"ENV {env_merge_line_flag} " + get_env_set_list(self.env_vars_from_source)
+
+        # Open again!
+        dfp = DockerfileParser(str(df_path))
+        df_lines = dfp.content.splitlines(False)
+
+        with df_path.open('w', encoding="utf-8") as df:
+            for line in df_lines:
+
+                # Always remove the env line we update each time.
+                if env_update_line_flag in line:
+                    continue
+
+                # If we are adding environment variables from source, remove any previous merge line.
+                if merge_env_line and env_merge_line_flag in line:
+                    continue
+
+                df.write(f'{line}\n')
+
+                if line.startswith('FROM '):
+                    if update_env_line:
+                        df.write(f'{update_env_line}\n')
+                    if merge_env_line:
+                        df.write(f'{merge_env_line}\n')
 
     def _reflow_labels(self, filename="Dockerfile"):
         """
