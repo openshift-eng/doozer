@@ -16,6 +16,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
 from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, analyze_debug_timing, get_cincinnati_channels, extract_version_fields
 from doozerlib import operator_metadata
+from doozerlib.cli.releaseapi_cli import releaseapi_cli
 import click
 import os
 import shutil
@@ -2408,5 +2409,6 @@ def main():
             CTX_GLOBAL.obj.save_state()
 
 
+cli.add_command(releaseapi_cli)
 if __name__ == '__main__':
     main()

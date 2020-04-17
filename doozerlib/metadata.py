@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
 standard_library.install_aliases
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import urllib.parse
 from retry import retry
 import requests
@@ -218,3 +218,24 @@ class Metadata(object):
                 sorted_maintainer[k] = maintainer[k]
 
         return sorted_maintainer
+
+    def has_source(self):
+        """
+        Check whether this image/rpm has upstream source content
+        """
+        return "git" in self.config.content.source or \
+            "alias" in self.config.content.source
+
+    def get_source(self) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        Returns (url, ref, commit) tuple of upstream source.
+        """
+        if not self.has_source():
+            return None, None, None
+        runtime = self.runtime
+        source_details = runtime.lookup_source(self)
+        if not source_details:
+            return None, None, None
+        url = source_details.get("url")
+        ref, commit = runtime.detect_remote_source_branch(source_details)
+        return url, ref, commit

@@ -884,6 +884,45 @@ class Runtime(object):
         cmd.append(target_dir)
         exectools.cmd_assert(cmd, retries=3, on_retry=["rm", "-rf", target_dir], set_env=set_env)
 
+    def lookup_source(self, meta):
+        """
+        Looks up a source alias and returns source_details dict containing
+        that source. It doesn't clone any source.
+        NOTE: This function is a copy of `resolve_source` but doesn't really clone anything
+        """
+        source = meta.config.content.source
+
+        if not source:
+            return None
+
+        parent = f'{meta.namespace}_{meta.name}'
+
+        # This allows passing `--source <distgit_key> path` to
+        # override any source to something local without it
+        # having been configured for an alias
+        if self.local and meta.distgit_key in self.source_paths:
+            source['alias'] = meta.distgit_key
+            if 'git' in source:
+                del source['git']
+
+        source_details = None
+        if 'git' in source:
+            git_url = urllib.parse.urlparse(source.git.url)
+            name = os.path.splitext(os.path.basename(git_url.path))[0]
+            alias = '{}_{}'.format(parent, name)
+            source_details = dict(source.git)
+        elif 'alias' in source:
+            alias = source.alias
+        else:
+            raise DoozerFatalError('Error while processing source for {}'.format(parent))
+
+        if not source_details:  # old style alias was given
+            if self.group_config.sources is Missing or alias not in self.group_config.sources:
+                raise DoozerFatalError("Source alias not found in specified sources or in the current group: %s" % alias)
+            source_details = self.group_config.sources[alias]
+
+        return source_details
+
     def resolve_source(self, meta):
         """
         Looks up a source alias and returns a path to the directory containing

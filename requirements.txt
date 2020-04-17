@@ -4,6 +4,7 @@ dockerfile-parse >= 0.0.13
 future
 koji
 mock
+openshift-release >= 0.0.2
 pyyaml >= 5.1
 retry
 requests
