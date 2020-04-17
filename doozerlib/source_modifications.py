@@ -11,6 +11,7 @@ from doozerlib.util import mkdirs, is_in_directory
 from doozerlib.model import Missing
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.exectools import cmd_assert
+from doozerlib.pushd import Dir
 
 LOGGER = getLogger(__name__)
 
@@ -91,12 +92,14 @@ class AddModifier(object):
         :param session: If not None, a requests.Session object for HTTP requests
         """
         LOGGER.debug("Running 'add' modification action...")
+        context = kwargs["context"]
+        distgit_path = context['distgit_path']
         source = urlparse(self.source)
         if source.scheme not in self.SUPPORTED_URL_SCHEMES:
             raise ValueError(
                 "Unsupported URL scheme {} used in 'add' action.".format(source.scheme))
         source_url = source.geturl()  # normalized URL
-        path = os.path.abspath(self.path)
+        path = str(distgit_path.joinpath(self.path))
         ceiling_dir = kwargs.get("ceiling_dir")
         session = kwargs.get("session") or requests.session()
         if ceiling_dir and not is_in_directory(path, ceiling_dir):
@@ -175,7 +178,8 @@ class CommandModifier(object):
         """
         context = kwargs["context"]
         set_env = context["set_env"]
-        cmd_assert(self.command, set_env=set_env)
+        with Dir(context['distgit_path']):
+            cmd_assert(self.command, set_env=set_env)
 
 
 SourceModifierFactory.MODIFICATIONS["command"] = CommandModifier

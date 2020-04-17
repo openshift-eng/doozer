@@ -13,7 +13,7 @@ from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.cli import cli_opts
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
-from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
+from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, analyze_debug_timing
 from doozerlib import operator_metadata
 import click
 import os
@@ -27,6 +27,7 @@ import tempfile
 import traceback
 import koji
 import io
+import datetime
 from numbers import Number
 from multiprocessing.pool import ThreadPool
 from multiprocessing import cpu_count
@@ -128,6 +129,8 @@ def print_version(ctx, param, value):
               help="Path to rhpkg config file to use instead of system default")
 @click.option("--brew-tag", metavar="BREW_TAG",
               help="Override brew tag to expect for images built")
+@click.option("--cache-dir", metavar="DIR", required=False, default=None,
+              help="A directory in which reference git repos can be stored for caching purposes")
 @click.option("--profile", metavar="NAME", default="", help="Name of build profile")
 @click.pass_context
 def cli(ctx, **kwargs):
@@ -346,7 +349,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
         yellow_print('images:update-dockerfile is not valid when using --local, use images:rebase instead')
         sys.exit(1)
 
-    runtime.initialize(validate_content_sets=True)
+    runtime.initialize(validate_content_sets=True, clone_distgits=True)
 
     # This is ok to run if automation is frozen as long as you are not pushing
     if push:
@@ -374,37 +377,31 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
             "invalid version string: {}, expecting like v3.4 or v1.2.3".format(version)
         )
 
-    runtime.clone_distgits()
     metas = runtime.image_metas()
     lstate['total'] = len(metas)
 
-    for image in metas:
+    def dgr_update(image_meta):
         try:
-            dgr = image.distgit_repo()
+            dgr = image_meta.distgit_repo()
             (real_version, real_release) = dgr.update_distgit_dir(version, release)
             dgr.commit(message)
             dgr.tag(real_version, real_release)
-            state.record_image_success(lstate, image)
+            state.record_image_success(lstate, image_meta)
+            if push:
+                (meta, success) = dgr.push()
+                if success is not True:
+                    state.record_image_fail(lstate, meta, success)
         except Exception as ex:
-            msg = None
-            try:
-                msg = ex.strerror
-            except:
-                msg = str(ex)
+            msg = str(ex)
+            state.record_image_fail(lstate, image_meta, msg, runtime.logger)
+            return False
+        return True
 
-            state.record_image_fail(lstate, image, msg, runtime.logger)
-
-    try:
-        if push:
-            res = runtime.push_distgits()
-
-            for name, r in res:
-                if r is not True:
-                    state.record_image_fail(lstate, name, r)
-    except Exception as ex:
-        lstate['status'] = state.STATE_FAIL
-        raise DoozerFatalError(getattr(ex, 'message', repr(ex)))
-
+    jobs = runtime.parallel_exec(
+        lambda image_meta, terminate_event: dgr_update(image_meta),
+        metas,
+    )
+    jobs.get()
     state.record_image_finish(lstate)
 
     failed = []
@@ -514,51 +511,49 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
     runtime.clone_distgits()
     metas = runtime.image_metas()
     lstate['total'] = len(metas)
-    for image in metas:
+
+    def dgr_rebase(image_meta):
         try:
-            dgr = image.distgit_repo()
+            dgr = image_meta.distgit_repo()
             (real_version, real_release) = dgr.rebase_dir(version, release)
             sha = dgr.commit(message, log_diff=True)
             dgr.tag(real_version, real_release)
             runtime.add_record(
                 "distgit_commit",
-                distgit=image.qualified_name,
-                image=image.config.name,
+                distgit=image_meta.qualified_name,
+                image=image_meta.config.name,
                 sha=sha,
             )
-            state.record_image_success(lstate, image)
+            state.record_image_success(lstate, image_meta)
+
+            if push:
+                (meta, success) = dgr.push()
+                if success is not True:
+                    state.record_image_fail(lstate, meta, success)
+
         except Exception as ex:
             # Only the message will recorded in the state. Make sure we print out a stacktrace in the logs.
             traceback.print_exc()
 
-            owners = image.config.owners
+            owners = image_meta.config.owners
             owners = ",".join(list(owners) if owners is not Missing else [])
             runtime.add_record(
                 "distgit_commit_failure",
-                distgit=image.qualified_name,
-                image=image.config.name,
+                distgit=image_meta.qualified_name,
+                image=image_meta.config.name,
                 owners=owners,
                 message=str(ex).replace("|", ""),
             )
+            msg = str(ex)
+            state.record_image_fail(lstate, image_meta, msg, runtime.logger)
+            return False
+        return True
 
-            msg = None
-            try:
-                msg = ex.strerror
-            except:
-                msg = str(ex)
-
-            state.record_image_fail(lstate, image, msg, runtime.logger)
-
-    try:
-        if push:
-            res = runtime.push_distgits()
-
-            for name, r in res:
-                if r is not True:
-                    state.record_image_fail(lstate, name, r)
-    except Exception as ex:
-        lstate['status'] = state.STATE_FAIL
-        raise DoozerFatalError(repr(ex))
+    jobs = runtime.parallel_exec(
+        lambda image_meta, terminate_event: dgr_rebase(image_meta),
+        metas,
+    )
+    jobs.get()
 
     state.record_image_finish(lstate)
 
@@ -2112,6 +2107,36 @@ def operator_metadata_latest_build(runtime, nvr, stream, operator_list):
     else:
         for build in nvr:
             click.echo(operator_metadata.OperatorMetadataLatestNvrReporter(build, stream, runtime).get_latest_build())
+
+
+@cli.command("analyze:debug-log", short_help="Output an analysis of the debug log")
+@click.argument("debug_log", nargs=1)
+def analyze_debug_log(debug_log):
+    """
+    Specify a doozer working directory debug.log as the argument. A table with be printed to stdout.
+    The top row of the table will be all the threads that existed during the doozer runtime.
+    T1, T2, T3, ... each represent an independent thread which was created and performed some action.
+
+    The first column of the graph indicates a time interval. Each interval is 10 seconds. Actions
+    performed by each thread are grouped into the interval in which those actions occurred. The
+    action performed by a thread is aligned and printed under the thread's column.
+
+    Example 1:
+    *     T1    T2    T3
+    0     loading metadata A                          # During the first 10 seconds, T1 is perform actions.
+     0    loading metaddata B                         # Multiple events can happen during the same interval.
+     0    loading metaddata C
+
+    Example 2:
+    *     T1    T2    T3
+    0     loading metadata A                          # During the first 10 seconds, T1 is perform actions.
+     0    loading metaddata B                         # Multiple events can happen during the same interval.
+    1           cloning                               # During seconds 10-20, three threads start cloning.
+     1    cloning
+     1                cloning
+    """
+    f = os.path.abspath(debug_log)
+    analyze_debug_timing(f)
 
 
 def main():

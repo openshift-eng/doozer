@@ -5,7 +5,10 @@ import io
 GLOBAL_OPT_DEFAULTS = {
     'distgit_threads': 20,
     'rhpkg_clone_timeout': 900,
-    'rhpkg_push_timeout': 1200
+    'rhpkg_push_timeout': 1200,
+
+    # 0 for unlimited. At present, distgit doesn't support shallow push. So leave this unlimited for now.
+    'rhpkg_clone_depth': 0,
 }
 
 
