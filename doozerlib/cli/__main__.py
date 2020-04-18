@@ -7,7 +7,7 @@ from doozerlib import version
 from doozerlib import Runtime, Dir
 from doozerlib import state
 from doozerlib.model import Missing
-from doozerlib.brew import get_watch_task_info_copy, get_latest_builds, list_archives_by_builds
+from doozerlib.brew import get_watch_task_info_copy
 from doozerlib import metadata
 from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.cli import cli_opts
@@ -1705,46 +1705,65 @@ that particular tag.
     # This will map[arch] -> map[image_name] -> { version: version, release: release, image_src: image_src }
     mirroring = {}
 
-    ose_prefixed_images = []
     for image in images:
-        # Per clayton:
-        """Tim Bielawa: note to self: is only for `ose-` prefixed images
-        Clayton Coleman: Yes, Get with the naming system or get out of town
-        """
-        if 'ose' not in image.image_name_short:
-            invalid_name_items.append(image.image_name_short)
-            red_print("NOT adding to IS (does not meet name/version conventions): {}".format(image.image_name_short))
-            continue
-        ose_prefixed_images.append(image)
+        try:
+            # Per clayton:
+            """Tim Bielawa: note to self: is only for `ose-` prefixed images
+            Clayton Coleman: Yes, Get with the naming system or get out of town
+            """
+            if 'ose' not in image.image_name_short:
+                invalid_name_items.append(image.image_name_short)
+                red_print("NOT adding to IS (does not meet name/version conventions): {}".format(image.image_name_short))
+                continue
 
-    runtime.logger.info("Fetching latest image builds from Brew...")
-    tag_component_tuples = [(image.brew_tag(), image.get_component_name()) for image in ose_prefixed_images]
-    brew_session = koji.ClientSession(runtime.group_config.urls.brewhub)
-    latest_builds = get_latest_builds(tag_component_tuples, brew_session)
+            try:
+                _, version, release = image.get_latest_build_info()
+                src = 'registry-proxy.engineering.redhat.com/rh-osbs/openshift-{}:{}-{}'.format(
+                    image.image_name_short, version, release)
+                click.echo('Processing: {}'.format(src))
+            except IOError:
+                yellow_print('Unable to find build for: {}'.format(image.image_name_short))
+                no_build_items.append(image.image_name_short)
+                continue
 
-    runtime.logger.info("Fetching pullspecs...")
-    build_ids = [builds[0]["id"] if builds else 0 for builds in latest_builds]
-    archives_list = list_archives_by_builds(build_ids, "image", brew_session)
-
-    runtime.logger.info("Creating mirroring lists...")
-    for i, image in enumerate(ose_prefixed_images):
-        latest_build = latest_builds[i]
-        archives = archives_list[i]
-        if not (latest_build and archives):  # build or archive doesn't exist
-            error = f"Unable to find build for: {image.image_name_short}"
-            red_print(error, file=sys.stderr)
-            no_build_items.append(image.image_name_short)
-            state.record_image_fail(lstate, image, error, runtime.logger)
-            continue
-        for archive in archives:
-            arch = archive["arch"]
-            pullspecs = archive["extra"]["docker"]["repositories"]
-            mirroring.setdefault(arch, {})
             # The tag that will be used in the imagestreams
-            tag_name = image.image_name_short.lstrip('ose-')
-            runtime.logger.info(f"Adding image {pullspecs[-1]} to the {arch} mirroring list with imagestream tag {tag_name}...")
-            mirroring[arch][tag_name] = {'version': latest_build[0]["version"], 'release': latest_build[0]["release"], 'image_src': pullspecs[-1]}
-        state.record_image_success(lstate, image)
+            tag_name = image.image_name_short.replace('ose-', '')
+
+            src_repo = src.split(':')[0].split('@')[0]  # strip off image tag or sha to just get base repo
+            # skopeo will print out json data for the image.
+            manifest_info_str = subprocess.check_output(["skopeo", "inspect", "-raw", 'docker://{}'.format(src)], stderr=subprocess.STDOUT)
+            manifest_info = json.loads(manifest_info_str)
+
+            mediaType = manifest_info.get('mediaType', None)
+            if not mediaType:
+                raise DoozerFatalError('Unable to inspect {} for mediaType:\n {}'.format(src, manifest_info_str))
+
+            def add_tag_image(arch, arch_image):
+                # mirroring[arch][tag_name] = image_url
+                mirroring[arch] = mirroring.get(arch, {})
+                mirroring[arch][tag_name] = {'version': version, 'release': release, 'image_src': arch_image}
+
+            # A manifest.list is a list of images for different arches
+            if mediaType == "application/vnd.docker.distribution.manifest.list.v2+json":
+                for arch_manifest in manifest_info['manifests']:
+                    arch = arch_manifest['platform']['architecture']
+                    if arch == 'amd64':
+                        arch = 'x86_64'
+                    arch_image = '{}@{}'.format(src_repo, arch_manifest['digest'])
+                    add_tag_image(arch, arch_image)
+            else:
+                # If this is not a manifest list, assume this is x86_64
+                arch = 'x86_64'
+                arch_image = src
+                add_tag_image(arch, arch_image)
+
+            state.record_image_success(lstate, image)
+
+            # End 'for image in images' loop
+            #############################################################
+        except state.DoozerStateError as serr:
+            red_print(str(serr))
+            state.record_image_fail(lstate, image, str(serr), runtime.logger)
 
     for arch in mirroring:
 
