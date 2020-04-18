@@ -1781,11 +1781,12 @@ that particular tag.
                 arch_ext = ''
             else:
                 arch_ext = '-{}'.format(arch)
-            return 'quay.io/{orgrepo}:{version}-{release}{arch_ext}-ose-{tag_name}'.format(orgrepo=orgrepo,
-                                                                                           version=entry['version'],
-                                                                                           release=entry['release'],
-                                                                                           arch_ext=arch_ext,
-                                                                                           tag_name=tag_name)
+            return 'quay.io/{orgrepo}:{version}-{release}{arch_ext}-ose-{tag_name}-{uuid}'.format(orgrepo=orgrepo,
+                                                                                                  version=entry['version'],
+                                                                                                  release=entry['release'],
+                                                                                                  arch_ext=arch_ext,
+                                                                                                  tag_name=tag_name,
+                                                                                                  uuid=runtime.uuid)
 
         # Save the default SRC=DEST 'oc image mirror' input to a file for
         # later.
