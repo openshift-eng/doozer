@@ -367,7 +367,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         # generate yaml data with header
         content_yml = yaml.safe_dump(container_config, default_flow_style=False)
-        with io.open('container.yaml', 'w', encoding="utf-8") as rc:
+        with self.dg_path.joinpath('container.yaml').open('w', encoding="utf-8") as rc:
             rc.write(CONTAINER_YAML_HEADER + content_yml)
 
     def _generate_osbs_image_config(self):
