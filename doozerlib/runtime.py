@@ -906,33 +906,38 @@ class Runtime(object):
 
         self.logger.debug("checking for source directory in source_dir: {}".format(source_dir))
 
-        # If this source has already been extracted for this working directory
-        if os.path.isdir(source_dir):
-            # Store so that the next attempt to resolve the source hits the map
-            self.source_paths[alias] = source_dir
-            self.logger.info("Source '{}' already exists in (skipping clone): {}".format(alias, source_dir))
-            return source_dir
+        with self.get_dir_lock(source_dir):
+            if alias in self.source_paths:  # we checked before, but check again inside the lock
+                self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, self.source_paths[alias]))
+                return self.source_paths[alias]
 
-        clone_branch, _ = self.detect_remote_source_branch(source_details)
+            # If this source has already been extracted for this working directory
+            if os.path.isdir(source_dir):
+                # Store so that the next attempt to resolve the source hits the map
+                self.source_paths[alias] = source_dir
+                self.logger.info("Source '{}' already exists in (skipping clone): {}".format(alias, source_dir))
+                return source_dir
 
-        url = source_details["url"]
+            clone_branch, _ = self.detect_remote_source_branch(source_details)
 
-        self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
-        try:
+            url = source_details["url"]
+
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
-            # clone all branches as we must sometimes reference master /OWNERS for maintainer information
-            gitargs = [
-                '--no-single-branch', '--branch', clone_branch, '--depth', '1'
-            ]
-            self.git_clone(url, source_dir, gitargs=gitargs, set_env=constants.GIT_NO_PROMPTS)
+            try:
+                self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
+                # clone all branches as we must sometimes reference master /OWNERS for maintainer information
+                gitargs = [
+                    '--no-single-branch', '--branch', clone_branch, '--depth', '1'
+                ]
+                self.git_clone(url, source_dir, gitargs=gitargs, set_env=constants.GIT_NO_PROMPTS)
 
-        except IOError as e:
-            self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, str(e)))
-            raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
+            except IOError as e:
+                self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, str(e)))
+                raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
 
-        # Store so that the next attempt to resolve the source hits the map
-        self.register_source_alias(alias, source_dir)
-        return source_dir
+            # Store so that the next attempt to resolve the source hits the map
+            self.register_source_alias(alias, source_dir)
+            return source_dir
 
     def detect_remote_source_branch(self, source_details):
         """Find a configured source branch that exists, or raise DoozerFatalError. Returns branch name and git hash"""
