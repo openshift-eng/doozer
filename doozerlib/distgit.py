@@ -1262,7 +1262,7 @@ class ImageDistGitRepo(DistGitRepo):
             vsplit = version.split(".")
 
             major_version = vsplit[0].lstrip('v')
-            # Click validation should have ensured user specified semver, but double check because of version=None flow.
+            # ensure that we have minor and patch segments in the version for semver
             minor_version = '0' if len(vsplit) < 2 else vsplit[1]
             patch_version = '0' if len(vsplit) < 3 else vsplit[2]
 
