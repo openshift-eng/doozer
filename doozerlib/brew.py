@@ -13,6 +13,7 @@ from multiprocessing import cpu_count
 from multiprocessing import Lock
 import shlex
 import traceback
+from typing import List, Tuple, Dict, Optional
 
 from . import exectools
 from . import logutil
@@ -99,3 +100,37 @@ def get_build_objects(ids_or_nvrs, session):
         for b in ids_or_nvrs:
             tasks.append(m.getBuild(b))
     return [task.result for task in tasks]
+
+
+def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
+    """ Get latest builds for multiple Brew components
+
+    :param tag_component_tuples: List of (tag, component_name) tuples
+    :param session: instance of Brew session
+    :return: a list Koji/Brew build objects
+    """
+    tasks = []
+    with session.multicall(strict=True) as m:
+        for tag, component_name in tag_component_tuples:
+            if not (tag and component_name):
+                tasks.append(None)
+                continue
+            tasks.append(m.getLatestBuilds(tag, package=component_name))
+    return [task.result if task else None for task in tasks]
+
+
+def list_archives_by_builds(build_ids: List[int], build_type: str, session: koji.ClientSession) -> List[Optional[List[Dict]]]:
+    """ Retrieve information about archives by builds
+    :param build_ids: List of build IDs
+    :param build_type: build type, such as "image"
+    :param session: instance of Brew session
+    :return: a list of Koji/Brew archive lists
+    """
+    tasks = []
+    with session.multicall(strict=True) as m:
+        for build_id in build_ids:
+            if not build_id:
+                tasks.append(None)
+                continue
+            tasks.append(m.listArchives(buildID=build_id, type=build_type))
+    return [task.result if task else None for task in tasks]
