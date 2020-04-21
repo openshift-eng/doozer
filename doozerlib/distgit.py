@@ -1541,17 +1541,18 @@ class ImageDistGitRepo(DistGitRepo):
                 self.runtime.logger.error(e)
                 raise
 
-        if version.startswith('v'):
-            version = version[1:]  # strip off leading v
-
-        x, y, z = version.split('.')[0:3]
+        vsplit = version.split(".")
+        x = vsplit[0].lstrip("v")
+        # ensure that we have minor and patch segments in the version for semver
+        y = '0' if len(vsplit) < 2 else vsplit[1]
+        z = '0' if len(vsplit) < 3 else vsplit[2]
 
         replace_args = {
             'MAJOR': x,
             'MINOR': y,
             'SUBMINOR': z,
             'RELEASE': release,
-            'FULL_VER': '{}-{}'.format(version, release)
+            'FULL_VER': f'{x}.{y}.{z}-{release}'
         }
 
         manifests_base = os.path.join(self.distgit_dir, csv_config['manifests-dir'])
