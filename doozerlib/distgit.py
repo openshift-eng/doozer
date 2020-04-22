@@ -1262,7 +1262,7 @@ class ImageDistGitRepo(DistGitRepo):
             vsplit = version.split(".")
 
             major_version = vsplit[0].lstrip('v')
-            # ensure that we have minor and patch segments in the version for semver
+            # Click validation should have ensured user specified semver, but double check because of version=None flow.
             minor_version = '0' if len(vsplit) < 2 else vsplit[1]
             patch_version = '0' if len(vsplit) < 3 else vsplit[2]
 
@@ -1541,18 +1541,17 @@ class ImageDistGitRepo(DistGitRepo):
                 self.runtime.logger.error(e)
                 raise
 
-        vsplit = version.split(".")
-        x = vsplit[0].lstrip("v")
-        # ensure that we have minor and patch segments in the version for semver
-        y = '0' if len(vsplit) < 2 else vsplit[1]
-        z = '0' if len(vsplit) < 3 else vsplit[2]
+        if version.startswith('v'):
+            version = version[1:]  # strip off leading v
+
+        x, y, z = version.split('.')[0:3]
 
         replace_args = {
             'MAJOR': x,
             'MINOR': y,
             'SUBMINOR': z,
             'RELEASE': release,
-            'FULL_VER': f'{x}.{y}.{z}-{release}'
+            'FULL_VER': '{}-{}'.format(version, release)
         }
 
         manifests_base = os.path.join(self.distgit_dir, csv_config['manifests-dir'])

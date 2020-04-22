@@ -272,11 +272,15 @@ class RPMMetadata(Metadata):
 
         # self.version example: 3.9.0
         # Extract the major, minor, patch
-        vsplit = self.version.split(".")
-        major = vsplit[0].lstrip('v')
-        # ensure that we have minor and patch segments in the version for semver
-        minor = '0' if len(vsplit) < 2 else vsplit[1]
-        patch = '0' if len(vsplit) < 3 else vsplit[2]
+        major, minor, patch = self.version.split('.')
+        full = "v{}".format(self.version)
+
+        # If this is a pre-release RPM, the include the release field in
+        # the full version.
+        # pre-release full version: v3.9.0-0.20.1
+        # release full version: v3.9.0
+        if self.release.startswith("0."):
+            full += "-{}".format(self.release)
 
         with Dir(self.source_path):
             commit_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()
