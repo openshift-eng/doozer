@@ -888,7 +888,7 @@ class Runtime(object):
         elif 'alias' in source:
             alias = source.alias
         else:
-            raise DoozerFatalError('Error while processing source for {}'.format(parent))
+            return None
 
         self.logger.debug("Resolving local source directory for alias {}".format(alias))
         if alias in self.source_paths:
