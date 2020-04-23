@@ -13,13 +13,12 @@ from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.cli import cli_opts
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
-from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, analyze_debug_timing
+from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, analyze_debug_timing, get_cincinnati_channels, extract_version_fields
 from doozerlib import operator_metadata
 import click
 import os
 import shutil
 import yaml
-import json
 import sys
 import subprocess
 import urllib.request, urllib.parse, urllib.error
@@ -27,7 +26,10 @@ import tempfile
 import traceback
 import koji
 import io
-import datetime
+import json
+import functools
+import semver
+import urllib
 from numbers import Number
 from multiprocessing.pool import ThreadPool
 from multiprocessing import cpu_count
@@ -1640,6 +1642,47 @@ def config_gencsv(runtime, keys, as_type, output):
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     config = mdc(runtime)
     config.config_gen_csv(keys, as_type, output)
+
+
+@cli.command("release:calc-previous", short_help="Returns a list of releases to include in a release's previous field")
+@click.option("--version", metavar='NEW_VER', required=True,
+              help="The release to calculate previous for (e.g. 4.5)")
+@click.option("-a", "--arch",
+              metavar='ARCH',
+              help="Arch for which the repo should be generated",
+              default='x86_64', required=False)
+@click.option("--graph-url", metavar='GRAPH_URL', required=False,
+              default='https://api.openshift.com/api/upgrades_info/v1/graph',
+              help="Cincinnati graph URL to query")
+def release_calc_previous(version, arch, graph_url):
+    major, minor = extract_version_fields(version, at_least=2)[:2]
+    if arch == 'x86_64':
+        arch = 'amd64'  # Cincinnati is go code, and uses a different arch name than brew
+
+    candidate_channel = get_cincinnati_channels(major, minor)[0]
+    stable_channel = get_cincinnati_channels(major, minor)[-1]
+    prev_candidate_channel = get_cincinnati_channels(major, minor - 1)[0]
+    prev_stable_channel = get_cincinnati_channels(major, minor - 1)[-1]
+
+    def sort_semver(versions):
+        return sorted(versions, key=functools.cmp_to_key(semver.compare), reverse=True)
+
+    def get_channel_versions(channel):
+        url = f'{graph_url}?arch={arch}&channel={channel}'
+        req = urllib.request.Request(url)
+        req.add_header('Accept', 'application/json')
+        graph = json.loads(exectools.urlopen_assert(req).read())
+        versions = sort_semver([node['version'] for node in graph['nodes']])
+        return versions
+
+    upgrade_from = set()
+    upgrade_from.update(get_channel_versions(prev_candidate_channel)[:2])
+    upgrade_from.update(get_channel_versions(prev_stable_channel)[:2])
+    upgrade_from.update(get_channel_versions(candidate_channel)[:2])
+    upgrade_from.update(get_channel_versions(stable_channel)[:10])
+
+    results = sort_semver(list(upgrade_from))
+    print(','.join(results))
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
