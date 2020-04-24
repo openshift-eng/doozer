@@ -14,7 +14,7 @@ class Repo(object):
     """Represents a single yum repository and provides sane ways to
     access each property based on the arch or repo type."""
 
-    def __init__(self, name, data, valid_arches):
+    def __init__(self, name, data, valid_arches, gpgcheck=True):
         self.name = name
         self._valid_arches = valid_arches
         self._invalid_cs_arches = set()
@@ -30,7 +30,8 @@ class Repo(object):
         conf.name = conf.get('name', name)
         conf.enabled = conf.get('enabled', None)
         self.enabled = conf.enabled == 1
-        conf.gpgcheck = conf.get('gpgcheck', 0)
+        self.gpgcheck = gpgcheck
+
         self.cs_optional = self._data.content_set.get('optional', False)
 
         self.repotypes = DEFAULT_REPOTYPES
@@ -150,6 +151,19 @@ class Repo(object):
                 line = line.format(k, v)
 
             result += line
+
+        # Usually, gpgcheck will not be specified, in build metadata, but don't override if it is there
+        if self._data.conf.get('gpgcheck', None) is None:
+            # If we are building a signed repo file, and overall gpgcheck is desired
+            if repotype == 'signed' and self.gpgcheck:
+                result += 'gpgcheck = 1\n'
+            else:
+                result += 'gpgcheck = 0\n'
+
+        if self._data.conf.get('gpgkey', None) is None:
+            # This key will bed used only if gpgcheck=1
+            result += 'gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release\n'
+
         result += '\n'
 
         return result
@@ -191,14 +205,14 @@ class Repos(object):
     Represents the entire collection of repos and provides
     automatic content_set and repo conf file generation.
     """
-    def __init__(self, repos, arches):
+    def __init__(self, repos, arches, gpgcheck=True):
         self._arches = arches
         self._repos = {}
         repotypes = []
         names = []
         for name, repo in repos.items():
             names.append(name)
-            self._repos[name] = Repo(name, repo, self._arches)
+            self._repos[name] = Repo(name, repo, self._arches, gpgcheck=gpgcheck)
             repotypes.extend(self._repos[name].repotypes)
         self.names = tuple(names)
         self.repotypes = list(set(repotypes))  # leave only unique values

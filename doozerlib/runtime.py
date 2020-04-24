@@ -364,7 +364,13 @@ class Runtime(object):
             else:
                 self.arches = self.group_config.get('arches', ['x86_64'])
 
-            self.repos = Repos(self.group_config.repos, self.arches)
+            # If specified, signed repo files will be generated to enforce signature checks.
+            self.gpgcheck = self.group_config.build_profiles.image.signed.gpgcheck
+            if self.gpgcheck is Missing:
+                # We should only really be building the latest release with unsigned RPMs, so default to True
+                self.gpgcheck = True
+
+            self.repos = Repos(self.group_config.repos, self.arches, self.gpgcheck)
             self.freeze_automation = self.group_config.freeze_automation or FREEZE_AUTOMATION_NO
 
             if validate_content_sets:
