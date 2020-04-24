@@ -982,7 +982,8 @@ class ImageDistGitRepo(DistGitRepo):
                            '-m', f'{build_state} from {self.runtime.uuid}'
                            ]
                 tag_cmd.extend(messages)
-                exectools.cmd_assert(tag_cmd, retries=3)
+                # Disable for 4.4 GA -- await fix for: https://bugzilla.redhat.com/show_bug.cgi?id=1827706
+                # exectools.cmd_assert(tag_cmd, retries=3)
 
         try:
 
