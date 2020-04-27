@@ -199,3 +199,36 @@ def analyze_debug_timing(file):
                     with_event = list(names)
                     with_event[i] = thread_name + ': ' + event
                     print_em(f' {interval}', *with_event[:i + 1])
+
+
+def extract_version_fields(version, at_least=0):
+    """
+    For a specified version, return a list with major, minor, patch.. isolated
+    as integers.
+    :param version: A version to parse
+    :param at_least: The minimum number of fields to find (else raise an error)
+    """
+    fields = [int(f) for f in version.strip().lstrip('v').split('.')]  # v1.17.1 => [ '1', '17', '1' ]
+    if len(fields) < at_least:
+        raise IOError(f'Unable to find required {at_least} fields in {version}')
+    return fields
+
+
+def get_cincinnati_channels(major, minor):
+    """
+    :param major: Major for release
+    :param minor: Minor version for release.
+    :return: Returns the Cincinnati graph channels associated with a release
+             in promotion order (e.g. candidate -> stable)
+    """
+    major = int(major)
+    minor = int(minor)
+
+    if major != 4:
+        raise IOError('Unable to derive previous for non v4 major')
+
+    prefixes = ['candidate', 'fast', 'stable']
+    if major == 4 and minor == 1:
+        prefixes = ['prerelease', 'stable']
+
+    return [f'{prefix}-{major}.{minor}' for prefix in prefixes]

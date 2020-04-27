@@ -8,3 +8,4 @@ pyyaml >= 5.1
 retry
 requests
 requests_kerberos
+semver

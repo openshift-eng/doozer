@@ -13,6 +13,7 @@ import os
 import threading
 import platform
 import sys
+import urllib
 
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
@@ -51,6 +52,19 @@ def retry(retries, task_f, check_f=bool, wait_f=None):
         if attempt < retries - 1 and wait_f is not None:
             wait_f(attempt)
     raise RetryException("Giving up after {} failed attempt(s)".format(retries))
+
+
+def urlopen_assert(url_or_req, httpcode=200, retries=3):
+    """
+    Retries a URL pull several times before throwing a RetryException
+    :param url_or_req: The URL to open with urllib  or a customized urllib.request.Request
+    :param httpcode: The http numeric code indicating success
+    :param retries: The number of retries to permit
+    :return: The success result of urlopen (or a RetryException will be thrown)
+    """
+    return retry(retries, lambda: urllib.request.urlopen(url_or_req),
+                 check_f=lambda req: req.code == httpcode,
+                 wait_f=lambda x: time.sleep(30))
 
 
 def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None, set_env=None):
