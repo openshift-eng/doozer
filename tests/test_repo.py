@@ -19,8 +19,18 @@ from doozerlib.repos import Repo
 EXPECTED_BASIC_REPO = """[rhaos-4.4-rhel-8-build]
 baseurl = http://download-node-02.eng.bos.redhat.com/brewroot/repos/rhaos-4.4-rhel-8-build/latest/x86_64/
 enabled = 1
-gpgcheck = 0
 name = rhaos-4.4-rhel-8-build
+gpgcheck = 1
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
+"""
+
+EXPECTED_BASIC_UNSIGNED_REPO = """[rhaos-4.4-rhel-8-build]
+baseurl = http://download-node-02.eng.bos.redhat.com/brewroot/repos/rhaos-4.4-rhel-8-build/latest/x86_64/
+enabled = 1
+name = rhaos-4.4-rhel-8-build
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 """
 
@@ -28,8 +38,9 @@ EXPECTED_EXTRA_OPTIONS_REPO = """[rhaos-4.4-rhel-8-build]
 baseurl = http://download-node-02.eng.bos.redhat.com/brewroot/repos/rhaos-4.4-rhel-8-build/latest/x86_64/
 enabled = 1
 module_hotfixes = 1
-gpgcheck = 0
 name = rhaos-4.4-rhel-8-build
+gpgcheck = 1
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 """
 
@@ -125,6 +136,9 @@ class TestRepos(unittest.TestCase):
         conf_str = self.repo.conf_section('signed')
         # The two basic repo files are the same
         self.assertEqual(EXPECTED_BASIC_REPO, conf_str)
+        conf_str = self.repo.conf_section('unsigned')
+        # The two basic repo files are the same
+        self.assertEqual(EXPECTED_BASIC_UNSIGNED_REPO, conf_str)
 
     def test_conf_section_extra_options(self):
         """ensure we can print a correct expected repo string with extra options"""
