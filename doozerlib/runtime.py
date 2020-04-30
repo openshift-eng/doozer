@@ -294,6 +294,8 @@ class Runtime(object):
 
         self.init_state()
 
+        self.logger.info(f'Initial working directory: {os.getcwd()}')
+
         if no_group:
             return  # nothing past here should be run without a group
 
