@@ -20,6 +20,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import os
 import threading
+import pathlib
 
 
 class Dir(object):
@@ -61,3 +62,11 @@ class Dir(object):
         if not hasattr(cls._tl, "cwd"):
             cls._tl.cwd = os.getcwd()
         return cls._tl.cwd
+
+    @classmethod
+    def getpath(cls):
+        """
+        Provide a context dependent current working directory. This method
+        will return a pathlib.Path for the directory currently holding the lock.
+        """
+        return pathlib.Path(Dir.getcwd())

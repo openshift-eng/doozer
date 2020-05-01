@@ -3,6 +3,8 @@ from future import standard_library
 standard_library.install_aliases()
 from future.utils import as_native_str
 from multiprocessing.dummy import Pool as ThreadPool
+from contextlib import contextmanager
+
 import os
 import sys
 import tempfile
@@ -20,12 +22,13 @@ import urllib.parse
 import signal
 import io
 import pathlib
-import subprocess
+import koji
 
 from doozerlib import gitdata
 from . import logutil
 from . import assertion
 from . import exectools
+from . import dblib
 from .pushd import Dir
 
 from .image import ImageMetadata
@@ -112,6 +115,9 @@ class Runtime(object):
     # Use any time it is necessary to synchronize feedback from multiple threads.
     mutex = Lock()
 
+    # Serialize access to the shared koji session
+    koji_lock = Lock()
+
     # Serialize access to the console, and record log
     log_lock = Lock()
 
@@ -126,6 +132,8 @@ class Runtime(object):
         self.brew_tag = None
         self.latest_parent_version = False
         self.rhpkg_config = None
+        self._koji_client_session = None
+        self.db = None
 
         # Cooperative threads can request exclusive access to directories.
         # This is usually only necessary if two threads want to make modifications
@@ -293,6 +301,8 @@ class Runtime(object):
         self.initialize_logging()
 
         self.init_state()
+
+        self.db = dblib.DB(self, self.datastore)
 
         if no_group:
             return  # nothing past here should be run without a group
@@ -553,6 +563,17 @@ class Runtime(object):
         debug_log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s (%(thread)d) %(message)s'))
         debug_log_handler.setLevel(logging.DEBUG)
         self.logger.addHandler(debug_log_handler)
+
+    @contextmanager
+    def shared_koji_client_session(self):
+        """
+        Context manager which offers a shared koji client session. You hold a koji specific lock in this context
+        manager giving you exclusive access.
+        """
+        with self.koji_lock:
+            if self._koji_client_session is None:
+                self._koji_client_session = koji.ClientSession(self.group_config.urls.brewhub)
+            yield self._koji_client_session
 
     @staticmethod
     def timestamp():

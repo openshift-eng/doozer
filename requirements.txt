@@ -9,3 +9,4 @@ retry
 requests
 requests_kerberos
 semver
+boto3
