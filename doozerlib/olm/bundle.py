@@ -43,6 +43,7 @@ class OLMBundle(object):
         self.replace_image_references_by_sha_on_bundle_manifests()
         self.generate_bundle_annotations()
         self.generate_bundle_dockerfile()
+        self.create_container_yaml()
         return self.commit_and_push_bundle(commit_msg="Update bundle manifests")
 
     def build(self, operator_name=None):
@@ -174,6 +175,18 @@ class OLMBundle(object):
             **self.operator_framework_tags
         }
         del(bundle_df.labels['release'])
+
+    def create_container_yaml(self):
+        """Use container.yaml to disable unnecessary multiarch
+        """
+        filename = '{}/container.yaml'.format(self.bundle_clone_path)
+        with io.open(filename, 'w', encoding='utf-8') as writer:
+            writer.write('# metadata containers are not functional and do not need to be multiarch')
+            writer.write('\n\n')
+            writer.write(yaml.dump({
+                'platforms': {'only': ['x86_64']},
+                'operator_manifests': {'manifests_dir': 'manifests'},
+            }))
 
     def commit_and_push_bundle(self, commit_msg):
         """Try to commit and push bundle distgit repository if there were any content changes.
