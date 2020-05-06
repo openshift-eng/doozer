@@ -146,7 +146,10 @@ class OLMBundle(object):
         """
         for file in glob.glob('{}/*'.format(self.bundle_manifests_dir)):
             with io.open(file, 'r+', encoding='utf-8') as f:
-                f.write(self.find_and_replace_image_references_by_sha(f.read()))
+                contents = self.find_and_replace_image_references_by_sha(f.read())
+                f.seek(0)
+                f.truncate()
+                f.write(contents)
 
     def generate_bundle_annotations(self):
         """Create an annotations YAML file for the bundle, using info extracted from operator's
