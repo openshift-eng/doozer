@@ -61,26 +61,34 @@ class RPMMetadata(Metadata):
             self.source_path = self.runtime.resolve_source(self)
             self.source_head = self.runtime.resolve_source_head(self)
 
-            # If this is a go project, parse the Godeps for points of interest
-            godeps_file = pathlib.Path(self.source_path, 'Godeps', 'Godeps.json')
-            if godeps_file.is_file():
-                try:
-                    with open(str(godeps_file)) as f:
-                        godeps = json.load(f)
-                        # Reproduce https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/hack/lib/build/version.sh#L82
-                        # Example of what we are after: https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/Godeps/Godeps.json#L10-L15
-                        for dep in godeps.get('Deps', []):
-                            if dep.get('ImportPath', '') == 'k8s.io/kubernetes/pkg/api':
-                                kube_version = dep.get('Comment', '')
-                                kube_version_fields = kube_version.lstrip('v').split('.')  # v1.17.1 => [ '1', '17', '1' ]
-                                self.extra_os_git_vars['KUBE_GIT_VERSION'] = kube_version
-                                self.extra_os_git_vars['KUBE_GIT_COMMIT'] = dep.get('Rev', '')
-                                self.extra_os_git_vars['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
-                                godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
-                                self.extra_os_git_vars['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, add a + since OCP patches its vendor kube.
-                except:
-                    runtime.logger.error(f'Error parsing godeps {str(godeps_file)}')
-                    traceback.print_exc()
+            with Dir(self.source_path()):
+                # gather source repo short sha for audit trail
+                rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
+                source_full_sha = out.strip()
+
+                # If this is a go project, parse the Godeps for points of interest
+                godeps_file = pathlib.Path(self.source_path, 'Godeps', 'Godeps.json')
+                if godeps_file.is_file():
+                    try:
+                        with open(str(godeps_file)) as f:
+                            godeps = json.load(f)
+                            # Reproduce https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/hack/lib/build/version.sh#L82
+                            # Example of what we are after: https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/Godeps/Godeps.json#L10-L15
+                            for dep in godeps.get('Deps', []):
+                                if dep.get('ImportPath', '') == 'k8s.io/kubernetes/pkg/api':
+                                    raw_kube_version = dep.get('Comment', '')  # e.g. v1.14.6-152-g117ba1f
+                                    # drop release information.
+                                    base_kube_version = raw_kube_version.split('-')[0]
+                                    kube_version_fields = base_kube_version.lstrip('v').split('.')  # v1.17.1 => [ '1', '17', '1' ]
+                                    # For historical consistency with tito's flow, we add +OS_GIT_COMMIT[:7] to the kube version
+                                    self.extra_os_git_vars['KUBE_GIT_VERSION'] = f"v{'.'.join(kube_version_fields)}+{source_full_sha[:7]}"
+                                    self.extra_os_git_vars['KUBE_GIT_COMMIT'] = dep.get('Rev', '')
+                                    self.extra_os_git_vars['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
+                                    godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
+                                    self.extra_os_git_vars['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, add a + since OCP patches its vendor kube.
+                    except:
+                        runtime.logger.error(f'Error parsing godeps {str(godeps_file)}')
+                        traceback.print_exc()
 
             if self.source.specfile:
                 self.specfile = os.path.join(self.source_path, self.source.specfile)

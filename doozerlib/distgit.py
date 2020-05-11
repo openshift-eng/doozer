@@ -1769,9 +1769,12 @@ class ImageDistGitRepo(DistGitRepo):
                         # Example of what we are after: https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/Godeps/Godeps.json#L10-L15
                         for dep in godeps.get('Deps', []):
                             if dep.get('ImportPath', '') == 'k8s.io/kubernetes/pkg/api':
-                                kube_version = dep.get('Comment', '')
-                                kube_version_fields = kube_version.lstrip('v').split('.')  # v1.17.1 => [ '1', '17', '1' ]
-                                self.env_vars_from_source['KUBE_GIT_VERSION'] = kube_version
+                                raw_kube_version = dep.get('Comment', '')  # e.g. v1.14.6-152-g117ba1f
+                                # drop release information.
+                                base_kube_version = raw_kube_version.split('-')[0]
+                                kube_version_fields = base_kube_version.lstrip('v').split('.')  # v1.17.1-152-g117ba1f => [ '1', '17', '1' ]
+                                # For historical consistency with tito's flow, we add +OS_GIT_COMMIT[:7] to the kube version
+                                self.env_vars_from_source['KUBE_GIT_VERSION'] = f"v{'.'.join(kube_version_fields)}+{self.source_full_sha[:7]}"
                                 self.env_vars_from_source['KUBE_GIT_COMMIT'] = dep.get('Rev', '')
                                 self.env_vars_from_source['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
                                 godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
