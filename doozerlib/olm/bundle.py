@@ -299,8 +299,7 @@ class OLMBundle(object):
         :return string: SHA of corresponding <tag> (format: sha256:a1b2c3d4...)
         """
         registry = self.runtime.group_config.urls.brew_image_host.rstrip('/')
-        ns = self.runtime.group_config.urls.brew_image_namespace
-        image = '{}/{}'.format(ns, image.replace('/', '-')) if ns else image
+        image = image.replace('openshift/', 'openshift4/')
 
         if self.runtime.group_config.operator_image_ref_mode == 'manifest-list':
             cmd = 'skopeo inspect docker://{}/{}'.format(registry, image)
