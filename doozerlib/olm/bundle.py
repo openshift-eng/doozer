@@ -255,7 +255,7 @@ class OLMBundle(object):
 
         def collect_replaced_image(match):
             image = '{}/{}@{}'.format(
-                self.operator_csv_config['registry'],
+                'registry.redhat.io',  # hardcoded until appregistry is dead
                 match.group(1),
                 self.fetch_image_sha('{}:{}'.format(match.group(1), match.group(2)))
             )
