@@ -74,7 +74,7 @@ class TestImageMetadata(unittest.TestCase):
         #
         # Check the logs
         #
-        logs = [l.rstrip() for l in open(self.test_file).readlines()]
+        logs = [log.rstrip() for log in open(self.test_file).readlines()]
 
         expected = 1
         actual = len(logs)

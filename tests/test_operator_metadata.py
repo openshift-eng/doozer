@@ -599,7 +599,7 @@ other:
         }
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime, **cached_attrs).create_metadata_dockerfile()
         with open('/tmp/my-dev-operator-metadata/Dockerfile', 'r') as f:
-            self.assertSetEqual({l.strip() for l in f.readlines()}, {
+            self.assertSetEqual({line.strip() for line in f.readlines()}, {
                 'FROM scratch',
                 'COPY ./manifests /manifests',
                 'LABEL version=vX.Y.Z.201908261419.dev',

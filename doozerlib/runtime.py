@@ -616,8 +616,8 @@ class Runtime(object):
         levels = list(image_lists.keys())
         levels.sort()
         self.image_order = []
-        for l in levels:
-            for i in image_lists[l]:
+        for level in levels:
+            for i in image_lists[level]:
                 if i not in self.image_order:
                     self.image_order.append(i)
 

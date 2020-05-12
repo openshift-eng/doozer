@@ -187,7 +187,7 @@ class Metadata(object):
         if source_dir:
             with Dir(source_dir):
                 # Not every repo has a master branch, they may have a different default; detect it.
-                remote_info, _ = exectools.cmd_assert(f'git remote show origin')
+                remote_info, _ = exectools.cmd_assert('git remote show origin')
                 head_branch_lines = [i for i in remote_info.splitlines() if i.strip().startswith('HEAD branch:')]  # e.g. [ "  HEAD branch: master" ]
                 if not head_branch_lines:
                     raise IOError('Error trying to detect remote default branch')
