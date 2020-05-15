@@ -61,7 +61,7 @@ class RPMMetadata(Metadata):
             self.source_path = self.runtime.resolve_source(self)
             self.source_head = self.runtime.resolve_source_head(self)
 
-            with Dir(self.source_path()):
+            with Dir(self.source_path):
                 # gather source repo short sha for audit trail
                 rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
                 source_full_sha = out.strip()
