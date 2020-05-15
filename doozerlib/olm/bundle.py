@@ -256,7 +256,7 @@ class OLMBundle(object):
         def collect_replaced_image(match):
             image = '{}/{}@{}'.format(
                 'registry.redhat.io',  # hardcoded until appregistry is dead
-                match.group(1),
+                match.group(1).replace('openshift/', 'openshift4/'),
                 self.fetch_image_sha('{}:{}'.format(match.group(1), match.group(2)))
             )
             key = u'{}'.format(re.search(r'([^\/]+)\/(.+)', match.group(1)).group(2))
