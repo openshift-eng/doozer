@@ -2193,6 +2193,20 @@ def analyze_debug_log(debug_log):
     analyze_debug_timing(f)
 
 
+@cli.command('olm-bundle:list-olm-operators', short_help='List all images that are OLM operators')
+@pass_runtime
+def list_olm_operators(runtime):
+    """
+    Example:
+    $ doozer --group openshift-4.5 olm-bundle:list-olm-operators
+    """
+    runtime.initialize(clone_distgits=False)
+
+    for image in runtime.image_metas():
+        if image.config['update-csv'] is not Missing:
+            print(image.get_component_name())
+
+
 @cli.command('olm-bundle:rebase', short_help='Update bundle distgit repo with manifests from given operator NVR')
 @click.argument('operator_nvrs', nargs=-1, required=True)
 @pass_runtime
