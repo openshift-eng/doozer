@@ -402,7 +402,7 @@ class OLMBundle(object):
     @property
     def rhpkg_opts(self):
         opts = self.runtime.rhpkg_config
-        if hasattr(self.runtime, 'user'):
+        if hasattr(self.runtime, 'user') and self.runtime.user is not None:
             opts += ' --user {} '.format(self.runtime.user)
         return opts
 
