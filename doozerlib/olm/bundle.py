@@ -65,7 +65,7 @@ class OLMBundle(object):
     def get_latest_bundle_build(self):
         """Get NVR of latest bundle build tagged on given target
 
-        :return string: NVR of latest bundle build
+        :return string: NVR of latest bundle build, or "" if there is none.
         """
         _rc, out, _err = exectools.cmd_gather(
             'brew latest-build --quiet {} {}'.format(self.target, self.bundle_brew_component)
