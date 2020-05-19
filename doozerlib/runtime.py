@@ -846,7 +846,7 @@ class Runtime(object):
             self.logger.info(f'Updating cache directory for git remote: {remote_url}')
             # Fire and forget this fetch -- just used to keep cache as fresh as possible
             exectools.fire_and_forget(repo_dir, 'git fetch --all')
-            gitargs.extend(['--reference-if-able', repo_dir])
+            gitargs.extend(['--dissociate', '--reference-if-able', repo_dir])
 
         self.logger.info(f'Cloning to: {target_dir}')
 
