@@ -273,7 +273,7 @@ class OLMBundle(object):
         return self.append_related_images_spec(new_contents, found_images)
 
     def fetch_image_sha(self, image):
-        """Get corresponding SHA of given image (using skopeo)
+        """Get corresponding SHA of given image (using `oc image info`)
 
         OCP 4.3+ supports "manifest-lists", which is a SHA that doesn't represent an actual image,
         but a list of images per architecture instead. OCP 4.3+ is smart enough to read that list
@@ -302,17 +302,14 @@ class OLMBundle(object):
         ns = self.runtime.group_config.urls.brew_image_namespace
         image = '{}/{}'.format(ns, image.replace('/', '-')) if ns else image
 
+        cmd = 'oc image info --filter-by-os=linux/amd64 -o json {}/{}'.format(registry, image)
+        _rc, out, _err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+
         if self.runtime.group_config.operator_image_ref_mode == 'manifest-list':
-            cmd = 'skopeo inspect docker://{}/{}'.format(registry, image)
-            _rc, out, _err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
-            return json.loads(out)['Digest']
+            return json.loads(out)['listDigest']
 
         # @TODO: decide how to handle 4.2 multi-arch. hardcoding amd64 for now
-        cmd = 'skopeo inspect --raw docker://{}/{}'.format(registry, image)
-        _rc, out, _err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
-        return list(
-            filter(lambda i: i['platform']['architecture'] == 'amd64', json.loads(out)['manifests'])
-        )[0]['digest']
+        return json.loads(out)['contentDigest']
 
     def append_related_images_spec(self, contents, images):
         """Create a new section under contents' "spec" called "relatedImages", listing all given
