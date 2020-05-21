@@ -173,6 +173,10 @@ class OLMBundle(object):
         bundle_df.labels = operator_df.labels
         bundle_df.labels['com.redhat.component'] = self.bundle_brew_component
         bundle_df.labels['name'] = 'openshift/ose-{}'.format(self.bundle_name)
+        bundle_df.labels['version'] = '{}.{}'.format(
+            operator_df.labels['version'],
+            operator_df.labels['release']
+        )
         bundle_df.labels = {
             **bundle_df.labels,
             **self.redhat_delivery_tags,
