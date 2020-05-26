@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
+
 standard_library.install_aliases()
 from doozerlib import version
 from doozerlib import Runtime, Dir
@@ -43,7 +44,6 @@ CTX_GLOBAL = None
 
 pass_runtime = click.make_pass_decorator(Runtime)
 context_settings = dict(help_option_names=['-h', '--help'])
-
 
 VERSION_QUOTE = """
 The Doozers don't mind their buildings being eaten;
@@ -133,6 +133,8 @@ def print_version(ctx, param, value):
               help="Override brew tag to expect for images built")
 @click.option("--cache-dir", metavar="DIR", required=False, default=None,
               help="A directory in which reference git repos can be stored for caching purposes")
+@click.option("--datastore", metavar="ENV", required=False, default=None,
+              help="Whether to store & retrieve data in int / stage / prod database environment")
 @click.option("--profile", metavar="NAME", default="", help="Name of build profile")
 @click.pass_context
 def cli(ctx, **kwargs):
@@ -317,6 +319,93 @@ def images_push_distgit(runtime):
     """
     runtime.initialize(clone_distgits=True)
     runtime.push_distgits()
+
+
+@cli.command("db:query", short_help="Query database records")
+@click.option("-p", "--operation", required=True, metavar='NAME',
+              help="Which operation to query (e.g. 'build')")
+@click.option("-a", "--attribute", default=[], metavar='NAME', multiple=True,
+              help="Attribute name to output")
+@click.option("-m", "--match", default=[], metavar='NAME=VALUE', multiple=True,
+              help="name=value matches (AND logic)")
+@click.option("-l", "--like", default=[], metavar='NAME=%VALUE%', multiple=True,
+              help="name LIKE value matches (AND logic)")
+@click.option("-w", "--where", metavar='EXPR', default='',
+              help="Complex expression instead of matching. e.g. ( `NAME`=\"VALUE\" and `NAME2` LIKE \"VALUE2%\" ) or NOT `NAME3` < \"VALUE3\"")
+@click.option("-s", "--sort-by", default=None, metavar='NAME',
+              help="Attribute name to sort by")
+@click.option("--limit", default=None, metavar='NUM',
+              help="Limit records returned to specified number")
+@click.option("-o", "--output", default="human", help='Output format: human, csv, or yaml')
+@pass_runtime
+def db_select(runtime, operation, attribute, match, like, where, sort_by, limit, output):
+    """
+    Select records from the datastore.
+    For full UI, use https://chrome.google.com/webstore/detail/sdbnavigator/ddhigekdfabonefhiildaiccafacphgg/related?hl=en-US
+    Select syntax: https://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/UsingSelect.html
+    """
+
+    runtime.initialize(clone_distgits=False, no_group=True)
+    if not runtime.datastore:
+        print('--datastore must be specified')
+        exit(1)
+
+    if not attribute:  # No attribute names identified? return everything.
+        names = '*'
+    else:
+        names = ','.join([f'`{a}`' for a in attribute])
+
+    where_str = ''
+    if where:
+        where_str = ' WHERE ' + f'{where}'
+    elif match or like:
+        where_str = ' WHERE '
+        if match:
+            quoted_match = ['`{}`="{}"'.format(*m.split('=')) for m in match]
+            where_str += ' AND '.join(quoted_match)
+        if like:
+            quoted_like = ['`{}` LIKE "{}"'.format(*l.split('=')) for l in like]
+            where_str += ' AND '.join(quoted_like)
+
+    sort_by_str = ''
+    if sort_by:
+        # https://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/SortingDataSelect.html
+        sort_by_str = f' ORDER BY `{sort_by}` ASC'
+
+    limit_str = ''
+    if limit:
+        limit_str = f' limit {int(limit)}'
+
+    domain = f'ART_{runtime.datastore}_{operation}'
+
+    result = runtime.db.select(f'SELECT {names} FROM {domain}{where_str}{sort_by_str}{limit_str}')
+
+    if output.lower() == 'yaml':
+        print(yaml.safe_dump(result))
+
+    elif output.lower == 'csv':
+        include_name = 'name' in attribute
+        for item in result:
+            if include_name:
+                print('Name', end=',')
+            for a in item['Attributes']:
+                print(a['Name'], end=',')
+            print()
+
+            if include_name:
+                print(item['Name'], end=',')
+            for a in item['Attributes']:
+                print(a['Value'], end=',')
+            print()
+    else:
+        # human
+        for item in result:
+            print(item['Name'] + ':')
+
+            for a in item['Attributes']:
+                print('\t' + a['Name'], end='=')
+                print(a['Value'])
+            print()
 
 
 @cli.command("images:update-dockerfile", short_help="Update a group's distgit Dockerfile from metadata.")

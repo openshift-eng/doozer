@@ -25,13 +25,14 @@ from . import assertion
 from . import exectools
 from .pushd import Dir
 from .brew import watch_task, get_build_objects
-from .model import Model, Missing
+from .model import Model, Missing, ListModel
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import yellow_print
 from doozerlib import state
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib import constants
 from doozerlib import util
+from doozerlib.dblib import Record
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -212,7 +213,7 @@ class DistGitRepo(object):
         Check whether this dist-git repo has source content
         """
         return "git" in self.config.content.source or \
-            "alias" in self.config.content.source
+               "alias" in self.config.content.source
 
     def source_path(self):
         """
@@ -895,9 +896,88 @@ class ImageDistGitRepo(DistGitRepo):
             self.logger.info("Successfully built image: {}".format(target_image))
         return True
 
-    def _build_container(
-            self, target_image, target, signing_intent, repo_type, repo_list, terminate_event,
-            scratch, record, dry_run=False):
+    def update_build_db(self, success_flag, task_id=None, scratch=False):
+
+        if scratch:
+            return
+
+        with Dir(self.distgit_dir):
+            commit_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()[:8]
+            invoke_ts = str(int(round(time.time() * 1000)))
+            invoke_ts_iso = self.runtime.timestamp()
+
+            with self.runtime.db.record('build', metadata=self.metadata):
+                Record.set('build.time.unix', invoke_ts)
+                Record.set('build.time.iso', invoke_ts_iso)
+                Record.set('dg.commit', commit_sha)
+                Record.set('brew.task_state', 'success' if success_flag else 'failure')
+                Record.set(f'brew.task_id', task_id)
+
+                dfp = DockerfileParser(str(Dir.getpath().joinpath('Dockerfile')))
+                for label_name in ['version', 'release', 'name', 'com.redhat.component']:
+                    Record.set(f'label.{label_name}', dfp.labels.get(label_name, ''))
+
+                Record.set('label.version', dfp.labels.get('version', ''))
+                Record.set('label.release', dfp.labels.get('release', ''))
+                for k, v in dfp.labels.items():
+                    if k.startswith('io.openshift.'):
+                        Record.set(f'label.{k}', dfp.labels[k])
+
+                for k, v in dfp.envs.items():
+                    if k.startswith('KUBE_') or k.startswith('OS_'):
+                        Record.set(f'env.{k}', dfp.envs.get(k, ''))
+
+                Record.set('incomplete', False)
+                if task_id is not None:
+                    try:
+                        with self.runtime.shared_koji_client_session() as kcs:
+                            task_result = kcs.getTaskResult(task_id, raise_fault=False)
+                            import pprint
+                            pprint.pprint(task_result)
+                            """
+                            success example result:
+                            { 'koji_builds': ['1182060'],    # build_id created by task
+                              'repositories': [
+                                 'registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-ose-metering-ansible-operator-metadata:latest',
+                                 ...
+                               ]
+                            }
+                            fail example result:
+                            { 'faultCode': 1018,
+                              'faultString': 'log entries',
+                            }
+                            """
+                            Record.set('brew.faultCode', task_result.get('faultCode', 0))
+                            build_ids = task_result.get('koji_builds', [])
+                            Record.set('brew.build_ids', ','.join(build_ids))  # comma delimited list if > 1
+                            image_shas = []
+                            for idx, build_id in enumerate(build_ids):
+                                build_info = Model(kcs.getBuild(int(
+                                    build_id)))  # Example: https://gist.github.com/jupierce/fe05f8fe310fdf8aa8b5c5991cf21f05
+
+                                main_sha = build_info.extra.typeinfo.image.index.digests  # Typically contains manifest list sha
+                                if main_sha:
+                                    image_shas.extend(main_sha.values())
+
+                                for build_datum in ['id', 'source', 'version', 'nvr', 'name', 'release',
+                                                    'package_id']:
+                                    Record.set(f'build.{idx}.{build_datum}', build_info.get(build_datum, ''))
+
+                                archives = ListModel(kcs.listArchives(int(build_id)))  # https://gist.github.com/jupierce/6f27ebf35e88ed5a9a2c8e66fdcd34b4
+                                for archive in archives:
+                                    archive_shas = archive.extra.docker.digests
+                                    if archive_shas:
+                                        image_shas.extend(archive_shas.values())
+
+                            Record.set('brew.image_shas', ','.join(image_shas))
+
+                    except:
+                        Record.set('incomplete', True)
+                        traceback.print_exc()
+                        self.logger.error(f'Unable to extract brew task information for {task_id}')
+
+    def _build_container(self, target_image, target, signing_intent, repo_type, repo_list, terminate_event,
+                         scratch, record, dry_run=False):
         """
         The part of `build_container` which actually starts the build,
         separated for clarity. Brew build version.
@@ -952,39 +1032,6 @@ class ImageDistGitRepo(DistGitRepo):
             self.logger.info("[Dry Run] Successfully built image: {}".format(target_image))
             return True
 
-        with Dir(self.distgit_dir):
-            commit_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()[:8]
-
-        doozer_tag = {
-            'jenkins_build': os.getenv('BUILD_URL', '')
-        }
-
-        invoke_ts = datetime.now().strftime("%H%M%S")
-
-        def update_tag(build_state):
-            if scratch:
-                return
-
-            with Dir(self.distgit_dir):
-                ts = str(datetime.now())
-                doozer_tag['state'] = build_state
-                doozer_tag['time'] = ts
-                doozer_tag['uuid'] = self.runtime.uuid
-                messages = []
-                for k in sorted(doozer_tag.keys()):
-                    messages.extend(['-m', f'{k}={doozer_tag[k]}'])
-
-                # Keep in mind that distgit does not let normal users overwrite tags. It would be
-                # nice to have a floating tag showing the last success/failure, but this should
-                # be an adequate analog. Each build attempt will get its own tag.
-                tag_cmd = ['git', 'tag', '-f', '-a',
-                           f'doozer-{build_state}-{commit_sha}-{invoke_ts}',
-                           '-m', f'{build_state} from {self.runtime.uuid}'
-                           ]
-                tag_cmd.extend(messages)
-                # Disable for 4.4 GA -- await fix for: https://bugzilla.redhat.com/show_bug.cgi?id=1827706
-                # exectools.cmd_assert(tag_cmd, retries=3)
-
         try:
 
             # Run the build with --nowait so that we can immediately get information about the brew task
@@ -993,7 +1040,7 @@ class ImageDistGitRepo(DistGitRepo):
             if rc != 0:
                 # Probably no point in continuing.. can't contact brew?
                 self.logger.info("Unable to create brew task: out={}  ; err={}".format(out, err))
-                update_tag('failure')
+                self.update_build_db(False, scratch=scratch)
                 return False
 
             # Otherwise, we should have a brew task we can monitor listed in the stdout.
@@ -1004,7 +1051,6 @@ class ImageDistGitRepo(DistGitRepo):
                            created_line.startswith("Created task:"))
 
             record["task_id"] = task_id
-            doozer_tag['task_id'] = task_id
 
             # Look for a line like: "Task info: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=13948942"
             task_url = next((info_line.split(":", 1)[1]).strip() for info_line in out_lines if
@@ -1013,7 +1059,6 @@ class ImageDistGitRepo(DistGitRepo):
             self.logger.info("Build running: {}".format(task_url))
 
             record["task_url"] = task_url
-            doozer_tag['task_url'] = task_url
 
             # Now that we have the basics about the task, wait for it to complete
             error = watch_task(self.runtime.group_config.urls.brewhub, self.logger.info, task_id, terminate_event)
@@ -1027,7 +1072,8 @@ class ImageDistGitRepo(DistGitRepo):
             if error:
                 match = re.search(r"already exists, id (\d+)", error)
             if match:
-                builds = get_build_objects([int(match[1])], koji.ClientSession(self.runtime.group_config.urls.brewhub))
+                with self.runtime.shared_koji_client_session() as kcs:
+                    builds = get_build_objects([int(match[1])], kcs)
                 if builds and builds[0] and builds[0].get('state') == 1:  # State 1 means complete.
                     self.logger.info("Image already built against this dist-git commit (or version-release tag): {}".format(target_image))
                     error = None
@@ -1045,11 +1091,11 @@ class ImageDistGitRepo(DistGitRepo):
 
             if error is not None:
                 # An error occurred. We don't have a viable build.
-                update_tag('failure')
+                self.update_build_db(False, task_id=task_id, scratch=scratch)
                 self.logger.info("Error building image: {}, {}".format(task_url, error))
                 return False
 
-            update_tag('success')
+            self.update_build_db(True, task_id=task_id, scratch=scratch)
             self.logger.info("Successfully built image: {} ; {}".format(target_image, task_url))
             return True
         finally:
