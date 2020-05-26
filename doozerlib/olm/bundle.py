@@ -380,7 +380,7 @@ class OLMBundle(object):
     def operator_bundle_dir(self):
         return '{}/{}'.format(
             self.operator_manifests_dir,
-            self.operator_csv_config['manifests-dir']['bundle-dir'].rstrip('/')
+            self.operator_csv_config['bundle-dir'].rstrip('/')
         )
 
     @property
