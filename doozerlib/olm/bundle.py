@@ -377,6 +377,13 @@ class OLMBundle(object):
         )
 
     @property
+    def operator_bundle_dir(self):
+        return '{}/{}'.format(
+            self.operator_manifests_dir,
+            self.operator_csv_config['manifests-dir']['bundle-dir'].rstrip('/')
+        )
+
+    @property
     def operator_brew_component(self):
         config = self.runtime.image_map[self.operator_name].config
 
@@ -418,7 +425,7 @@ class OLMBundle(object):
 
     @property
     def list_of_manifest_files_to_be_copied(self):
-        files = glob.glob('{}/{}/*'.format(self.operator_manifests_dir, self.channel))
+        files = glob.glob('{}/*'.format(self.operator_bundle_dir))
         if not files:
             # 4.1 channel in package YAML is "preview" or "stable", but directory name is "4.1"
             files = glob.glob('{}/{}/*'.format(
