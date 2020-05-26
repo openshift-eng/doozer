@@ -75,8 +75,8 @@ class OLMBundle(object):
     def get_operator_buildinfo(self):
         """Get operator distgit repository name and commit hash used to build given operator NVR
         """
-        _rc, out, _err = exectools.cmd_gather('brew buildinfo {}'.format(self.operator_nvr))
-        match = re.search(r'^Source:\s([^#]+)#(\w+)$', out, flags=re.MULTILINE)
+        operator_buildinfo = brew.get_build_objects([self.operator_nvr], self.brew_session)[0]
+        match = re.search(r'([^#]+)#(\w+)', operator_buildinfo['source'])
 
         self.operator_repo_name = '/'.join(match.group(1).split('/')[-2:])
         self.operator_build_commit = match.group(2)
@@ -347,6 +347,15 @@ class OLMBundle(object):
             contents,
             flags=re.MULTILINE
         )
+
+    @property
+    def brew_session(self):
+        if not hasattr(self, '_brew_session'):
+            self._brew_session = brew.koji.ClientSession(
+                self.runtime.group_config.urls.brewhub,
+                opts={'serverca': '/etc/pki/brew/legacy.crt'}
+            )
+        return self._brew_session
 
     @property
     def operator_name(self):
