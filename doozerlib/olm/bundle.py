@@ -114,7 +114,7 @@ class OLMBundle(object):
 
         At the end, only relevant diff, if any, will be committed.
         """
-        exectools.cmd_assert('rm -rf {}/*'.format(self.bundle_clone_path))
+        exectools.cmd_assert('git -C {} rm -rf *'.format(self.bundle_clone_path))
 
     def get_operator_package_yaml_info(self):
         """Get operator package name and channel from its package YAML
