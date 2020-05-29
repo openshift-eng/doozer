@@ -332,17 +332,27 @@ def images_push_distgit(runtime):
               help="name LIKE value matches (AND logic)")
 @click.option("-w", "--where", metavar='EXPR', default='',
               help="Complex expression instead of matching. e.g. ( `NAME`=\"VALUE\" and `NAME2` LIKE \"VALUE2%\" ) or NOT `NAME3` < \"VALUE3\"")
-@click.option("-s", "--sort-by", default=None, metavar='NAME',
-              help="Attribute name to sort by")
-@click.option("--limit", default=None, metavar='NUM',
+@click.option("-s", "--sort-by", '--order-by', default=None, metavar='NAME',
+              help="Attribute name to sort by. Note: The sort attribute must be present in at least one of the predicates of the expression.")
+@click.option("--limit", default=0, metavar='NUM',
               help="Limit records returned to specified number")
-@click.option("-o", "--output", default="human", help='Output format: human, csv, or yaml')
+@click.option("-o", "--output", metavar='format', default="human", help='Output format: human, csv, or yaml')
 @pass_runtime
 def db_select(runtime, operation, attribute, match, like, where, sort_by, limit, output):
     """
     Select records from the datastore.
-    For full UI, use https://chrome.google.com/webstore/detail/sdbnavigator/ddhigekdfabonefhiildaiccafacphgg/related?hl=en-US
-    Select syntax: https://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/UsingSelect.html
+
+    \b
+    For simpledb UI in a browser:
+    https://chrome.google.com/webstore/detail/sdbnavigator/ddhigekdfabonefhiildaiccafacphgg/related?hl=en-US
+
+    \b
+    Select syntax:
+    https://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/UsingSelect.html
+
+    \b
+    When using --sort-by:
+    https://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/SortingDataSelect.html
     """
 
     runtime.initialize(clone_distgits=False, no_group=True)
@@ -361,10 +371,10 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
     elif match or like:
         where_str = ' WHERE '
         if match:
-            quoted_match = ['`{}`="{}"'.format(*m.split('=')) for m in match]
+            quoted_match = ['`{}`="{}"'.format(*a_match.split('=')) for a_match in match]
             where_str += ' AND '.join(quoted_match)
         if like:
-            quoted_like = ['`{}` LIKE "{}"'.format(*l.split('=')) for l in like]
+            quoted_like = ['`{}` LIKE "{}"'.format(*a_like.split('=')) for a_like in like]
             where_str += ' AND '.join(quoted_like)
 
     sort_by_str = ''
@@ -372,13 +382,9 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
         # https://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/SortingDataSelect.html
         sort_by_str = f' ORDER BY `{sort_by}` ASC'
 
-    limit_str = ''
-    if limit:
-        limit_str = f' limit {int(limit)}'
+    domain = f'`ART_{runtime.datastore}_{operation}`'
 
-    domain = f'ART_{runtime.datastore}_{operation}'
-
-    result = runtime.db.select(f'SELECT {names} FROM {domain}{where_str}{sort_by_str}{limit_str}')
+    result = runtime.db.select(f'SELECT {names} FROM {domain}{where_str}{sort_by_str}', limit=int(limit))
 
     if output.lower() == 'yaml':
         print(yaml.safe_dump(result))

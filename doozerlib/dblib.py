@@ -69,11 +69,12 @@ class DB(object):
 
         return Record(self, domain, extras, dry_run)
 
-    def select(self, expression, consistent_read=True):
+    def select(self, expression, consistent_read=True, limit=0):
         """
         https://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/UsingSelect.html
         :param expression: Select expression to execute
         :param consistent_read: If True, ensures consistency before read. Minor performance penalty.
+        :param limit: If specified, return a maximum of [limit] records.
         :return: An array of item records. e.g.
                 [
                     { 'Name': 'test.202', 'Attributes': [{'Name': 'jenkins.build_url', 'Value': '..''}, ...] },
@@ -83,6 +84,17 @@ class DB(object):
 
         """
         items = []
+
+        """
+        If a select expression specifies a simple 'limit X', the initial return of self.client.select will contain
+        <= limit element. However, it will also return a NextToken which will encourage the loop to continue.
+        Thus we would return all selected records, [limit] at a time, with multiple calls to the client.
+        Thus, we need to break the query loop with limited is True.
+        """
+        limited = limit > 0
+        if limited:
+            expression += ' limit {}'.format(limit)
+
         self.runtime.logger.info(f'Running db query: {expression}')
         if self.client:
             nt = ''
@@ -96,6 +108,11 @@ class DB(object):
                 items.extend(r.get('Items', []))
                 if not nt:
                     break
+
+                if limited and len(items) >= limit:
+                    items = items[:limit]
+                    break
+
             return items
         else:
             raise IOError('No simpledb client has been initialized')

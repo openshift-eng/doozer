@@ -911,7 +911,7 @@ class ImageDistGitRepo(DistGitRepo):
                 Record.set('build.time.iso', invoke_ts_iso)
                 Record.set('dg.commit', commit_sha)
                 Record.set('brew.task_state', 'success' if success_flag else 'failure')
-                Record.set(f'brew.task_id', task_id)
+                Record.set('brew.task_id', task_id)
 
                 dfp = DockerfileParser(str(Dir.getpath().joinpath('Dockerfile')))
                 for label_name in ['version', 'release', 'name', 'com.redhat.component']:
