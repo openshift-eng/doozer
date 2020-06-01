@@ -62,7 +62,7 @@ class DB(object):
 
         extras = {}
         if metadata:
-            extras['dg.name'] = metadata.namespace
+            extras['dg.name'] = metadata.name
             extras['dg.namespace'] = metadata.namespace
             extras['dg.qualified_key'] = metadata.qualified_key
             extras['dg.qualified_name'] = metadata.qualified_name
