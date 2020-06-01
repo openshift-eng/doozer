@@ -37,6 +37,7 @@ from multiprocessing import cpu_count
 from dockerfile_parse import DockerfileParser
 from doozerlib import dotconfig
 from doozerlib import gitdata
+from doozerlib.olm.bundle import OLMBundle
 
 click.disable_unicode_literals_warning = True
 
@@ -2285,6 +2286,86 @@ def analyze_debug_log(debug_log):
     """
     f = os.path.abspath(debug_log)
     analyze_debug_timing(f)
+
+
+@cli.command('olm-bundle:list-olm-operators', short_help='List all images that are OLM operators')
+@pass_runtime
+def list_olm_operators(runtime):
+    """
+    Example:
+    $ doozer --group openshift-4.5 olm-bundle:list-olm-operators
+    """
+    runtime.initialize(clone_distgits=False)
+
+    for image in runtime.image_metas():
+        if image.config['update-csv'] is not Missing:
+            print(image.get_component_name())
+
+
+@cli.command('olm-bundle:rebase', short_help='Update bundle distgit repo with manifests from given operator NVR')
+@click.argument('operator_nvrs', nargs=-1, required=True)
+@pass_runtime
+def rebase_olm_bundle(runtime, operator_nvrs):
+    """
+    Example:
+    $ doozer --group openshift-4.2 olm-bundle:rebase \
+        sriov-network-operator-container-v4.2.30-202004200449 \
+        elasticsearch-operator-container-v4.2.30-202004240858 \
+        cluster-logging-operator-container-v4.2.30-202004240858
+    """
+    runtime.initialize(clone_distgits=False)
+    ThreadPool(len(operator_nvrs)).map(lambda nvr: OLMBundle(runtime).rebase(nvr), operator_nvrs)
+
+
+@cli.command('olm-bundle:build', short_help='Build bundle containers of given operators')
+@click.argument('operator_names', nargs=-1, required=True)
+@pass_runtime
+def build_olm_bundle(runtime, operator_names):
+    """
+    Example:
+    $ doozer --group openshift-4.2 olm-bundle:build \
+        sriov-network-operator \
+        elasticsearch-operator \
+        cluster-logging-operator
+    """
+    runtime.initialize(clone_distgits=False)
+    ThreadPool(len(operator_names)).map(lambda name: OLMBundle(runtime).build(name), operator_names)
+
+
+@cli.command('olm-bundle:rebase-and-build', short_help='Shortcut for olm-bundle:rebase and olm-bundle:build')
+@click.argument('operator_nvrs', nargs=-1, required=True)
+@pass_runtime
+def rebase_and_build_olm_bundle(runtime, operator_nvrs):
+    """Having in mind that its primary use will be inside a Jenkins job, this command combines the
+    execution of both commands in sequence (since they are commonly used together anyway), using the
+    same OLMBundle instance, in order to save time and avoid fetching the same information twice.
+
+    Also, the output of this command is more verbose, in order to provide relevant info back to the
+    next steps of the Jenkins job, avoiding the need to retrieve a lot of data via Groovy.
+
+    Example:
+    $ doozer --group openshift-4.2 olm-bundle:rebase-and-build \
+        sriov-network-operator-container-v4.2.30-202004200449 \
+        elasticsearch-operator-container-v4.2.30-202004240858 \
+        cluster-logging-operator-container-v4.2.30-202004240858
+    """
+    runtime.initialize(clone_distgits=False)
+
+    def rebase_and_build(nvr):
+        olm_bundle = OLMBundle(runtime)
+        olm_bundle.rebase(nvr)
+        return {
+            'success': olm_bundle.build(),
+            'task_url': olm_bundle.task_url,
+            'bundle_nvr': olm_bundle.get_latest_bundle_build(),
+        }
+
+    results = ThreadPool(len(operator_nvrs)).map(rebase_and_build, operator_nvrs)
+
+    for result in results:
+        click.echo('SUCCESS={success} {task_url} {bundle_nvr}'.format(**result))
+
+    sys.exit(0 if all(list(map(lambda i: i['success'], results))) else 1)
 
 
 def main():
