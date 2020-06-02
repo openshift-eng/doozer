@@ -29,6 +29,7 @@ import koji
 import io
 import json
 import functools
+import re
 import semver
 import urllib
 from numbers import Number
@@ -559,10 +560,12 @@ def config_scan_source_changes(runtime, as_yaml):
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
+@click.option("--upstream", "upstreams", metavar="DISTGIT_KEY=COMMIT-ISH", multiple=True,
+              help="Override upstream source commits [multiple]")
 @option_commit_message
 @option_push
 @pass_runtime
-def images_rebase(runtime, stream, version, release, repo_type, message, push):
+def images_rebase(runtime, stream, version, release, repo_type, message, push, upstreams):
     """
     Many of the Dockerfiles stored in distgit are based off of content managed in GitHub.
     For example, openshift-enterprise-node should always closely reflect the changes
@@ -578,7 +581,18 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push):
     distgit), the Dockerfile in distgit will not be rebased, but other aspects of the
     metadata may be applied (base image, tags, etc) along with the version and release.
     """
-    runtime.initialize(validate_content_sets=True)
+
+    upstream_pattern = re.compile(r"(.+)=(.+)")  # TODO: Use a more precise regexp
+    upstream_overrides = {}
+    for upstream in upstreams:
+        click.echo(f"Use {upstream}")
+        m = upstream_pattern.fullmatch(upstream)
+        if not m:
+            raise ValueError(f"Invalid `upstream` string: {upstream}, expecting like some-image=https://github.com/foo/bar#commitish")
+        click.echo(f"\tdistgit={m[1]},commitish={m[2]}")
+        upstream_overrides[m[1]] = m[2]
+
+    runtime.initialize(validate_content_sets=True, upstream_commitish_overrides=upstream_overrides)
 
     # This is ok to run if automation is frozen as long as you are not pushing
     if push:
