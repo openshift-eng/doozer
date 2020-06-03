@@ -1,6 +1,7 @@
 from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
 standard_library.install_aliases
+from typing import Dict, Optional
 import urllib.parse
 from retry import retry
 import requests
@@ -32,17 +33,19 @@ CONFIG_MODE_DEFAULT = CONFIG_MODES[0]
 
 
 class Metadata(object):
-    def __init__(self, meta_type, runtime, data_obj):
+    def __init__(self, meta_type, runtime, data_obj: Dict, commitish: Optional[str] = None):
         """
         :param: meta_type - a string. Index to the sub-class <'rpm'|'image'>.
         :param: runtime - a Runtime object.
         :param: name - a filename to load as metadata
+        :param: commitish: If not None, build from the specified commit-ish instead of the branch tip.
         """
         self.meta_type = meta_type
         self.runtime = runtime
         self.data_obj = data_obj
         self.config_filename = data_obj.filename
         self.full_config_path = data_obj.path
+        self.commitish = commitish
 
         # Some config filenames have suffixes to avoid name collisions; strip off the suffix to find the real
         # distgit repo name (which must be combined with the distgit namespace).
