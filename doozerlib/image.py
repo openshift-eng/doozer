@@ -9,13 +9,12 @@ from doozerlib import assertion, exectools
 class ImageMetadata(Metadata):
 
     def __init__(self, runtime, data_obj: Dict, commitish: Optional[str] = None):
-        super(ImageMetadata, self).__init__('image', runtime, data_obj)
+        super(ImageMetadata, self).__init__('image', runtime, data_obj, commitish)
         self.image_name = self.config.name
         self.required = self.config.get('required', False)
         self.image_name_short = self.image_name.split('/')[-1]
         self.parent = None
         self.children = []
-        self.commitish = commitish
         dependents = self.config.get('dependents', [])
         for d in dependents:
             self.children.append(self.runtime.late_resolve_image(d, add=True))
