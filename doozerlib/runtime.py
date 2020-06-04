@@ -36,7 +36,7 @@ from .image import ImageMetadata
 from .rpmcfg import RPMMetadata
 from doozerlib import state
 from .model import Model, Missing
-from multiprocessing import Lock
+from multiprocessing import Lock, RLock
 from .repos import Repos
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
@@ -114,10 +114,10 @@ def _unpack_tuple_args(func):
 
 class Runtime(object):
     # Use any time it is necessary to synchronize feedback from multiple threads.
-    mutex = Lock()
+    mutex = RLock()
 
     # Serialize access to the shared koji session
-    koji_lock = Lock()
+    koji_lock = RLock()
 
     # Serialize access to the console, and record log
     log_lock = Lock()
@@ -130,7 +130,6 @@ class Runtime(object):
         self.load_disabled = False
         self.data_path = None
         self.data_dir = None
-        self.brew_tag = None
         self.latest_parent_version = False
         self.rhpkg_config = None
         self._koji_client_session = None
@@ -216,7 +215,7 @@ class Runtime(object):
         else:
             self.rhpkg_config = ''
 
-    def get_dir_lock(self, absolute_path):
+    def get_named_lock(self, absolute_path):
         with self.dir_locks['']:
             p = pathlib.Path(absolute_path).absolute()  # normalize (e.g. strip trailing /)
             if p in self.dir_locks:
@@ -415,10 +414,6 @@ class Runtime(object):
                         )
                 scanner.matches = regexen
 
-            if self.group_config.brew_tag:
-                # setting this overrides tags made out of branches in specific configs
-                self.brew_tag = self.group_config.brew_tag
-
             exclude_keys = flatten_list(self.exclude)
             image_ex = list(exclude_keys)
             rpm_ex = list(exclude_keys)
@@ -573,7 +568,8 @@ class Runtime(object):
     def shared_koji_client_session(self):
         """
         Context manager which offers a shared koji client session. You hold a koji specific lock in this context
-        manager giving you exclusive access.
+        manager giving your thread exclusive access. The lock is reentrant, so don't worry about
+        call a method that acquires the same lock while you hold it.
         """
         with self.koji_lock:
             if self._koji_client_session is None:
@@ -784,7 +780,31 @@ class Runtime(object):
             self.image_map[distgit_name] = meta
         return meta
 
+    def resolve_brew_url(self, image_name_and_version):
+        """
+        :param image_name_and_version: The image name to resolve. The image can contain a version tag or sha.
+        :return: Returns the pullspec of this image in brew.
+        e.g. "openshift/jenkins:5"  => "registry-proxy.engineering.redhat.com/rh-osbs/openshift-jenkins:5"
+        """
+        if self.group_config.urls.brew_image_namespace is not Missing:
+            # if there is a namespace, we need to flatten the image name.
+            # e.g. openshift/image:latest => openshift-image:latest
+            # ref: https://mojo.redhat.com/docs/DOC-1204856
+            url = self.group_config.urls.brew_image_host
+            ns = self.group_config.urls.brew_image_namespace
+            name = image_name_and_version.replace('/', '-')
+            return "/".join(("/".join((url, ns)), name))
+        else:
+            # If there is no namespace, just add the image name to the brew image host
+            return "/".join((self.group_config.urls.brew_image_host, image_name_and_version))
+
     def resolve_stream(self, stream_name):
+        """
+        :param stream_name: The name of the stream to resolve.
+        :return: Resolves and returns the image stream name into its literal value.
+                This is usually a lookup in streams.yaml, but can also be overridden on the command line. If
+                the stream_name cannot be resolved, an exception is thrown.
+        """
 
         # If the stream has an override from the command line, return it.
         if stream_name in self.stream_alias_overrides:
@@ -857,7 +877,7 @@ class Runtime(object):
                 # If the cache directory for this repo does not exist yet, we will create one.
                 # But we must do so carefully to minimize races with any other doozer instance
                 # running on the machine.
-                with self.get_dir_lock(repo_dir):  # also make sure we cooperate with other threads in this process.
+                with self.get_named_lock(repo_dir):  # also make sure we cooperate with other threads in this process.
                     tmp_repo_dir = tempfile.mkdtemp(dir=git_cache_dir)
                     exectools.cmd_assert(f'git init --bare {tmp_repo_dir}')
                     with Dir(tmp_repo_dir):
@@ -944,7 +964,7 @@ class Runtime(object):
 
         self.logger.debug("checking for source directory in source_dir: {}".format(source_dir))
 
-        with self.get_dir_lock(source_dir):
+        with self.get_named_lock(source_dir):
             if alias in self.source_paths:  # we checked before, but check again inside the lock
                 self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, self.source_paths[alias]))
                 return self.source_paths[alias]
@@ -1168,10 +1188,16 @@ class Runtime(object):
         pool.join()
         return ret
 
+    def get_default_brew_tag(self):
+        return self.branch
+
+    def get_default_candidate_brew_tag(self):
+        return self.branch + '-candidate'
+
     def builds_for_group_branch(self):
         # return a dict of all the latest builds for this group, according to
         # the branch's candidate tag in brew. each entry is name => tuple(version, release).
-        tag = self.brew_tag if self.brew_tag else '{}-candidate'.format(self.branch)
+        tag = self.get_default_candidate_brew_tag()
         output, _ = exectools.cmd_assert(
             "brew list-tagged --quiet --latest {}".format(tag),
             retries=3,

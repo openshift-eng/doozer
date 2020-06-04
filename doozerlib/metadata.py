@@ -115,11 +115,8 @@ class Metadata(object):
             return self.config.distgit.branch
         return self.runtime.branch
 
-    def brew_tag(self):
-        if self.runtime.brew_tag:
-            return self.runtime.brew_tag
-        else:
-            return '{}-candidate'.format(self.branch())
+    def candidate_brew_tag(self):
+        return '{}-candidate'.format(self.branch())
 
     def get_arches(self):
         """
