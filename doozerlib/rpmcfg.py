@@ -19,7 +19,6 @@ from .metadata import Metadata
 from .model import Missing
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.source_modifications import SourceModifierFactory
-from doozerlib import util
 
 RELEASERS_CONF = """
 [{target}]
@@ -54,8 +53,6 @@ class RPMMetadata(Metadata):
         self.tag = None
         self.build_status = False
         self.pre_init_sha = None
-        # This will be set to True if the source contains embargoed (private) CVE fixes. Defaulting to False for distgit only repos.
-        self.private_fix = False
 
         # If populated, extra variables that will added as os_git_vars
         self.extra_os_git_vars = {}
@@ -63,14 +60,11 @@ class RPMMetadata(Metadata):
         if clone_source:
             self.source_path = self.runtime.resolve_source(self)
             self.source_head = self.runtime.resolve_source_head(self)
+
             with Dir(self.source_path):
                 # gather source repo short sha for audit trail
-                out, _ = exectools.cmd_assert(["git", "rev-parse", "HEAD"])
+                rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
                 source_full_sha = out.strip()
-
-                # Determine if the source contains private fixes by checking if the private org branch commit exists in the public org
-                if self.public_upstream_branch:
-                    self.private_fix = not util.is_commit_in_public_upstream(source_full_sha, self.public_upstream_branch, self.source_path)
 
                 # If this is a go project, parse the Godeps for points of interest
                 godeps_file = pathlib.Path(self.source_path, 'Godeps', 'Godeps.json')
@@ -429,10 +423,6 @@ class RPMMetadata(Metadata):
         """
         if local:
             raise DoozerFatalError("Local RPM build is not currently supported.")
-
-        # TODO: adjust Doozer's execution for private build
-        if self.private_fix:
-            self.logger.warning("Source contains embargoed fixes.")
 
         with self.runtime.get_dir_lock(self.source_path):
 
