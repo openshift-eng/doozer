@@ -103,8 +103,6 @@ class DistGitRepo(object):
         self.source_latest_tag = None
         self.source_date_epoch = None
         self.source_url = None
-        # This will be set to True if the source contains embargoed (private) CVE fixes. Defaulting to False for distgit only repos.
-        self.private_fix = False
 
         # If we are rebasing, this map can be populated with
         # variables acquired from the source path.
@@ -1791,8 +1789,8 @@ class ImageDistGitRepo(DistGitRepo):
         # Initialize env_vars_from source.
         # update_distgit_dir makes a distinction between None and {}
         self.env_vars_from_source = {}
-        source_dir = self.source_path()
-        with Dir(source_dir):
+
+        with Dir(self.source_path()):
             if self.metadata.commitish:
                 self.runtime.logger.info(f"Rebasing image {self.name} from speicified commit-ish {self.metadata.commitish}...")
                 cmd = ["git", "checkout", self.metadata.commitish]
@@ -1800,20 +1798,16 @@ class ImageDistGitRepo(DistGitRepo):
             # gather source repo short sha for audit trail
             rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "--short", "HEAD"])
             self.source_sha = out.strip()
-            out, _ = exectools.cmd_assert(["git", "rev-parse", "HEAD"])
+            rc, out, _ = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
             self.source_full_sha = out.strip()
             rc, out, _ = exectools.cmd_gather("git log -1 --format=%ct")
             self.source_date_epoch = out.strip()
             rc, out, _ = exectools.cmd_gather("git describe --always --tags HEAD")
             self.source_latest_tag = out.strip()
 
-            out, _ = exectools.cmd_assert(["git", "remote", "get-url", "origin"])
+            rc, out, _ = exectools.cmd_gather(["git", "remote", "get-url", "origin"])
             out = out.strip()
-            self.source_url, _ = self.runtime.get_public_upstream(out)  # Point to public upstream if there are private components to the URL
-
-            # Determine if the source contains private fixes by checking if the private org branch commit exists in the public org
-            if self.metadata.public_upstream_branch:
-                self.private_fix = not util.is_commit_in_public_upstream(self.source_full_sha, self.metadata.public_upstream_branch, source_dir)
+            self.source_url = self.runtime.get_public_upstream(out)  # Point to public upstream if there are private components to the URL
 
             # If this is a go project, parse the Godeps for points of interest
             godeps_file = pathlib.Path(self.source_path(), 'Godeps', 'Godeps.json')
@@ -2034,10 +2028,6 @@ class ImageDistGitRepo(DistGitRepo):
 
             if self.config.content.source.modifications is not Missing:
                 self._run_modifications()
-
-        # TODO: adjust Doozer's execution for private build
-        if self.private_fix:
-            self.logger.warning("The source of this image contains embargoed fixes.")
 
         (real_version, real_release) = self.update_distgit_dir(version, release, prev_release)
 

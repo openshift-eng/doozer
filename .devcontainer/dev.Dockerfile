@@ -1,4 +1,4 @@
-FROM fedora:32
+FROM fedora:31
 
 # Trust the Red Hat IT Root CA and set up rcm-tools repo
 RUN curl -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --fail -L \
@@ -10,6 +10,7 @@ RUN curl -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --fail -L \
 RUN dnf install -y \
     # runtime dependencies
     krb5-workstation git tig rsync koji skopeo podman docker tito \
+    python2 python2-certifi python2-rpm \
     python3 python3-certifi python3-rpm \
     # development dependencies
     gcc krb5-devel openssl-devel \
@@ -54,4 +55,3 @@ RUN chown "$USERNAME" -R /tmp/doozer \
  && popd && rm -rf /tmp/doozer
 
 USER "$USER_UID"
-ENV LANG="en_US.UTF-8"
