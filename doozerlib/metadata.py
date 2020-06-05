@@ -47,6 +47,10 @@ class Metadata(object):
         self.full_config_path = data_obj.path
         self.commitish = commitish
 
+        # URL and branch of public upstream source are set later by Runtime.resolve_source()
+        self.public_upstream_url = None
+        self.public_upstream_branch = None
+
         # Some config filenames have suffixes to avoid name collisions; strip off the suffix to find the real
         # distgit repo name (which must be combined with the distgit namespace).
         # e.g. openshift-enterprise-mediawiki.apb.yml
@@ -97,7 +101,9 @@ class Metadata(object):
     def distgit_remote_url(self):
         pkgs_host = self.runtime.group_config.urls.get('pkgs_host', 'pkgs.devel.redhat.com')
         # rhpkg uses a remote named like this to pull content from distgit
-        return f'ssh://{self.runtime.user}@{pkgs_host}/{self.qualified_name}'
+        if self.runtime.user:
+            return f'ssh://{self.runtime.user}@{pkgs_host}/{self.qualified_name}'
+        return f'ssh://{pkgs_host}/{self.qualified_name}'
 
     def distgit_repo(self, autoclone=True):
         if self._distgit_repo is None:
