@@ -208,8 +208,8 @@ class ImageMetadata(Metadata):
 
     # Class methods to speed up computation of does_image_need_change if multiple
     # images will be assessed.
-    # Mapping of brew pullspec => creation brew event id.
-    builder_image_event_cache = dict()
+    # Mapping of brew pullspec => most recent brew build dict.
+    builder_image_builds = dict()
     # Mapping of package build_id to set of build creation_event_ids for that package.
     package_build_ids_build_events_cache = dict()
 
@@ -223,21 +223,25 @@ class ImageMetadata(Metadata):
         implementation is not thread-safe.
         :param changing_rpm_packages: A list of package names that are about to change.
         :param buildroot_tag_ids: A list of build tag id's the contribute to this image's build root.
-        :return: True if the image should be rebuilt based on these criteria.
+        :return: (<bool>, messsage). If True, the image might need to be rebuilt -- the message will say
+                why. If False, message will be None.
         """
 
         dgk = self.distgit_key
         runtime = self.runtime
-        builder_creation_event_ids = set()
 
         with runtime.shared_koji_client_session() as koji_api:  # Use shared to block all other callers
 
             image_nvr = '-'.join(self.get_latest_build_info(default=''))
             if not image_nvr:
                 # Seems this have never been built. Mark it as needing change.
-                return True
+                return True, 'Image has never been built before'
 
             runtime.logger.debug(f'Image {dgk} latest is {image_nvr}')
+
+            # find the build that created this nvr. strict means throw exception if not found
+            image_build = koji_api.getBuild(image_nvr, strict=True)
+            image_build_event_id = image_build['creation_event_id']  # the brew even that created this build
 
             # Collect build times from any build images
             builders = self.config['from'].builder or []
@@ -255,10 +259,9 @@ class ImageMetadata(Metadata):
 
                 # builder_image_name example: "openshift/ose-base:ubi8"
                 brew_image_url = self.runtime.resolve_brew_url(builder_image_name)
+                builder_brew_build = ImageMetadata.builder_image_builds.get(brew_image_url, None)
 
-                brew_creation_event_id = ImageMetadata.builder_image_event_cache.get(brew_image_url, None)
-
-                if not brew_creation_event_id:
+                if not builder_brew_build:
                     out, err = exectools.cmd_assert(f'oc image info {brew_image_url} --filter-by-os amd64 -o=json', retries=5, pollrate=10)
                     latest_builder_image_info = Model(json.loads(out, encoding='utf-8'))
                     builder_info_labels = latest_builder_image_info.config.config.Labels
@@ -268,25 +271,20 @@ class ImageMetadata(Metadata):
                         raise IOError(f'Unable to find nvr in {builder_info_labels}')
 
                     builder_image_nvr = '-'.join(builder_nvr_list)
-                    brew_creation_event_id = koji_api.getBuild(builder_image_nvr)['creation_event_id']
-                    ImageMetadata.builder_image_event_cache[brew_image_url] = brew_creation_event_id
-                    runtime.logger.debug(f'Found that builder image {brew_image_url} has creation event id {brew_creation_event_id}')
+                    builder_brew_build = koji_api.getBuild(builder_image_nvr)
+                    ImageMetadata.builder_image_builds[brew_image_url] = builder_brew_build
+                    runtime.logger.debug(f'Found that builder image {brew_image_url} has event {builder_brew_build}')
 
-                builder_creation_event_ids.add(brew_creation_event_id)
-
-            # find the build that created this nvr. strict means throw exception if not found
-            image_build = koji_api.getBuild(image_nvr, strict=True)
-            image_build_event_id = image_build['creation_event_id']  # the brew even that created this build
-
-            for builder_creation_event_id in builder_creation_event_ids:
-                if image_build_event_id < builder_creation_event_id:
-                    self.logger.info(f'{dgk} will be rebuilt because a builder image changed')
-                    return True
+                if image_build_event_id < builder_brew_build['creation_event_id']:
+                    self.logger.info(f'will be rebuilt because a builder image changed')
+                    return True, f'A builder image {builder_image_name} has changed since {image_nvr} was built'
 
             build_root_changes = brew.tags_changed_since_build(runtime, koji_api, image_build, buildroot_tag_ids)
             if build_root_changes:
-                runtime.logger.info(f'Image will be rebuild {dgk} ({image_build}) because it has not been built (last build event={image_build_event_id}) since a buildroot change: {build_root_changes}')
-                return True
+                changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
+                runtime.logger.info(f'Image will be rebuilt due to buildroot change since {image_nvr} (last build event={image_build_event_id}). Build root changes changes: [{changing_tag_names}]')
+                runtime.logger.debug(f'Image will be rebuilt due to buildroot change since ({image_build}) (last build event={image_build_event_id}). Build root changes: {build_root_changes}')
+                return True, f'Buildroot tag changes in [{changing_tag_names}] since {image_nvr}'
 
             for archive in koji_api.listArchives(image_build['id']):
                 # Example results of listing RPMs in an given imageID:
@@ -299,13 +297,28 @@ class ImageMetadata(Metadata):
                     n_threads=20
                 )
 
-                return any(changes_res.get())
+                for changed, msg in changes_res.get():
+                    if changed:
+                        return True, msg
+
+        return False, None
 
 
+# used for mutex in is_image_older_than_rpm()
 older_than_lock = Lock()
 
 
 def is_image_older_than_rpm(image_meta, image_build_event_id, ri, rpm_entries, changing_rpm_packages):
+    """
+    Determines if a given rpm has builds newer than a build event for an image.
+    :param image_meta: The image meta object for the image
+    :param image_build_event_id: The build event for the image
+    :param ri: An index into the list of rpm_entries to check
+    :param rpm_entries: A set of rpms to analyze (return of koji_api.listRPMs)
+    :param changing_rpm_packages: A list of package name that the caller knows to be changing in the future
+    :return: (<bool>, message) . If True, the message will describe the change reason. If False, message will
+            will be None.
+    """
     dgk = image_meta.distgit_key
     runtime = image_meta.runtime
 
@@ -321,7 +334,7 @@ def is_image_older_than_rpm(image_meta, image_build_event_id, ri, rpm_entries, c
 
         if rpm_package_name in changing_rpm_packages:
             runtime.logger.info(f'{dgk} must change because of forthcoming RPM build {rpm_package_name}')
-            return True
+            return True, f'image depends on {rpm_package_name}, which was identified as about to change'
 
         with older_than_lock:
             # See if we have already computed relevant builds for this package build id
@@ -336,7 +349,7 @@ def is_image_older_than_rpm(image_meta, image_build_event_id, ri, rpm_entries, c
                 # thread would arrive at the same conclusion and waste time doing it.
                 # We return False because we don't know the outcome and don't want to
                 # affect the overall decision
-                return False
+                return False, None
 
         if not build_event_ids:
             # THIS thread has been chosen to do the work of finding build events and determining
@@ -422,8 +435,8 @@ def is_image_older_than_rpm(image_meta, image_build_event_id, ri, rpm_entries, c
                 # This build occurred after our image was built and was tagged with
                 # a tag that may have affected the image's inputs. Rebuild to be
                 # certain.
-                runtime.logger.info(f'{dgk} possible change because of changed rpm {rpm_package_name} and tag {rel_tag_name}')
+                runtime.logger.info(f'{dgk} possible change because of changed rpm {rpm_package_name} in tag {rel_tag_name}')
                 # For the humans reading the output, let's output the tag names that mattered.
-                return True
+                return True, f'A new build of {rpm_package_name} from {rel_tag_name} might be pulled into the image'
 
-    return False
+    return False, None

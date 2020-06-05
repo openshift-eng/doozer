@@ -548,6 +548,13 @@ def config_scan_source_changes(runtime, as_yaml):
     changing_rpm_metas = set()
     changing_image_metas = set()
     changing_rpm_packages = set()
+    change_reason = dict()  # maps metadata qualified_key => message describing change
+
+    def add_change_reason(meta, reason):
+        # If the key is already there, don't replace the message as it is likely more interesting
+        # than subsequent reasons (e.g. changing because of ancestry)
+        if meta.qualified_key not in change_reason:
+            change_reason[meta.qualified_key] = reason
 
     with runtime.shared_koji_client_session() as koji_api:
 
@@ -592,6 +599,7 @@ def config_scan_source_changes(runtime, as_yaml):
 
                 if not matches:
                     changing_rpm_metas.add(meta)
+                    add_change_reason(meta, 'An upstream source code change was detected')
                     if package_name:
                         changing_rpm_packages.add(package_name)
                     else:
@@ -600,10 +608,18 @@ def config_scan_source_changes(runtime, as_yaml):
                 if not matches:
                     changing_image_metas.add(meta)
 
+        def add_image_meta_change(meta, msg):
+            nonlocal changing_image_metas
+            changing_image_metas.add(meta)
+            add_change_reason(meta, msg)
+            for descendant_meta in meta.get_descendants():
+                changing_image_metas.add(descendant_meta)
+                add_change_reason(descendant_meta, f'Ancestor {meta.distgit_key} is changing')
+
         for image_meta in runtime.image_metas():
-            if image_meta.does_image_need_change(changing_rpm_packages, get_build_root_tag_ids(image_meta)):
-                changing_image_metas.add(image_meta)
-                changing_image_metas.update(image_meta.get_descendants())
+            image_change, msg = image_meta.does_image_need_change(changing_rpm_packages, get_build_root_tag_ids(image_meta))
+            if image_change:
+                add_image_meta_change(image_meta, msg)
 
         # does_image_name_change() checks whether its non-member builder images have changed
         # but cannot determine whether member builder images have changed until anticipated
@@ -621,9 +637,8 @@ def config_scan_source_changes(runtime, as_yaml):
 
                 for builder in image_meta.config['from'].builder:
                     if builder.member and builder.member in changing_image_dgks:
-                        runtime.log_lock.infor(f'{dgk} will be rebuilt due to change in builder member {builder.member}')
-                        changing_image_metas.add(image_meta)
-                        changing_image_metas.update(image_meta.get_descendants())
+                        runtime.log_lock.infor(f'{dgk} will be rebuilt due to change in builder member ')
+                        add_image_meta_change(image_meta, f'Builder group member has changed: {builder.member}')
 
             if len(changing_image_metas) == len(changing_image_dgks):
                 # The for loop didn't find anything new, we can break
@@ -634,13 +649,21 @@ def config_scan_source_changes(runtime, as_yaml):
         changing_image_dgks = [meta.distgit_key for meta in changing_image_metas]
         for image_meta in all_image_metas:
             dgk = image_meta.distgit_key
-            image_results.append({'name': dgk, 'changed': dgk in changing_image_dgks})
+            image_results.append({
+                'name': dgk,
+                'changed': dgk in changing_image_dgks,
+                'reason': change_reason.get(dgk, 'No change detected'),
+            })
 
         rpm_results = []
         changing_rpm_dgks = [meta.distgit_key for meta in changing_rpm_metas]
         for rpm_meta in all_rpm_metas:
             dgk = rpm_meta.distgit_key
-            rpm_results.append({'name': dgk, 'changed': dgk in changing_rpm_dgks})
+            rpm_results.append({
+                'name': dgk,
+                'changed': dgk in changing_rpm_dgks,
+                'reason': change_reason.get(dgk, 'No change detected'),
+            })
 
         results = dict(
             rpms=rpm_results,
@@ -657,7 +680,9 @@ def config_scan_source_changes(runtime, as_yaml):
                 continue
             click.echo(kind.upper() + ":")
             for item in items:
-                click.echo('  {} is {}'.format(item['name'], 'changed' if item['changed'] else 'the same'))
+                click.echo('  {} is {} (reason: {})'.format(item['name'],
+                                                            'changed' if item['changed'] else 'the same',
+                                                            item['reason']))
 
 
 @cli.command("images:rebase", short_help="Refresh a group's distgit content from source content.")
