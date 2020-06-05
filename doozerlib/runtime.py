@@ -24,6 +24,7 @@ import io
 import pathlib
 import koji
 from typing import Optional
+import time
 
 from doozerlib import gitdata
 from . import logutil
@@ -134,6 +135,8 @@ class Runtime(object):
         self.rhpkg_config = None
         self._koji_client_session = None
         self.db = None
+        self.session_pool = {}
+        self.session_pool_available = {}
 
         # Cooperative threads can request exclusive access to directories.
         # This is usually only necessary if two threads want to make modifications
@@ -575,6 +578,42 @@ class Runtime(object):
             if self._koji_client_session is None:
                 self._koji_client_session = koji.ClientSession(self.group_config.urls.brewhub)
             yield self._koji_client_session
+
+    @contextmanager
+    def pooled_koji_client_session(self):
+        """
+        Context manager which offers a koji client session from a limited pool. You hold a lock on this
+        session until you return. It is not recommended to call other methods that acquire their
+        own pooled sessions, because that may lead to deadlock if the pool is exhausted.
+        """
+        session = None
+        session_id = None
+        while True:
+            with self.mutex:
+                if len(self.session_pool_available) == 0:
+                    if len(self.session_pool) < 30:
+                        # pool has not grown to max size;
+                        new_session = koji.ClientSession(self.group_config.urls.brewhub)
+                        session_id = len(self.session_pool)
+                        self.session_pool[session_id] = new_session
+                        session = new_session # This is what we wil hand to the caller
+                        break
+                    else:
+                        # Caller is just going to have to wait and try again
+                        pass
+                else:
+                    session_id, session = self.session_pool_available.popitem()
+                    break
+
+            time.sleep(5)
+
+        # Arriving here, we have a session to use.
+        try:
+            yield session
+        finally:
+            # Put it back into the pool
+            with self.mutex:
+                self.session_pool_available[session_id] = session
 
     @staticmethod
     def timestamp():
@@ -1168,6 +1207,12 @@ class Runtime(object):
             n_threads=n_threads)
 
     def parallel_exec(self, f, args, n_threads=None):
+        """
+        :param f: A function to invoke for all arguments
+        :param args: A list of argument tuples. Each tuple will be used to invoke the function once.
+        :param n_threads: preferred number of threads to use during the work
+        :return:
+        """
         n_threads = n_threads if n_threads is not None else len(args)
         terminate_event = threading.Event()
         pool = ThreadPool(n_threads)

@@ -16,7 +16,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
 from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, analyze_debug_timing, get_cincinnati_channels, extract_version_fields
 from doozerlib import operator_metadata
-from doozerlib import kojihelp
+from doozerlib import brew
 import click
 import os
 import shutil
@@ -585,7 +585,7 @@ def config_scan_source_changes(runtime, as_yaml):
 
                         # Detect if our buildroot changed since the last build of this rpm
                         rpm_build_root_tag_ids = get_build_root_tag_ids(meta)
-                        build_root_changes = kojihelp.tags_changed_since_build(runtime, koji_api, latest_rpm_build, rpm_build_root_tag_ids)
+                        build_root_changes = brew.tags_changed_since_build(runtime, koji_api, latest_rpm_build, rpm_build_root_tag_ids)
                         if build_root_changes:
                             runtime.logger.info(f'{dgk} ({latest_rpm_build}) will be rebuilt because it has not been built since a buildroot change: {build_root_changes}')
                             matches = False
