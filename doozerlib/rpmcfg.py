@@ -516,3 +516,6 @@ class RPMMetadata(Metadata):
             return default
 
         raise IOError(f'Unable to find Name: field in rpm spec: {spec_path}')
+
+    def get_component_name(self, default=-1):
+        return self.get_package_name(default=default)

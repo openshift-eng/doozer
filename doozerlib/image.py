@@ -77,25 +77,32 @@ class ImageMetadata(Metadata):
         """
         return self.config.base_only
 
-    def get_latest_build_info(self, default=-1):
-
+    def get_component_name(self, default=-1):
         """
-        Queries brew to determine the most recently built release of the component
-        associated with this image. This method does not rely on the "release"
-        label needing to be present in the Dockerfile.
-        :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
-        :return: A tuple: (component name, version, release); e.g. ("registry-console-docker", "v3.6.173.0.75", "1")
+        :param default: Not used. Here to stay consistent with similar rpmcfg.get_component_name
+        :return: Returns the component name of the image. This is the name in the nvr
+        that brew assigns to this image's build.
         """
+        # By default, the bugzilla component is the name of the distgit,
+        # but this can be overridden in the config yaml.
+        component_name = self.name
 
-        component_name = self.get_component_name()
+        # For apbs, component name seems to have -apb appended.
+        # ex. http://dist-git.host.prod.eng.bos.redhat.com/cgit/apbs/openshift-enterprise-mediawiki/tree/Dockerfile?h=rhaos-3.7-rhel-7
+        if self.namespace == "apbs":
+            component_name = "%s-apb" % component_name
 
-        with self.runtime.pooled_koji_client_session() as koji_api:
-            builds = koji_api.getLatestBuilds(self.candidate_brew_tag(), package=component_name)
-            if not builds:
-                raise IOError("No builds detected for %s using tag: %s" % (self.qualified_name, self.candidate_brew_tag()))
+        if self.namespace == "containers":
+            component_name = "%s-container" % component_name
 
-        build = builds[0]
-        return build['name'], build['version'], build['release']
+        if self.config.distgit.component is not Missing:
+            component_name = self.config.distgit.component
+
+        return component_name
+
+    def get_brew_image_name_short(self):
+        # Get image name in the Brew pullspec. e.g. openshift3/ose-ansible --> openshift3-ose-ansible
+        return self.image_name.replace("/", "-")
 
     def pull_url(self):
         # Don't trust what is the Dockerfile for version & release. This field may not even be present.
@@ -232,15 +239,14 @@ class ImageMetadata(Metadata):
 
         with runtime.shared_koji_client_session() as koji_api:  # Use shared to block all other callers
 
-            image_nvr = '-'.join(self.get_latest_build_info(default=''))
-            if not image_nvr:
+            image_build = self.get_latest_build(default='')
+            if not image_build:
                 # Seems this have never been built. Mark it as needing change.
                 return True, 'Image has never been built before'
 
-            runtime.logger.debug(f'Image {dgk} latest is {image_nvr}')
+            self.logger.debug(f'Image {dgk} latest is {image_build}')
 
-            # find the build that created this nvr. strict means throw exception if not found
-            image_build = koji_api.getBuild(image_nvr, strict=True)
+            image_nvr = image_build['nvr']
             image_build_event_id = image_build['creation_event_id']  # the brew even that created this build
 
             # Collect build times from any build images
@@ -273,17 +279,17 @@ class ImageMetadata(Metadata):
                     builder_image_nvr = '-'.join(builder_nvr_list)
                     builder_brew_build = koji_api.getBuild(builder_image_nvr)
                     ImageMetadata.builder_image_builds[brew_image_url] = builder_brew_build
-                    runtime.logger.debug(f'Found that builder image {brew_image_url} has event {builder_brew_build}')
+                    self.logger.debug(f'Found that builder image {brew_image_url} has event {builder_brew_build}')
 
                 if image_build_event_id < builder_brew_build['creation_event_id']:
-                    self.logger.info(f'will be rebuilt because a builder image changed')
+                    self.logger.info(f'will be rebuilt because a builder image changed: {builder_image_name}')
                     return True, f'A builder image {builder_image_name} has changed since {image_nvr} was built'
 
             build_root_changes = brew.tags_changed_since_build(runtime, koji_api, image_build, buildroot_tag_ids)
             if build_root_changes:
                 changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
-                runtime.logger.info(f'Image will be rebuilt due to buildroot change since {image_nvr} (last build event={image_build_event_id}). Build root changes changes: [{changing_tag_names}]')
-                runtime.logger.debug(f'Image will be rebuilt due to buildroot change since ({image_build}) (last build event={image_build_event_id}). Build root changes: {build_root_changes}')
+                self.logger.info(f'Image will be rebuilt due to buildroot change since {image_nvr} (last build event={image_build_event_id}). Build root changes changes: [{changing_tag_names}]')
+                self.logger.debug(f'Image will be rebuilt due to buildroot change since ({image_build}) (last build event={image_build_event_id}). Build root changes: {build_root_changes}')
                 return True, f'Buildroot tag changes in [{changing_tag_names}] since {image_nvr}'
 
             for archive in koji_api.listArchives(image_build['id']):

@@ -596,7 +596,7 @@ class Runtime(object):
                         new_session = koji.ClientSession(self.group_config.urls.brewhub)
                         session_id = len(self.session_pool)
                         self.session_pool[session_id] = new_session
-                        session = new_session # This is what we wil hand to the caller
+                        session = new_session  # This is what we wil hand to the caller
                         break
                     else:
                         # Caller is just going to have to wait and try again
@@ -1256,9 +1256,8 @@ class Runtime(object):
         return {n: (v, r) for n, v, r in builds}
 
     def scan_distgit_sources(self):
-        builds = self.builds_for_group_branch()  # query for builds only once
         return self.parallel_exec(
-            lambda meta, _: (meta, meta.distgit_repo(autoclone=False).matches_source_commit(builds)),
+            lambda meta, _: (meta, meta.needs_rebuild()),
             self.image_metas() + self.rpm_metas(),
             n_threads=100,
         ).get()

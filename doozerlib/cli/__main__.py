@@ -548,13 +548,15 @@ def config_scan_source_changes(runtime, as_yaml):
     changing_rpm_metas = set()
     changing_image_metas = set()
     changing_rpm_packages = set()
-    change_reason = dict()  # maps metadata qualified_key => message describing change
+    assessment_reason = dict()  # maps metadata qualified_key => message describing change
 
-    def add_change_reason(meta, reason):
+    def add_assessment_reason(meta, changing, reason):
+        # qualify by whether this is a True or False for change so that we can store both in the map.
+        key = f'{meta.qualified_key}+{changing}'
         # If the key is already there, don't replace the message as it is likely more interesting
         # than subsequent reasons (e.g. changing because of ancestry)
-        if meta.qualified_key not in change_reason:
-            change_reason[meta.qualified_key] = reason
+        if key not in assessment_reason:
+            assessment_reason[key] = reason
 
     with runtime.shared_koji_client_session() as koji_api:
 
@@ -579,7 +581,8 @@ def config_scan_source_changes(runtime, as_yaml):
             return final_build_tag_ids
 
         # First, scan for any upstream source code changes. If found, these are guaranteed rebuilds.
-        for meta, matches in runtime.scan_distgit_sources():
+        for meta, change_info in runtime.scan_distgit_sources():
+            needs_rebuild, reason = change_info
             dgk = meta.distgit_key
             if not (meta.enabled or meta.mode == "disabled" and runtime.load_disabled):
                 # An enabled image's dependents are always loaded. Ignore disabled configs unless explicitly indicated
@@ -587,34 +590,39 @@ def config_scan_source_changes(runtime, as_yaml):
 
             if meta.meta_type == 'rpm':
                 package_name = meta.get_package_name(default=None)
-                if package_name:
+                if needs_rebuild is False and package_name:  # If we are currently matching, check buildroots to see if it unmatches us
                     for latest_rpm_build in koji_api.getLatestRPMS(tag=meta.branch() + '-candidate', package=package_name)[1]:
-
                         # Detect if our buildroot changed since the last build of this rpm
                         rpm_build_root_tag_ids = get_build_root_tag_ids(meta)
                         build_root_changes = brew.tags_changed_since_build(runtime, koji_api, latest_rpm_build, rpm_build_root_tag_ids)
                         if build_root_changes:
+                            changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
+                            reason = f'Latest rpm was built before buildroot changes: {changing_tag_names}'
                             runtime.logger.info(f'{dgk} ({latest_rpm_build}) will be rebuilt because it has not been built since a buildroot change: {build_root_changes}')
-                            matches = False
+                            needs_rebuild = True
 
-                if not matches:
+                if reason:
+                    add_assessment_reason(meta, needs_rebuild, reason=reason)
+
+                if needs_rebuild:
                     changing_rpm_metas.add(meta)
-                    add_change_reason(meta, 'An upstream source code change was detected')
                     if package_name:
                         changing_rpm_packages.add(package_name)
                     else:
                         runtime.logger.warning(f"Appears that {dgk} as never been built before; can't determine package name")
             else:
-                if not matches:
+                if reason:
+                    add_assessment_reason(meta, needs_rebuild, reason=reason)
+                if needs_rebuild:
                     changing_image_metas.add(meta)
 
         def add_image_meta_change(meta, msg):
             nonlocal changing_image_metas
             changing_image_metas.add(meta)
-            add_change_reason(meta, msg)
+            add_assessment_reason(meta, True, msg)
             for descendant_meta in meta.get_descendants():
                 changing_image_metas.add(descendant_meta)
-                add_change_reason(descendant_meta, f'Ancestor {meta.distgit_key} is changing')
+                add_assessment_reason(descendant_meta, True, f'Ancestor {meta.distgit_key} is changing')
 
         for image_meta in runtime.image_metas():
             image_change, msg = image_meta.does_image_need_change(changing_rpm_packages, get_build_root_tag_ids(image_meta))
@@ -649,20 +657,22 @@ def config_scan_source_changes(runtime, as_yaml):
         changing_image_dgks = [meta.distgit_key for meta in changing_image_metas]
         for image_meta in all_image_metas:
             dgk = image_meta.distgit_key
+            is_changing = dgk in changing_image_dgks
             image_results.append({
                 'name': dgk,
-                'changed': dgk in changing_image_dgks,
-                'reason': change_reason.get(dgk, 'No change detected'),
+                'changed': is_changing,
+                'reason': assessment_reason.get(f'{image_meta.qualified_key}+{is_changing}', 'No change detected'),
             })
 
         rpm_results = []
         changing_rpm_dgks = [meta.distgit_key for meta in changing_rpm_metas]
         for rpm_meta in all_rpm_metas:
             dgk = rpm_meta.distgit_key
+            is_changing = dgk in changing_rpm_dgks
             rpm_results.append({
                 'name': dgk,
-                'changed': dgk in changing_rpm_dgks,
-                'reason': change_reason.get(dgk, 'No change detected'),
+                'changed': is_changing,
+                'reason': assessment_reason.get(f'{rpm_meta.qualified_key}+{is_changing}', 'No change detected'),
             })
 
         results = dict(
