@@ -11,6 +11,8 @@ RUN dnf install -y \
     # runtime dependencies
     krb5-workstation git tig rsync koji skopeo podman docker tito \
     python3 python3-certifi python3-rpm \
+    # provides en_US.UTF-8 locale required by tito
+    glibc-langpack-en \
     # development dependencies
     gcc krb5-devel openssl-devel \
     python3-devel python3-pip \
@@ -26,6 +28,8 @@ RUN wget -O /tmp/openshift-client-linux-"$OC_VERSION".tar.gz https://mirror.open
   && tar -C /usr/local/bin -xzf  /tmp/openshift-client-linux-"$OC_VERSION".tar.gz oc kubectl \
   && rm /tmp/openshift-client-linux-"$OC_VERSION".tar.gz
 
+# change default locale to en_US.UTF-8 - tito requires this
+RUN echo 'LANG="en_US.UTF-8"' > /etc/locale.conf
 
 # Create a non-root user - see https://aka.ms/vscode-remote/containers/non-root-user.
 ARG USERNAME=dev
@@ -54,4 +58,3 @@ RUN chown "$USERNAME" -R /tmp/doozer \
  && popd && rm -rf /tmp/doozer
 
 USER "$USER_UID"
-ENV LANG="en_US.UTF-8"

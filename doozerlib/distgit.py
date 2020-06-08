@@ -103,8 +103,8 @@ class DistGitRepo(object):
         self.source_latest_tag = None
         self.source_date_epoch = None
         self.source_url = None
-        # This will be set to True if the source contains embargoed (private) CVE fixes. Defaulting to False for distgit only repos.
-        self.private_fix = False
+        # This will be set to True if the source contains embargoed (private) CVE fixes. Defaulting to None which means the value should be determined while rebasing.
+        self.private_fix = None
 
         # If we are rebasing, this map can be populated with
         # variables acquired from the source path.
@@ -1426,35 +1426,47 @@ class ImageDistGitRepo(DistGitRepo):
 
             # If the release is specified as "+", this means the user wants to bump the release.
             if release == "+":
-
                 # increment the release that was in the Dockerfile
-                release = prev_release
-
-                if release:
+                if prev_release:
                     self.logger.info("Bumping release field in Dockerfile")
-
+                    if self.runtime.group_config.public_upstreams and (prev_release.endswith(".p0") or prev_release.endswith(".p1")):
+                        prev_release = prev_release[:-3]  # strip .p0/1
                     # If release has multiple fields (e.g. 0.173.0.0), increment final field
-                    if "." in release:
-                        components = release.rsplit(".", 1)  # ["0.173","0"]
+                    if "." in prev_release:
+                        components = prev_release.rsplit(".", 1)  # ["0.173","0"]
                         bumped_field = int(components[1]) + 1
                         release = "%s.%d" % (components[0], bumped_field)
                     else:
                         # If release is specified and a single field, just increment it
-                        release = "%d" % (int(release) + 1)
+                        release = "%d" % (int(prev_release) + 1)
+                    if self.runtime.group_config.public_upstreams:
+                        release += ".p?"  # appended '.p?' field will be replaced with .p0 or .p1 later
                 else:
                     # When 'release' is not specified in the Dockerfile, OSBS will automatically
                     # find a valid value for each build. This means OSBS is effectively auto-bumping.
                     # This is better than us doing it, so let it.
+                    if self.runtime.group_config.public_upstreams:
+                        raise ValueError("Failed to bump the release: Neither 'release' is specified in the Dockerfile nor we can use OSBS auto-bumping when a public upstream mapping is defined in ocp-build-data.")
                     self.logger.info("No release label found in Dockerfile; bumping unnecessary -- osbs will automatically select unique release value at build time")
+                    release = prev_release
 
             # If a release is specified, set it. If it is not specified, remove the field.
             # If osbs finds the field, unset, it will choose a value automatically. This is
             # generally ideal for refresh-images where the only goal is to not collide with
             # a pre-existing image version-release.
             if release is not None:
+                if self.runtime.group_config.public_upstreams:
+                    if not release.endswith(".p?"):
+                        raise ValueError(f"'release' must end with '.p?' for an image with a public upstream but its actual value is {release}")
+                    release = release[:-3]  # strip .p?
+                    if self.private_fix is None:
+                        raise ValueError("self.private_fix must be set (or determined by _merge_source) before rebasing for an image with a public upstream")
+                    release += ".p1" if self.private_fix else ".p0"  # When a private fix is detected, add .p1 to the release component. When it is not, add .p0
                 dfp.labels["release"] = release
                 env_vars["BUILD_RELEASE"] = release
             else:
+                if self.runtime.group_config.public_upstreams:
+                    raise ValueError("We are not able to let OSBS choose a release value for an image with a public upstream.")
                 if "release" in dfp.labels:
                     self.logger.info("Removing release field from Dockerfile")
                     del dfp.labels['release']
@@ -1812,7 +1824,7 @@ class ImageDistGitRepo(DistGitRepo):
             self.source_url, _ = self.runtime.get_public_upstream(out)  # Point to public upstream if there are private components to the URL
 
             # Determine if the source contains private fixes by checking if the private org branch commit exists in the public org
-            if self.metadata.public_upstream_branch:
+            if self.private_fix is None and self.metadata.public_upstream_branch:
                 self.private_fix = not util.is_commit_in_public_upstream(self.source_full_sha, self.metadata.public_upstream_branch, source_dir)
 
             # If this is a go project, parse the Godeps for points of interest
@@ -2001,20 +2013,35 @@ class ImageDistGitRepo(DistGitRepo):
         with df_path.open('w', encoding="utf-8") as df:
             df.write(dockerfile_data)
 
+    def extract_version_release_private_fix(self) -> (str, str, str):
+        """
+        Extract version, release, and private_fix fields from Dockerfile.
+        """
+        prev_release = None
+        private_fix = None
+        df_path = self.dg_path.joinpath('Dockerfile')
+        if df_path.is_file():
+            dfp = DockerfileParser(str(df_path))
+            # extract previous release to enable incrementing it
+            prev_release = dfp.labels.get("release")
+            if prev_release:
+                if prev_release.endswith(".p1"):
+                    private_fix = True
+                elif prev_release.endswith(".p0"):
+                    private_fix = False
+            version = dfp.labels["version"]
+            return version, prev_release, private_fix
+        return None, None, None
+
     def rebase_dir(self, version, release):
         dg_path = self.dg_path
+        df_path = dg_path.joinpath('Dockerfile')
+        prev_release = None
         with Dir(self.distgit_dir):
-
-            prev_release = None
-            df_path = dg_path.joinpath('Dockerfile')
-            if df_path.is_file():
-                dfp = DockerfileParser(str(df_path))
-                # extract previous release to enable incrementing it
-                prev_release = dfp.labels.get("release")
-
-                if version is None and not self.runtime.local:
-                    # Extract the previous version and use that
-                    version = dfp.labels["version"]
+            prev_version, prev_release, _ = self.extract_version_release_private_fix()
+            if version is None and not self.runtime.local:
+                # Extract the previous version and use that
+                version = prev_version
 
             # Make our metadata directory if it does not exist
             util.mkdirs(dg_path.joinpath('.oit'))
@@ -2035,7 +2062,6 @@ class ImageDistGitRepo(DistGitRepo):
             if self.config.content.source.modifications is not Missing:
                 self._run_modifications()
 
-        # TODO: adjust Doozer's execution for private build
         if self.private_fix:
             self.logger.warning("The source of this image contains embargoed fixes.")
 
