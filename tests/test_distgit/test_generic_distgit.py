@@ -606,19 +606,6 @@ class TestGenericDistGit(TestDistgit):
         self.assertEqual(1, len(d.runtime.missing_pkgs))
         self.assertIn("distgit_key image is missing package haproxy", d.runtime.missing_pkgs)
 
-    def test_distgit_is_recent(self):
-        scan_freshness = self.dg.runtime.group_config.scan_freshness = model.Model()
-        self.assertFalse(self.dg.release_is_recent("201901020304"))  # not configured
-
-        scan_freshness.release_regex = r'^(....)(..)(..)(..)'
-        scan_freshness.threshold_hours = 24
-        self.assertFalse(self.dg.release_is_recent("2019"))  # no match by regex
-
-        too_soon = datetime.now() - timedelta(hours=4)
-        self.assertTrue(self.dg.release_is_recent(too_soon.strftime('%Y%m%d%H')))
-        too_stale = datetime.now() - timedelta(hours=25)
-        self.assertFalse(self.dg.release_is_recent(too_stale.strftime('%Y%m%d%H')))
-
 
 if __name__ == "__main__":
     unittest.main()

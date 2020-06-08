@@ -264,7 +264,7 @@ class ImageMetadata(Metadata):
                     raise IOError(f'Unable to determine builder image pullspec from {builder}')
 
                 # builder_image_name example: "openshift/ose-base:ubi8"
-                brew_image_url = self.runtime.resolve_brew_url(builder_image_name)
+                brew_image_url = self.runtime.resolve_brew_image_url(builder_image_name)
                 builder_brew_build = ImageMetadata.builder_image_builds.get(brew_image_url, None)
 
                 if not builder_brew_build:

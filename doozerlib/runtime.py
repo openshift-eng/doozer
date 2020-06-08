@@ -819,7 +819,7 @@ class Runtime(object):
             self.image_map[distgit_name] = meta
         return meta
 
-    def resolve_brew_url(self, image_name_and_version):
+    def resolve_brew_image_url(self, image_name_and_version):
         """
         :param image_name_and_version: The image name to resolve. The image can contain a version tag or sha.
         :return: Returns the pullspec of this image in brew.
@@ -832,7 +832,7 @@ class Runtime(object):
             url = self.group_config.urls.brew_image_host
             ns = self.group_config.urls.brew_image_namespace
             name = image_name_and_version.replace('/', '-')
-            return "/".join(("/".join((url, ns)), name))
+            return "/".join((url, ns, name))
         else:
             # If there is no namespace, just add the image name to the brew image host
             return "/".join((self.group_config.urls.brew_image_host, image_name_and_version))

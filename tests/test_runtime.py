@@ -10,7 +10,7 @@ def stub_runtime():
         latest_parent_version=False,
         logger=logutil.getLogger(__name__),
         stage=False,
-        branch=None,
+        branch='test-branch',
         rhpkg_config="",
     )
     rt.group_config = model.Model()

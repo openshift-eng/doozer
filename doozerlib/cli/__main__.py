@@ -564,7 +564,7 @@ def config_scan_source_changes(runtime, as_yaml):
         # limit brew queries.
         build_root_tag_id_cache = dict()
 
-        def get_build_root_tag_ids(config_meta):
+        def get_build_root_inherited_tags(config_meta):
             # Create a list of tags which contribute RPMs to a given build root
             build_tag = config_meta.branch() + '-build'
             if build_tag in build_root_tag_id_cache:
@@ -593,7 +593,7 @@ def config_scan_source_changes(runtime, as_yaml):
                 if needs_rebuild is False and package_name:  # If we are currently matching, check buildroots to see if it unmatches us
                     for latest_rpm_build in koji_api.getLatestRPMS(tag=meta.branch() + '-candidate', package=package_name)[1]:
                         # Detect if our buildroot changed since the last build of this rpm
-                        rpm_build_root_tag_ids = get_build_root_tag_ids(meta)
+                        rpm_build_root_tag_ids = get_build_root_inherited_tags(meta)
                         build_root_changes = brew.tags_changed_since_build(runtime, koji_api, latest_rpm_build, rpm_build_root_tag_ids)
                         if build_root_changes:
                             changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
@@ -610,11 +610,13 @@ def config_scan_source_changes(runtime, as_yaml):
                         changing_rpm_packages.add(package_name)
                     else:
                         runtime.logger.warning(f"Appears that {dgk} as never been built before; can't determine package name")
-            else:
+            elif meta.meta_type == 'image':
                 if reason:
                     add_assessment_reason(meta, needs_rebuild, reason=reason)
                 if needs_rebuild:
                     changing_image_metas.add(meta)
+            else:
+                raise IOError(f'Unsupported meta type: {meta.meta_type}')
 
         def add_image_meta_change(meta, msg):
             nonlocal changing_image_metas
@@ -625,7 +627,7 @@ def config_scan_source_changes(runtime, as_yaml):
                 add_assessment_reason(descendant_meta, True, f'Ancestor {meta.distgit_key} is changing')
 
         for image_meta in runtime.image_metas():
-            image_change, msg = image_meta.does_image_need_change(changing_rpm_packages, get_build_root_tag_ids(image_meta))
+            image_change, msg = image_meta.does_image_need_change(changing_rpm_packages, get_build_root_inherited_tags(image_meta))
             if image_change:
                 add_image_meta_change(image_meta, msg)
 

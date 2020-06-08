@@ -8,21 +8,22 @@ import os
 import logging
 import tempfile
 import shutil
+import mock
 import flexmock
 try:
     from importlib import reload
 except ImportError:
     pass
-from doozerlib import image, exectools
+from doozerlib import image, exectools, model
 
 TEST_YAML = """---
-name: 'test'
+name: 'openshift/test'
 distgit:
   namespace: 'hello'"""
 
 # base only images have have an additional flag
 TEST_BASE_YAML = """---
-name: 'test_base'
+name: 'openshift/test_base'
 base_only: true
 distgit:
   namespace: 'hello'"""
@@ -148,6 +149,19 @@ class TestImageMetadata(unittest.TestCase):
         self.assertEqual(n, "go-toolset-1.10")
         self.assertEqual(v, "1.10.3")
         self.assertEqual(r, "7")
+
+    def test_get_brew_image_name_short(self):
+        image_model = model.Model({
+            'name': 'openshift/test',
+        })
+        data_obj = model.Model({
+            'key': 'my-distgit',
+            'data': image_model,
+            'filename': 'my-distgit.yaml',
+        })
+        rt = MockRuntime(self.logger)
+        imeta = image.ImageMetadata(rt, data_obj)
+        self.assertEqual(imeta.get_brew_image_name_short(), 'openshift-test')
 
 
 if __name__ == "__main__":
