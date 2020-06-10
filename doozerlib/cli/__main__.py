@@ -267,7 +267,7 @@ def rpms_clone_sources(runtime, output_yml):
               help="Version string to populate in specfile.", required=True)
 @click.option("--release", metavar='RELEASE', default=None,
               help="Release label to populate in specfile.", required=True)
-@click.option("--embargoed", is_flag=True, help="Add .p1 to the release string for all rpms, which indicates those rpms have embargoed fixes")
+@click.option("--embargoed", default=False, is_flag=True, help="Add .p1 to the release string for all rpms, which indicates those rpms have embargoed fixes")
 @click.option('--scratch', default=False, is_flag=True, help='Perform a scratch build.')
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
@@ -459,7 +459,7 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
 
     runtime.initialize(validate_content_sets=True, clone_distgits=True)
 
-    if runtime.group_config.public_upstreams and (release is None or release != "+" and not release.endswith(".p?")):
+    if runtime.group_config.public_upstreams and (release is None or (release != "+" and not release.endswith(".p?"))):
         raise click.BadParameter("You must explicitly specify a `release` ending with `.p?` (or '+') when there is a public upstream mapping in ocp-build-data.")
 
     # This is ok to run if automation is frozen as long as you are not pushing

@@ -1448,7 +1448,7 @@ class ImageDistGitRepo(DistGitRepo):
                     if self.runtime.group_config.public_upstreams:
                         raise ValueError("Failed to bump the release: Neither 'release' is specified in the Dockerfile nor we can use OSBS auto-bumping when a public upstream mapping is defined in ocp-build-data.")
                     self.logger.info("No release label found in Dockerfile; bumping unnecessary -- osbs will automatically select unique release value at build time")
-                    release = prev_release
+                    release = None
 
             # If a release is specified, set it. If it is not specified, remove the field.
             # If osbs finds the field, unset, it will choose a value automatically. This is
@@ -1823,7 +1823,7 @@ class ImageDistGitRepo(DistGitRepo):
             out = out.strip()
             self.source_url, _ = self.runtime.get_public_upstream(out)  # Point to public upstream if there are private components to the URL
 
-            # Determine if the source contains private fixes by checking if the private org branch commit exists in the public org
+            # If private_fix has not already been set (e.g. by --embargoed), determine if the source contains private fixes by checking if the private org branch commit exists in the public org
             if self.private_fix is None and self.metadata.public_upstream_branch:
                 self.private_fix = not util.is_commit_in_public_upstream(self.source_full_sha, self.metadata.public_upstream_branch, source_dir)
 
