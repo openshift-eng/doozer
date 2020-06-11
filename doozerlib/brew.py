@@ -98,21 +98,38 @@ def get_build_objects(ids_or_nvrs, session):
     return [task.result for task in tasks]
 
 
-def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], event: Optional[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
+def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], build_type: Optional[str], event: Optional[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
     """ Get latest builds for multiple Brew components as of given event
 
     :param tag_component_tuples: List of (tag, component_name) tuples
+    :param build_type: if given, only retrieve specified build type (rpm, image)
     :param event: Brew event ID, or None for now.
     :param session: instance of Brew session
-    :return: a list Koji/Brew build objects
+    :return: a list of lists of Koji/Brew build dicts
     """
     tasks = []
     with session.multicall(strict=True) as m:
         for tag, component_name in tag_component_tuples:
-            if not (tag and component_name):
+            if not tag:
                 tasks.append(None)
                 continue
-            tasks.append(m.getLatestBuilds(tag, event=event, package=component_name))
+            tasks.append(m.getLatestBuilds(tag, event=event, package=component_name, type=build_type))
+    return [task.result if task else None for task in tasks]
+
+
+def get_tagged_builds(tags: List[str], build_type: Optional[str], event: Optional[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
+    """ Get tagged builds for multiple Brew tags
+
+    :param tag_component_tuples: List of (tag, component_name) tuples
+    :param build_type: if given, only retrieve specified build type (rpm, image)
+    :param event: Brew event ID, or None for now.
+    :param session: instance of Brew session
+    :return: a list of lists of Koji/Brew build dicts
+    """
+    tasks = []
+    with session.multicall(strict=True) as m:
+        for tag in tags:
+            tasks.append(m.listTagged(tag, event=event, type=build_type))
     return [task.result if task else None for task in tasks]
 
 

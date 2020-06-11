@@ -7,11 +7,12 @@ standard_library.install_aliases()
 from doozerlib import Runtime, Dir
 from doozerlib import state
 from doozerlib.model import Missing
-from doozerlib.brew import get_watch_task_info_copy, get_latest_builds, list_archives_by_builds
+from doozerlib.brew import get_watch_task_info_copy
 from doozerlib import metadata
 from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.cli import cli, pass_runtime, CTX_GLOBAL
 from doozerlib.cli.release_gen_payload import release_gen_payload
+from doozerlib.cli.detect_embargo import detect_embargo
 
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
