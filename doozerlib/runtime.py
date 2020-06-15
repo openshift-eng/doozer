@@ -23,6 +23,7 @@ import signal
 import io
 import pathlib
 import koji
+from typing import Optional
 
 from doozerlib import gitdata
 from . import logutil
@@ -794,7 +795,7 @@ class Runtime(object):
 
         return self.streams[stream_name]
 
-    def get_public_upstream(self, remote_git):
+    def get_public_upstream(self, remote_git: str) -> (str, Optional[str]):
         """
         Some upstream repo are private in order to allow CVE workflows. While we
         may want to build from a private upstream, we don't necessarily want to confuse
@@ -805,7 +806,9 @@ class Runtime(object):
         into a new string with the public prefix in its place. If there is not
         applicable mapping, the incoming url will still be normalized into https.
         :param remote_git: The URL to analyze for private repo patterns.
-        :return: An https normalized remote address with private repo information replaced.
+        :return: tuple (url, branch)
+            - url: An https normalized remote address with private repo information replaced.
+            - branch: Optional public branch name if the public upstream source use a different branch name from the private upstream.
         """
         remote_https = util.convert_remote_git_to_https(remote_git)
 
@@ -815,7 +818,10 @@ class Runtime(object):
             # map and keep track of the longest matching private remote.
             target_priv_prefix = None
             target_pub_prefix = None
-            for priv, pub in self.group_config.public_upstreams.items():
+            target_pub_branch = None
+            for upstream in self.group_config.public_upstreams:
+                priv = upstream["private"]
+                pub = upstream["public"]
                 # priv can be a full repo, or an organization (e.g. git@github.com:openshift)
                 # It will be treated as a prefix to be replaced
                 https_priv_prefix = util.convert_remote_git_to_https(priv)  # Normalize whatever is specified in group.yaml
@@ -825,11 +831,12 @@ class Runtime(object):
                     if not target_priv_prefix or len(https_priv_prefix) > len(target_pub_prefix):
                         target_priv_prefix = https_priv_prefix
                         target_pub_prefix = https_pub_prefix
+                        target_pub_branch = upstream.get("public_branch")
 
             if target_priv_prefix:
-                return f'{target_pub_prefix}{remote_https[len(target_priv_prefix):]}'
+                return (f'{target_pub_prefix}{remote_https[len(target_priv_prefix):]}', target_pub_branch)
 
-        return remote_https
+        return (remote_https, None)
 
     def git_clone(self, remote_url, target_dir, gitargs=None, set_env=None, timeout=0):
         gitargs = gitargs or []
@@ -842,7 +849,7 @@ class Runtime(object):
             # Strip special chars out of normalized url to create a human friendly, but unique filename
             file_friendly_url = normalized_url.split('//')[-1].replace('/', '_')
             repo_dir = os.path.join(git_cache_dir, file_friendly_url)
-            self.logger.info(f'Cache for {remote_url} going to f{repo_dir}')
+            self.logger.info(f'Cache for {remote_url} going to {repo_dir}')
 
             if not os.path.exists(repo_dir):
                 self.logger.info(f'Initializing cache directory for git remote: {remote_url}')
@@ -942,6 +949,13 @@ class Runtime(object):
                 self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, self.source_paths[alias]))
                 return self.source_paths[alias]
 
+            url = source_details["url"]
+            clone_branch, _ = self.detect_remote_source_branch(source_details)
+            if self.group_config.public_upstreams:
+                meta.public_upstream_url, meta.public_upstream_branch = self.get_public_upstream(url)
+                if not meta.public_upstream_branch:  # default to the same branch name as private upstream
+                    meta.public_upstream_branch = clone_branch
+
             # If this source has already been extracted for this working directory
             if os.path.isdir(source_dir):
                 # Store so that the next attempt to resolve the source hits the map
@@ -949,17 +963,16 @@ class Runtime(object):
                 self.logger.info("Source '{}' already exists in (skipping clone): {}".format(alias, source_dir))
                 return source_dir
 
-            clone_branch, _ = self.detect_remote_source_branch(source_details)
-
-            url = source_details["url"]
-
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             try:
                 self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
                 # clone all branches as we must sometimes reference master /OWNERS for maintainer information
                 gitargs = [
-                    '--no-single-branch', '--branch', clone_branch, '--depth', '1'
+                    '--no-single-branch', '--branch', clone_branch
                 ]
+                if not self.group_config.public_upstreams:
+                    # Do a shallow clone only if public upstreams are not specified
+                    gitargs.extend(['--depth', '1'])
                 self.git_clone(url, source_dir, gitargs=gitargs, set_env=constants.GIT_NO_PROMPTS)
                 if meta.commitish:
                     # Commit-ish may not be in the history because of shallow clone. Fetch from upstream if not existing.
@@ -970,9 +983,13 @@ class Runtime(object):
                         self.logger.info(f"Fetching commit-ish {meta.commitish} from upstream")
                         cmd = ["git", "-C", source_dir, "fetch", "origin", "--depth", "1", meta.commitish]
                         exectools.cmd_assert(cmd)
+                # fetch public upstream source
+                if meta.public_upstream_branch:
+                    util.setup_and_fetch_public_upstream_source(meta.public_upstream_url, meta.public_upstream_branch, source_dir)
 
             except IOError as e:
                 self.logger.info("Unable to checkout branch {}: {}".format(clone_branch, str(e)))
+                shutil.rmtree(source_dir)
                 raise DoozerFatalError("Error checking out target branch of source '%s' in: %s" % (alias, source_dir))
 
             # Store so that the next attempt to resolve the source hits the map

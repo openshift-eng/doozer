@@ -14,9 +14,11 @@ services:
     - ./krb5-redhat.conf:/etc/krb5.conf.d/krb5-redhat.conf:ro,cached,z
     - ./brewkoji.conf:/etc/koji.conf.d/brewkoji.conf:ro,cached,z
     - dev-doozer-working-dir:/workspaces/doozer-working-dir:delegated,z
+    - dev-doozer-cache-dir:/workspaces/doozer-cache:delegated,z
     - /var/run/docker.sock:/var/run/docker.sock:z
     working_dir: /workspaces/doozer
     tty: true
     stdin_open: true
 volumes:
   dev-doozer-working-dir:
+  dev-doozer-cache-dir:
