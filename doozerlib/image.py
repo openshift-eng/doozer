@@ -7,6 +7,7 @@ from doozerlib import assertion, exectools
 from doozerlib import brew
 from multiprocessing import Lock
 import json
+import re
 
 
 class ImageMetadata(Metadata):
@@ -390,9 +391,19 @@ def is_image_older_than_rpm(image_meta, image_build_event_id, ri, rpm_entries, c
                     relevant_tags.add(tag_name)
                     continue
 
-                # Now, there are other product's candidate tags to contend with. Since we don't care about
-                # non-release builds from other products, we can filter out those tags. We do this by
-                # querying the tags themselves and seeing if they are 'perm':'trusted'. Trusted tags are those
+                if tag_name.endswith('-candidate'):
+                    # Now we can eliminate any other candidate tags
+                    continue
+
+                if re.match(r".+-rhel-\d+$", tag_name):
+                    # Check for released tag naming convention. e.g. ends with rhel-7 or rhel-8.
+                    relevant_tags.add(tag_name)
+                    continue
+
+                # Now for a fuzzier match assuming naming conventions are not followed.
+                # We don't care about non-release builds from other products / oddball tags, so we can
+                # filter out those tags. We do this by querying the tags themselves and seeing
+                # if they are 'perm':'trusted'. Trusted tags are those
                 # that seem to be related to shipped advisories.
                 # See examples: https://gist.github.com/jupierce/adeb7b2b10f5d225c8090bab80640011
                 tag = koji_api.getTag(tag_name)
@@ -402,7 +413,7 @@ def is_image_older_than_rpm(image_meta, image_build_event_id, ri, rpm_entries, c
                 tag_perm = tag.get('perm', None)
 
                 if not tag_perm:
-                    # Looks to be someone else's candidate tag or other non-shipment related tag.
+                    # Looks to be someone else's unconventional candidate tag or other non-shipment related tag.
                     # rhaos-4.4-rhel-7 has tag_perm=='trusted'
                     # kpatch-kernel-4.18.0-193.6.3.el8_2-build  has tag_perm='admin'
                     continue
@@ -414,7 +425,7 @@ def is_image_older_than_rpm(image_meta, image_build_event_id, ri, rpm_entries, c
 
             if not relevant_tags:
                 # Just a sanity check
-                raise IOError(f'Found no relevant tags which make {rpm_package_name} available to {dgk}')
+                raise IOError(f'Found no relevant tags which make rpm package name {rpm_package_name} available to image {dgk}; rpm_tag_history: {rpm_tag_history}')
 
             # Now we have a list of tags that were conceivably the source of our image build's RPM.
             for rel_tag_name in relevant_tags:
