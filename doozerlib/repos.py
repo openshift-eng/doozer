@@ -274,13 +274,14 @@ class Repos(object):
 
         result = {}
         for a in self._arches:
-            result[a] = []
+            content_sets = []
             for r in self._repos.values():
                 if r.enabled or r.name in enabled_repos:
                     cs = r.content_set(a)
                     if cs:  # possible to be forced off by setting to null
-                        result[a].append(cs)
-
+                        content_sets.append(cs)
+            if content_sets:
+                result[a] = content_sets
         return CONTENT_SETS + yaml.dump(result, default_flow_style=False)
 
     def _validate_content_sets(self, arch, names):
