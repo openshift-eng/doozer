@@ -33,12 +33,13 @@ CONFIG_MODE_DEFAULT = CONFIG_MODES[0]
 
 
 class Metadata(object):
+
     def __init__(self, meta_type, runtime, data_obj: Dict, commitish: Optional[str] = None):
         """
         :param: meta_type - a string. Index to the sub-class <'rpm'|'image'>.
         :param: runtime - a Runtime object.
         :param: name - a filename to load as metadata
-        :param: commitish: If not None, build from the specified commit-ish instead of the branch tip.
+        :param: commitish: If not None, build from the specified upstream commit-ish instead of the branch tip.
         """
         self.meta_type = meta_type
         self.runtime = runtime
@@ -115,11 +116,8 @@ class Metadata(object):
             return self.config.distgit.branch
         return self.runtime.branch
 
-    def brew_tag(self):
-        if self.runtime.brew_tag:
-            return self.runtime.brew_tag
-        else:
-            return '{}-candidate'.format(self.branch())
+    def candidate_brew_tag(self):
+        return '{}-candidate'.format(self.branch())
 
     def get_arches(self):
         """
@@ -151,27 +149,104 @@ class Metadata(object):
             check_f=lambda req: req.code == 200)
         return req.read()
 
-    def get_brew_image_name_short(self):
-        # Get image name in the Brew pullspec. e.g. openshift3/ose-ansible --> openshift3-ose-ansible
-        return self.image_name.replace("/", "-")
+    def get_latest_build(self, default=-1):
+        """
+        :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
+        :return: Returns the most recent build object from koji.
+                 Example https://gist.github.com/jupierce/e6bfd98a3777ae5d56e0f7e92e5db0c9
+        """
+        component_name = self.get_component_name()
+        with self.runtime.pooled_koji_client_session() as koji_api:
+            builds = koji_api.getLatestBuilds(self.candidate_brew_tag(), package=component_name)
+            if not builds:
+                if default != -1:
+                    self.logger.warning("No builds detected for using tag: %s" % (self.candidate_brew_tag()))
+                    return default
+                raise IOError("No builds detected for %s using tag: %s" % (self.qualified_name, self.candidate_brew_tag()))
+            return builds[0]
 
-    def get_component_name(self):
-        # By default, the bugzilla component is the name of the distgit,
-        # but this can be overridden in the config yaml.
-        component_name = self.name
+    def get_latest_build_info(self, default=-1):
+        """
+        Queries brew to determine the most recently built release of the component
+        associated with this image. This method does not rely on the "release"
+        label needing to be present in the Dockerfile.
+        :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
+        :return: A tuple: (component name, version, release); e.g. ("registry-console-docker", "v3.6.173.0.75", "1")
+        """
+        build = self.get_latest_build(default=default)
+        if default != -1 and build == default:
+            return default
+        return build['name'], build['version'], build['release']
 
-        # For apbs, component name seems to have -apb appended.
-        # ex. http://dist-git.host.prod.eng.bos.redhat.com/cgit/apbs/openshift-enterprise-mediawiki/tree/Dockerfile?h=rhaos-3.7-rhel-7
-        if self.namespace == "apbs":
-            component_name = "%s-apb" % component_name
+    def get_component_name(self, default=-1):
+        """
+        :param default: If the component name cannot be determine,
+        :return: Returns the component name of the image. This is the name in the nvr
+        that brew assigns to this image's build.
+        """
+        raise IOError('Subclass must implement')
 
-        if self.namespace == "containers":
-            component_name = "%s-container" % component_name
+    def needs_rebuild(self):
+        """
+        Check whether the commit that we recorded in the distgit content (according to cgit)
+        matches the commit of the source (according to git ls-remote) and has been built
+        (according to brew). Nothing is cloned and no existing clones are consulted.
+        Returns: (<bool>, message). If True, message describing the details is returned. If False,
+                None is returned.
+        """
+        component_name = self.get_component_name(default='')
+        if not component_name:
+            # This can happen for RPMs if they have never been rebased into
+            # distgit.
+            return True, 'Could not find component name; assuming never built'
 
-        if self.config.distgit.component is not Missing:
-            component_name = self.config.distgit.component
+        latest_build = self.get_latest_build(default='')
+        if not latest_build:
+            # Truly never built.
+            return True, f'Component {component_name} has never been built'
 
-        return component_name
+        latest_build_creation_event_id = latest_build['creation_event_id']
+        with self.runtime.pooled_koji_client_session() as koji_api:
+            # getEvent returns something like {'id': 31825801, 'ts': 1591039601.2667}
+            latest_build_creation_ts = int(koji_api.getEvent(latest_build_creation_event_id)['ts'])
+
+        dgr = self.distgit_repo()
+        with Dir(dgr.distgit_dir):
+            ts, _ = exectools.cmd_assert('git show -s --format=%ct HEAD')
+            distgit_head_commit_millis = int(ts)
+
+        one_hour = (1 * 60 * 60 * 1000)  # in milliseconds
+
+        if not dgr.has_source():
+            if distgit_head_commit_millis > latest_build_creation_ts:
+                # Two options:
+                # 1. A user has made a commit to this dist-git only branch and there has been no build attempt
+                # 2. We've already tried a build and the build failed.
+                # To balance these two options, if the diff > 1 hour, request a build.
+                if (distgit_head_commit_millis - latest_build_creation_ts) > one_hour:
+                    return True, 'Distgit only repo commit is at least one hour older than most recent build'
+            return False, 'Distgit only repo commit is older than most recent build'
+
+        # We have source.
+        with Dir(dgr.source_path()):
+            ts, _ = exectools.cmd_assert('git show -s --format=%ct HEAD')
+            upstream_source_head_commit_millis = int(ts)
+
+        if upstream_source_head_commit_millis > distgit_head_commit_millis:
+            # Someone has committed something new upstream. Easy call to build.
+            return True, 'Upstream source commit change newer than distgit commit'
+        else:
+            if distgit_head_commit_millis > latest_build_creation_ts:
+                # Distgit is ahead of the latest build.
+                # We've likely made an attempt to rebase and the subsequent build failed.
+                # Try again if we are at least 6 hours out from the build to avoid
+                # pestering image owners will repeated build failures.
+                if distgit_head_commit_millis - latest_build_creation_ts > (6 * one_hour):
+                    return True, 'It has been 6 hours since last failed build attempt'
+                return False, f'Distgit commit ts {distgit_head_commit_millis} ahead of last successful build ts {latest_build_creation_ts}, but holding off for at least 6 hours before rebuild'
+            else:
+                # The latest build is newer than the latest distgit commit. No change required.
+                return False, 'Latest build is newer than latest distgit commit -- no build required'
 
     def get_maintainer_info(self):
         """

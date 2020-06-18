@@ -19,6 +19,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                 urls=flexmock(brew_image_host="brew-img-host", brew_image_namespace="brew-img-ns"),
                 insecure_source=False,
             ),
+            resolve_brew_image_url=lambda *_, **__: '',
             working_dir="my-working-dir",
             branch="some-branch",
             command="some-command",

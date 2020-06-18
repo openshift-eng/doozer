@@ -16,6 +16,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
 from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, analyze_debug_timing, get_cincinnati_channels, extract_version_fields
 from doozerlib import operator_metadata
+from doozerlib import brew
 import click
 import os
 import shutil
@@ -131,8 +132,6 @@ def print_version(ctx, param, value):
 @click.option('--local/--osbs', default=False, is_flag=True, help='--local to run in local-only mode, --osbs to run on build cluster (default)')
 @click.option("--rhpkg-config", metavar="RHPKG_CONFIG",
               help="Path to rhpkg config file to use instead of system default")
-@click.option("--brew-tag", metavar="BREW_TAG",
-              help="Override brew tag to expect for images built")
 @click.option("--cache-dir", metavar="DIR", required=False, default=None,
               help="A directory in which reference git repos can be stored for caching purposes")
 @click.option("--datastore", metavar="ENV", required=False, default=None,
@@ -523,32 +522,179 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
 @pass_runtime
 def config_scan_source_changes(runtime, as_yaml):
     """
-    Determine if source repo differs from distgit content, according to source git hash.
-    May be used for images and/or rpms.
-    Print a list of configs that were scanned and whether the source differs from the distgit.
+    Determine if any rpms / images need to be rebuilt.
+
+    \b
+    The method will report RPMs in this group if:
+    - Their source git hash no longer matches their upstream source.
+    - The buildroot used by the previous RPM build has changed.
+
+    \b
+    It will report images if the latest build:
+    - Contains an RPM that is about to be rebuilt based on the RPM check above.
+    - If the source git hash no longer matches the upstream source.
+    - Contains any RPM (from anywhere in Red Hat) which has likely changed since the image was built.
+        - This indirectly detects non-member parent image changes.
+    - Was built with a buildroot that has now changed (probably not useful for images, but was cheap to add).
+    - Used a builder image (from anywhere in Red Hat) that has changed.
+    - Used a builder image from this group that is about to change.
+    - If the associated member is a descendant of any image that needs change.
     """
-    _fix_runtime_mode(runtime)
-    CONFIG_RUNTIME_OPTS.pop('disabled')  # let runtime opts govern (defaults to ignore disabled configs)
-    runtime.initialize(**CONFIG_RUNTIME_OPTS)
-    results = dict(rpms=[], images=[])
-    for meta, matches in runtime.scan_distgit_sources():
-        if not (meta.enabled or meta.mode == "disabled" and runtime.load_disabled):
-            continue  # An enabled image's dependents are always loaded. Ignore disabled configs unless explicitly indicated
-        results['rpms' if meta.meta_type == 'rpm' else 'images'].append(
-            dict(name=meta.distgit_key, changed=not matches)
+    runtime.initialize(mode='both', clone_distgits=True)
+
+    all_rpm_metas = set(runtime.rpm_metas())
+    all_image_metas = set(runtime.image_metas())
+
+    changing_rpm_metas = set()
+    changing_image_metas = set()
+    changing_rpm_packages = set()
+    assessment_reason = dict()  # maps metadata qualified_key => message describing change
+
+    def add_assessment_reason(meta, changing, reason):
+        # qualify by whether this is a True or False for change so that we can store both in the map.
+        key = f'{meta.qualified_key}+{changing}'
+        # If the key is already there, don't replace the message as it is likely more interesting
+        # than subsequent reasons (e.g. changing because of ancestry)
+        if key not in assessment_reason:
+            assessment_reason[key] = reason
+
+    with runtime.shared_koji_client_session() as koji_api:
+
+        # Different branches have different build tags & inheritances; cache the results to
+        # limit brew queries.
+        build_root_tag_id_cache = dict()
+
+        def get_build_root_inherited_tags(config_meta):
+            # Create a list of tags which contribute RPMs to a given build root
+            build_tag = config_meta.branch() + '-build'
+            if build_tag in build_root_tag_id_cache:
+                return build_root_tag_id_cache[build_tag]
+            build_tag_ids = [n['parent_id'] for n in koji_api.getFullInheritance(build_tag)]
+            final_build_tag_ids = []
+            for bid in build_tag_ids:
+                if koji_api.getTag(bid)['name'].endswith('-candidate'):
+                    # We don't want out candidate tag to be taken in consideration. It will always
+                    # be changing as after any build.
+                    continue
+                final_build_tag_ids.append(bid)
+            build_root_tag_id_cache[build_tag] = final_build_tag_ids
+            return final_build_tag_ids
+
+        # First, scan for any upstream source code changes. If found, these are guaranteed rebuilds.
+        for meta, change_info in runtime.scan_distgit_sources():
+            needs_rebuild, reason = change_info
+            dgk = meta.distgit_key
+            if not (meta.enabled or meta.mode == "disabled" and runtime.load_disabled):
+                # An enabled image's dependents are always loaded. Ignore disabled configs unless explicitly indicated
+                continue
+
+            if meta.meta_type == 'rpm':
+                package_name = meta.get_package_name(default=None)
+                if needs_rebuild is False and package_name:  # If we are currently matching, check buildroots to see if it unmatches us
+                    for latest_rpm_build in koji_api.getLatestRPMS(tag=meta.branch() + '-candidate', package=package_name)[1]:
+                        # Detect if our buildroot changed since the last build of this rpm
+                        rpm_build_root_tag_ids = get_build_root_inherited_tags(meta)
+                        build_root_changes = brew.tags_changed_since_build(runtime, koji_api, latest_rpm_build, rpm_build_root_tag_ids)
+                        if build_root_changes:
+                            changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
+                            reason = f'Latest rpm was built before buildroot changes: {changing_tag_names}'
+                            runtime.logger.info(f'{dgk} ({latest_rpm_build}) will be rebuilt because it has not been built since a buildroot change: {build_root_changes}')
+                            needs_rebuild = True
+
+                if reason:
+                    add_assessment_reason(meta, needs_rebuild, reason=reason)
+
+                if needs_rebuild:
+                    changing_rpm_metas.add(meta)
+                    if package_name:
+                        changing_rpm_packages.add(package_name)
+                    else:
+                        runtime.logger.warning(f"Appears that {dgk} as never been built before; can't determine package name")
+            elif meta.meta_type == 'image':
+                if reason:
+                    add_assessment_reason(meta, needs_rebuild, reason=reason)
+                if needs_rebuild:
+                    changing_image_metas.add(meta)
+            else:
+                raise IOError(f'Unsupported meta type: {meta.meta_type}')
+
+        def add_image_meta_change(meta, msg):
+            nonlocal changing_image_metas
+            changing_image_metas.add(meta)
+            add_assessment_reason(meta, True, msg)
+            for descendant_meta in meta.get_descendants():
+                changing_image_metas.add(descendant_meta)
+                add_assessment_reason(descendant_meta, True, f'Ancestor {meta.distgit_key} is changing')
+
+        for image_meta in runtime.image_metas():
+            image_change, msg = image_meta.does_image_need_change(changing_rpm_packages, get_build_root_inherited_tags(image_meta))
+            if image_change:
+                add_image_meta_change(image_meta, msg)
+
+        # does_image_name_change() checks whether its non-member builder images have changed
+        # but cannot determine whether member builder images have changed until anticipated
+        # changes have been calculated. The following loop does this. It uses while True,
+        # because technically, we could keep finding changes in intermediate builder images
+        # and have to ensure we pull in images that rely on them in the next iteration.
+        # fyi, changes in direct parent images should be detected by RPM changes, which
+        # does does_image_name_change will detect.
+        while True:
+            changing_image_dgks = [meta.distgit_key for meta in changing_image_metas]
+            for image_meta in all_image_metas:
+                dgk = image_meta.distgit_key
+                if dgk in changing_image_dgks:  # Already in? Don't look any further
+                    continue
+
+                for builder in image_meta.config['from'].builder:
+                    if builder.member and builder.member in changing_image_dgks:
+                        runtime.log_lock.infor(f'{dgk} will be rebuilt due to change in builder member ')
+                        add_image_meta_change(image_meta, f'Builder group member has changed: {builder.member}')
+
+            if len(changing_image_metas) == len(changing_image_dgks):
+                # The for loop didn't find anything new, we can break
+                break
+
+        # We have our information. Now build the output report..
+        image_results = []
+        changing_image_dgks = [meta.distgit_key for meta in changing_image_metas]
+        for image_meta in all_image_metas:
+            dgk = image_meta.distgit_key
+            is_changing = dgk in changing_image_dgks
+            image_results.append({
+                'name': dgk,
+                'changed': is_changing,
+                'reason': assessment_reason.get(f'{image_meta.qualified_key}+{is_changing}', 'No change detected'),
+            })
+
+        rpm_results = []
+        changing_rpm_dgks = [meta.distgit_key for meta in changing_rpm_metas]
+        for rpm_meta in all_rpm_metas:
+            dgk = rpm_meta.distgit_key
+            is_changing = dgk in changing_rpm_dgks
+            rpm_results.append({
+                'name': dgk,
+                'changed': is_changing,
+                'reason': assessment_reason.get(f'{rpm_meta.qualified_key}+{is_changing}', 'No change detected'),
+            })
+
+        results = dict(
+            rpms=rpm_results,
+            images=image_results
         )
 
-    if as_yaml:
-        click.echo('---')
-        click.echo(yaml.safe_dump(results, indent=4))
-        return
+        if as_yaml:
+            click.echo('---')
+            click.echo(yaml.safe_dump(results, indent=4))
+            return
 
-    for kind, items in results.items():
-        if not items:
-            continue
-        click.echo(kind.upper() + ":")
-        for item in items:
-            click.echo('  {} is {}'.format(item['name'], 'changed' if item['changed'] else 'the same'))
+        for kind, items in results.items():
+            if not items:
+                continue
+            click.echo(kind.upper() + ":")
+            for item in items:
+                click.echo('  {} is {} (reason: {})'.format(item['name'],
+                                                            'changed' if item['changed'] else 'the same',
+                                                            item['reason']))
 
 
 @cli.command("images:rebase", short_help="Refresh a group's distgit content from source content.")
@@ -1871,7 +2017,7 @@ that particular tag.
         ose_prefixed_images.append(image)
 
     runtime.logger.info("Fetching latest image builds from Brew...")
-    tag_component_tuples = [(image.brew_tag(), image.get_component_name()) for image in ose_prefixed_images]
+    tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in ose_prefixed_images]
     brew_session = koji.ClientSession(runtime.group_config.urls.brewhub)
     latest_builds = get_latest_builds(tag_component_tuples, brew_session)
 

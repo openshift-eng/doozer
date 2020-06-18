@@ -21,21 +21,7 @@ distgit:
 
 
 class TestMetadataClass(unittest.TestCase):
-    def test_get_brew_image_name_short(self):
-        with mock.patch("doozerlib.metadata.Metadata.__init__", return_value=None):
-            obj = metadata.Metadata()
-            obj.image_name = "openshift3/ose-ansible"
-            expected = "openshift3-ose-ansible"
-            actual = metadata.Metadata.get_brew_image_name_short.__call__(obj)
-            self.assertEqual(expected, actual)
-
-    def test_get_brew_image_name_short(self):
-        with mock.patch("doozerlib.metadata.Metadata.__init__", return_value=None):
-            obj = metadata.Metadata()
-            obj.image_name = "openshift3/ose-ansible"
-            expected = "openshift3-ose-ansible"
-            actual = metadata.Metadata.get_brew_image_name_short.__call__(obj)
-            self.assertEqual(expected, actual)
+    pass
 
 
 class MockRuntime(object):

@@ -10,6 +10,7 @@ import io
 import pathlib
 import json
 import logging
+import glob
 
 from . import exectools
 from .pushd import Dir
@@ -489,3 +490,32 @@ class RPMMetadata(Metadata):
 
             self.post_build(scratch)
             return self.distgit_key, self.build_status
+
+    def get_package_name(self, default=-1):
+        """
+        Returns the brew package name for the distgit repository. Method requires
+        a local clone.
+        :param default: If specified, this value will be returned if package name could not be found. If
+                        not specified, an exception will be raised instead.
+        :return: The package name if detected in the distgit spec file. Otherwise, the specified default.
+                If default is not passed in, an exception will be raised if the package name can't be found.
+        """
+        specs = glob.glob(f'{self.distgit_repo().distgit_dir}/*.spec')
+        if len(specs) != 1:
+            if default != -1:
+                return default
+            raise IOError('Unable to find .spec file in RPM distgit: ' + self.qualified_name)
+
+        spec_path = specs[0]
+        with open(spec_path, mode='r', encoding='utf-8') as f:
+            for line in f.readlines():
+                if line.lower().startswith('name:'):
+                    return line[5:].strip()  # Exclude "Name:" and then remove whitespace
+
+        if default != -1:
+            return default
+
+        raise IOError(f'Unable to find Name: field in rpm spec: {spec_path}')
+
+    def get_component_name(self, default=-1):
+        return self.get_package_name(default=default)
