@@ -825,6 +825,7 @@ class Runtime(object):
         :return: Returns the pullspec of this image in brew.
         e.g. "openshift/jenkins:5"  => "registry-proxy.engineering.redhat.com/rh-osbs/openshift-jenkins:5"
         """
+
         if self.group_config.urls.brew_image_namespace is not Missing:
             # if there is a namespace, we need to flatten the image name.
             # e.g. openshift/image:latest => openshift-image:latest
@@ -832,10 +833,17 @@ class Runtime(object):
             url = self.group_config.urls.brew_image_host
             ns = self.group_config.urls.brew_image_namespace
             name = image_name_and_version.replace('/', '-')
-            return "/".join((url, ns, name))
+            url = "/".join((url, ns, name))
         else:
             # If there is no namespace, just add the image name to the brew image host
-            return "/".join((self.group_config.urls.brew_image_host, image_name_and_version))
+            url = "/".join((self.group_config.urls.brew_image_host, image_name_and_version))
+
+        if ':' not in url.split('/')[-1]:
+            # oc image info will return information about all tagged images. So be explicit
+            # in indicating :latest if there is no tag.
+            url += ':latest'
+
+        return url
 
     def resolve_stream(self, stream_name):
         """
