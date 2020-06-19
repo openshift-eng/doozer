@@ -435,7 +435,7 @@ class RPMMetadata(Metadata):
         if self.private_fix:
             self.logger.warning("Source contains embargoed fixes.")
 
-        with self.runtime.get_dir_lock(self.source_path):
+        with self.runtime.get_named_lock(self.source_path):
 
             with Dir(self.source_path):
                 # Remember what we were at before tito activity. We may need to revert
