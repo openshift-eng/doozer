@@ -266,10 +266,11 @@ def rpms_clone_sources(runtime, output_yml):
               help="Version string to populate in specfile.", required=True)
 @click.option("--release", metavar='RELEASE', default=None,
               help="Release label to populate in specfile.", required=True)
+@click.option("--embargoed", default=False, is_flag=True, help="Add .p1 to the release string for all rpms, which indicates those rpms have embargoed fixes")
 @click.option('--scratch', default=False, is_flag=True, help='Perform a scratch build.')
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
-def rpms_build(runtime, version, release, scratch, dry_run):
+def rpms_build(runtime, version, release, embargoed, scratch, dry_run):
     """
     Attempts to build rpms for all of the defined rpms
     in a group. If an rpm has already been built, it will be treated as
@@ -280,12 +281,20 @@ def rpms_build(runtime, version, release, scratch, dry_run):
         version = version[1:]
 
     runtime.initialize(mode='rpms', clone_distgits=False)
+
+    if runtime.group_config.public_upstreams and (release is None or not release.endswith(".p?")):
+        raise click.BadParameter("You must explicitly specify a `release` ending with `.p?` when there is a public upstream mapping in ocp-build-data.")
+
     runtime.assert_mutation_is_permitted()
 
     items = runtime.rpm_metas()
     if not items:
         runtime.logger.info("No RPMs found. Check the arguments.")
         exit(0)
+
+    if embargoed:
+        for rpm in items:
+            rpm.private_fix = True
 
     results = runtime.parallel_exec(
         lambda rpm, terminate_event: rpm.build_rpm(
@@ -449,6 +458,9 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
 
     runtime.initialize(validate_content_sets=True, clone_distgits=True)
 
+    if runtime.group_config.public_upstreams and (release is None or (release != "+" and not release.endswith(".p?"))):
+        raise click.BadParameter("You must explicitly specify a `release` ending with `.p?` (or '+') when there is a public upstream mapping in ocp-build-data.")
+
     # This is ok to run if automation is frozen as long as you are not pushing
     if push:
         runtime.assert_mutation_is_permitted()
@@ -481,7 +493,9 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
     def dgr_update(image_meta):
         try:
             dgr = image_meta.distgit_repo()
-            (real_version, real_release) = dgr.update_distgit_dir(version, release)
+            _, prev_release, prev_private_fix = dgr.extract_version_release_private_fix()
+            dgr.private_fix = bool(prev_private_fix)  # preserve the .p? field when updating the release
+            (real_version, real_release) = dgr.update_distgit_dir(version, release, prev_release)
             dgr.commit(message)
             dgr.tag(real_version, real_release)
             state.record_image_success(lstate, image_meta)
@@ -703,6 +717,7 @@ def config_scan_source_changes(runtime, as_yaml):
 @click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
               help="Version string to populate in Dockerfiles. \"auto\" gets version from atomic-openshift RPM")
 @click.option("--release", metavar='RELEASE', default=None, help="Release string to populate in Dockerfiles.")
+@click.option("--embargoed", is_flag=True, help="Add .p1 to the release string for all images, which indicates those images have embargoed fixes")
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
@@ -711,7 +726,7 @@ def config_scan_source_changes(runtime, as_yaml):
 @option_commit_message
 @option_push
 @pass_runtime
-def images_rebase(runtime, stream, version, release, repo_type, message, push, upstreams):
+def images_rebase(runtime, stream, version, release, embargoed, repo_type, message, push, upstreams):
     """
     Many of the Dockerfiles stored in distgit are based off of content managed in GitHub.
     For example, openshift-enterprise-node should always closely reflect the changes
@@ -739,6 +754,9 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push, u
         upstream_overrides[m[1]] = m[2]
 
     runtime.initialize(validate_content_sets=True, upstream_commitish_overrides=upstream_overrides)
+
+    if runtime.group_config.public_upstreams and (release is None or release != "+" and not release.endswith(".p?")):
+        raise click.BadParameter("You must explicitly specify a `release` ending with `.p?` (or '+') when there is a public upstream mapping in ocp-build-data.")
 
     # This is ok to run if automation is frozen as long as you are not pushing
     if push:
@@ -773,6 +791,8 @@ def images_rebase(runtime, stream, version, release, repo_type, message, push, u
     def dgr_rebase(image_meta):
         try:
             dgr = image_meta.distgit_repo()
+            if embargoed:
+                dgr.private_fix = True
             (real_version, real_release) = dgr.rebase_dir(version, release)
             sha = dgr.commit(message, log_diff=True)
             dgr.tag(real_version, real_release)

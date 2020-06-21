@@ -442,6 +442,12 @@ class RPMMetadata(Metadata):
                 # to this if we don't push changes back to origin.
                 self.pre_init_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()
 
+            if self.public_upstream_branch:
+                if not release.endswith(".p?"):
+                    raise ValueError(f"'release' must end with '.p?' for an image with a public upstream but its actual value is {release}")
+                release = release[:-3]  # strip .p?
+                release += ".p1" if self.private_fix else ".p0"
+
             self.set_nvr(version, release)
             self.tito_setup()
             self.update_spec()
