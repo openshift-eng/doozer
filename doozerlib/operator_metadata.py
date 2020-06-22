@@ -790,7 +790,7 @@ class OperatorMetadataLatestNvrReporter(object):
 
     @property
     def brew_tag(self):
-        return self.runtime.candidate_brew_tag if self.runtime.candidate_brew_tag else '{}-candidate'.format(self.operator_branch)
+        return self.runtime.get_default_candidate_brew_tag() or '{}-candidate'.format(self.operator_branch)
 
     @property
     def operator_branch(self):

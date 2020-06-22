@@ -462,6 +462,4 @@ class OLMBundle(object):
 
     @property
     def target(self):
-        if hasattr(self.runtime, 'brew_tag') and self.runtime.candidate_brew_tag is not None:
-            return self.runtime.candidate_brew_tag
-        return '{}-candidate'.format(self.branch)
+        return self.runtime.get_default_candidate_brew_tag() or '{}-candidate'.format(self.branch)

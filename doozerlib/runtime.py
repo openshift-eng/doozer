@@ -1245,7 +1245,7 @@ class Runtime(object):
         return self.branch
 
     def get_default_candidate_brew_tag(self):
-        return self.branch + '-candidate'
+        return self.branch + '-candidate' if self.branch else None
 
     def builds_for_group_branch(self):
         # return a dict of all the latest builds for this group, according to
