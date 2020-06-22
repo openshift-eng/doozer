@@ -179,6 +179,10 @@ class Runtime(object):
         # See registry_repo.
         self.source_paths = {}
 
+        # Map of source code repo aliases (e.g. "ose") to a (public_upstream_url, public_upstream_branch) tuple.
+        # See registry_repo.
+        self.public_upstreams = {}
+
         # Map of stream alias to image name.
         self.stream_alias_overrides = {}
 
@@ -995,9 +999,25 @@ class Runtime(object):
         else:
             return None
 
+        def _get_public_upstream_from_cache(alias):
+            if alias in self.public_upstreams:
+                return self.public_upstreams[alias]
+            # public upstream is not found. source is given by --source or --sources?
+            # attempt to determine private upstream URL and branch name
+            out, _ = exectools.cmd_assert(["git", "remote", "get-url", "origin"])
+            url = out.strip()
+            public_upstream_url, public_upstream_branch = self.get_public_upstream(url)
+            if not public_upstream_branch:  # default to the same branch name as private upstream
+                out, _ = exectools.cmd_assert(["git", "symbolic-ref", "--short", "HEAD"])
+                public_upstream_branch = out.strip()
+            self.public_upstreams[alias] = (public_upstream_url, public_upstream_branch)  # cache it! should be atomic and idempotent
+            return public_upstream_url, public_upstream_branch
+
         self.logger.debug("Resolving local source directory for alias {}".format(alias))
         if alias in self.source_paths:
             self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, self.source_paths[alias]))
+            if self.group_config.public_upstreams:
+                meta.public_upstream_url, meta.public_upstream_branch = _get_public_upstream_from_cache(alias)
             return self.source_paths[alias]
 
         # Where the source will land, check early so we know if old or new style
@@ -1014,6 +1034,8 @@ class Runtime(object):
         with self.get_named_lock(source_dir):
             if alias in self.source_paths:  # we checked before, but check again inside the lock
                 self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, self.source_paths[alias]))
+                if self.group_config.public_upstreams:
+                    meta.public_upstream_url, meta.public_upstream_branch = _get_public_upstream_from_cache(alias)
                 return self.source_paths[alias]
 
             url = source_details["url"]
@@ -1022,6 +1044,7 @@ class Runtime(object):
                 meta.public_upstream_url, meta.public_upstream_branch = self.get_public_upstream(url)
                 if not meta.public_upstream_branch:  # default to the same branch name as private upstream
                     meta.public_upstream_branch = clone_branch
+                self.public_upstreams[alias] = (meta.public_upstream_url, meta.public_upstream_branch)  # save to cache
 
             # If this source has already been extracted for this working directory
             if os.path.isdir(source_dir):
