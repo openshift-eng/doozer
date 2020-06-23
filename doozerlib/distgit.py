@@ -1981,7 +1981,7 @@ class ImageDistGitRepo(DistGitRepo):
         df_path = dg_path.joinpath('Dockerfile')
         prev_release = None
         with Dir(self.distgit_dir):
-            prev_version, prev_release, _ = self.extract_version_release_private_fix()
+            prev_version, prev_release, prev_private_fix = self.extract_version_release_private_fix()
             if version is None and not self.runtime.local:
                 # Extract the previous version and use that
                 version = prev_version
@@ -1998,6 +1998,8 @@ class ImageDistGitRepo(DistGitRepo):
                 if self.metadata.config.get('use_source_version', False):
                     dfp = DockerfileParser(str(df_path))
                     version = dfp.labels["version"]
+            else:
+                self.private_fix = bool(prev_private_fix)  # preserve private_fix boolean for distgit-only repo
 
             # Source or not, we should find a Dockerfile in the root at this point or something is wrong
             assertion.isfile(df_path, "Unable to find Dockerfile in distgit root")
