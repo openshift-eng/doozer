@@ -579,18 +579,27 @@ def config_scan_source_changes(runtime, as_yaml):
         build_root_tag_id_cache = dict()
 
         def get_build_root_inherited_tags(config_meta):
-            # Create a list of tags which contribute RPMs to a given build root
+            # Create a {map of tags => tag names} which contribute RPMs to a given build root
             build_tag = config_meta.branch() + '-build'
             if build_tag in build_root_tag_id_cache:
                 return build_root_tag_id_cache[build_tag]
             build_tag_ids = [n['parent_id'] for n in koji_api.getFullInheritance(build_tag)]
-            final_build_tag_ids = []
+            final_build_tag_ids = {}
             for bid in build_tag_ids:
-                if koji_api.getTag(bid)['name'].endswith('-candidate'):
-                    # We don't want out candidate tag to be taken in consideration. It will always
+                tag_name = koji_api.getTag(bid)['name']
+                if tag_name.endswith(('-candidate', '-pending')):
+                    # We don't want our candidate tag to be taken in consideration. It will always
                     # be changing as after any build.
                     continue
-                final_build_tag_ids.append(bid)
+
+                # There are many tags in the buildroots that are unlikely to affect our builds.
+                # (e.g. rhel-7.8-z). Filter these down to those which reasonably affect us.
+                if any(('devtools' in tag_name,  # e.g. devtools-2019.4-rhel-7
+                        '-build' in tag_name,
+                        '-override' in tag_name)):
+                    final_build_tag_ids[bid] = tag_name
+
+            runtime.logger.info(f'For {config_meta.distgit_key}, found buildroot inheritance: {build_tag_ids}; Filtered down to {final_build_tag_ids}')
             build_root_tag_id_cache[build_tag] = final_build_tag_ids
             return final_build_tag_ids
 
@@ -607,7 +616,7 @@ def config_scan_source_changes(runtime, as_yaml):
                 if needs_rebuild is False and package_name:  # If we are currently matching, check buildroots to see if it unmatches us
                     for latest_rpm_build in koji_api.getLatestRPMS(tag=meta.branch() + '-candidate', package=package_name)[1]:
                         # Detect if our buildroot changed since the last build of this rpm
-                        rpm_build_root_tag_ids = get_build_root_inherited_tags(meta)
+                        rpm_build_root_tag_ids = get_build_root_inherited_tags(meta).keys()
                         build_root_changes = brew.tags_changed_since_build(runtime, koji_api, latest_rpm_build, rpm_build_root_tag_ids)
                         if build_root_changes:
                             changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
@@ -641,7 +650,7 @@ def config_scan_source_changes(runtime, as_yaml):
                 add_assessment_reason(descendant_meta, True, f'Ancestor {meta.distgit_key} is changing')
 
         for image_meta in runtime.image_metas():
-            image_change, msg = image_meta.does_image_need_change(changing_rpm_packages, get_build_root_inherited_tags(image_meta))
+            image_change, msg = image_meta.does_image_need_change(changing_rpm_packages, get_build_root_inherited_tags(image_meta).keys())
             if image_change:
                 add_image_meta_change(image_meta, msg)
 
