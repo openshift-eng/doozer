@@ -23,9 +23,6 @@ class MetaDataConfig(object):
     """
     def __init__(self, runtime):
         self.runtime = runtime
-        if self.runtime.remove_tmp_working_dir:
-            print('config:* options require a non-temporary working space. Must run with --working-dir')
-            sys.exit(1)
 
     def update_meta(self, meta, k, v):
         """

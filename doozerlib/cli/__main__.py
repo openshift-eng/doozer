@@ -97,7 +97,7 @@ def print_version(ctx, param, value):
               expose_value=False, is_eager=True)
 @click.option("--data-path", metavar='PATH', default=None,
               help="Git repo or directory containing groups metadata")
-@click.option("--working-dir", metavar='PATH', default=None,
+@click.option("--working-dir", metavar='PATH', required=False,
               help="Existing directory in which file operations should be performed.\n Env var: DOOZER_WORKING_DIR")
 @click.option("--user", metavar='USERNAME', default=None,
               help="Username for rhpkg. Env var: DOOZER_USER")
@@ -236,16 +236,12 @@ option_push = click.option('--push/--no-push', default=False, is_flag=True,
 @pass_runtime
 def images_clone(runtime):
     runtime.initialize(clone_distgits=True)
-    # Never delete after clone; defeats the purpose of cloning
-    runtime.remove_tmp_working_dir = False
 
 
 @cli.command("rpms:clone", help="Clone a group's rpm distgit repos locally.")
 @pass_runtime
 def rpms_clone(runtime):
     runtime.initialize(mode='rpms', clone_distgits=True)
-    # Never delete after clone; defeats the purpose of cloning
-    runtime.remove_tmp_working_dir = False
 
 
 @cli.command("rpms:clone-sources", help="Clone a group's rpm source repos locally and add to sources yaml.")
@@ -255,7 +251,6 @@ def rpms_clone(runtime):
 def rpms_clone_sources(runtime, output_yml):
     runtime.initialize(mode='rpms')
     # Never delete after clone; defeats the purpose of cloning
-    runtime.remove_tmp_working_dir = False
     [r for r in runtime.rpm_metas()]
     if output_yml:
         runtime.export_sources(output_yml)
@@ -469,9 +464,6 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
     runtime.state.pop('images:rebase', None)
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
     lstate = runtime.state[cmd]  # get local convenience copy
-
-    # If not pushing, do not clean up our work
-    runtime.remove_tmp_working_dir = push
 
     # For each "--stream alias image" on the command line, register its existence with
     # the runtime.
@@ -776,9 +768,6 @@ def images_rebase(runtime, stream, version, release, embargoed, repo_type, messa
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
     lstate = runtime.state[cmd]  # get local convenience copy
 
-    # If not pushing, do not clean up our work
-    runtime.remove_tmp_working_dir = push
-
     # For each "--stream alias image" on the command line, register its existence with
     # the runtime.
     for s in stream:
@@ -889,9 +878,6 @@ def images_foreach(runtime, cmd, message, push):
     if push:
         runtime.assert_mutation_is_permitted()
 
-    # If not pushing, do not clean up our work
-    runtime.remove_tmp_working_dir = push
-
     cmd_str = " ".join(cmd)
 
     for image in runtime.image_metas():
@@ -940,9 +926,6 @@ def images_revert(runtime, count, message, push):
     if push:
         runtime.assert_mutation_is_permitted()
 
-    # If not pushing, do not clean up our work
-    runtime.remove_tmp_working_dir = push
-
     count = int(count) - 1
     if count < 0:
         runtime.logger.info("Revert count must be >= 1")
@@ -987,9 +970,6 @@ def images_merge(runtime, target, push, allow_overwrite):
     # This is ok to run if automation is frozen as long as you are not pushing
     if push:
         runtime.assert_mutation_is_permitted()
-
-    # If not pushing, do not clean up our work
-    runtime.remove_tmp_working_dir = push
 
     runtime.clone_distgits()
     dgrs = [image.distgit_repo() for image in runtime.image_metas()]

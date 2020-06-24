@@ -25,6 +25,7 @@ import pathlib
 import koji
 from typing import Optional
 import time
+import sys
 
 from doozerlib import gitdata
 from . import logutil
@@ -65,13 +66,6 @@ signal.signal(signal.SIGTERM, handle_sigterm)
 # Registered atexit to close out debug/record logs
 def close_file(f):
     f.close()
-
-
-def remove_tmp_working_dir(runtime):
-    if runtime.remove_tmp_working_dir:
-        shutil.rmtree(runtime.working_dir)
-    else:
-        click.echo("Temporary working directory preserved by operation: %s" % runtime.working_dir)
 
 
 class WrapException(Exception):
@@ -150,7 +144,6 @@ class Runtime(object):
         if self.latest_parent_version:
             self.ignore_missing_base = True
 
-        self._remove_tmp_working_dir = False
         self.group_config = None
 
         self.cwd = os.getcwd()
@@ -281,15 +274,13 @@ class Runtime(object):
             click.echo("Group must be specified")
             exit(1)
 
-        if self.working_dir is None:
-            self.working_dir = tempfile.mkdtemp(".tmp", "oit-")
-            # This can be set to False by operations which want the working directory to be left around
-            self.remove_tmp_working_dir = True
-            atexit.register(remove_tmp_working_dir, self)
-        else:
-            self.working_dir = os.path.abspath(os.path.expanduser(self.working_dir))
-            if not os.path.isdir(self.working_dir):
-                os.makedirs(self.working_dir)
+        if not self.working_dir:
+            click.echo("No working directory specified")
+            exit(1)
+
+        self.working_dir = os.path.abspath(os.path.expanduser(self.working_dir))
+        if not os.path.isdir(self.working_dir):
+            os.makedirs(self.working_dir)
 
         self.distgits_dir = os.path.join(self.working_dir, "distgits")
         if not os.path.isdir(self.distgits_dir):
@@ -307,6 +298,8 @@ class Runtime(object):
             self.load_disabled = disabled
 
         self.initialize_logging()
+
+        self.logger.debug(f'Doozer initializing with arguments: {sys.argv}')
 
         self.init_state()
 
@@ -740,24 +733,6 @@ class Runtime(object):
     def register_stream_alias(self, alias, image):
         self.logger.info("Registering image stream alias override %s: %s" % (alias, image))
         self.stream_alias_overrides[alias] = image
-
-    @property
-    def remove_tmp_working_dir(self):
-        """
-        Provides thread safe method of checking whether runtime should clean up the working directory.
-        :return: Returns True if the directory should be deleted
-        """
-        with self.log_lock:
-            return self._remove_tmp_working_dir
-
-    @remove_tmp_working_dir.setter
-    def remove_tmp_working_dir(self, remove):
-        """
-        Provides thread safe method of setting whether runtime should clean up the working directory.
-        :param remove: True if the directory should be removed. Only the last value set impacts the decision.
-        """
-        with self.log_lock:
-            self._remove_tmp_working_dir = remove
 
     def add_record(self, record_type, **kwargs):
         """
