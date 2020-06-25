@@ -1477,8 +1477,8 @@ class ImageDistGitRepo(DistGitRepo):
 
     def _get_csv_file_and_refs(self, csv_config):
         gvars = self.runtime.group_config.vars
-        ver = '{}.{}'.format(gvars['MAJOR'], gvars['MINOR'])
-        manifests = os.path.join(self.distgit_dir, csv_config['manifests-dir'], ver)
+        subdir = csv_config.get('bundle-dir', f'{gvars["MAJOR"]}.{gvars["MINOR"]}')
+        manifests = os.path.join(self.distgit_dir, csv_config['manifests-dir'], subdir)
 
         refs = os.path.join(manifests, 'image-references')
         if not os.path.isfile(refs):
