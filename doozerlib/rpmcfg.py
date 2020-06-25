@@ -166,7 +166,7 @@ class RPMMetadata(Metadata):
                 exectools.cmd_assert(f'git reset --hard {self.pre_init_sha}')
                 return
 
-            if not build_spec.push_release_tag:
+            if build_spec.push_release_tag:
                 # If we are configured to push a tag back to the repo, tag the sha we know is there (pre-init)
                 # and push it back.
                 exectools.cmd_assert(["git", "tag", "-am", "Release with doozer", self.tag, self.pre_init_sha])
