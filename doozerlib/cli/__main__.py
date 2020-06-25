@@ -2487,7 +2487,7 @@ def list_olm_operators(runtime):
     runtime.initialize(clone_distgits=False)
 
     for image in runtime.image_metas():
-        if image.config['update-csv'] is not Missing:
+        if image.enabled and image.config['update-csv'] is not Missing:
             print(image.get_component_name())
 
 
