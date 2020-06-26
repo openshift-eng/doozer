@@ -1286,15 +1286,6 @@ class ImageDistGitRepo(DistGitRepo):
             if "com.redhat.delivery.appregistry" in dfp.labels:
                 dfp.labels["com.redhat.delivery.appregistry"] = "false"
 
-            # Environment variables that will be injected into the Dockerfile.
-            env_vars = {  # Set A
-                'OS_GIT_MAJOR': major_version,
-                'OS_GIT_MINOR': minor_version,
-                'OS_GIT_PATCH': patch_version,
-                'OS_GIT_VERSION': f'{major_version}.{minor_version}.{patch_version}-{release}',
-                'OS_GIT_TREE_STATE': 'clean',
-            }
-
             # For each bit of maintainer information we have, create a new label in the image
             maintainer = self.metadata.get_maintainer_info()
             for k, v in maintainer.items():
@@ -1362,10 +1353,9 @@ class ImageDistGitRepo(DistGitRepo):
             # Set image name in case it has changed
             dfp.labels["name"] = self.config.name
 
-            # Set version if it has been specified.
-            if version is not None:
-                dfp.labels["version"] = version
-                env_vars["BUILD_VERSION"] = version
+            # If no version was specified, pull it from the Dockerfile
+            if version is None:
+                version = dfp.labels['version']
 
             # If the release is specified as "+", this means the user wants to bump the release.
             if release == "+":
@@ -1398,15 +1388,20 @@ class ImageDistGitRepo(DistGitRepo):
             # generally ideal for refresh-images where the only goal is to not collide with
             # a pre-existing image version-release.
             if release is not None:
+                pval = '.p0'
                 if self.runtime.group_config.public_upstreams:
                     if not release.endswith(".p?"):
-                        raise ValueError(f"'release' must end with '.p?' for an image with a public upstream but its actual value is {release}")
-                    release = release[:-3]  # strip .p?
+                        raise ValueError(
+                            f"'release' must end with '.p?' for an image with a public upstream but its actual value is {release}")
                     if self.private_fix is None:
                         raise ValueError("self.private_fix must be set (or determined by _merge_source) before rebasing for an image with a public upstream")
-                    release += ".p1" if self.private_fix else ".p0"  # When a private fix is detected, add .p1 to the release component. When it is not, add .p0
-                dfp.labels["release"] = release
-                env_vars["BUILD_RELEASE"] = release
+                    pval = ".p1" if self.private_fix else ".p0"
+
+                if release.endswith(".p?"):
+                    release = release[:-3]  # strip .p?
+                    release += pval
+
+                dfp.labels['release'] = release
             else:
                 if self.runtime.group_config.public_upstreams:
                     raise ValueError("We are not able to let OSBS choose a release value for an image with a public upstream.")
@@ -1431,6 +1426,8 @@ class ImageDistGitRepo(DistGitRepo):
                 if self.source_url:
                     dfp.labels[srclab['source']] = self.source_url
                     dfp.labels[srclab['source_commit']] = '{}/commit/{}'.format(self.source_url, self.source_full_sha)
+
+            dfp.labels['version'] = version
 
             # Remove any programmatic oit comments from previous management
             df_lines = dfp.content.splitlines(False)
@@ -1459,8 +1456,23 @@ class ImageDistGitRepo(DistGitRepo):
                     filtered_content.append(line)
 
             df_lines = filtered_content
-
             df_content = "\n".join(df_lines)
+
+            if release:
+                release_suffix = f'-{release}'
+            else:
+                release_suffix = ''
+
+            # Environment variables that will be injected into the Dockerfile.
+            env_vars = {  # Set A
+                'OS_GIT_MAJOR': major_version,
+                'OS_GIT_MINOR': minor_version,
+                'OS_GIT_PATCH': patch_version,
+                'OS_GIT_VERSION': f'{major_version}.{minor_version}.{patch_version}{release_suffix}',
+                'OS_GIT_TREE_STATE': 'clean',
+                'BUILD_VERSION': version,
+                'BUILD_RELEASE': release if release else '',
+            }
 
             with dg_path.joinpath('Dockerfile').open('w', encoding="utf-8") as df:
                 for comment in oit_comments:
