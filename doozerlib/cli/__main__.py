@@ -670,7 +670,7 @@ def config_scan_source_changes(runtime, as_yaml):
 
                 for builder in image_meta.config['from'].builder:
                     if builder.member and builder.member in changing_image_dgks:
-                        runtime.log_lock.infor(f'{dgk} will be rebuilt due to change in builder member ')
+                        runtime.logger.info(f'{dgk} will be rebuilt due to change in builder member ')
                         add_image_meta_change(image_meta, f'Builder group member has changed: {builder.member}')
 
             if len(changing_image_metas) == len(changing_image_dgks):
