@@ -1470,6 +1470,7 @@ class ImageDistGitRepo(DistGitRepo):
                 'OS_GIT_PATCH': patch_version,
                 'OS_GIT_VERSION': f'{major_version}.{minor_version}.{patch_version}{release_suffix}',
                 'OS_GIT_TREE_STATE': 'clean',
+                'SOURCE_GIT_TREE_STATE': 'clean',
                 'BUILD_VERSION': version,
                 'BUILD_RELEASE': release if release else '',
             }
