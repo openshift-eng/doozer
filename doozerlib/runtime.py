@@ -42,6 +42,7 @@ from .repos import Repos
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 from doozerlib import util
+from doozerlib import brew
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -571,6 +572,13 @@ class Runtime(object):
         debug_log_handler.setLevel(logging.DEBUG)
         self.logger.addHandler(debug_log_handler)
 
+    def build_retrying_koji_client(self):
+        """
+        :return: Returns a new koji client instance that will automatically retry
+        methods when it receives common exceptions (e.g. Connection Reset)
+        """
+        return brew.KojiWrapper(koji.ClientSession(self.group_config.urls.brewhub))
+
     @contextmanager
     def shared_koji_client_session(self):
         """
@@ -580,7 +588,7 @@ class Runtime(object):
         """
         with self.koji_lock:
             if self._koji_client_session is None:
-                self._koji_client_session = koji.ClientSession(self.group_config.urls.brewhub)
+                self._koji_client_session = self.build_retrying_koji_client()
             yield self._koji_client_session
 
     @contextmanager
@@ -597,7 +605,7 @@ class Runtime(object):
                 if len(self.session_pool_available) == 0:
                     if len(self.session_pool) < 30:
                         # pool has not grown to max size;
-                        new_session = koji.ClientSession(self.group_config.urls.brewhub)
+                        new_session = self.build_retrying_koji_client()
                         session_id = len(self.session_pool)
                         self.session_pool[session_id] = new_session
                         session = new_session  # This is what we wil hand to the caller

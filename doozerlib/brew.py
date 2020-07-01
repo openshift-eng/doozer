@@ -8,6 +8,7 @@ import time
 import subprocess
 from multiprocessing import Lock
 import traceback
+import requests
 from typing import List, Tuple, Dict, Optional
 
 from . import logutil
@@ -15,6 +16,7 @@ from . import logutil
 # 3rd party
 import koji
 import koji_cli.lib
+import wrapt
 
 
 logger = logutil.getLogger(__name__)
@@ -167,3 +169,23 @@ def tags_changed_since_build(runtime, koji_client, build, tag_ids):
 
     runtime.logger.debug(f'Found that build of {build_nvr} (event={build_event_id}) occurred before tag changes: {result}')
     return result
+
+
+class KojiWrapper(wrapt.ObjectProxy):
+    """
+    We've see the koji client occasionally get
+    Connection Reset by Peer errors.. "requests.exceptions.ConnectionError: ('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))"
+    Under the theory that these operations just need to be retried,
+    this wrapper will automatically retry all invocations of koji APIs.
+    """
+
+    def __call__(self, *args, **kwargs):
+        retries = 4
+        while retries > 0:
+            try:
+                return self.__wrapped__(*args, **kwargs)
+            except requests.exceptions.ConnectionError as ce:
+                time.sleep(5)
+                retries -= 1
+                if retries == 0:
+                    raise ce
