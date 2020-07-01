@@ -10,3 +10,4 @@ requests
 requests_kerberos
 semver
 boto3
+wrapt

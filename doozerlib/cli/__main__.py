@@ -2047,7 +2047,7 @@ that particular tag.
 
     runtime.logger.info("Fetching latest image builds from Brew...")
     tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in ose_prefixed_images]
-    brew_session = koji.ClientSession(runtime.group_config.urls.brewhub)
+    brew_session = runtime.build_retrying_koji_client()
     latest_builds = get_latest_builds(tag_component_tuples, brew_session)
 
     runtime.logger.info("Fetching pullspecs...")
