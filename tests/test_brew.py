@@ -40,13 +40,13 @@ class TestBrew(unittest.TestCase):
             {"name": "component6", "nvr": "component6-v1.0.0-1.faketag2"},
         ]
 
-        def fake_response(tag, package):
+        def fake_response(tag, package, event=None):
             return mock.MagicMock(result={"name": package, "nvr": f"{package}-v1.0.0-1.{tag}"})
 
         fake_session = mock.MagicMock()
         fake_context_manager = fake_session.multicall.return_value.__enter__.return_value
         fake_context_manager.getLatestBuilds.side_effect = fake_response
-        actual = brew.get_latest_builds(tag_component_tuples, fake_session)
+        actual = brew.get_latest_builds(tag_component_tuples, None, fake_session)
         self.assertListEqual(actual, expected)
 
     def test_list_archives_by_builds(self):
