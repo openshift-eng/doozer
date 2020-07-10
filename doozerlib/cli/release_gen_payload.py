@@ -221,12 +221,14 @@ that particular tag.
             # Not all images are built for non-x86 arches (e.g. kuryr), but they
             # may be mentioned in image references. Thus, make sure there is a tag
             # for every tag we find in x86_64 and provide just a dummy image.
-            for tag_name in mirroring['x86_64-priv' if private else 'x86_64']:
-                if tag_name not in mirroring[key]:
-
-                    if 'cli' not in mirroring[key]:
-                        raise DoozerFatalError('A dummy image is required for tag {} on arch {}, but unable to find cli tag for this arch'.format(tag_name, arch))
-
+            if 'cli' not in mirroring[key]:  # `cli` serves as the dummy image for the replacement
+                if runtime.group_config.public_upstreams and not private:  # If cli is embargoed, it is expected that cli is missing in any non *-priv imagestreams.
+                    runtime.logger.warning(f"Unable to find cli tag from {key} imagestream. Is `cli` image embargoed?")
+                else:  # if CVE embargoes supporting is disabled or the "cli" image is also missing in *-priv namespaces, an error will be raised.
+                    raise DoozerFatalError('A dummy image is required for tag {} on arch {}, but unable to find cli tag for this arch'.format(tag_name, arch))
+            else:
+                extra_tags = mirroring['x86_64-priv' if private else 'x86_64'].keys() - mirroring[key].keys()
+                for tag_name in extra_tags:
                     yellow_print('Unable to find tag {} for arch {} ; substituting cli image'.format(tag_name, arch))
                     tag_list.append({
                         'name': tag_name,
