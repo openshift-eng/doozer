@@ -160,6 +160,7 @@ that particular tag.
             target_is_name = '{}-{}'.format(target_is_name, arch)
             target_is_namespace = '{}-{}'.format(target_is_namespace, arch)
         if private:
+            target_is_name += "-priv"
             target_is_namespace += "-priv"
 
         def build_dest_name(tag_name):
