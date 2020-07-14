@@ -98,10 +98,11 @@ def get_build_objects(ids_or_nvrs, session):
     return [task.result for task in tasks]
 
 
-def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
-    """ Get latest builds for multiple Brew components
+def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], event: Optional[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
+    """ Get latest builds for multiple Brew components as of given event
 
     :param tag_component_tuples: List of (tag, component_name) tuples
+    :param event: Brew event ID, or None for now.
     :param session: instance of Brew session
     :return: a list Koji/Brew build objects
     """
@@ -111,7 +112,7 @@ def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], session: koji
             if not (tag and component_name):
                 tasks.append(None)
                 continue
-            tasks.append(m.getLatestBuilds(tag, package=component_name))
+            tasks.append(m.getLatestBuilds(tag, event=event, package=component_name))
     return [task.result if task else None for task in tasks]
 
 
@@ -129,6 +130,36 @@ def list_archives_by_builds(build_ids: List[int], build_type: str, session: koji
                 tasks.append(None)
                 continue
             tasks.append(m.listArchives(buildID=build_id, type=build_type))
+    return [task.result if task else None for task in tasks]
+
+
+def get_builds_tags(build_nvrs, session=None):
+    """Get tags of multiple Koji/Brew builds
+
+    :param builds_nvrs: list of build nvr strings or numbers.
+    :param session: instance of :class:`koji.ClientSession`
+    :return: a list of Koji/Brew tag lists
+    """
+    tasks = []
+    with session.multicall(strict=True) as m:
+        for nvr in build_nvrs:
+            tasks.append(m.listTags(build=nvr))
+    return [task.result for task in tasks]
+
+
+def list_image_rpms(image_ids: List[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
+    """ Retrieve RPMs in given images
+    :param image_ids: image IDs list
+    :param session: instance of Brew session
+    :return: a list of Koji/Brew RPM lists
+    """
+    tasks = []
+    with session.multicall(strict=True) as m:
+        for image_id in image_ids:
+            if image_id is None:
+                tasks.append(None)
+                continue
+            tasks.append(m.listRPMs(imageID=image_id))
     return [task.result if task else None for task in tasks]
 
 
