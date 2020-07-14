@@ -4,6 +4,7 @@ standard_library.install_aliases()
 from future.utils import as_native_str
 from multiprocessing.dummy import Pool as ThreadPool
 from contextlib import contextmanager
+from collections import namedtuple
 
 import os
 import sys
@@ -109,6 +110,13 @@ def _unpack_tuple_args(func):
         return func(*args)
     return wrapper
 
+
+# A named tuple for caching the result of Runtime._resolve_source.
+SourceResolution = namedtuple('SourceResolution', [
+    'source_path', 'url', 'branch', 'public_upstream_url', 'public_upstream_branch'
+])
+
+
 # ============================================================================
 # Runtime object definition
 # ============================================================================
@@ -176,9 +184,9 @@ class Runtime(object):
         # Map of dist-git repo name -> RPMMetadata object. Populated when group is set.
         self.rpm_map = {}
 
-        # Map of source code repo aliases (e.g. "ose") to a path on the filesystem where it has been cloned.
+        # Map of source code repo aliases (e.g. "ose") to a tuple representing the source resolution cache.
         # See registry_repo.
-        self.source_paths = {}
+        self.source_resolutions = {}
 
         # Map of source code repo aliases (e.g. "ose") to a (public_upstream_url, public_upstream_branch) tuple.
         # See registry_repo.
@@ -708,13 +716,14 @@ class Runtime(object):
         self.logger.info("Registering source alias %s: %s" % (alias, path))
         path = os.path.abspath(path)
         assertion.isdir(path, "Error registering source alias %s" % alias)
-        self.source_paths[alias] = path
         with Dir(path):
+            url = None
             origin_url = "?"
             rc1, out_origin, err_origin = exectools.cmd_gather(
                 ["git", "config", "--get", "remote.origin.url"])
             if rc1 == 0:
-                origin_url = out_origin.strip()
+                url = out_origin.strip()
+                origin_url = url
                 # Usually something like "git@github.com:openshift/origin.git"
                 # But we want an https hyperlink like http://github.com/openshift/origin
                 if origin_url.startswith("git@"):
@@ -728,7 +737,7 @@ class Runtime(object):
             else:
                 self.logger.error("Failed acquiring origin url for source alias %s: %s" % (alias, err_origin))
 
-            branch = "?"
+            branch = None
             rc2, out_branch, err_branch = exectools.cmd_gather(
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"])
             if rc2 == 0:
@@ -736,14 +745,22 @@ class Runtime(object):
             else:
                 self.logger.error("Failed acquiring origin branch for source alias %s: %s" % (alias, err_branch))
 
+            if self.group_config.public_upstreams:
+                if not (url and branch):
+                    raise DoozerFatalError(f"Couldn't detect source URL or branch for local source {path}. Is it a valid Git repo?")
+                public_upstream_url, public_upstream_branch = self.get_public_upstream(url)
+                self.source_resolutions[alias] = SourceResolution(path, url, branch, public_upstream_url, public_upstream_branch or branch)
+            else:
+                self.source_resolutions[alias] = SourceResolution(path, url, None, None)
+
             if 'source_alias' not in self.state:
                 self.state['source_alias'] = {}
             self.state['source_alias'][alias] = {
                 'url': origin_url,
-                'branch': branch,
+                'branch': branch or '?',
                 'path': path
             }
-            self.add_record("source_alias", alias=alias, origin_url=origin_url, branch=branch, path=path)
+            self.add_record("source_alias", alias=alias, origin_url=origin_url, branch=branch or '?', path=path)
 
     def register_stream_alias(self, alias, image):
         self.logger.info("Registering image stream alias override %s: %s" % (alias, image))
@@ -991,7 +1008,7 @@ class Runtime(object):
         # This allows passing `--source <distgit_key> path` to
         # override any source to something local without it
         # having been configured for an alias
-        if self.local and meta.distgit_key in self.source_paths:
+        if self.local and meta.distgit_key in self.source_resolutions:
             source['alias'] = meta.distgit_key
             if 'git' in source:
                 del source['git']
@@ -1007,26 +1024,11 @@ class Runtime(object):
         else:
             return None
 
-        def _get_public_upstream_from_cache(alias):
-            if alias in self.public_upstreams:
-                return self.public_upstreams[alias]
-            # public upstream is not found. source is given by --source or --sources?
-            # attempt to determine private upstream URL and branch name
-            out, _ = exectools.cmd_assert(["git", "remote", "get-url", "origin"])
-            url = out.strip()
-            public_upstream_url, public_upstream_branch = self.get_public_upstream(url)
-            if not public_upstream_branch:  # default to the same branch name as private upstream
-                out, _ = exectools.cmd_assert(["git", "symbolic-ref", "--short", "HEAD"])
-                public_upstream_branch = out.strip()
-            self.public_upstreams[alias] = (public_upstream_url, public_upstream_branch)  # cache it! should be atomic and idempotent
-            return public_upstream_url, public_upstream_branch
-
         self.logger.debug("Resolving local source directory for alias {}".format(alias))
-        if alias in self.source_paths:
-            self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, self.source_paths[alias]))
-            if self.group_config.public_upstreams:
-                meta.public_upstream_url, meta.public_upstream_branch = _get_public_upstream_from_cache(alias)
-            return self.source_paths[alias]
+        if alias in self.source_resolutions:
+            path, _, _, meta.public_upstream_url, meta.public_upstream_branch = self.source_resolutions[alias]
+            self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, path))
+            return path
 
         # Where the source will land, check early so we know if old or new style
         sub_path = '{}{}'.format('global_' if source_details is None else '', alias)
@@ -1040,11 +1042,19 @@ class Runtime(object):
         self.logger.debug("checking for source directory in source_dir: {}".format(source_dir))
 
         with self.get_named_lock(source_dir):
-            if alias in self.source_paths:  # we checked before, but check again inside the lock
-                self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, self.source_paths[alias]))
+            if alias in self.source_resolutions:  # we checked before, but check again inside the lock
+                path, _, _, meta.public_upstream_url, meta.public_upstream_branch = self.source_resolutions[alias]
+                self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, path))
+                return path
+
+            # If this source has already been extracted for this working directory
+            if os.path.isdir(source_dir):
+                # Store so that the next attempt to resolve the source hits the map
+                self.register_source_alias(alias, source_dir)
                 if self.group_config.public_upstreams:
-                    meta.public_upstream_url, meta.public_upstream_branch = _get_public_upstream_from_cache(alias)
-                return self.source_paths[alias]
+                    _, _, _, meta.public_upstream_url, meta.public_upstream_branch = self.source_resolutions[alias]
+                self.logger.info("Source '{}' already exists in (skipping clone): {}".format(alias, source_dir))
+                return source_dir
 
             url = source_details["url"]
             clone_branch, _ = self.detect_remote_source_branch(source_details)
@@ -1052,14 +1062,6 @@ class Runtime(object):
                 meta.public_upstream_url, meta.public_upstream_branch = self.get_public_upstream(url)
                 if not meta.public_upstream_branch:  # default to the same branch name as private upstream
                     meta.public_upstream_branch = clone_branch
-                self.public_upstreams[alias] = (meta.public_upstream_url, meta.public_upstream_branch)  # save to cache
-
-            # If this source has already been extracted for this working directory
-            if os.path.isdir(source_dir):
-                # Store so that the next attempt to resolve the source hits the map
-                self.source_paths[alias] = source_dir
-                self.logger.info("Source '{}' already exists in (skipping clone): {}".format(alias, source_dir))
-                return source_dir
 
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             try:
@@ -1165,7 +1167,7 @@ class Runtime(object):
     def export_sources(self, output):
         self.logger.info('Writing sources to {}'.format(output))
         with io.open(output, 'w', encoding='utf-8') as sources_file:
-            yaml.dump(self.source_paths, sources_file, default_flow_style=False)
+            yaml.dump({k: v.path for k, v in self.source_resolutions.items()}, sources_file, default_flow_style=False)
 
     def auto_version(self, repo_type):
         """
