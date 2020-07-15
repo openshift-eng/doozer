@@ -67,7 +67,7 @@ def urlopen_assert(url_or_req, httpcode=200, retries=3):
                  wait_f=lambda x: time.sleep(30))
 
 
-def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None, set_env=None):
+def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None, set_env=None, strip=False):
     """
     Run a command, logging (using exec_cmd) and raise an exception if the
     return code of the command indicates failure.
@@ -100,6 +100,10 @@ def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None, set_env=None):
         result,
         "Error running [{}] {}. See debug log.".
         format(pushd.Dir.getcwd(), cmd))
+
+    if strip:
+        stdout = stdout.strip()
+        stderr = stderr.strip()
 
     return stdout, stderr
 
