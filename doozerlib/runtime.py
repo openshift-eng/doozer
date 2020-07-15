@@ -748,7 +748,7 @@ class Runtime(object):
 
             if self.group_config.public_upstreams:
                 if not (url and branch):
-                    raise DoozerFatalError(f"Couldn't detect source URL or branch for local source {path}. Is it a valid Git repo?")
+                    raise DoozerFatalError("Couldn't detect source URL or branch for local source {path}. Is it a valid Git repo?".format(path=path))
                 public_upstream_url, public_upstream_branch = self.get_public_upstream(url)
                 self.source_resolutions[alias] = SourceResolution(path, url, branch, public_upstream_url, public_upstream_branch or branch)
             else:
