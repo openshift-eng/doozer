@@ -1,4 +1,7 @@
 from __future__ import absolute_import, print_function, unicode_literals
+import sys
+if sys.version_info < (3, 6):
+    sys.exit('Sorry, Python < 3.6 is not supported.')
 import io
 from .runtime import Runtime
 from .pushd import Dir

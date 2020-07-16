@@ -2331,9 +2331,6 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs):
 
 
 def main():
-    if sys.version_info.major < 3:
-        yellow_print("DEPRECATION: Python 2.7 will reach the end of its life on January 1st, 2020. Please upgrade your Python as Python 2.7 won't be maintained after that date. A future version of Doozer will drop support for Python 2.7.",
-                     file=sys.stderr)
     try:
         if 'REQUESTS_CA_BUNDLE' not in os.environ:
             os.environ['REQUESTS_CA_BUNDLE'] = '/etc/pki/tls/certs/ca-bundle.crt'
