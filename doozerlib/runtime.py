@@ -752,7 +752,7 @@ class Runtime(object):
                 public_upstream_url, public_upstream_branch = self.get_public_upstream(url)
                 self.source_resolutions[alias] = SourceResolution(path, url, branch, public_upstream_url, public_upstream_branch or branch)
             else:
-                self.source_resolutions[alias] = SourceResolution(path, url, None, None)
+                self.source_resolutions[alias] = SourceResolution(path, url, branch, None, None)
 
             if 'source_alias' not in self.state:
                 self.state['source_alias'] = {}
