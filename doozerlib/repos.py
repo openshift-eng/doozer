@@ -267,7 +267,7 @@ class Repos(object):
 
         return result
 
-    def content_sets(self, enabled_repos=[]):
+    def content_sets(self, shipping_repos=[]):
         """Generates a valid content_sets.yml file based on the currently
         configured and enabled repos in the collection. Using the correct
         name for each arch."""
@@ -276,7 +276,7 @@ class Repos(object):
         for a in self._arches:
             content_sets = []
             for r in self._repos.values():
-                if r.enabled or r.name in enabled_repos:
+                if r.enabled or r.name in shipping_repos:
                     cs = r.content_set(a)
                     if cs:  # possible to be forced off by setting to null
                         content_sets.append(cs)
