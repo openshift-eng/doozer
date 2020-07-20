@@ -67,13 +67,14 @@ def urlopen_assert(url_or_req, httpcode=200, retries=3):
                  wait_f=lambda x: time.sleep(30))
 
 
-def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None, set_env=None, strip=False):
+def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None, set_env=None, strip=False):
     """
     Run a command, logging (using exec_cmd) and raise an exception if the
     return code of the command indicates failure.
     Try the command multiple times if requested.
 
     :param cmd <string|list>: A shell command
+    :param realtime: If True, output stdout and stderr in realtime instead of all at once.
     :param retries int: The number of times to try before declaring failure
     :param pollrate int: how long to sleep between tries
     :param on_retry <string|list>: A shell command to run before retrying a failure
@@ -90,7 +91,7 @@ def cmd_assert(cmd, retries=1, pollrate=60, on_retry=None, set_env=None, strip=F
             if on_retry is not None:
                 cmd_gather(on_retry, set_env)  # no real use for the result though
 
-        result, stdout, stderr = cmd_gather(cmd, set_env)
+        result, stdout, stderr = cmd_gather(cmd, set_env=set_env, realtime=realtime)
         if result == SUCCESS:
             break
 
