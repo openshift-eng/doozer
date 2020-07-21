@@ -345,6 +345,7 @@ class Runtime(object):
             self.cache_dir = os.path.abspath(self.cache_dir)
 
         self.group_dir = self.gitdata.data_dir
+        self.group_config = self.get_group_config()
 
         # register the sources
         # For each "--source alias path" on the command line, register its existence with
@@ -382,7 +383,6 @@ class Runtime(object):
             def filter_disabled(n, d):
                 return d.get('mode', 'enabled') in ['enabled', 'disabled']
 
-            self.group_config = self.get_group_config()
             cli_arches_override = flatten_list(self.arches)
 
             if cli_arches_override:  # Highest priority overrides on command line
