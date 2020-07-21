@@ -892,6 +892,12 @@ class Runtime(object):
 
         return self.streams[stream_name]
 
+    def get_stream_names(self):
+        """
+        :return: Returns a list of all streams defined in streams.yaml.
+        """
+        return list(self.streams.keys())
+
     def get_public_upstream(self, remote_git: str) -> (str, Optional[str]):
         """
         Some upstream repo are private in order to allow CVE workflows. While we

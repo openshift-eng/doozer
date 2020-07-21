@@ -1082,6 +1082,38 @@ def print_build_metrics(runtime):
         runtime.logger.info('Unable to determine timestamps from collected info: {}'.format(watch_task_info))
 
 
+@cli.command("images:mirror-streams", short_help="Mirror images in streams.yaml.")
+@click.option('--stream', 'streams', default=None, multiple=True, help='If specified, only these streams will be mirrored.')
+@click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
+@pass_runtime
+def images_mirror_streams(runtime, streams, dry_run):
+    runtime.initialize(clone_distgits=False, clone_source=False)
+    runtime.assert_mutation_is_permitted()
+
+    user_specified = streams is not None
+    if not user_specified:
+        streams = runtime.get_stream_names()
+
+    streams_config = runtime.streams
+    for stream in streams:
+        if streams_config[stream] is Missing:
+            raise IOError(f'Did not find stream {stream} in streams.yml for this group')
+
+        config = streams_config[stream]
+        if config.mirror is True or user_specified:
+            upstream_dest = config.upstream_image
+            if upstream_dest is Missing:
+                raise IOError(f'Unable to mirror stream {stream} as upstream_image is not defined')
+
+            brew_image = config.image
+            brew_pullspec = runtime.resolve_brew_image_url(brew_image)
+            cmd = f'oc image mirror {brew_pullspec} {upstream_dest}'
+            if dry_run:
+                print(f'Would have run: {cmd}')
+            else:
+                exectools.cmd_assert(cmd, retries=3, realtime=True)
+
+
 @cli.command("images:build", short_help="Build images for the group.")
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default='',
