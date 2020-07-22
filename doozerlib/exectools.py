@@ -67,7 +67,8 @@ def urlopen_assert(url_or_req, httpcode=200, retries=3):
                  wait_f=lambda x: time.sleep(30))
 
 
-def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None, set_env=None, strip=False):
+def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None,
+               set_env=None, strip=False, log_stdout: bool = False, log_stderr: bool = True):
     """
     Run a command, logging (using exec_cmd) and raise an exception if the
     return code of the command indicates failure.
@@ -79,6 +80,9 @@ def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None, set_e
     :param pollrate int: how long to sleep between tries
     :param on_retry <string|list>: A shell command to run before retrying a failure
     :param set_env: Dict of env vars to set for command (overriding existing)
+    :param strip: Strip extra whitespace from stdout/err before returning.
+    :param log_stdout: Whether stdout should be logged into the DEBUG log.
+    :param log_stderr: Whether stderr should be logged into the DEBUG log
     :return: (stdout,stderr) if exit code is zero
     """
 
@@ -89,9 +93,11 @@ def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None, set_e
                 format(try_num, pollrate, cmd))
             time.sleep(pollrate)
             if on_retry is not None:
-                cmd_gather(on_retry, set_env)  # no real use for the result though
+                # Run the recovery command between retries. Nothing to collect or assert -- just try it.
+                cmd_gather(on_retry, set_env)
 
-        result, stdout, stderr = cmd_gather(cmd, set_env=set_env, realtime=realtime)
+        result, stdout, stderr = cmd_gather(cmd, set_env=set_env, realtime=realtime, strip=strip,
+                                            log_stdout=log_stdout, log_stderr=log_stderr)
         if result == SUCCESS:
             break
 
@@ -102,10 +108,6 @@ def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None, set_e
         "Error running [{}] {}. See debug log.".
         format(pushd.Dir.getcwd(), cmd))
 
-    if strip:
-        stdout = stdout.strip()
-        stderr = stderr.strip()
-
     return stdout, stderr
 
 
@@ -113,7 +115,7 @@ cmd_counter_lock = threading.Lock()
 cmd_counter = 0  # Increments atomically to help search logs for command start/stop
 
 
-def cmd_gather(cmd, set_env=None, realtime=False):
+def cmd_gather(cmd, set_env=None, realtime=False, strip=False, log_stdout=False, log_stderr=True):
     """
     Runs a command and returns rc,stdout,stderr as a tuple.
 
@@ -124,6 +126,9 @@ def cmd_gather(cmd, set_env=None, realtime=False):
     :param cmd: The command and arguments to execute
     :param set_env: Dict of env vars to override in the current doozer environment.
     :param realtime: If True, output stdout and stderr in realtime instead of all at once.
+    :param strip: Strip extra whitespace from stdout/err before returning.
+    :param log_stdout: Whether stdout should be logged into the DEBUG log.
+    :param log_stderr: Whether stderr should be logged into the DEBUG log
     :return: (rc,stdout,stderr)
     """
     global cmd_counter, cmd_counter_lock
@@ -157,10 +162,9 @@ def cmd_gather(cmd, set_env=None, realtime=False):
                 cmd_list, cwd=cwd, env=env,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except OSError as exc:
-            logger.error("{}: Errored:\nException:\n{}\nIs {} installed?".format(
-                cmd_info, exc, cmd_list[0]
-            ))
-            return exc.errno, "", "See previous error description."
+            description = "{}: Errored:\nException:\n{}\nIs {} installed?".format(cmd_info, exc, cmd_list[0])
+            logger.error(description)
+            return exc.errno, "", description
 
         if not realtime:
             out, err = proc.communicate()
@@ -202,9 +206,16 @@ def cmd_gather(cmd, set_env=None, realtime=False):
         # We read in bytes representing utf-8 output; decode so that python recognizes them as unicode strings
         out = out.decode('utf-8')
         err = err.decode('utf-8')
+
+        log_output_stdout = out if log_stdout else 'STDOUT not logged'
+        log_output_stderr = err if log_stderr else 'STDERR not logged'
         logger.debug(
             "{}: Exited with: {}\nstdout>>{}<<\nstderr>>{}<<\n".
-            format(cmd_info, rc, out, err))
+            format(cmd_info, rc, log_output_stdout, log_output_stderr))
+
+    if strip:
+        out = out.strip()
+        err = err.strip()
 
     return rc, out, err
 
