@@ -578,7 +578,7 @@ class Runtime(object):
         debug_log_handler = logging.FileHandler(self.debug_log_path)
         # Add thread information for debug log
         debug_log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s (%(thread)d) %(message)s'))
-        debug_log_handler.setLevel(logging.DEBUG)
+        debug_log_handler.setLevel(log_level)
         self.logger.addHandler(debug_log_handler)
 
     def build_retrying_koji_client(self):
