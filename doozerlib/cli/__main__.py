@@ -1083,15 +1083,17 @@ def print_build_metrics(runtime):
 
 
 @cli.command("images:mirror-streams", short_help="Mirror images in streams.yaml.")
-@click.option('--stream', 'streams', default=None, multiple=True, help='If specified, only these streams will be mirrored.')
+@click.option('--stream', 'streams', default=[], multiple=True, help='If specified, only these streams will be mirrored.')
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
 def images_mirror_streams(runtime, streams, dry_run):
     runtime.initialize(clone_distgits=False, clone_source=False)
     runtime.assert_mutation_is_permitted()
 
-    user_specified = streams is not None
-    if not user_specified:
+    if streams:
+        user_specified = True
+    else:
+        user_specified = False
         streams = runtime.get_stream_names()
 
     streams_config = runtime.streams
