@@ -1107,6 +1107,12 @@ def images_mirror_streams(runtime, streams, dry_run):
             if upstream_dest is Missing:
                 raise IOError(f'Unable to mirror stream {stream} as upstream_image is not defined')
 
+            # If the configuration specifies a upstream_image_base, then ART is responsible for mirroring
+            # that location and NOT the upstream_image. DPTP will take the upstream_image_base and
+            # formulate the upstream_image.
+            if config.upstream_image_base is not Missing:
+                upstream_dest = config.upstream_image_base
+
             brew_image = config.image
             brew_pullspec = runtime.resolve_brew_image_url(brew_image)
             cmd = f'oc image mirror {brew_pullspec} {upstream_dest}'
