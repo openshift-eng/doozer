@@ -8,7 +8,7 @@ import koji
 import yaml
 import json
 
-from doozerlib import brew, state, exectools
+from doozerlib import brew, state, exectools, embargo_detector
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.image import ImageMetadata
@@ -92,17 +92,22 @@ that particular tag.
     runtime.logger.info("Fetching latest image builds from Brew...")
     tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in ose_prefixed_images]
     brew_session = runtime.build_retrying_koji_client()
-    latest_builds = brew.get_latest_builds(tag_component_tuples, event_id, brew_session)
+    latest_builds = brew.get_latest_builds(tag_component_tuples, "image", event_id, brew_session)
+    latest_builds = [builds[0] if builds else None for builds in latest_builds]  # flatten the data structure
 
     runtime.logger.info("Fetching image archives...")
-    build_ids = [builds[0]["id"] if builds else 0 for builds in latest_builds]
+    build_ids = [b["id"] if b else 0 for b in latest_builds]
     archives_list = brew.list_archives_by_builds(build_ids, "image", brew_session)
 
     embargoed_build_ids = set()  # a set of private image build ids
     if runtime.group_config.public_upstreams:
         # looking for embargoed image builds
-        suspects = [b[0] for b in latest_builds if b]
-        embargoed_build_ids = find_embargoed_builds(suspects, archives_list, brew_session, runtime.logger)
+        detector = embargo_detector.EmbargoDetector(brew_session, runtime.logger)
+        for index, archive_list in enumerate(archives_list):
+            if build_ids[index]:
+                detector.archive_lists[build_ids[index]] = archive_list  # store to EmbargoDetector cache to limit Brew queries
+        suspects = [b for b in latest_builds if b]
+        embargoed_build_ids = detector.find_embargoed_builds(suspects)
 
     runtime.logger.info("Creating mirroring lists...")
 
@@ -131,8 +136,8 @@ that particular tag.
                 digest = archive["extra"]['docker']['digests']['application/vnd.docker.distribution.manifest.v2+json']
                 if not digest.startswith("sha256:"):  # It should start with sha256: for now. Let's raise an error if this changes.
                     raise ValueError(f"Received unrecognized digest {digest} for image {pullspecs[-1]}")
-                mirroring_value = {'version': latest_build[0]["version"], 'release': latest_build[0]["release"], 'image_src': pullspecs[-1], 'digest': digest}
-                embargoed = latest_build[0]["id"] in embargoed_build_ids  # when public_upstreams are not configured, this is always false
+                mirroring_value = {'version': latest_build["version"], 'release': latest_build["release"], 'image_src': pullspecs[-1], 'digest': digest}
+                embargoed = latest_build["id"] in embargoed_build_ids  # when public_upstreams are not configured, this is always false
                 if not embargoed:  # exclude embargoed images from the ocp[-arch] imagestreams
                     runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the public mirroring list with imagestream tag {tag_name}...")
                     mirroring.setdefault(arch, {})[tag_name] = mirroring_value
@@ -263,72 +268,3 @@ that particular tag.
 #         if items:
 #             return items[0]["dockerImageReference"]  # the first item should be latest
 #     return None  # rhcos image is not found
-
-
-def find_embargoed_builds(builds: List[Dict], archives_list: List[Optional[List[Dict]]], brew_session: koji.ClientSession, logger: Logger):
-    """ Find embargoed image builds
-    :builds: list of Brew image build dicts
-    :archives_list: a list of Brew archive lists returned by the koji.listArchives multicall.
-    :brew_session: a Koji.ClientSession instance
-    :logger: a Logger instance
-    """
-    # first, exclude all shipped image builds
-    logger.info("Filtering out shipped image builds...")
-    image_tags_list = brew.get_builds_tags([build["id"] for build in builds], brew_session)
-    suspects = []
-    for index, tags in enumerate(image_tags_list):
-        shipped = False
-        for tag in tags:
-            if tag["name"].endswith("-released"):  # a shipped image build should have a Brew tag like `RHBA-2020:2713-released`
-                shipped = True
-                break
-        if not shipped:
-            suspects.append(builds[index])
-
-    # second, if an image's release field includes .p1, it is embargoed
-    embargoed_build_ids = {b["id"] for b in suspects if b["release"].endswith(".p1")}
-
-    # finally, look at the rpms in .p0 images in case they include unshipped .p1 rpms
-    suspects = [b for b in suspects if b["id"] not in embargoed_build_ids]  # all .p0 images
-    suspect_build_ids = {b["id"] for b in suspects}
-    suspect_archives = [ar for archives in archives_list if archives for ar in archives if ar["build_id"] in suspect_build_ids]
-    logger.info(f'Fetching rpms in {len(suspects)} image builds...')
-    suspect_rpm_lists = brew.list_image_rpms([ar["id"] for ar in suspect_archives], brew_session)
-
-    rpm_shipping_statuses = {}  # cache the RPM shipping status to limit Brew queries. each entry is rpm_build_id -> shipped_or_not.
-
-    for index, rpms in enumerate(suspect_rpm_lists):
-        suspected_rpms = [rpm for rpm in rpms if ".p1" in rpm["release"]]  # there should be a better way to checking the release field...
-        if has_unshipped_rpms(suspected_rpms, rpm_shipping_statuses, brew_session, logger):
-            embargoed_build_ids.add(suspect_archives[index]["build_id"])
-    logger.info(f"Found {len(embargoed_build_ids)} embargoed image builds.")
-    return embargoed_build_ids
-
-
-def has_unshipped_rpms(rpms: List[Dict], rpm_shipping_statuses: Dict[int, bool], brew_session: koji.ClientSession, logger: Logger):
-    """ Determine if any of rpms has NOT shipped
-    :rpms: list of Brew rpm dicts
-    :rpm_ship_status: a dict for caching. key is rpm build id, value is True if shipped.
-    :brew_session: a Koji.ClientSession instance
-    :logger: a Logger instance
-    :returns: True if any of rpms has NOT shipped
-    """
-    for rpm in rpms:
-        if rpm_shipping_statuses.get(rpm["build_id"], None) is False:
-            return True
-    uncached = [rpm for rpm in rpms if rpm["build_id"] not in rpm_shipping_statuses]
-    if not uncached:
-        return False
-    logger.info(f'Checking if {uncached} are shipped...')
-    tag_lists = brew.get_builds_tags([r["build_id"] for r in uncached], brew_session)
-    result = False
-    for index, tags in enumerate(tag_lists):
-        shipped = False
-        for tag in tags:
-            if tag["name"].endswith("-released"):  # a shipped RPM should have a tag like `RHBA-2020:2734-released`
-                shipped = True
-                break
-        rpm_shipping_statuses[uncached[index]["build_id"]] = shipped
-        if not shipped:
-            result = True
-    return result

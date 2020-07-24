@@ -32,21 +32,22 @@ class TestBrew(unittest.TestCase):
             ("faketag2", "component6"),
         ]
         expected = [
-            {"name": "component1", "nvr": "component1-v1.0.0-1.faketag1"},
-            {"name": "component2", "nvr": "component2-v1.0.0-1.faketag2"},
+            [{"name": "component1", "nvr": "component1-v1.0.0-1.faketag1"}],
+            [{"name": "component2", "nvr": "component2-v1.0.0-1.faketag2"}],
+            [{"name": "a", "nvr": "a-v1.0.0-1.faketag2"}, {"name": "b", "nvr": "b-v1.0.0-1.faketag2"}],
+            [{"name": "component4", "nvr": "component4-v1.0.0-1.faketag1"}],
             None,
-            {"name": "component4", "nvr": "component4-v1.0.0-1.faketag1"},
-            None,
-            {"name": "component6", "nvr": "component6-v1.0.0-1.faketag2"},
+            [{"name": "component6", "nvr": "component6-v1.0.0-1.faketag2"}],
         ]
 
-        def fake_response(tag, package, event=None):
-            return mock.MagicMock(result={"name": package, "nvr": f"{package}-v1.0.0-1.{tag}"})
+        def fake_response(tag, event=None, package=None, type=None):
+            packages = [package] if package else ["a", "b"]
+            return mock.MagicMock(result=[{"name": pkg, "nvr": f"{pkg}-v1.0.0-1.{tag}"} for pkg in packages])
 
         fake_session = mock.MagicMock()
         fake_context_manager = fake_session.multicall.return_value.__enter__.return_value
         fake_context_manager.getLatestBuilds.side_effect = fake_response
-        actual = brew.get_latest_builds(tag_component_tuples, None, fake_session)
+        actual = brew.get_latest_builds(tag_component_tuples, None, None, fake_session)
         self.assertListEqual(actual, expected)
 
     def test_list_archives_by_builds(self):
