@@ -525,7 +525,7 @@ class Runtime(object):
         # Read in the streams definite for this group if one exists
         streams = self.gitdata.load_data(key='streams')
         if streams:
-            self.streams = Model(self.gitdata.load_data(key='streams').data)
+            self.streams = Model(self.gitdata.load_data(key='streams', replace_vars=replace_vars).data)
 
         if clone_distgits:
             self.clone_distgits()
