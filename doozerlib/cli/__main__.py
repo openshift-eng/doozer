@@ -521,8 +521,17 @@ def config_scan_source_changes(runtime, as_yaml):
                 changing_image_metas.add(descendant_meta)
                 add_assessment_reason(descendant_meta, True, f'Ancestor {meta.distgit_key} is changing')
 
+        # To limit the size of the queries we are going to make, find the oldest image
+        eldest_image_event_ts = koji_api.getLastEvent()['ts']
         for image_meta in runtime.image_metas():
-            image_change, msg = image_meta.does_image_need_change(changing_rpm_packages, get_build_root_inherited_tags(image_meta).keys())
+            info = image_meta.get_latest_build(default=None)
+            if info is not None:
+                create_event_ts = koji_api.getEvent(info['creation_event_id'])['ts']
+                if create_event_ts < eldest_image_event_ts:
+                    eldest_image_event_ts = create_event_ts
+
+        for image_meta in runtime.image_metas():
+            image_change, msg = image_meta.does_image_need_change(eldest_image_event_ts, changing_rpm_packages, get_build_root_inherited_tags(image_meta).keys())
             if image_change:
                 add_image_meta_change(image_meta, msg)
 

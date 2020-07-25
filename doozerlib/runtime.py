@@ -320,7 +320,7 @@ class Runtime(object):
         self.init_state()
 
         self.db = dblib.DB(self, self.datastore)
-        self.logger.info(f'Initial working directory: {os.getcwd()}')
+        self.logger.info(f'Initial execution (cwd) directory: {os.getcwd()}')
 
         if no_group:
             return  # nothing past here should be run without a group
