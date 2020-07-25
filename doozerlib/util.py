@@ -265,3 +265,23 @@ def get_cincinnati_channels(major, minor):
         prefixes = ['prerelease', 'stable']
 
     return [f'{prefix}-{major}.{minor}' for prefix in prefixes]
+
+
+# Allows you to wrap an object such that you can pass it to lru_cache
+# without it affecting the cached outcome.
+# https://stackoverflow.com/a/38968933
+class BlackBox:
+    """All BlackBoxes are the same."""
+    def __init__(self, contents):
+        # TODO: use a weak reference for contents
+        self._contents = contents
+
+    @property
+    def contents(self):
+        return self._contents
+
+    def __eq__(self, other):
+        return isinstance(other, type(self))
+
+    def __hash__(self):
+        return hash(type(self))

@@ -9,12 +9,13 @@ import pathlib
 import os
 import json
 import re
-from multiprocessing import Lock
+from functools import lru_cache
 
 from doozerlib.pushd import Dir
 from doozerlib import assertion, exectools
 from dockerfile_parse import DockerfileParser
 from doozerlib import brew
+from doozerlib.util import BlackBox
 
 
 class ImageMetadata(Metadata):
@@ -225,17 +226,14 @@ class ImageMetadata(Metadata):
     # images will be assessed.
     # Mapping of brew pullspec => most recent brew build dict.
     builder_image_builds = dict()
-    # Mapping of package build_id to set of build creation_event_ids for that package.
-    package_build_ids_build_events_cache = dict()
 
     def does_image_need_change(self, changing_rpm_packages=[], buildroot_tag_ids=None):
         """
+        TODO: this method is threadsafe now. Call it with threads!
         Answers the question of whether the latest built image needs to be rebuilt based on
-        the RPMs it is dependent on, the state of brew tags of those RPMs, and the list
-        of RPM package names about to change. This method uses threads to accomplish its mission.
-        There is no point in calling it with separate threads as the implementation will block
-        all other callers until the first has completed. The reason is that the internal
-        implementation is not thread-safe.
+        the packages (and therefore RPMs) it is dependent on might have changed in tags
+        relevant to the image. A check is also made if the image depends on a package
+        we know is changing because we are about to rebuild it.
         :param changing_rpm_packages: A list of package names that are about to change.
         :param buildroot_tag_ids: A list of build tag id's that contribute to this image's build root.
         :return: (<bool>, messsage). If True, the image might need to be rebuilt -- the message will say
@@ -245,7 +243,8 @@ class ImageMetadata(Metadata):
         dgk = self.distgit_key
         runtime = self.runtime
 
-        with runtime.shared_koji_client_session() as koji_api:  # Use shared to block all other callers
+        rpm_entries_sets = []  # Each entry is a list of rpms
+        with runtime.pooled_koji_client_session() as koji_api:
 
             image_build = self.get_latest_build(default='')
             if not image_build:
@@ -255,7 +254,7 @@ class ImageMetadata(Metadata):
             self.logger.debug(f'Image {dgk} latest is {image_build}')
 
             image_nvr = image_build['nvr']
-            image_build_event_id = image_build['creation_event_id']  # the brew even that created this build
+            image_build_event_id = image_build['creation_event_id']  # the brew event that created this build
 
             # Very rarely, an image might need to pull an package that is not actually installed in the
             # builder image or in the final image.
@@ -279,7 +278,7 @@ class ImageMetadata(Metadata):
                     if extra_latest_tagging_event > image_build_event_id:
                         return True, f'Image {dgk} is sensitive to extra_packages {extra_package_name} which changed at event {extra_latest_tagging_event}'
 
-            # Collect build times from any build images
+            # Collect build times from any builder images used to create this image
             builders = self.config['from'].builder or []
             for builder in builders:
                 if builder.member:
@@ -326,27 +325,57 @@ class ImageMetadata(Metadata):
                 # Example results of listing RPMs in an given imageID:
                 # https://gist.github.com/jupierce/a8798858104dcf6dfa4bd1d6dd99d2d8
                 rpm_entries = koji_api.listRPMs(imageID=archive['id'])
+                rpm_entries_sets.append(rpm_entries)
 
-                changes_res = runtime.parallel_exec(
-                    f=lambda idx, terminate_event: is_image_older_than_rpm(self, image_build_event_id, idx, rpm_entries, changing_rpm_packages),
-                    args=range(len(rpm_entries)),
-                    n_threads=20
-                )
+        # Leave the pooled koji context manager, so the following method can't deadlock waiting for an api.
+        # The method we call inside also uses the pool.
+        self.logger.info(f'Checking whether any of {len(rpm_entries_sets)} rpms belong to a package where that package has been tagged in relevant tag brew event {image_build_event_id}')
+        for rpm_entries in rpm_entries_sets:
+            changes_res = runtime.parallel_exec(
+                f=lambda idx, terminate_event: is_image_older_than_package_build_tagging(self, image_build_event_id, idx, rpm_entries, changing_rpm_packages),
+                args=range(len(rpm_entries)),
+                n_threads=20
+            )
 
-                for changed, msg in changes_res.get():
-                    if changed:
-                        return True, msg
+            for changed, msg in changes_res.get():
+                if changed:
+                    return True, msg
 
         return False, None
 
 
-# used for mutex in is_image_older_than_rpm()
-older_than_lock = Lock()
+@lru_cache(maxsize=None)  # cache without bound
+def _get_tag_info(koji_api_black_box: BlackBox, tag_name):
+    return koji_api_black_box.contents.getTag(tag_name)
 
 
-def is_image_older_than_rpm(image_meta, image_build_event_id, ri, rpm_entries, changing_rpm_packages):
+def get_tag_info(koji_api, tag_name):
+    # Returns (a potentially cached) copy of this tag's information.
+    # See examples: https://gist.github.com/jupierce/adeb7b2b10f5d225c8090bab80640011
+    return _get_tag_info(BlackBox(koji_api), tag_name)
+
+
+@lru_cache(maxsize=None)  # cache without bound
+def _get_tag_history(koji_api_black_box: BlackBox, limit=None, **kwargs):
+    return koji_api_black_box.contents.tagHistory(queryOpts={'limit': limit}, **kwargs)
+
+
+def get_tag_history(koji_api, limit=None, **kwargs):
+    return _get_tag_history(BlackBox(koji_api), limit=limit, **kwargs)
+
+
+@lru_cache(maxsize=None)  # cache without bound
+def _get_build(koji_api_black_box: BlackBox, *args, **kwargs):
+    return koji_api_black_box.contents.getBuild(*args, **kwargs)
+
+
+def get_build(koji_api, *args, **kwargs):
+    return _get_build(BlackBox(koji_api), *args, **kwargs)
+
+
+def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, ri, rpm_entries, changing_rpm_packages):
     """
-    Determines if a given rpm has builds newer than a build event for an image.
+    Determines if a given rpm is part of a package that has been tagged in a relevant tag AFTER image_build_event_id
     :param image_meta: The image meta object for the image
     :param image_build_event_id: The build event for the image
     :param ri: An index into the list of rpm_entries to check
@@ -355,138 +384,111 @@ def is_image_older_than_rpm(image_meta, image_build_event_id, ri, rpm_entries, c
     :return: (<bool>, message) . If True, the message will describe the change reason. If False, message will
             will be None.
     """
+
+    # If you are considering changing this code, you are going to have to contend with
+    # complex scenarios like: what if we pulled in this RPM by tagging it, intentionally
+    # backlevel, from another product, and we want to keep like that? Or, what if we tagged
+    # in a non-released version of another product to get a fix pre-release of that package,
+    # but subsequently want to inherit later versions the original product ships.
+    # This blunt approach isn't trying to be perfect, but it will rarely do an unnecessary
+    # rebuild and handles those complex scenarios by erring on the side of doing the rebuild.
+
     dgk = image_meta.distgit_key
     runtime = image_meta.runtime
 
     with runtime.pooled_koji_client_session() as koji_api:
 
         rpm_entry = rpm_entries[ri]
-        rpm_name = rpm_entry['name']
         package_build_id = rpm_entry['build_id']
-        pacakge_build = koji_api.getBuild(package_build_id, strict=True)
-        rpm_package_name = pacakge_build['package_name']
-        image_meta.logger.info(
-            f'Checking whether rpm package {rpm_package_name} (rpm {rpm_name}) should cause rebuild for {dgk} [{ri + 1} of {len(rpm_entries)}]')
 
-        if rpm_package_name in changing_rpm_packages:
-            runtime.logger.info(f'{dgk} must change because of forthcoming RPM build {rpm_package_name}')
-            return True, f'image depends on {rpm_package_name}, which was identified as about to change'
+        # Find all tags ever applied to this build. The theory goes is that one of these tags is
+        # the reason why ultimately pulled this particular package build into our image.
+        # Example output: https://gist.github.com/jupierce/dd84a024711e5a6e33f0fc7842c12151
+        build_tag_history = get_tag_history(koji_api, build=package_build_id)
+        build_tag_set = set()
+        for bt_hist_entry in build_tag_history:
+            build_tag_set.add(bt_hist_entry['tag_name'])
 
-        with older_than_lock:
-            # See if we have already computed relevant builds for this package build id
-            tagging_event_infos = ImageMetadata.package_build_ids_build_events_cache.get(package_build_id, None)
-            if tagging_event_infos is None:
-                # This is why the does_image_need_change is not thread safe. We register that
-                # the current thread is going to be looking at this package build FOR THIS image.
-                # If other threads were checking other images, this logic would break.
-                ImageMetadata.package_build_ids_build_events_cache[package_build_id] = []
-            else:
-                # Another thread is already assessing this package. Let it do the work. This
-                # thread would arrive at the same conclusion and waste time doing it.
-                # We return False because we don't know the outcome and don't want to
-                # affect the overall decision
-                return False, None
+        package_name = build_tag_history[0]['name']  # Extract the package name from one of these tagging events
+        if package_name in changing_rpm_packages:
+            image_meta.logger.info(f'Image must ust change because of forthcoming RPM package build {package_name}')
+            return True, f'Image depends on package {package_name}, which was identified as about to change'
 
-        if not tagging_event_infos:
-            # THIS thread has been chosen to do the work of finding build events and determining
-            # whether those builds affect this image.
+        # Now, collect a list of all tagging events that have applied to this PACKAGE for a long while.
+        # This method caches and is thread safe. This is a big query, so we only want to do it
+        # once per package.
+        # This could be a BUNCH of tags that are irrelevant - tags for RHEL8 & RHEL7 / etc. To
+        # winnow this list to something reasonable, we only care about tags we ALSO find in
+        # the tags applied to the specific package build in our image (build_tag_history). Thus,
+        # if our build is RHEL7, we won't accident detect a random RHEL8 tag as being relevant.
+        package_tag_history = get_tag_history(koji_api, limit=1000, package=package_name)
 
-            # If you are considering changing this code, you are going to have to contend with
-            # complex scenarios like: what if we pulled in this RPM by tagging it, intentionally
-            # backlevel, from another product and want to keep like that? Or, what if we tagged
-            # in a non-released version of another product to get a fix pre-release of that package,
-            # but subsequently want to inherit later versions the original product ships.
-            # This blunt approach isn't trying to be perfect, but it will rarely do an unnecessary
-            # rebuild and handles those complex scenarios by erring on the side of doing the rebuild.
+        relevant_tagging_events = {}  # tag_name => brew_event which may cause our next image build to pull in a new build of the package
+        for tag_event in package_tag_history:
+            tag_name = tag_event['tag_name']
 
-            # To begin...
-            # Acquire a history of tags that have been applied to this build. These could be
-            # our group's tag (e.g. rhaos-...), or other product tags (e.g. if RHEL shipped the package and
-            # we pulled it from a repo or from a base image).
-            # Example output: https://gist.github.com/jupierce/c2f7311cc976e8cb5da4040c89356899
-            rpm_tag_history = koji_api.tagHistory(build=package_build_id, queryOpts={'order': 'create_event'})
+            if tag_name not in build_tag_set:
+                # We exclude any tag that wasn't involved in how our existing image found the package
+                continue
 
-            relevant_tags = set()
-            for tag_event in rpm_tag_history:
-                tag_name = tag_event['tag_name']
+            if tag_name == 'trashcan' or '-private' in tag_name or 'deleted' in tag_name:
+                # Exclude garbage tags
+                continue
 
-                if tag_name.endswith(('-released', '-set')):
-                    # Ignore errata tags (e.g. RHBA-2020:2309-released) and tags like rhel-8.0.0-z-batch-0.3-set
-                    continue
+            if tag_name.endswith(('-released', '-set', '-pending', '-backup')):
+                # Ignore errata tags (e.g. RHBA-2020:2309-released, RHBA-2020:3027-pending) and tags like rhel-8.0.0-z-batch-0.3-set
+                continue
 
-                if tag_name.startswith(image_meta.branch()):
-                    # If this was tagged with our brew_tag or brew_tag-candidate, we want to
-                    # check it.
-                    relevant_tags.add(tag_name)
-                    continue
+            if tag_name.startswith(image_meta.branch()):
+                # If this was tagged with this image's brew_tag or brew_tag-candidate, it likely
+                # can affect our next build.
+                relevant_tagging_events[tag_name] = tag_event['create_event']
+                continue
 
-                if tag_name.endswith('-candidate'):
-                    # Now we can eliminate any other candidate tags
-                    continue
+            if tag_name.endswith(('-candidate', '-build')):
+                # Now we can eliminate any other candidate tags and build tags
+                continue
 
-                if re.match(r".+-rhel-\d+$", tag_name):
-                    # Check for released tag naming convention. e.g. ends with rhel-7 or rhel-8.
-                    relevant_tags.add(tag_name)
-                    continue
+            if re.match(r".+-rhel-\d+$", tag_name):
+                # Check for released tag naming convention. e.g. ends with rhel-7 or rhel-8.
+                relevant_tagging_events[tag_name] = tag_event['create_event']
+                continue
 
-                # Now for a fuzzier match assuming naming conventions are not followed.
-                # We don't care about non-release builds from other products / oddball tags, so we can
-                # filter out those tags. We do this by querying the tags themselves and seeing
-                # if they are 'perm':'trusted'. Trusted tags are those
-                # that seem to be related to shipped advisories.
-                # See examples: https://gist.github.com/jupierce/adeb7b2b10f5d225c8090bab80640011
-                tag = koji_api.getTag(tag_name)
-                if not tag:
-                    # Some sort of pseudo tag like rhel-8.0.0-z-batch-0.3-set
-                    continue
-                tag_perm = tag.get('perm', None)
+            # Now for a fuzzier match assuming naming conventions are not followed.
+            # We don't care about non-release builds from other products / oddball tags, so we can
+            # filter out those tags. We do this by querying the tags themselves and seeing
+            # if they are 'perm':'trusted'. Trusted tags are those
+            # that seem to be related to shipped advisories.
+            # See examples: https://gist.github.com/jupierce/adeb7b2b10f5d225c8090bab80640011
+            tag_info = get_tag_info(koji_api, tag_name)   # This method is cached and thread safe.
+            if not tag_info:
+                # Some sort of pseudo tag like rhel-8.0.0-z-batch-0.3-set
+                continue
 
-                if not tag_perm:
-                    # Looks to be someone else's unconventional candidate tag or other non-shipment related tag.
-                    # rhaos-4.4-rhel-7 has tag_perm=='trusted'
-                    # kpatch-kernel-4.18.0-193.6.3.el8_2-build  has tag_perm='admin'
-                    continue
+            tag_perm = tag_info.get('perm', None)
 
-                # tag_name now represents indicates another product shipped this build. Through various
-                # methods, our image build could have pick it up from this location. We aren't going to
-                # try to figure it out for certain -- just add it to the list of possibilities.
-                relevant_tags.add(tag_name)
+            if not tag_perm:
+                # Looks to be someone else's unconventional candidate tag or other non-shipment related tag.
+                # rhaos-4.4-rhel-7 has tag_perm=='trusted'
+                # kpatch-kernel-4.18.0-193.6.3.el8_2-build  has tag_perm='admin'
+                continue
 
-            if not relevant_tags:
-                # Just a sanity check
-                raise IOError(f'Found no relevant tags which make rpm package name {rpm_package_name} available to image {dgk}; rpm_tag_history: {rpm_tag_history}')
+            # If we arrive here, register the tag as relevant
+            relevant_tagging_events[tag_name] = tag_event['create_event']
 
-            # Now we have a list of tags that were conceivably the source of our image build's RPM.
-            tagging_event_infos = {}  # A map of tag names to the most recent tagging even for a specific package.
-            for rel_tag_name in relevant_tags:
-                # Let's determine if a later package has been tagged with this relevant tag.
-                # Here's an aspect to think about: we don't care when the RPM was built (it
-                # may have been built years ago). We only care about when it was tagged into
-                # a relevant tag.
-                # Example output: https://gist.github.com/jupierce/3bbc8be7265348a8f549d401664c9972
-                tagging_info = koji_api.tagHistory(package=rpm_package_name, tag=rel_tag_name, queryOpts={'limit': 1})[0]
-                tagging_event_infos[rel_tag_name] = tagging_info['create_event']
+        if not relevant_tagging_events:
+            raise IOError(f'Did not find any relevant tags for package "{package_name}". It was buildId {package_build_id} and had build tags {build_tag_set}. How did it get into our image?')
 
-            # Record this list of events against the package build id so we don't have to do this
-            # calculation again (many images likely use similar rpm package builds).
-            with older_than_lock:
-                # This is not perfect -- another thread may also have computed this for another
-                # image, but we don't want to hold the lock for that long. The race condition is
-                # safe to allow.
-                ImageMetadata.package_build_ids_build_events_cache[package_build_id] = tagging_event_infos
-
-        # We have a list of tagging events which might affect what we will pull in from tags
-        # which have previously been applied to a package build we pulled into the latest image.
-        # See if those tagging events happened more recently than our latest image build. If they have, when we
-        # rebuild, those tags might contribute the new RPM to the new image. If they don't that is
-        # also fine. The new latest image will have a creation_event_id newer than the tagging events,
-        # and we will not retrigger this logic.
-        for rel_tag_name, rel_tagging_event_id in tagging_event_infos.items():
+        for tag_name, rel_tagging_event_id in relevant_tagging_events.items():
+            # tag_name now represents indicates another product shipped this build. Through various
+            # methods, our image build could have picked it up from a yum repo associated with this tag.
+            # We aren't going to try to figure it out for certain. Just see if our package changed
+            # with respect to this relevant tag AFTER our image was built.
             if rel_tagging_event_id > image_build_event_id:
                 # This tagging occurred after our image was built and was tagged with
                 # a tag that may have affected the image's inputs. Rebuild to be
                 # certain.
-                msg = f'Possible rpm change because of new tagging event for package {rpm_package_name} in tag {rel_tag_name}'
+                msg = f'Possible rpm change because package "{package_name}" changed in tag "{tag_name}"'
                 image_meta.logger.info(msg)
                 # For the humans reading the output, let's output the tag names that mattered.
                 return True, msg
