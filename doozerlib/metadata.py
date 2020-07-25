@@ -7,6 +7,7 @@ from retry import retry
 import requests
 import yaml
 from collections import OrderedDict
+from functools import lru_cache
 
 from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
