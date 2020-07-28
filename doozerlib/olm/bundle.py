@@ -444,7 +444,7 @@ class OLMBundle(object):
         versions = 'v4.5'
 
         return {
-            'com.redhat.delivery.backport': 'true',
+            # 'com.redhat.delivery.backport': 'true',
             'com.redhat.delivery.operator.bundle': 'true',
             'com.redhat.openshift.versions': versions,
         }
