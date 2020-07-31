@@ -576,7 +576,14 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
             all_results_js_path = cov_path.joinpath(all_js)
             all_results_js_path.write_text(all_results_js, encoding='utf-8')
 
-            all_results_html, _ = run_docker_cov(f'cshtml /cov/{all_js}')
+            all_results_html = "<html>Error generating HTML report.</html>"
+            try:
+                # Rarely, cshtml just outputs empty html and rc==1; just ignore it.
+                all_results_html, _ = run_docker_cov(f'cshtml /cov/{all_js}')
+            except:
+                self.logger.warning(f'Error generating HTML report for {str(archive_all_results_js_path)}')
+                pass
+
             all_results_html_path = cov_path.joinpath(all_html)
             all_results_html_path.write_text(all_results_html, encoding='utf-8')
 
@@ -601,7 +608,15 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
                     break
 
             archive_diff_results_js_path.write_text(diff_results_js, encoding='utf-8')
-            diff_results_html, _ = exectools.cmd_assert(f'cshtml {str(archive_diff_results_js_path)}')
+
+            diff_results_html = "<html>Error generating HTML report.</html>"
+            try:
+                # Rarely, cshtml just outputs empty html and rc==1; just ignore it.
+                diff_results_html, _ = exectools.cmd_assert(f'cshtml {str(archive_diff_results_js_path)}')
+            except:
+                self.logger.warning(f'Error generating HTML report for {str(archive_diff_results_js_path)}')
+                pass
+
             archive_diff_results_html_path.write_text(diff_results_html, encoding='utf-8')
 
             write_record()
