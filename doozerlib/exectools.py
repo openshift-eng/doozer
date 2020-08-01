@@ -14,6 +14,7 @@ import threading
 import platform
 import sys
 import urllib
+import errno
 
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
@@ -183,25 +184,40 @@ def cmd_gather(cmd, set_env=None, realtime=False, strip=False, log_stdout=False,
             fcntl(proc.stderr, F_SETFL, flags | O_NONBLOCK)
 
             rc = None
-            while rc is None:
+            stdout_complete = False
+            stderr_complete = False
+            while not stdout_complete or not stderr_complete or rc is None:
                 output = None
                 try:
-                    output = read(proc.stdout.fileno(), 256)
-                    green_print(output.rstrip())
-                    out += output
-                except OSError:
-                    pass
+                    output = read(proc.stdout.fileno(), 4096)
+                    if output:
+                        green_print(output.rstrip())
+                        out += output
+                    else:
+                        stdout_complete = True
+                except OSError as ose:
+                    if ose.errno == errno.EAGAIN or ose.errno == errno.EWOULDBLOCK:
+                        pass  # It is supposed to raise one of these exceptions
+                    else:
+                        raise
 
                 error = None
                 try:
-                    error = read(proc.stderr.fileno(), 256)
-                    yellow_print(error.rstrip())
-                    out += error
-                except OSError:
-                    pass
+                    error = read(proc.stderr.fileno(), 4096)
+                    if error:
+                        yellow_print(error.rstrip())
+                        out += error
+                    else:
+                        stderr_complete = True
+                except OSError as ose:
+                    if ose.errno == errno.EAGAIN or ose.errno == errno.EWOULDBLOCK:
+                        pass  # It is supposed to raise one of these exceptions
+                    else:
+                        raise
 
-                rc = proc.poll()
-                time.sleep(0.0001)  # reduce busy-wait
+                if rc is None:
+                    rc = proc.poll()
+                    time.sleep(0.5)  # reduce busy-wait
 
         # We read in bytes representing utf-8 output; decode so that python recognizes them as unicode strings
         out = out.decode('utf-8')
