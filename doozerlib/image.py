@@ -86,6 +86,10 @@ class ImageMetadata(Metadata):
         """
         return self.config.base_only
 
+    @property
+    def is_payload(self):
+        return self.config.get('for_payload', False)
+
     def get_component_name(self, default=-1):
         """
         :param default: Not used. Here to stay consistent with similar rpmcfg.get_component_name

@@ -77,20 +77,22 @@ that particular tag.
     no_build_items = []
     invalid_name_items = []
 
-    ose_prefixed_images = []
+    payload_images = []
     for image in images:
         # Per clayton:
         """Tim Bielawa: note to self: is only for `ose-` prefixed images
         Clayton Coleman: Yes, Get with the naming system or get out of town
         """
-        if not image.image_name_short.startswith("ose-"):
-            invalid_name_items.append(image.image_name_short)
-            red_print("NOT adding to IS (does not meet name/version conventions): {}".format(image.image_name_short))
-            continue
-        ose_prefixed_images.append(image)
+        if image.is_payload:
+            if not image.image_name_short.startswith("ose-"):
+                invalid_name_items.append(image.image_name_short)
+                red_print("NOT adding to IS (does not meet name/version conventions): {}".format(image.image_name_short))
+                continue
+            else:
+                payload_images.append(image)
 
     runtime.logger.info("Fetching latest image builds from Brew...")
-    tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in ose_prefixed_images]
+    tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in payload_images]
     brew_session = runtime.build_retrying_koji_client()
     latest_builds = brew.get_latest_builds(tag_component_tuples, "image", event_id, brew_session)
     latest_builds = [builds[0] if builds else None for builds in latest_builds]  # flatten the data structure
@@ -115,7 +117,7 @@ that particular tag.
 
     # These will map[arch] -> map[image_name] -> { version: version, release: release, image_src: image_src }
     mirroring = {}
-    for i, image in enumerate(ose_prefixed_images):
+    for i, image in enumerate(payload_images):
         latest_build = latest_builds[i]
         archives = archives_list[i]
         error = None
