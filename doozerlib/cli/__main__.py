@@ -2003,7 +2003,7 @@ def release_calc_previous(version, arch, graph_url):
         # If a release name in stable contains 'nightly', it was promoted as a hotfix for a customer.
         # We include all of these versions so that customers can safely upgrade from those hotfixes
         # to this new non-nightly.
-        upgrade_from.update(filter(lambda release: 'nightly' in release, stable_channel_versions))
+        upgrade_from.update(filter(lambda release: 'nightly' in release, stable_channel_versions)[:10])
 
     results = sort_semver(list(upgrade_from))
     print(','.join(results))
