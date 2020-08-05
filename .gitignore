@@ -24,3 +24,6 @@ cover
 
 # Ignore .vscode local config files
 .vscode
+
+# Ignore ocp-build-dat
+ocp-build-data/

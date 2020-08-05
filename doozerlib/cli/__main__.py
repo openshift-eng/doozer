@@ -184,7 +184,6 @@ def rpms_build(runtime, version, release, embargoed, scratch, dry_run):
 @pass_runtime
 def images_list(runtime):
     runtime.initialize(clone_distgits=False)
-
     click.echo("------------------------------------------")
     for image in runtime.image_metas():
         click.echo(image.qualified_name)
@@ -1126,6 +1125,8 @@ def images_mirror_streams(runtime, streams, dry_run):
             brew_image = config.image
             brew_pullspec = runtime.resolve_brew_image_url(brew_image)
             cmd = f'oc image mirror {brew_pullspec} {upstream_dest}'
+            if runtime.registry_config is not None:
+                cmd += " --registry-config={}".format(runtime.registry_config)
             if dry_run:
                 print(f'Would have run: {cmd}')
             else:
@@ -1240,7 +1241,7 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
     results = runtime.parallel_exec(
         lambda dgr, terminate_event: dgr.build_container(
             active_profile, push_to_defaults, additional_registries=push_to,
-            terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1), dry_run=dry_run),
+            terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1), dry_run=dry_run, registry_config=runtime.registry_config),
         items, n_threads=threads)
     results = results.get()
 
@@ -1261,7 +1262,7 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
 
     # Push all late images
     for image in runtime.image_metas():
-        image.distgit_repo().push_image([], push_to_defaults, additional_registries=push_to, push_late=True)
+        image.distgit_repo().push_image([], push_to_defaults, additional_registries=push_to, push_late=True, registry_config=runtime.registry_config)
 
     state.record_image_finish(lstate)
 
@@ -1356,7 +1357,7 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
         results = runtime.parallel_exec(
             lambda img, terminate_event:
                 img.distgit_repo().push_image(tag, to_defaults, additional_registries,
-                                              version_release_tuple=version_release_tuple, dry_run=dry_run),
+                                              version_release_tuple=version_release_tuple, dry_run=dry_run, registry_config=runtime.registry_config),
             items,
             n_threads=4
         )
@@ -1373,7 +1374,7 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, dry_r
         if image.config.push.late is True:
             image.distgit_repo().push_image(tag, to_defaults, additional_registries,
                                             version_release_tuple=version_release_tuple,
-                                            push_late=True, dry_run=dry_run)
+                                            push_late=True, dry_run=dry_run, registry_config=runtime.registry_config)
 
     state.record_image_finish(lstate)
 

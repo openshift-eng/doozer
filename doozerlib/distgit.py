@@ -454,7 +454,7 @@ class ImageDistGitRepo(DistGitRepo):
                 self.org_release = dfp.labels.get("release")  # occasionally no release given
 
     def push_image(self, tag_list, push_to_defaults, additional_registries=[], version_release_tuple=None,
-                   push_late=False, dry_run=False):
+                   push_late=False, dry_run=False, registry_config=None):
         """
         Pushes the most recent image built for this distgit repo. This is
         accomplished by looking at the 'version' field in the Dockerfile or
@@ -584,8 +584,9 @@ class ImageDistGitRepo(DistGitRepo):
 
                     with io.open(push_config, 'w', encoding="utf-8") as pc:
                         pc.write('\n'.join(all_push_urls))
-
                     mirror_cmd = 'oc image mirror --filter-by-os=amd64 {} {} --filename={}'.format(dr, insecure, push_config)
+                    if registry_config is not None:
+                        mirror_cmd += " --registry-config={}".format(registry_config)
 
                     if dry_run:  # skip everything else if dry run
                         continue
@@ -656,7 +657,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     def build_container(
             self, profile, push_to_defaults, additional_registries, terminate_event,
-            scratch=False, retries=3, realtime=False, dry_run=False):
+            scratch=False, retries=3, realtime=False, dry_run=False, registry_config=None):
         """
         This method is designed to be thread-safe. Multiple builds should take place in brew
         at the same time. After a build, images are pushed serially to all mirrors.
@@ -785,7 +786,7 @@ class ImageDistGitRepo(DistGitRepo):
             with self.runtime.mutex:
                 self.push_status = False
                 try:
-                    self.push_image([], push_to_defaults, additional_registries, version_release_tuple=(push_version, push_release))
+                    self.push_image([], push_to_defaults, additional_registries, version_release_tuple=(push_version, push_release), registry_config=registry_config)
                     self.push_status = True
                 except Exception as push_e:
                     self.logger.info("Error during push after successful build: %s" % str(push_e))
