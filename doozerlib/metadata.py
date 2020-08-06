@@ -1,13 +1,16 @@
 from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
 standard_library.install_aliases
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import urllib.parse
 from retry import retry
 import requests
 import yaml
 from collections import OrderedDict
 from functools import lru_cache
+import pathlib
+import json
+import traceback
 
 from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
@@ -300,3 +303,80 @@ class Metadata(object):
                 sorted_maintainer[k] = maintainer[k]
 
         return sorted_maintainer
+
+    def extract_kube_env_vars(self) -> Dict[str, str]:
+        """
+        Analyzes the source_base_dir for either Godeps or go.mod and looks for information about
+        which version of Kubernetes is being utilized by the repository. Side effect is cloning distgit
+        and upstream source if it has not already been done.
+        :return: A Dict of environment variables that should be added to the Dockerfile / rpm spec.
+                Variables like KUBE_GIT_VERSION, KUBE_GIT_COMMIT, KUBE_GIT_MINOR, ...
+                May be empty if there is no kube information in the source dir.
+        """
+        envs = dict()
+
+        upstream_source_path: pathlib.Path = self.distgit_repo(autoclone=True).source_path()
+        if not upstream_source_path:
+            # distgit only. Return empty.
+            return envs
+
+        kube_version_fields: List[str] = None  # Populate ['x', 'y', 'z'] this from godeps or gomod
+        kube_commit_hash: str = None  # Populate with kube repo hash like '2f054b7646dc9e98f6dea458d2fb65e1d2c1f731'
+        with Dir(upstream_source_path):
+            out, _ = exectools.cmd_assert(["git", "rev-parse", "HEAD"])
+            source_full_sha = out.strip()
+
+            # First determine if this source repository is using Godeps. Godeps is ultimately
+            # being replaced by gomod, but older versions of OpenShift continue to use it.
+            godeps_file = pathlib.Path(upstream_source_path, 'Godeps', 'Godeps.json')
+            if godeps_file.is_file():
+                try:
+                    with godeps_file.open('r', encoding='utf-8') as f:
+                        godeps = json.load(f)
+                        # Reproduce https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/hack/lib/build/version.sh#L82
+                        # Example of what we are after: https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/Godeps/Godeps.json#L10-L15
+                        for dep in godeps.get('Deps', []):
+                            if dep.get('ImportPath', '') == 'k8s.io/kubernetes/pkg/api':
+                                kube_commit_hash = dep.get('Rev', '')
+                                raw_kube_version = dep.get('Comment', '')  # e.g. v1.14.6-152-g117ba1f
+                                # drop release information.
+                                base_kube_version = raw_kube_version.split('-')[0]  # v1.17.1-152-g117ba1f => v1.17.1
+                                kube_version_fields = base_kube_version.lstrip('v').split('.')  # v1.17.1 => [ '1', '17', '1']
+                except:
+                    self.runtime.logger.error(f'Error parsing godeps {str(godeps_file)}')
+                    traceback.print_exc()
+
+            go_sum_file = pathlib.Path(upstream_source_path, 'go.sum')
+            if go_sum_file.is_file():
+                try:
+                    # we are looking for a line like: https://github.com/openshift/kubernetes/blob/5241b27b8acd73cdc99a0cac281645189189f1d8/go.sum#L602
+                    # e.g. "k8s.io/kubernetes v1.19.0-rc.2/go.mod h1:zomfQQTZYrQjnakeJi8fHqMNyrDTT6F/MuLaeBHI9Xk="
+                    with go_sum_file.open('r', encoding='utf-8') as f:
+                        for line in f.readlines():
+                            if line.startswith('k8s.io/kubernetes '):
+                                entry_split = line.split()  # => ['k8s.io/kubernetes', 'v1.19.0-rc.2/go.mod', 'h1:zomfQQTZYrQjnakeJi8fHqMNyrDTT6F/MuLaeBHI9Xk=']
+                                base_kube_version = entry_split[1].split('/')[0].strip()  # 'v1.19.0-rc.2/go.mod' => 'v1.19.0-rc.2'
+                                kube_version_fields = base_kube_version.lstrip('v').split('.')  # 'v1.19.0-rc.2' => [ '1', '19', '0-rc.2']
+                                # upstream kubernetes creates a tag for each version. Go find it's sha.
+                                rc, out, err = exectools.cmd_gather('git ls-remote https://github.com/kubernetes/kubernetes {base_kube_version}')
+                                out = out.strip()
+                                if out:
+                                    # Expecting something like 'a26dc584ac121d68a8684741bce0bcba4e2f2957	refs/tags/v1.19.0-rc.2'
+                                    kube_commit_hash = out.split()[0]
+                                else:
+                                    # That's strange, but let's not kill the build for it.  Poke in our repo's hash.
+                                    kube_commit_hash = source_full_sha
+                                break
+                except:
+                    self.runtime.logger.error(f'Error parsing go.sum {str(go_sum_file)}')
+                    traceback.print_exc()
+
+            if kube_version_fields:
+                # For historical consistency with tito's flow, we add +OS_GIT_COMMIT[:7] to the kube version
+                envs['KUBE_GIT_VERSION'] = f"v{'.'.join(kube_version_fields)}+{source_full_sha[:7]}"
+                envs['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
+                godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
+                envs['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, append a '+' since OCP patches its vendored kube.
+                envs['KUBE_GIT_COMMIT'] = kube_commit_hash
+
+            return envs

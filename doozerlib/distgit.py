@@ -1786,29 +1786,7 @@ class ImageDistGitRepo(DistGitRepo):
             if self.private_fix is None and self.metadata.public_upstream_branch:
                 self.private_fix = not util.is_commit_in_public_upstream(self.source_full_sha, self.metadata.public_upstream_branch, source_dir)
 
-            # If this is a go project, parse the Godeps for points of interest
-            godeps_file = pathlib.Path(self.source_path(), 'Godeps', 'Godeps.json')
-            if godeps_file.is_file():
-                try:
-                    with godeps_file.open('r', encoding='utf-8') as f:
-                        godeps = json.load(f)
-                        # Reproduce https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/hack/lib/build/version.sh#L82
-                        # Example of what we are after: https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/Godeps/Godeps.json#L10-L15
-                        for dep in godeps.get('Deps', []):
-                            if dep.get('ImportPath', '') == 'k8s.io/kubernetes/pkg/api':
-                                raw_kube_version = dep.get('Comment', '')  # e.g. v1.14.6-152-g117ba1f
-                                # drop release information.
-                                base_kube_version = raw_kube_version.split('-')[0]
-                                kube_version_fields = base_kube_version.lstrip('v').split('.')  # v1.17.1-152-g117ba1f => [ '1', '17', '1' ]
-                                # For historical consistency with tito's flow, we add +OS_GIT_COMMIT[:7] to the kube version
-                                self.env_vars_from_source['KUBE_GIT_VERSION'] = f"v{'.'.join(kube_version_fields)}+{self.source_full_sha[:7]}"
-                                self.env_vars_from_source['KUBE_GIT_COMMIT'] = dep.get('Rev', '')
-                                self.env_vars_from_source['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
-                                godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
-                                self.env_vars_from_source['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, add a + since OCP patches its vendor kube.
-                except:
-                    self.runtime.logger.error(f'Error parsing godeps {str(godeps_file)}')
-                    traceback.print_exc()
+            self.env_vars_from_source.update(self.metadata.extract_kube_env_vars())
 
         # See if the config is telling us a file other than "Dockerfile" defines the
         # distgit image content.
