@@ -73,7 +73,7 @@ class RPMMetadata(Metadata):
                 if self.public_upstream_branch:
                     self.private_fix = not util.is_commit_in_public_upstream(source_full_sha, self.public_upstream_branch, self.source_path)
 
-                self.extra_os_git_vars.update(self.metadata.extract_kube_env_vars())
+                self.extra_os_git_vars.update(self.extract_kube_env_vars())
 
             if self.source.specfile:
                 self.specfile = os.path.join(self.source_path, self.source.specfile)
