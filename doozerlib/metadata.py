@@ -343,7 +343,7 @@ class Metadata(object):
                                 base_kube_version = raw_kube_version.split('-')[0]  # v1.17.1-152-g117ba1f => v1.17.1
                                 kube_version_fields = base_kube_version.lstrip('v').split('.')  # v1.17.1 => [ '1', '17', '1']
                 except:
-                    self.runtime.logger.error(f'Error parsing godeps {str(godeps_file)}')
+                    self.logger.error(f'Error parsing godeps {str(godeps_file)}')
                     traceback.print_exc()
 
             go_sum_file = pathlib.Path(upstream_source_path, 'go.sum')
@@ -357,7 +357,7 @@ class Metadata(object):
                                 entry_split = line.split()  # => ['k8s.io/kubernetes', 'v1.19.0-rc.2/go.mod', 'h1:zomfQQTZYrQjnakeJi8fHqMNyrDTT6F/MuLaeBHI9Xk=']
                                 base_kube_version = entry_split[1].split('/')[0].strip()  # 'v1.19.0-rc.2/go.mod' => 'v1.19.0-rc.2'
                                 kube_version_fields = base_kube_version.lstrip('v').split('.')  # 'v1.19.0-rc.2' => [ '1', '19', '0-rc.2']
-                                # upstream kubernetes creates a tag for each version. Go find it's sha.
+                                # upstream kubernetes creates a tag for each version. Go find its sha.
                                 rc, out, err = exectools.cmd_gather('git ls-remote https://github.com/kubernetes/kubernetes {base_kube_version}')
                                 out = out.strip()
                                 if out:
@@ -368,7 +368,7 @@ class Metadata(object):
                                     kube_commit_hash = source_full_sha
                                 break
                 except:
-                    self.runtime.logger.error(f'Error parsing go.sum {str(go_sum_file)}')
+                    self.logger.error(f'Error parsing go.sum {str(go_sum_file)}')
                     traceback.print_exc()
 
             if kube_version_fields:
@@ -378,5 +378,8 @@ class Metadata(object):
                 godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
                 envs['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, append a '+' since OCP patches its vendored kube.
                 envs['KUBE_GIT_COMMIT'] = kube_commit_hash
+            elif self.name in ('openshift-enterprise-hyperkube', 'openshift', 'atomic-openshift'):
+                self.logger.critical(f'Unable to acquire KUBE vars for {self.name}. This must be fixed or platform addons can break: https://bugzilla.redhat.com/show_bug.cgi?id=1861097')
+                raise IOError(f'Unable to determine KUBE vars for {self.name}')
 
             return envs
