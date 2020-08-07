@@ -2387,7 +2387,8 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs):
     results = ThreadPool(len(operator_nvrs)).map(rebase_and_build, operator_nvrs)
 
     for result in results:
-        click.echo('SUCCESS={success} {task_url} {bundle_nvr}'.format(**result))
+        runtime.logger.info('SUCCESS={success} {task_url} {bundle_nvr}'.format(**result))
+        click.echo(result['bundle_nvr'])
 
     sys.exit(0 if all(list(map(lambda i: i['success'], results))) else 1)
 
