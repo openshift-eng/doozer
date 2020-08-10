@@ -1130,6 +1130,7 @@ def images_mirror_streams(runtime, streams, dry_run):
                 for f in os.listdir(runtime.registry_config):
                     if f.endswith(".json"):
                         registry_config_file = os.path.join(runtime.registry_config, f)
+                        break
                 if registry_config_file == '':
                     raise FileNotFoundError("Can not find the registry config file in {}".format(runtime.registry_config))
                 cmd += " --registry-config={}".format(runtime.registry_config)

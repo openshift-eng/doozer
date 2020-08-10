@@ -593,6 +593,7 @@ class ImageDistGitRepo(DistGitRepo):
                         for f in os.listdir(registry_config):
                             if f.endswith(".json"):
                                 registry_config_file = os.path.join(registry_config, f)
+                                break
                         if registry_config_file == '':
                             raise FileNotFoundError("Can not find the registry config file in {}".format(registry_config))
                         mirror_cmd += " --registry-config={}".format(registry_config)
