@@ -585,7 +585,13 @@ class ImageDistGitRepo(DistGitRepo):
                     with io.open(push_config, 'w', encoding="utf-8") as pc:
                         pc.write('\n'.join(all_push_urls))
                     mirror_cmd = 'oc image mirror --filter-by-os=amd64 {} {} --filename={}'.format(dr, insecure, push_config)
+                    registry_config_file = ''
                     if registry_config is not None:
+                        for f in os.listdir(registry_config):
+                            if f.endswith(".json"):
+                                registry_config_file = os.path.join(registry_config, f)
+                        if registry_config_file == '':
+                            raise FileNotFoundError("Can not find the registry config file in {}".format(registry_config))
                         mirror_cmd += " --registry-config={}".format(registry_config)
 
                     if dry_run:  # skip everything else if dry run

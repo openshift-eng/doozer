@@ -1125,7 +1125,13 @@ def images_mirror_streams(runtime, streams, dry_run):
             brew_image = config.image
             brew_pullspec = runtime.resolve_brew_image_url(brew_image)
             cmd = f'oc image mirror {brew_pullspec} {upstream_dest}'
+            registry_config_file = ''
             if runtime.registry_config is not None:
+                for f in os.listdir(runtime.registry_config):
+                    if f.endswith(".json"):
+                        registry_config_file = os.path.join(runtime.registry_config, f)
+                if registry_config_file == '':
+                    raise FileNotFoundError("Can not find the registry config file in {}".format(runtime.registry_config))
                 cmd += " --registry-config={}".format(runtime.registry_config)
             if dry_run:
                 print(f'Would have run: {cmd}')
