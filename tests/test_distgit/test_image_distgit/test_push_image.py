@@ -526,7 +526,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         expected = ("my-distgit-key", True)
         actual = repo.push_image(tag_list,
                                  push_to_defaults,
-                                 version_release_tuple=("version", "release"))
+                                 version_release_tuple=("version", "release"), filter_by_os='amd64')
         self.assertEqual(expected, actual)
 
 
