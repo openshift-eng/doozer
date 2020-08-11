@@ -496,6 +496,12 @@ class ImageDistGitRepo(DistGitRepo):
         if not push_names:
             return (self.metadata.distgit_key, True)
 
+        # get registry_config_json file must before with Dir(self.distgit_dir)
+        # so that relative path or env like DOCKER_CONFIG will not pointed to distgit dir.
+        registry_config_file = ''
+        if registry_config_dir is not None:
+            registry_config_file = util.get_docker_config_json(registry_config_dir)
+
         with Dir(self.distgit_dir):
 
             if version_release_tuple:
@@ -588,8 +594,8 @@ class ImageDistGitRepo(DistGitRepo):
                     if filter_by_os is not None:
                         mirror_cmd += "--filter-by-os={}".format(filter_by_os)
                     mirror_cmd += " {} {} --filename={}".format(dr, insecure, push_config)
-                    if registry_config_dir is not None:
-                        mirror_cmd += f" --registry-config={util.get_docker_config_json(registry_config_dir)}"
+                    if registry_config_file != '':
+                        mirror_cmd += f" --registry-config={registry_config_file}"
 
                     if dry_run:  # skip everything else if dry run
                         continue
