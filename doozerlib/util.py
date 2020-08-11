@@ -269,7 +269,7 @@ def get_cincinnati_channels(major, minor):
 
 
 def get_docker_config_json(config_dir):
-    flist = os.listdir(config_dir)
+    flist = os.listdir(abspath(config_dir))
     if 'config.json' in flist:
         return abspath(os.path.join(config_dir, 'config.json'))
     else:
