@@ -8,9 +8,11 @@ import requests
 import yaml
 from collections import OrderedDict
 from functools import lru_cache
+from dockerfile_parse import DockerfileParser
 import pathlib
 import json
 import traceback
+import glob
 
 from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
@@ -233,24 +235,39 @@ class Metadata(object):
 
         # We have source.
         with Dir(dgr.source_path()):
-            ts, _ = exectools.cmd_assert('git show -s --format=%ct HEAD')
-            upstream_source_head_commit_millis = int(ts)
+            upstream_commit_hash, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
 
-        if upstream_source_head_commit_millis > distgit_head_commit_millis:
-            # Someone has committed something new upstream. Easy call to build.
-            return True, 'Upstream source commit change newer than distgit commit'
+        dgr_path = pathlib.Path(dgr.distgit_dir)
+        if self.namespace == 'containers' or self.namespace == 'apbs':
+            dockerfile_path = dgr_path.joinpath('Dockerfile')
+            if not dockerfile_path.is_file():
+                return True, 'Distgit dockerfile not found -- appears that no rebase has ever been performed'
+            dfp = DockerfileParser(str(dockerfile_path))
+            last_disgit_rebase_hash = dfp.envs.get('SOURCE_GIT_COMMIT', None)
+            if last_disgit_rebase_hash != upstream_commit_hash:
+                return True, f'Distgit contains SOURCE_GIT_COMMIT hash {last_disgit_rebase_hash} different from upstream HEAD {upstream_commit_hash}'
+        elif self.namespace == 'rpms':
+            specs = list(dgr_path.glob('*.spec'))
+            if not specs:
+                return True, 'Distgit .spec file not found -- appears that no rebase has ever been performed'
+            with specs[0].open(mode='r', encoding='utf-8') as spec_handle:
+                spec_content = spec_handle.read()
+                if upstream_commit_hash not in spec_content:
+                    return True, f'Distgit spec file does not contain upstream hash {upstream_commit_hash}'
         else:
-            if distgit_head_commit_millis > latest_build_creation_ts:
-                # Distgit is ahead of the latest build.
-                # We've likely made an attempt to rebase and the subsequent build failed.
-                # Try again if we are at least 6 hours out from the build to avoid
-                # pestering image owners will repeated build failures.
-                if distgit_head_commit_millis - latest_build_creation_ts > (6 * one_hour):
-                    return True, 'It has been 6 hours since last failed build attempt'
-                return False, f'Distgit commit ts {distgit_head_commit_millis} ahead of last successful build ts {latest_build_creation_ts}, but holding off for at least 6 hours before rebuild'
-            else:
-                # The latest build is newer than the latest distgit commit. No change required.
-                return False, 'Latest build is newer than latest distgit commit -- no build required'
+            raise IOError(f'Unknown namespace type: {self.namespace}')
+
+        if distgit_head_commit_millis > latest_build_creation_ts:
+            # Distgit is ahead of the latest build.
+            # We've likely made an attempt to rebase and the subsequent build failed.
+            # Try again if we are at least 6 hours out from the build to avoid
+            # pestering image owners will repeated build failures.
+            if distgit_head_commit_millis - latest_build_creation_ts > (6 * one_hour):
+                return True, 'It has been 6 hours since last failed build attempt'
+            return False, f'Distgit commit ts {distgit_head_commit_millis} ahead of last successful build ts {latest_build_creation_ts}, but holding off for at least 6 hours before rebuild'
+        else:
+            # The latest build is newer than the latest distgit commit. No change required.
+            return False, 'Latest build is newer than latest upstream/distgit commit -- no build required'
 
     def get_maintainer_info(self):
         """
