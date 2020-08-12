@@ -540,9 +540,9 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
             .should_receive("open")
             .and_return(flexmock(write=lambda *_: None,
                                  readlines=lambda *_: [])))
-        flexmock(distgit.util.get_docker_config_json).should_receive("/auth").and_return('/auth/config.json')
+        flexmock(distgit.util).should_receive("get_docker_config_json").and_return('/auth/config.json')
 
-        expected_cmd = "oc image mirror --registry_config /auth  --insecure=true --filename=some-workdir/push/my-distgit-key"
+        expected_cmd = "oc image mirror --registry_config /auth/config.json  --insecure=true --filename=some-workdir/push/my-distgit-key"
 
         (flexmock(distgit.exectools)
             .should_receive("cmd_gather")
