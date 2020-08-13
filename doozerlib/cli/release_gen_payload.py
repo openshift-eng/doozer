@@ -99,6 +99,8 @@ that particular tag.
     build_ids = [b["id"] if b else 0 for b in latest_builds]
     archives_list = brew.list_archives_by_builds(build_ids, "image", brew_session)
 
+    mismatched_siblings = find_mismatched_siblings(ose_prefixed_images, latest_builds, archives_list, runtime.logger, lstate)
+
     embargoed_build_ids = set()  # a set of private image build ids
     if runtime.group_config.public_upstreams:
         # looking for embargoed image builds
@@ -117,10 +119,11 @@ that particular tag.
         latest_build = latest_builds[i]
         archives = archives_list[i]
         error = None
-        if not (latest_build and archives):  # build or archive doesn't exist
+        if image.distgit_key in mismatched_siblings:
+            error = "Siblings built from different commits"
+        elif not (latest_build and archives):  # build or archive doesn't exist
             error = f"Unable to find build for: {image.image_name_short}"
             no_build_items.append(image.image_name_short)
-            state.record_image_fail(lstate, image, error, runtime.logger)
         else:
             for archive in archives:
                 arch = archive["arch"]
@@ -256,6 +259,11 @@ that particular tag.
         for img in sorted(invalid_name_items):
             click.echo("   {}".format(img))
 
+    if mismatched_siblings:
+        yellow_print("Images skipped due to siblings mismatch:")
+        for img in sorted(invalid_name_items):
+            click.echo("   {}".format(img))
+
 # TODO: @jupierce: Let's comment this out for now. I need to explore some options with the rhcos team.
 # def get_latest_rhcos_pullspec(namespace, image_stream_name):
 #     rhcos_tag = "machine-os-content"
@@ -268,3 +276,42 @@ that particular tag.
 #         if items:
 #             return items[0]["dockerImageReference"]  # the first item should be latest
 #     return None  # rhcos image is not found
+
+
+def find_mismatched_siblings(images, builds, archives_list, logger, lstate):
+    """ Sibling images are those built from the same repository. We need to throw an error if there are sibling built from different commit.
+    """
+    # First, loop over all builds and store their source repos and commits to a dict
+    repo_commit_nvrs = {}  # key is source repo url, value is another dict that key is commit hash and value is a set of nvrs.
+    for build, archives in zip(builds, archives_list):
+        if not build or not archives:
+            continue  # the image has no builds yet. should be captured by latter logic.
+        # source repo url and commit hash are stored in image's environment variables.
+        ar = archives[0]  # in case the build is a manifest list, let's look at the first architecture
+        envs = ar["extra"]["docker"]["config"]["config"].get("Env", [])
+        source_repo_entry = list(filter(lambda env: env.startswith("SOURCE_GIT_URL="), envs))
+        source_commit_entry = list(filter(lambda env: env.startswith("SOURCE_GIT_COMMIT="), envs))
+        if not source_repo_entry or not source_commit_entry:
+            continue  # this image doesn't have required environment variables. is it a dist-git only image?
+        source_repo = source_repo_entry[0][source_repo_entry[0].find("=") + 1:]  # SOURCE_GIT_URL=https://example.com => https://example.com
+        source_commit = source_commit_entry[0][source_commit_entry[0].find("=") + 1:]  # SOURCE_GIT_COMMIT=abc => abc
+        nvrs = repo_commit_nvrs.setdefault(source_repo, {}).setdefault(source_commit, set())
+        nvrs.add(build["nvr"])
+
+    # Second, build a dict with keys are NVRs and values are the ImageMetadata objects. ImageMetadatas are used for logging state.
+    nvr_images = {}
+    for image, build in zip(images, builds):
+        if build:
+            nvr_images[build["nvr"]] = image
+
+    # Finally, look at the dict and print an error if one repo has 2 or more commits
+    mismatched_siblings = set()
+    for repo, commit_nvrs in repo_commit_nvrs.items():
+        if len(commit_nvrs) >= 2:
+            red_print("The following NVRs are siblings but built from different commits:", file=sys.stderr)
+            for commit, nvrs in commit_nvrs.items():
+                for nvr in nvrs:
+                    image = nvr_images[nvr]
+                    mismatched_siblings.add(image.distgit_key)
+                    red_print(f"{nvr}\t{image.distgit_key}\t{repo}\t{commit}")
+    return mismatched_siblings
