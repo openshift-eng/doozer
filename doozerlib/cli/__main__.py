@@ -4,13 +4,13 @@ from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
 
 standard_library.install_aliases()
-from doozerlib import Runtime, Dir
+from doozerlib import Runtime, Dir, cli as cli_package
 from doozerlib import state
 from doozerlib.model import Missing
 from doozerlib.brew import get_watch_task_info_copy
 from doozerlib import metadata
 from doozerlib.config import MetaDataConfig as mdc
-from doozerlib.cli import cli, pass_runtime, CTX_GLOBAL
+from doozerlib.cli import cli, pass_runtime
 from doozerlib.cli.release_gen_payload import release_gen_payload
 from doozerlib.cli.detect_embargo import detect_embargo
 
@@ -2413,14 +2413,13 @@ def main():
         # to exit with an error code should use DoozerFatalError
         red_print('\nDoozer Failed With Error:\n' + str(ex))
 
-        if CTX_GLOBAL and CTX_GLOBAL.obj:
-            CTX_GLOBAL.obj.state['status'] = state.STATE_FAIL
-            CTX_GLOBAL.obj.state['msg'] = str(ex)
-
+        if cli_package.CTX_GLOBAL and cli_package.CTX_GLOBAL.obj:
+            cli_package.CTX_GLOBAL.obj.state['status'] = state.STATE_FAIL
+            cli_package.CTX_GLOBAL.obj.state['msg'] = str(ex)
         sys.exit(1)
     finally:
-        if CTX_GLOBAL and CTX_GLOBAL.obj and CTX_GLOBAL.obj.initialized:
-            CTX_GLOBAL.obj.save_state()
+        if cli_package.CTX_GLOBAL and cli_package.CTX_GLOBAL.obj and cli_package.CTX_GLOBAL.obj.initialized:
+            cli_package.CTX_GLOBAL.obj.save_state()
 
 
 if __name__ == '__main__':
