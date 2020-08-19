@@ -219,7 +219,8 @@ class DistGitRepo(object):
 
     def source_path(self):
         """
-        :return: Returns the directory containing the source which should be used to populate distgit.
+        :return: Returns the directory containing the source which should be used to populate distgit. This includes
+                the source.path subdirectory if the metadata includes one.
         """
 
         source_root = self.runtime.resolve_source(self.metadata)
@@ -229,6 +230,14 @@ class DistGitRepo(object):
         if sub_path is not Missing:
             path = os.path.join(source_root, sub_path)
 
+        assertion.isdir(path, "Unable to find path for source [%s] for config: %s" % (path, self.metadata.config_filename))
+        return path
+
+    def source_repo_path(self):
+        """
+        :return: Returns the directory containing the root of the cloned source repo.
+        """
+        path = self.runtime.resolve_source(self.metadata)
         assertion.isdir(path, "Unable to find path for source [%s] for config: %s" % (path, self.metadata.config_filename))
         return path
 
