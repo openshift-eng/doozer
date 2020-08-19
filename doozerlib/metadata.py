@@ -332,7 +332,7 @@ class Metadata(object):
         """
         envs = dict()
 
-        upstream_source_path: pathlib.Path = self.distgit_repo(autoclone=True).source_path()
+        upstream_source_path: pathlib.Path = self.distgit_repo(autoclone=True).source_repo_path()
         if not upstream_source_path:
             # distgit only. Return empty.
             return envs
