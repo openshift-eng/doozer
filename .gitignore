@@ -21,3 +21,9 @@ cover
 
 # Ignore idea backup files
 .idea
+
+# Ignore .vscode local config files
+.vscode
+
+# Ignore ocp-build-dat
+ocp-build-data/

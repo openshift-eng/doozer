@@ -526,7 +526,53 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
         expected = ("my-distgit-key", True)
         actual = repo.push_image(tag_list,
                                  push_to_defaults,
-                                 version_release_tuple=("version", "release"))
+                                 version_release_tuple=("version", "release"), filter_by_os='amd64')
+        self.assertEqual(expected, actual)
+
+    def test_push_image_registry_config(self):
+        # preventing tests from interacting with the real filesystem
+        flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
+        flexmock(distgit.os).should_receive("mkdir").replace_with(lambda _: None)
+        flexmock(distgit.os.path).should_receive("isdir").and_return(True)
+        flexmock(distgit.os.path).should_receive("isfile").and_return(True)
+        flexmock(distgit.os).should_receive("remove").replace_with(lambda _: None)
+        (flexmock(io)
+            .should_receive("open")
+            .and_return(flexmock(write=lambda *_: None,
+                                 readlines=lambda *_: [])))
+        flexmock(distgit.util).should_receive("get_docker_config_json").and_return('/auth/config.json')
+
+        expected_cmd = "oc image mirror   --insecure=true --filename=some-workdir/push/my-distgit-key --registry-config=/auth/config.json"
+
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_gather")
+            .with_args(expected_cmd)
+            .once()
+            .and_return((0, "", "")))
+
+        metadata = flexmock(config=flexmock(push=flexmock(late=distgit.Missing),
+                                            name="my-name",
+                                            namespace="my-namespace",
+                                            distgit=flexmock(branch="_irrelevant_")),
+                            runtime=self.mock_runtime(),
+                            distgit_key="my-distgit-key",
+                            name="my-name",
+                            get_default_push_names=lambda *_: ["my-default-name"],
+                            get_additional_push_names=lambda *_: [],
+                            logger=flexmock(info=lambda *_: None),
+                            namespace="_irrelevant_")
+
+        metadata.runtime.working_dir = "some-workdir"
+        metadata.runtime.group_config.insecure_source = True
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        tag_list = ["tag-a", "tag-b"]
+        push_to_defaults = True
+
+        expected = ("my-distgit-key", True)
+        actual = repo.push_image(tag_list,
+                                 push_to_defaults,
+                                 version_release_tuple=("version", "release"), registry_config_dir='/auth')
         self.assertEqual(expected, actual)
 
 

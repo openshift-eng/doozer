@@ -44,6 +44,10 @@ CLI_OPTS = {
         'env': 'DOOZER_RHPKG_CONFIG',
         'help': 'Config file path for rhpkg calls'
     },
+    'registry_config_dir': {
+        'env': 'DOCKER_CONFIG',
+        'help': 'Config directory for the image registry'
+    }
 }
 
 

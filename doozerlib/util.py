@@ -4,6 +4,7 @@ import copy
 import os
 import errno
 import re
+from os.path import abspath
 from typing import Dict
 from datetime import datetime
 from contextlib import contextmanager
@@ -265,6 +266,14 @@ def get_cincinnati_channels(major, minor):
         prefixes = ['prerelease', 'stable']
 
     return [f'{prefix}-{major}.{minor}' for prefix in prefixes]
+
+
+def get_docker_config_json(config_dir):
+    flist = os.listdir(abspath(config_dir))
+    if 'config.json' in flist:
+        return abspath(os.path.join(config_dir, 'config.json'))
+    else:
+        raise FileNotFoundError("Can not find the registry config file in {}".format(config_dir))
 
 
 # Allows you to wrap an object such that you can pass it to lru_cache

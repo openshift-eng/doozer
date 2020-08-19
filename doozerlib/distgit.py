@@ -463,7 +463,7 @@ class ImageDistGitRepo(DistGitRepo):
                 self.org_release = dfp.labels.get("release")  # occasionally no release given
 
     def push_image(self, tag_list, push_to_defaults, additional_registries=[], version_release_tuple=None,
-                   push_late=False, dry_run=False):
+                   push_late=False, dry_run=False, registry_config_dir=None, filter_by_os=None):
         """
         Pushes the most recent image built for this distgit repo. This is
         accomplished by looking at the 'version' field in the Dockerfile or
@@ -504,6 +504,12 @@ class ImageDistGitRepo(DistGitRepo):
         # Nothing to push to? We are done.
         if not push_names:
             return (self.metadata.distgit_key, True)
+
+        # get registry_config_json file must before with Dir(self.distgit_dir)
+        # so that relative path or env like DOCKER_CONFIG will not pointed to distgit dir.
+        registry_config_file = ''
+        if registry_config_dir is not None:
+            registry_config_file = util.get_docker_config_json(registry_config_dir)
 
         with Dir(self.distgit_dir):
 
@@ -593,8 +599,12 @@ class ImageDistGitRepo(DistGitRepo):
 
                     with io.open(push_config, 'w', encoding="utf-8") as pc:
                         pc.write('\n'.join(all_push_urls))
-
-                    mirror_cmd = 'oc image mirror --filter-by-os=amd64 {} {} --filename={}'.format(dr, insecure, push_config)
+                    mirror_cmd = 'oc image mirror '
+                    if filter_by_os is not None:
+                        mirror_cmd += "--filter-by-os={}".format(filter_by_os)
+                    mirror_cmd += " {} {} --filename={}".format(dr, insecure, push_config)
+                    if registry_config_file != '':
+                        mirror_cmd += f" --registry-config={registry_config_file}"
 
                     if dry_run:  # skip everything else if dry run
                         continue
@@ -665,7 +675,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     def build_container(
             self, profile, push_to_defaults, additional_registries, terminate_event,
-            scratch=False, retries=3, realtime=False, dry_run=False):
+            scratch=False, retries=3, realtime=False, dry_run=False, registry_config_dir=None, filter_by_os=None):
         """
         This method is designed to be thread-safe. Multiple builds should take place in brew
         at the same time. After a build, images are pushed serially to all mirrors.
@@ -794,7 +804,7 @@ class ImageDistGitRepo(DistGitRepo):
             with self.runtime.mutex:
                 self.push_status = False
                 try:
-                    self.push_image([], push_to_defaults, additional_registries, version_release_tuple=(push_version, push_release))
+                    self.push_image([], push_to_defaults, additional_registries, version_release_tuple=(push_version, push_release), registry_config_dir=registry_config_dir, filter_by_os=filter_by_os)
                     self.push_status = True
                 except Exception as push_e:
                     self.logger.info("Error during push after successful build: %s" % str(push_e))

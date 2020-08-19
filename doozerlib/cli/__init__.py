@@ -40,6 +40,8 @@ def print_version(ctx, param, value):
               help="Git repo or directory containing groups metadata")
 @click.option("--working-dir", metavar='PATH', default=None,
               help="Existing directory in which file operations should be performed.\n Env var: DOOZER_WORKING_DIR")
+@click.option("--registry-config-dir", metavar='PATH', default=None,
+              help="Directory containing docker config.json authentication; defaults to DOCKER_CONFIG env var if set, or `~/.docker/` if not.\n Env var: DOCKER_CONFIG")
 @click.option("--user", metavar='USERNAME', default=None,
               help="Username for rhpkg. Env var: DOOZER_USER")
 @click.option("-g", "--group", default=None, metavar='NAME',
