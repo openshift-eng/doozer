@@ -1958,7 +1958,7 @@ def config_gencsv(runtime, keys, as_type, output):
 
 @cli.command("release:calc-previous", short_help="Returns a list of releases to include in a release's previous field")
 @click.option("--version", metavar='NEW_VER', required=True,
-              help="The release to calculate previous for (e.g. 4.5.4 or 4.6.0..nightly)")
+              help="The release to calculate previous for (e.g. 4.5.4 or 4.6.0..hotfix)")
 @click.option("-a", "--arch",
               metavar='ARCH',
               help="Arch for which the repo should be generated",
@@ -1997,13 +1997,14 @@ def release_calc_previous(version, arch, graph_url):
     stable_channel_versions = get_channel_versions(stable_channel)
     upgrade_from.update(stable_channel_versions[:10])  # Add up to the most recent ten
 
-    if 'nightly' not in version:
-        # If we are not calculating a previous for a nightly, we want edges from previously
+    # 'nightly' was an older convention and this check can be removed in Oct 2020.
+    if 'nightly' not in version and 'hotfix' not in version:
+        # If we are not calculating a previous list for a hotfix, we want edges from previously
         # released hotfixes to be valid for this node.
-        # If a release name in stable contains 'nightly', it was promoted as a hotfix for a customer.
+        # If a release name in stable contains 'hotfix', it was promoted as a hotfix for a customer.
         # We include all of these versions so that customers can safely upgrade from those hotfixes
         # to this new non-nightly.
-        upgrade_from.update(list(filter(lambda release: 'nightly' in release, stable_channel_versions))[:10])
+        upgrade_from.update(list(filter(lambda release: 'nightly' in release or 'hotfix' in release, stable_channel_versions))[:10])
 
     results = sort_semver(list(upgrade_from))
     print(','.join(results))
