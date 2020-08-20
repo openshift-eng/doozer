@@ -322,6 +322,16 @@ class Repos(object):
         return set(result)
 
     def validate_content_sets(self):
+        content_set_empty = True
+        for arch in self._arches.append('default'):
+            if self._data.content_set[arch] is not Missing:
+                content_set_empty = False
+
+        if content_set_empty:
+            # Let's assume there is a good reason for the content sets to be empty. Trust the humans!
+            # This is one reason to accept it if no content_set is defined at all: https://github.com/openshift/ocp-build-data/pull/594
+            return
+
         invalid = []
         for arch in self._arches:
             cs_names = {}
