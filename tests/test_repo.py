@@ -88,8 +88,7 @@ class TestRepos(unittest.TestCase):
         }
     }
 
-    # no conf
-    invalid_repo_config1 = {
+    no_baseurl_repo = {
         'content_set': {
             'default': 'rhel-7-server-ose-4.2-rpms',
             'ppc64le': 'rhel-7-for-power-le-ose-4.2-rpms',
@@ -97,8 +96,7 @@ class TestRepos(unittest.TestCase):
             'optional': True,
         }
     }
-    # no content sets
-    invalid_repo_config2 = {
+    no_config_sets_repo = {
         'conf': {
             'enabled': 1,
             'baseurl': {
@@ -108,8 +106,7 @@ class TestRepos(unittest.TestCase):
             }
         }
     }
-    # no baseurls
-    invalid_repo_config3 = {
+    enabled_no_baseurl_repo = {
         'conf': {
             'enabled': 1,
         },
@@ -117,6 +114,18 @@ class TestRepos(unittest.TestCase):
             'default': 'rhel-7-server-ose-4.2-rpms',
             'ppc64le': 'rhel-7-for-power-le-ose-4.2-rpms',
             's390x': 'rhel-7-for-system-z-ose-4.2-rpms',
+            'optional': True,
+        }
+    }
+    no_config_set_arches_repo = {
+        'conf': {
+            'baseurl': {
+                'ppc64le': 'http://download-node-02.eng.bos.redhat.com/brewroot/repos/rhaos-4.4-rhel-8-build/latest/ppc64le/',
+                's390x': 'http://download-node-02.eng.bos.redhat.com/brewroot/repos/rhaos-4.4-rhel-8-build/latest/s390x/',
+                'x86_64': 'http://download-node-02.eng.bos.redhat.com/brewroot/repos/rhaos-4.4-rhel-8-build/latest/x86_64/',
+            },
+        },
+        'content_set': {
             'optional': True,
         }
     }
@@ -171,12 +180,15 @@ class TestRepos(unittest.TestCase):
 
     def test_init_validation(self):
         """ensure the init method checks for incorrectly configured repos"""
-        # no 'conf' section
+
         with self.assertRaises(ValueError):
-            Repo('no-conf', self.invalid_repo_config1, self.arches)
-        # no 'content sets' section
+            Repo('no-conf', self.no_baseurl_repo, self.arches)
+
         with self.assertRaises(ValueError):
-            Repo('no-content-sets', self.invalid_repo_config2, self.arches)
-        # no 'base urls' section
+            Repo('no-content-sets', self.no_config_sets_repo, self.arches)
+
         with self.assertRaises(ValueError):
-            Repo('no-base-urls', self.invalid_repo_config3, self.arches)
+            Repo('no-base-urls', self.enabled_no_baseurl_repo, self.arches)
+
+        # Implicitly assert that this does _not_ raise an exception
+        Repo('no-config-set-arches', self.no_config_set_arches_repo, self.arches)
