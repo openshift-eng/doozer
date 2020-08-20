@@ -322,22 +322,22 @@ class Repos(object):
         return set(result)
 
     def validate_content_sets(self):
-        content_set_empty = True
-        for arch in self._arches + ['default']:
-            if self._data.content_set[arch] is not Missing:
-                content_set_empty = False
-
-        if content_set_empty:
-            # Let's assume there is a good reason for the content sets to be empty. Trust the humans!
-            # This is one reason to accept it if no content_set is defined at all: https://github.com/openshift/ocp-build-data/pull/594
-            return
+        # Determine repos that have no content sets defined at all; we will give these a pass if nothing tries to use them.
+        # This is one reason to accept it if no content_set is defined at all: https://github.com/openshift/ocp-build-data/pull/594
+        content_set_defined = {}
+        for name, repo in self._repos.items():
+            content_set_defined[name] = False
+            for arch in self._arches + ['default']:
+                if repo._data.content_set[arch] is not Missing:
+                    content_set_defined[name] = True
 
         invalid = []
         for arch in self._arches:
             cs_names = {}
             for name, repo in self._repos.items():
-                cs = repo.content_set(arch)
-                cs_names[name] = cs
+                if content_set_defined[name]:
+                    cs = repo.content_set(arch)
+                    cs_names[name] = cs
 
             arch_cs_values = list(cs_names.values())
             if arch_cs_values:
