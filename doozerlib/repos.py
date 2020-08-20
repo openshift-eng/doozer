@@ -323,7 +323,7 @@ class Repos(object):
 
     def validate_content_sets(self):
         content_set_empty = True
-        for arch in self._arches.append('default'):
+        for arch in self._arches + ['default']:
             if self._data.content_set[arch] is not Missing:
                 content_set_empty = False
 
