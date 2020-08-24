@@ -2041,7 +2041,7 @@ def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_
     stable_channel_versions, stable_edges = get_channel_versions(stable_channel)
     upgrade_from.update(stable_channel_versions[:10])  # Add up to the most recent ten
 
-    # 'nightly' was an older convention. This 'nightly variant check can be removed by Oct 2020.
+    # 'nightly' was an older convention. This nightly variant check can be removed by Oct 2020.
     if 'nightly' not in version and 'hotfix' not in version:
         # If we are not calculating a previous list for standard release, we want edges from previously
         # released hotfixes to be valid for this node IF and only if that hotfix does not
