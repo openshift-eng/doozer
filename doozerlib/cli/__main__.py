@@ -32,6 +32,7 @@ import koji
 import io
 import json
 import functools
+from typing import Dict, List
 import re
 import semver
 import urllib
@@ -1972,11 +1973,19 @@ def config_gencsv(runtime, keys, as_type, output):
 @click.option("--graph-url", metavar='GRAPH_URL', required=False,
               default='https://api.openshift.com/api/upgrades_info/v1/graph',
               help="Cincinnati graph URL to query")
-def release_calc_previous(version, arch, graph_url):
+@click.option("--graph-content-stable", metavar='JSON_FILE', required=False,
+              help="Override content from stable channel - primarily for testing")
+@click.option("--graph-content-candidate", metavar='JSON_FILE', required=False,
+              help="Override content from stable channel - primarily for testing")
+def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate):
     major, minor = extract_version_fields(version, at_least=2)[:2]
     if arch == 'x86_64':
         arch = 'amd64'  # Cincinnati is go code, and uses a different arch name than brew
 
+    # Refer to https://docs.google.com/document/d/16eGVikCYARd6nUUtAIHFRKXa7R_rU5Exc9jUPcQoG8A/edit
+    # for information on channels & edges
+
+    # Get the names of channels we need to analyze
     candidate_channel = get_cincinnati_channels(major, minor)[0]
     stable_channel = get_cincinnati_channels(major, minor)[-1]
     prev_candidate_channel = get_cincinnati_channels(major, minor - 1)[0]
@@ -1986,31 +1995,71 @@ def release_calc_previous(version, arch, graph_url):
         return sorted(versions, key=functools.cmp_to_key(semver.compare), reverse=True)
 
     def get_channel_versions(channel):
-        url = f'{graph_url}?arch={arch}&channel={channel}'
-        req = urllib.request.Request(url)
-        req.add_header('Accept', 'application/json')
-        graph = json.loads(exectools.urlopen_assert(req).read())
-        versions = sort_semver([node['version'] for node in graph['nodes']])
-        return versions
+        """
+        Queries Cincinnati and returns a tuple containing:
+        1. All of the versions in the specified channel in decending order (e.g. 4.6.26, ... ,4.6.1)
+        2. A map of the edges associated with each version (e.g. map['4.6.1'] -> [ '4.6.2', '4.6.3', ... ]
+        :param channel: The name of the channel to inspect
+        :return: (versions, edge_map)
+        """
+        content = None
+
+        if channel == 'stable' and graph_content_stable:
+            # permit command line override
+            with open(graph_content_stable, 'r') as f:
+                content = f.read()
+
+        if channel != 'stable' and graph_content_candidate:
+            # permit command line override
+            with open(graph_content_candidate, 'r') as f:
+                content = f.read()
+
+        if not content:
+            url = f'{graph_url}?arch={arch}&channel={channel}'
+            req = urllib.request.Request(url)
+            req.add_header('Accept', 'application/json')
+            content = exectools.urlopen_assert(req).read()
+
+        graph = json.loads(content)
+        versions = [node['version'] for node in graph['nodes']]
+        descending_versions = sort_semver(versions)
+
+        edges: Dict[str, List] = dict()
+        for v in versions:
+            # Ensure there is at least an empty list for all versions.
+            edges[v] = []
+
+        for edge_def in graph['edges']:
+            # edge_def example [22, 20] where is number is an offset into versions
+            from_ver = versions[edge_def[0]]
+            to_ver = versions[edge_def[1]]
+            edges[from_ver].append(to_ver)
+
+        return descending_versions, edges
 
     upgrade_from = set()
-    upgrade_from.update(get_channel_versions(prev_candidate_channel)[:2])
-    upgrade_from.update(get_channel_versions(prev_stable_channel)[:2])
+    upgrade_from.update(get_channel_versions(prev_candidate_channel)[0][:2])
+    upgrade_from.update(get_channel_versions(prev_stable_channel)[0][:2])
 
-    candidate_channel_versions = get_channel_versions(candidate_channel)
+    candidate_channel_versions, candidate_edges = get_channel_versions(candidate_channel)
     upgrade_from.update(candidate_channel_versions[:2])  # Add up to the most recent two
 
-    stable_channel_versions = get_channel_versions(stable_channel)
+    stable_channel_versions, stable_edges = get_channel_versions(stable_channel)
     upgrade_from.update(stable_channel_versions[:10])  # Add up to the most recent ten
 
-    # 'nightly' was an older convention and this check can be removed in Oct 2020.
+    # 'nightly' was an older convention. This nightly variant check can be removed by Oct 2020.
     if 'nightly' not in version and 'hotfix' not in version:
-        # If we are not calculating a previous list for a hotfix, we want edges from previously
-        # released hotfixes to be valid for this node.
-        # If a release name in stable contains 'hotfix', it was promoted as a hotfix for a customer.
-        # We include all of these versions so that customers can safely upgrade from those hotfixes
-        # to this new non-nightly.
-        upgrade_from.update(list(filter(lambda release: 'nightly' in release or 'hotfix' in release, stable_channel_versions))[:10])
+        # If we are not calculating a previous list for standard release, we want edges from previously
+        # released hotfixes to be valid for this node IF and only if that hotfix does not
+        # have an edge to TWO previous standard releases.
+        # ref: https://docs.google.com/document/d/16eGVikCYARd6nUUtAIHFRKXa7R_rU5Exc9jUPcQoG8A/edit
+
+        # If a release name in candidate contains 'hotfix', it was promoted as a hotfix for a customer.
+        previous_hotfixes = list(filter(lambda release: 'nightly' in release or 'hotfix' in release, candidate_channel_versions))
+        # For each hotfix that doesn't have 2 outgoing edges, and it as an incoming edge to this release
+        for hotfix_version in previous_hotfixes:
+            if len(candidate_edges[hotfix_version]) < 2:
+                upgrade_from.add(hotfix_version)
 
     results = sort_semver(list(upgrade_from))
     print(','.join(results))
