@@ -487,15 +487,31 @@ def config_scan_source_changes(runtime, as_yaml):
             if meta.meta_type == 'rpm':
                 package_name = meta.get_package_name(default=None)
                 if needs_rebuild is False and package_name:  # If we are currently matching, check buildroots to see if it unmatches us
-                    for latest_rpm_build in koji_api.getLatestRPMS(tag=meta.branch() + '-candidate', package=package_name)[1]:
+
+                    rpms, latest_rpm_builds = koji_api.getLatestRPMS(tag=meta.branch() + '-candidate', package=package_name)
+
+                    # Detect if all required arches are covered in the last build
+                    arches = {rpm['arch'] for rpm in rpms}
+                    required_arches = set(meta.get_arches())
+
+                    if not required_arches.issubset(arches) and not arches == {'noarch', 'src'}:
+                        # If all required arches are mentioned, all is good.
+                        # Alternatively, if the build has only source and noarch rpms, all required arches are covered.
+                        reason = f'Not all required arches were built. Need: {required_arches}. Got: {arches}'
+                        runtime.logger.info(f'{dgk} ({package_name} will be rebuilt since not all required arches exist.')
+                        needs_rebuild = True
+
+                    if not needs_rebuild:
+                        # Skip this more expensive test if we need to rebuild anyway.
                         # Detect if our buildroot changed since the last build of this rpm
-                        rpm_build_root_tag_ids = get_build_root_inherited_tags(meta).keys()
-                        build_root_changes = brew.tags_changed_since_build(runtime, koji_api, latest_rpm_build, rpm_build_root_tag_ids)
-                        if build_root_changes:
-                            changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
-                            reason = f'Latest rpm was built before buildroot changes: {changing_tag_names}'
-                            runtime.logger.info(f'{dgk} ({latest_rpm_build}) will be rebuilt because it has not been built since a buildroot change: {build_root_changes}')
-                            needs_rebuild = True
+                        for latest_rpm_build in latest_rpm_builds:
+                            rpm_build_root_tag_ids = get_build_root_inherited_tags(meta).keys()
+                            build_root_changes = brew.tags_changed_since_build(runtime, koji_api, latest_rpm_build, rpm_build_root_tag_ids)
+                            if build_root_changes:
+                                changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
+                                reason = f'Latest rpm was built before buildroot changes: {changing_tag_names}'
+                                runtime.logger.info(f'{dgk} ({latest_rpm_build}) will be rebuilt because it has not been built since a buildroot change: {build_root_changes}')
+                                needs_rebuild = True
 
                 if reason:
                     add_assessment_reason(meta, needs_rebuild, reason=reason)
