@@ -267,22 +267,23 @@ class Repos(object):
 
         return result
 
-    def content_sets(self, shipping_repos=[]):
+    def content_sets(self, enabled_repos=[], non_shipping_repos=[]):
         """Generates a valid content_sets.yml file based on the currently
         configured and enabled repos in the collection. Using the correct
         name for each arch."""
         # check for missing repos
-        missing_repos = set(shipping_repos) - self._repos.keys()
+        missing_repos = set(enabled_repos) - self._repos.keys()
         if missing_repos:
             raise ValueError(f"enabled_repos references undefined repo(s): {missing_repos}")
         result = {}
+        globally_enabled_repos = {r.name for r in self._repos.values() if r.enabled}
+        shipping_repos = (set(globally_enabled_repos) | set(enabled_repos)) - set(non_shipping_repos)
         for a in self._arches:
             content_sets = []
-            for r in self._repos.values():
-                if r.enabled or r.name in shipping_repos:
-                    cs = r.content_set(a)
-                    if cs:  # possible to be forced off by setting to null
-                        content_sets.append(cs)
+            for r in shipping_repos:
+                cs = self._repos[r].content_set(a)
+                if cs:  # possible to be forced off by setting to null
+                    content_sets.append(cs)
             if content_sets:
                 result[a] = content_sets
         return CONTENT_SETS + yaml.dump(result, default_flow_style=False)

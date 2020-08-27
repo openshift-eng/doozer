@@ -439,7 +439,6 @@ class ImageDistGitRepo(DistGitRepo):
         repos = self.runtime.repos
         enabled_repos = self.config.get('enabled_repos', [])
         non_shipping_repos = self.config.get('non_shipping_repos', [])
-        shipping_repos = [repo for repo in enabled_repos if repo not in non_shipping_repos]
 
         for t in repos.repotypes:
             with self.dg_path.joinpath('.oit', f'{t}.repo').open('w', encoding="utf-8") as rc:
@@ -447,7 +446,7 @@ class ImageDistGitRepo(DistGitRepo):
                 rc.write(content)
 
         with self.dg_path.joinpath('content_sets.yml').open('w', encoding="utf-8") as rc:
-            rc.write(repos.content_sets(shipping_repos=shipping_repos))
+            rc.write(repos.content_sets(enabled_repos=enabled_repos, non_shipping_repos=non_shipping_repos))
 
     def _read_master_data(self):
         with Dir(self.distgit_dir):
