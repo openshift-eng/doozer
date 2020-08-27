@@ -1127,8 +1127,8 @@ def images_mirror_streams(runtime, streams, dry_run):
             brew_pullspec = runtime.resolve_brew_image_url(brew_image)
             cmd = f'oc image mirror {brew_pullspec} {upstream_dest}'
 
-            if runtime.registry_config_file is not None:
-                cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_file)}"
+            if runtime.registry_config_dir is not None:
+                cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_dir)}"
             if dry_run:
                 print(f'Would have run: {cmd}')
             else:
