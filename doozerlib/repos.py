@@ -271,7 +271,10 @@ class Repos(object):
         """Generates a valid content_sets.yml file based on the currently
         configured and enabled repos in the collection. Using the correct
         name for each arch."""
-
+        # check for missing repos
+        missing_repos = set(shipping_repos) - self._repos.keys()
+        if missing_repos:
+            raise ValueError(f"enabled_repos references undefined repo(s): {missing_repos}")
         result = {}
         for a in self._arches:
             content_sets = []
