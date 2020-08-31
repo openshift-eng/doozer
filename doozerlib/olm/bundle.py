@@ -128,7 +128,7 @@ class OLMBundle(object):
 
     def copy_operator_manifests_to_bundle(self):
         """Copy all manifests from the operator distgit repository over to its corresponding bundle
-        repository (except image-references file)
+        repository, excluding image-references and other files that aren't relevant for bundles.
         We can be sure that the manifests contents are exactly what we expect, because our copy of
         operator repository is checked out to the specific commit used to build given operator NVR
         """
@@ -138,6 +138,17 @@ class OLMBundle(object):
             self.bundle_manifests_dir
         ))
         exectools.cmd_assert('rm -f {}/image-references'.format(self.bundle_manifests_dir))
+
+        for f in os.listdir(self.bundle_manifests_dir):
+            if not self.is_file_relevant_for_bundles(f):
+                exectools.cmd_assert('rm -f {}/{}'.format(self.bundle_manifests_dir, f))
+
+    def is_file_relevant_for_bundles(self, f):
+        try:
+            contents = yaml.safe_load(io.open('{}/{}'.format(self.bundle_manifests_dir, f)))
+            return 'apiVersion' in contents and 'kind' in contents
+        except:
+            return False
 
     def replace_image_references_by_sha_on_bundle_manifests(self):
         """Iterate through all bundle manifests files, replacing any image reference tag by its
