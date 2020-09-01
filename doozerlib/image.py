@@ -324,7 +324,16 @@ class ImageMetadata(Metadata):
                 self.logger.debug(f'Image will be rebuilt due to buildroot change since ({image_build}) (last build event={image_build_event_id}). Build root changes: {build_root_changes}')
                 return True, f'Buildroot tag changes in [{changing_tag_names}] since {image_nvr}'
 
-            for archive in koji_api.listArchives(image_build['id']):
+            archives = koji_api.listArchives(image_build['id'])
+
+            # Compare to the arches in runtime
+            build_arches = {a['extra']['image']['arch'] for a in archives}
+            target_arches = set(self.get_arches())
+            if target_arches != build_arches:
+                # The latest brew build does not exactly match the required arches as specified in group.yml
+                return True, f'Arches of {image_nvr}: ({build_arches}) does not match target arches {target_arches}'
+
+            for archive in archives:
                 # Example results of listing RPMs in an given imageID:
                 # https://gist.github.com/jupierce/a8798858104dcf6dfa4bd1d6dd99d2d8
                 archive_id = archive['id']
