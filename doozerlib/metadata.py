@@ -395,6 +395,7 @@ class Metadata(object):
                 godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
                 envs['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, append a '+' since OCP patches its vendored kube.
                 envs['KUBE_GIT_COMMIT'] = kube_commit_hash
+                envs['KUBE_GIT_TREE_STATE'] = 'clean'
             elif self.name in ('openshift-enterprise-hyperkube', 'openshift', 'atomic-openshift'):
                 self.logger.critical(f'Unable to acquire KUBE vars for {self.name}. This must be fixed or platform addons can break: https://bugzilla.redhat.com/show_bug.cgi?id=1861097')
                 raise IOError(f'Unable to determine KUBE vars for {self.name}')
