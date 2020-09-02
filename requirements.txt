@@ -14,3 +14,5 @@ rpm-py-installer
 semver
 tenacity
 wrapt
+mysql-connector-python~=8.0.21
+python-dateutil~=2.8.1
