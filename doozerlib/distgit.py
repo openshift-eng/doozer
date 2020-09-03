@@ -1651,9 +1651,9 @@ class ImageDistGitRepo(DistGitRepo):
         :param filename: The Dockerfile name in the distgit dir to edit.
         :return: N/A
         """
-        if self.config.content.set_build_variables == False:
+        if not self.config.content.set_build_variables:
             return
-                                
+
         dg_path = self.dg_path
         df_path = dg_path.joinpath(filename)
 
