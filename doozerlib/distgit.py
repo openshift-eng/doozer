@@ -1651,7 +1651,12 @@ class ImageDistGitRepo(DistGitRepo):
         :param filename: The Dockerfile name in the distgit dir to edit.
         :return: N/A
         """
-        if not self.config.content.set_build_variables:
+
+        # set_build_variables must be explicitly set to False. If left unset, default to True. If False,
+        # we do not inject environment variables into the Dockerfile. This is occasionally necessary
+        # for images like the golang builders where these environment variables pollute the environment
+        # for code trying to establish their OWN src commit hash, etc.
+        if self.config.content.set_build_variables is not Missing and not self.config.content.set_build_variables:
             return
 
         dg_path = self.dg_path
