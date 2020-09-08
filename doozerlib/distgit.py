@@ -1821,8 +1821,11 @@ class ImageDistGitRepo(DistGitRepo):
         else:
             dockerfile_name = "Dockerfile"
 
-        # The path to the source Dockerfile we are reconciling against
-        source_dockerfile_path = os.path.join(self.source_path(), dockerfile_name)
+        # The path to the source Dockerfile we are reconciling against. Resolve to actual file
+        # if it is a symlink.
+        source_dockerfile_path = os.path.realpath(os.path.join(self.source_path(), dockerfile_name))
+        # In case there was a symlink, get the actual dockerfile name
+        dockerfile_name = os.path.basename(source_dockerfile_path)
 
         # Clean up any files not special to the distgit repo
         ignore_list = BASE_IGNORE
