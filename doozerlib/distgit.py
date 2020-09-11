@@ -1817,15 +1817,13 @@ class ImageDistGitRepo(DistGitRepo):
         # See if the config is telling us a file other than "Dockerfile" defines the
         # distgit image content.
         if self.config.content.source.dockerfile is not Missing:
+            # Be aware that this attribute sometimes contains path elements too.
             dockerfile_name = self.config.content.source.dockerfile
         else:
             dockerfile_name = "Dockerfile"
 
-        # The path to the source Dockerfile we are reconciling against. Resolve to actual file
-        # if it is a symlink.
-        source_dockerfile_path = os.path.realpath(os.path.join(self.source_path(), dockerfile_name))
-        # In case there was a symlink, get the actual dockerfile name
-        dockerfile_name = os.path.basename(source_dockerfile_path)
+        # The path to the source Dockerfile we are reconciling against.
+        source_dockerfile_path = os.path.join(self.source_path(), dockerfile_name)
 
         # Clean up any files not special to the distgit repo
         ignore_list = BASE_IGNORE
@@ -1847,23 +1845,15 @@ class ImageDistGitRepo(DistGitRepo):
         # Copy all files and overwrite where necessary
         recursive_overwrite(self.source_path(), self.distgit_dir)
 
-        if dockerfile_name != "Dockerfile":
-
-            # Does a non-distgit Dockerfile already exist from copying source; remove if so
-            df_path = dg_path.joinpath('Dockerfile')
-            if df_path.is_file():
-                df_path.unlink()
-
-            try:
-                # Rename our distgit source Dockerfile appropriately
-                df_path = dg_path.joinpath(dockerfile_name)
-                if not df_path.is_file():
-                    self.logger.error(f'Unable to find dockerfile: {str(df_path)}')
-                    raise DoozerFatalError('{}:{} does not exist'
-                                           .format(self.metadata.distgit_key, dockerfile_name))
-                df_path.rename(dg_path.joinpath('Dockerfile'))
-            except OSError as err:
-                raise DoozerFatalError(str(err))
+        df_path = dg_path.joinpath('Dockerfile')
+        with open(source_dockerfile_path, mode='r', encoding='utf-8') as source_dockerfile, \
+             open(df_path, mode='w+', encoding='utf-8') as distgit_dockerfile:
+            # The source Dockerfile could be named virtually anything (e.g. Dockerfile.rhel) or
+            # be a symlink. Ultimately, we don't care - we just need its content in distgit
+            # as /Dockerfile (which OSBS requires). Read in the content and write it back out
+            # to the required distgit location.
+            source_dockerfile_content = source_dockerfile.read()
+            distgit_dockerfile.write(source_dockerfile_content)
 
         # Clean up any extraneous Dockerfile.* that might be distractions (e.g. Dockerfile.centos)
         for ent in dg_path.iterdir():
