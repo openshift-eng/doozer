@@ -167,7 +167,6 @@ class OperatorMetadataBuilder(object):
         self.remove_metadata_channel_dir()
         self.ensure_metadata_manifests_dir_exists()
         self.copy_channel_manifests_from_operator_to_metadata()
-        self.remove_non_metadata_files_from_manifests()
 
         if not self.metadata_package_yaml_exists():
             self.copy_operator_package_yaml_to_metadata()
@@ -183,7 +182,6 @@ class OperatorMetadataBuilder(object):
         for arch in self.additional_arches:
             self.delete_metadata_arch_manifests_dir(arch)
             self.create_manifests_copy_for_arch(arch)
-            self.remove_non_metadata_files_from_manifests(arch)
 
     @log
     def delete_metadata_arch_manifests_dir(self, arch):
@@ -452,33 +450,6 @@ class OperatorMetadataBuilder(object):
             self.metadata_repo,
             self.metadata_manifests_dir
         ))
-
-    @log
-    def remove_non_metadata_files_from_manifests(self, arch=None):
-        manifests_dir = '{}/{}/{}/{}'.format(
-            self.working_dir,
-            self.metadata_repo,
-            self.metadata_manifests_dir,
-            self.channel,
-        )
-
-        if arch:
-            manifests_dir = '{}-{}'.format(manifests_dir, arch)
-
-        try:
-            files = os.listdir(manifests_dir)
-        except FileNotFoundError:
-            files = []
-
-        for f in files:
-            try:
-                contents = yaml.safe_load(os.path.join(manifests_dir, f))
-                if 'apiVersion' not in contents or 'kind' not in contents:
-                    # it doesn't look like a relevant YAML for metadata
-                    exectools.cmd_assert('rm {}'.format(os.path.join(manifests_dir, f)))
-            except:
-                # could not parse YAML, either invalid or not a YAML at all
-                exectools.cmd_assert('rm {}'.format(os.path.join(manifests_dir, f)))
 
     @log
     def copy_operator_package_yaml_to_metadata(self):
