@@ -162,7 +162,7 @@ class Record(object):
 
     def __exit__(self, *args):
         if not self.dry_run and self.db.client:
-            with self.db.runtime.get_named_lock('package::boto3'):
+            with self.db.runtime.get_named_semaphore('package::boto3'):
                 try:
                     attr_payload = []
                     for k, v in self.attrs.items():
