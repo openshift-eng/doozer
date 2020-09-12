@@ -1846,8 +1846,14 @@ class ImageDistGitRepo(DistGitRepo):
         recursive_overwrite(self.source_path(), self.distgit_dir)
 
         df_path = dg_path.joinpath('Dockerfile')
+
+        if df_path.exists():
+            # The w+ below will not overwrite a symlink file with real content (it will
+            # be directed to the target file). So unlink explicitly.
+            df_path.unlink()
+
         with open(source_dockerfile_path, mode='r', encoding='utf-8') as source_dockerfile, \
-             open(df_path, mode='w+', encoding='utf-8') as distgit_dockerfile:
+             open(str(df_path), mode='w+', encoding='utf-8') as distgit_dockerfile:
             # The source Dockerfile could be named virtually anything (e.g. Dockerfile.rhel) or
             # be a symlink. Ultimately, we don't care - we just need its content in distgit
             # as /Dockerfile (which OSBS requires). Read in the content and write it back out
