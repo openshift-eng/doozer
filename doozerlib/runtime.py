@@ -38,7 +38,7 @@ from .image import ImageMetadata
 from .rpmcfg import RPMMetadata
 from doozerlib import state
 from .model import Model, Missing
-from multiprocessing import Lock, RLock
+from multiprocessing import Lock, RLock, Semaphore
 from .repos import Repos
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
@@ -147,11 +147,8 @@ class Runtime(object):
         self.session_pool = {}
         self.session_pool_available = {}
 
-        # Cooperative threads can request exclusive access to directories.
-        # This is usually only necessary if two threads want to make modifications
-        # to the same global source alias. The empty string key serves as a lock for the
-        # data structure.
-        self.dir_locks = {'': Lock()}
+        # See get_named_semaphore. The empty string key serves as a lock for the data structure.
+        self.named_semaphores = {'': Lock()}
 
         for key, val in kwargs.items():
             self.__dict__[key] = val
@@ -231,15 +228,28 @@ class Runtime(object):
         else:
             self.rhpkg_config = ''
 
-    def get_named_lock(self, absolute_path):
-        with self.dir_locks['']:
-            p = pathlib.Path(absolute_path).absolute()  # normalize (e.g. strip trailing /)
-            if p in self.dir_locks:
-                return self.dir_locks[p]
+    def get_named_semaphore(self, lock_name, is_dir=False, count=1):
+        """
+        Returns a semaphore (which can be used as a context manager). The first time a lock_name
+        is received, a new semaphore will be established. Subsequent uses of that lock_name will
+        receive the same semaphore.
+        :param lock_name: A unique name for resource threads are contending over. If using a directory name
+                            as a lock_name, provide an absolute path.
+        :param is_dir: The lock_name is a directory (method will ignore things like trailing slashes)
+        :param count: The number of times the lock can be claimed. Default=1, which is a full mutex.
+        :return: A semaphore associated with the lock_name.
+        """
+        with self.named_semaphores['']:
+            if is_dir:
+                p = '_dir::' + str(pathlib.Path(str(lock_name)).absolute())  # normalize (e.g. strip trailing /)
             else:
-                new_lock = Lock()
-                self.dir_locks[p] = new_lock
-                return new_lock
+                p = lock_name
+            if p in self.named_semaphores:
+                return self.named_semaphores[p]
+            else:
+                new_semaphore = Semaphore(count)
+                self.named_semaphores[p] = new_semaphore
+                return new_semaphore
 
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
@@ -960,7 +970,7 @@ class Runtime(object):
                 # If the cache directory for this repo does not exist yet, we will create one.
                 # But we must do so carefully to minimize races with any other doozer instance
                 # running on the machine.
-                with self.get_named_lock(repo_dir):  # also make sure we cooperate with other threads in this process.
+                with self.get_named_semaphore(repo_dir, is_dir=True):  # also make sure we cooperate with other threads in this process.
                     tmp_repo_dir = tempfile.mkdtemp(dir=git_cache_dir)
                     exectools.cmd_assert(f'git init --bare {tmp_repo_dir}')
                     with Dir(tmp_repo_dir):
@@ -1048,7 +1058,7 @@ class Runtime(object):
 
         self.logger.debug("checking for source directory in source_dir: {}".format(source_dir))
 
-        with self.get_named_lock(source_dir):
+        with self.get_named_semaphore(source_dir, is_dir=True):
             if alias in self.source_resolutions:  # we checked before, but check again inside the lock
                 path, _, _, meta.public_upstream_url, meta.public_upstream_branch = self.source_resolutions[alias]
                 self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, path))

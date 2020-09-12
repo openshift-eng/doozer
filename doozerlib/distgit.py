@@ -1152,12 +1152,17 @@ class ImageDistGitRepo(DistGitRepo):
         with Dir(self.distgit_dir):
             self.logger.info("Pushing repository")
             try:
-                timeout = str(self.runtime.global_opts['rhpkg_push_timeout'])
-                exectools.cmd_assert("timeout {} rhpkg push".format(timeout), retries=3)
-                # rhpkg will create but not push tags :(
-                # Not asserting this exec since this is non-fatal if a tag already exists,
-                # and tags in dist-git can't be --force overwritten
-                exectools.cmd_gather(['timeout', '60', 'git', 'push', '--tags'])
+                # When initializing new release branches, an large amount of data needs to
+                # be pushed. If every distgit within a release is being pushed at the same
+                # time, a single push invocation can take hours to complete -- making the
+                # timeout value counterproductive. Limit to 5 simultaneous pushes.
+                with self.runtime.get_named_semaphore('rhpkg::push', count=5):
+                    timeout = str(self.runtime.global_opts['rhpkg_push_timeout'])
+                    exectools.cmd_assert("timeout {} rhpkg push".format(timeout), retries=3)
+                    # rhpkg will create but not push tags :(
+                    # Not asserting this exec since this is non-fatal if a tag already exists,
+                    # and tags in dist-git can't be --force overwritten
+                    exectools.cmd_gather(['timeout', '60', 'git', 'push', '--tags'])
             except IOError as e:
                 return (self.metadata, repr(e))
             return (self.metadata, True)

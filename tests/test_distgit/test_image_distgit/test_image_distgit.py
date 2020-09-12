@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import re
 import tempfile
 import unittest
-
+from threading import Lock
 import flexmock
 
 from doozerlib import distgit, model
@@ -137,7 +137,8 @@ class TestImageDistGit(TestDistgit):
             .ordered())
 
         metadata = flexmock(runtime=flexmock(global_opts={"rhpkg_push_timeout": 999},
-                                             branch="_irrelevant_"),
+                                             branch="_irrelevant_",
+                                             get_named_semaphore=lambda *_, **__: Lock()),
                             config=flexmock(distgit=flexmock(branch="_irrelevant_")),
                             name="_irrelevant_",
                             logger=flexmock(info=lambda *_: None))
@@ -158,7 +159,8 @@ class TestImageDistGit(TestDistgit):
         flexmock(distgit.exectools).should_receive("cmd_assert").and_raise(IOError("io-error"))
 
         metadata = flexmock(runtime=flexmock(global_opts={"rhpkg_push_timeout": "_irrelevant_"},
-                                             branch="_irrelevant_"),
+                                             branch="_irrelevant_",
+                                             get_named_semaphore=lambda *_, **__: Lock()),
                             config=flexmock(distgit=flexmock(branch="_irrelevant_")),
                             name="_irrelevant_",
                             logger=flexmock(info=lambda *_: None))
