@@ -5,7 +5,7 @@ import shutil
 import time
 import traceback
 import errno
-from multiprocessing import Lock
+from multiprocessing import Lock, Event
 import yaml
 import logging
 import bashlex
@@ -299,6 +299,8 @@ class ImageDistGitRepo(DistGitRepo):
         super(ImageDistGitRepo, self).__init__(metadata, autoclone)
         self.build_lock = Lock()
         self.build_lock.acquire()
+        self.rebase_event = Event()
+        self.rebase_status = False
         self.logger = metadata.logger
         self.source_modifier_factory = source_modifier_factory
 
@@ -671,6 +673,20 @@ class ImageDistGitRepo(DistGitRepo):
         parent_dgr.wait_for_build(self.metadata.qualified_name)
         if terminate_event.is_set():
             raise KeyboardInterrupt()
+
+    def wait_for_rebase(self, image_name, terminate_event):
+        """ Wait for image_name to be rebased. """
+        image = self.runtime.resolve_image(image_name, False)
+        if image is None:
+            self.logger.info("Skipping image build since it is not included: %s" % image_name)
+            return
+        dgr = image.distgit_repo()
+        dgr.rebase_event.wait()
+        if not dgr.rebase_status:  # failed to rebase
+            raise IOError(f"Error building image: {self.metadata.qualified_name} ({image_name} was waiting)")
+        if terminate_event.is_set():
+            raise KeyboardInterrupt()
+        pass
 
     def build_container(
             self, profile, push_to_defaults, additional_registries, terminate_event,
@@ -1348,6 +1364,8 @@ class ImageDistGitRepo(DistGitRepo):
                                 self.logger.info('[{}] parent image {} not included. Looking up FROM tag.'.format(self.config.name, base))
                                 base_meta = self.runtime.late_resolve_image(base)
                                 _, v, r = base_meta.get_latest_build_info()
+                                if r.endswith(".p1"):  # latest parent is embargoed
+                                    self.private_fix = True  # this image should also be embargoed
                                 mapped_images.append("{}:{}-{}".format(base_meta.config.name, v, r))
                             # Otherwise, the user is not expecting the FROM field to be updated in this Dockerfile.
                             else:
@@ -1356,6 +1374,9 @@ class ImageDistGitRepo(DistGitRepo):
                             if self.runtime.local:
                                 mapped_images.append('{}:latest'.format(from_image_metadata.config.name))
                             else:
+                                from_image_distgit = from_image_metadata.distgit_repo()
+                                if from_image_distgit.private_fix:  # if the parent we are going to build is embargoed
+                                    self.private_fix = True  # this image should also be embargoed
                                 # Everything in the group is going to be built with the uuid tag, so we must
                                 # assume that it will exist for our parent.
                                 mapped_images.append("{}:{}".format(from_image_metadata.config.name, uuid_tag))
@@ -2022,43 +2043,54 @@ class ImageDistGitRepo(DistGitRepo):
             return version, prev_release, private_fix
         return None, None, None
 
-    def rebase_dir(self, version, release):
-        dg_path = self.dg_path
-        df_path = dg_path.joinpath('Dockerfile')
-        prev_release = None
-        with Dir(self.distgit_dir):
-            prev_version, prev_release, prev_private_fix = self.extract_version_release_private_fix()
-            if version is None and not self.runtime.local:
-                # Extract the previous version and use that
-                version = prev_version
+    def rebase_dir(self, version, release, terminate_event):
+        try:
+            # If this image is FROM another group member, we need to wait on that group member to determine if there are embargoes in that group member.
+            image_from = Model(self.config.get('from', None))
+            if image_from.member is not Missing:
+                self.wait_for_rebase(image_from.member, terminate_event)
 
-            # Make our metadata directory if it does not exist
-            util.mkdirs(dg_path.joinpath('.oit'))
+            dg_path = self.dg_path
+            df_path = dg_path.joinpath('Dockerfile')
+            prev_release = None
+            with Dir(self.distgit_dir):
+                prev_version, prev_release, prev_private_fix = self.extract_version_release_private_fix()
+                if version is None and not self.runtime.local:
+                    # Extract the previous version and use that
+                    version = prev_version
 
-            # If content.source is defined, pull in content from local source directory
-            if self.has_source():
-                self._merge_source()
+                # Make our metadata directory if it does not exist
+                util.mkdirs(dg_path.joinpath('.oit'))
 
-                # before mods, check if upstream source version should be used
-                # this will override the version fetch above
-                if self.metadata.config.get('use_source_version', False):
-                    dfp = DockerfileParser(str(df_path))
-                    version = dfp.labels["version"]
-            else:
-                self.private_fix = bool(prev_private_fix)  # preserve private_fix boolean for distgit-only repo
+                # If content.source is defined, pull in content from local source directory
+                if self.has_source():
+                    self._merge_source()
 
-            # Source or not, we should find a Dockerfile in the root at this point or something is wrong
-            assertion.isfile(df_path, "Unable to find Dockerfile in distgit root")
+                    # before mods, check if upstream source version should be used
+                    # this will override the version fetch above
+                    if self.metadata.config.get('use_source_version', False):
+                        dfp = DockerfileParser(str(df_path))
+                        version = dfp.labels["version"]
+                else:
+                    self.private_fix = bool(prev_private_fix)  # preserve private_fix boolean for distgit-only repo
 
-            if self.config.content.source.modifications is not Missing:
-                self._run_modifications()
+                # Source or not, we should find a Dockerfile in the root at this point or something is wrong
+                assertion.isfile(df_path, "Unable to find Dockerfile in distgit root")
 
-        if self.private_fix:
-            self.logger.warning("The source of this image contains embargoed fixes.")
+                if self.config.content.source.modifications is not Missing:
+                    self._run_modifications()
 
-        real_version, real_release = self.update_distgit_dir(version, release, prev_release)
+            if self.private_fix:
+                self.logger.warning("The source of this image contains embargoed fixes.")
 
-        return real_version, real_release
+            real_version, real_release = self.update_distgit_dir(version, release, prev_release)
+            self.rebase_status = True
+            return real_version, real_release
+        except Exception:
+            self.rebase_status = False
+            raise
+        finally:
+            self.rebase_event.set()  # awake all threads that are waiting for this image to be rebased
 
 
 class RPMDistGitRepo(DistGitRepo):

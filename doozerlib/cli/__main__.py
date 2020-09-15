@@ -588,15 +588,15 @@ def images_rebase(runtime, stream, version, release, embargoed, repo_type, messa
         )
 
     runtime.clone_distgits()
-    metas = runtime.image_metas()
+    metas = runtime.ordered_image_metas()
     lstate['total'] = len(metas)
 
-    def dgr_rebase(image_meta):
+    def dgr_rebase(image_meta, terminate_event):
         try:
             dgr = image_meta.distgit_repo()
             if embargoed:
                 dgr.private_fix = True
-            (real_version, real_release) = dgr.rebase_dir(version, release)
+            (real_version, real_release) = dgr.rebase_dir(version, release, terminate_event)
             sha = dgr.commit(message, log_diff=True)
             dgr.tag(real_version, real_release)
             runtime.add_record(
@@ -631,7 +631,7 @@ def images_rebase(runtime, stream, version, release, embargoed, repo_type, messa
         return True
 
     jobs = runtime.parallel_exec(
-        lambda image_meta, terminate_event: dgr_rebase(image_meta),
+        lambda image_meta, terminate_event: dgr_rebase(image_meta, terminate_event),
         metas,
     )
     jobs.get()
