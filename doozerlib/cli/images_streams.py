@@ -17,7 +17,7 @@ def images_streams():
 
 @images_streams.command('mirror')
 @click.option('--stream', 'streams', default=[], multiple=True, help='If specified, only these stream names will be mirrored.')
-@click.option('--only-if-missing', default=False, is_flag=False, help='Only mirror the image if there is presently no equivalent image upstream.')
+@click.option('--only-if-missing', default=False, is_flag=True, help='Only mirror the image if there is presently no equivalent image upstream.')
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
 def images_streams_mirror(runtime, streams, only_if_missing, dry_run):
