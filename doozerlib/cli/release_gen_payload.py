@@ -101,7 +101,7 @@ that particular tag.
     build_ids = [b["id"] if b else 0 for b in latest_builds]
     archives_list = brew.list_archives_by_builds(build_ids, "image", brew_session)
 
-    mismatched_siblings = find_mismatched_siblings(ose_prefixed_images, latest_builds, archives_list, runtime.logger, lstate)
+    mismatched_siblings = find_mismatched_siblings(payload_images, latest_builds, archives_list, runtime.logger, lstate)
 
     embargoed_build_ids = set()  # a set of private image build ids
     if runtime.group_config.public_upstreams:
