@@ -4,9 +4,20 @@ FROM replaced-by-buildconfig
 # (e.g. compiling test cases) that simply don't occur downstream.
 # Used as a template for 'images:streams gen-buildconfigs'
 
+# Install protobuf-3.0.0 (used by upstream k8s) for CI only testing
+# Context: https://coreos.slack.com/archives/CB95J6R4N/p1600340218406400
+ENV PATH=/opt/google/protobuf/bin:$PATH
+RUN set -euxo pipefail && \
+    f=$( mktemp ) && \
+    curl -L http://mirror.openshift.com/pub/openshift-static-ci-deps/protobuf-3.0.0/protoc-3.0.0-linux-x86_64.zip > "${f}" && \
+    mkdir -p /opt/google/protobuf && \
+    unzip "${f}" -d /opt/google/protobuf && \
+    which protoc && protoc --version && \
+    [ "$( protoc --version )" = "libprotoc 3.0.0" ]
+
 # Install common CI tools and epel for packages like tito.
 RUN yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && \
-    INSTALL_PKGS="bc procps-ng util-linux bind-utils bsdtar createrepo_c device-mapper device-mapper-persistent-data e2fsprogs ethtool file findutils gcc git glib2-devel gpgme gpgme-devel hostname iptables jq krb5-devel libassuan libassuan-devel libseccomp-devel libvirt-devel lsof make mercurial nmap-ncat openssl protobuf-compiler protobuf-devel rsync socat systemd-devel tar tito tree wget which xfsprogs zip goversioninfo gettext python3 iproute" && \
+    INSTALL_PKGS="bc procps-ng util-linux bind-utils bsdtar createrepo_c device-mapper device-mapper-persistent-data e2fsprogs ethtool file findutils gcc git glib2-devel gpgme gpgme-devel hostname iptables jq krb5-devel libassuan libassuan-devel libseccomp-devel libvirt-devel lsof make mercurial nmap-ncat openssl rsync socat systemd-devel tar tito tree wget which xfsprogs zip goversioninfo gettext python3 iproute" && \
     yum install -y $INSTALL_PKGS && \
     alternatives --set python /usr/bin/python3 && \
     yum clean all && \

@@ -16,7 +16,7 @@ def images_streams():
 
 
 @images_streams.command('mirror')
-@click.option('--stream', 'streams', default=[], multiple=True, help='If specified, only these stream names will be mirrored.')
+@click.option('--stream', 'streams', metavar='STREAM_NAME', default=[], multiple=True, help='If specified, only these stream names will be mirrored.')
 @click.option('--only-if-missing', default=False, is_flag=True, help='Only mirror the image if there is presently no equivalent image upstream.')
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
@@ -124,8 +124,8 @@ def images_streams_start_buildconfigs(runtime):
 
 
 @images_streams.command('gen-buildconfigs', short_help='Generates buildconfigs necessary to assemble ART equivalent images upstream')
-@click.option('--stream', 'streams', default=[], multiple=True, help='If specified, only these stream names will be processed.')
-@click.option('-o', '--output', required=True, help='The filename into which to write the YAML. It should be oc applied against api.ci as art-publish. The file may be empty if there are no buildconfigs.')
+@click.option('--stream', 'streams', metavar='STREAM_NAME', default=[], multiple=True, help='If specified, only these stream names will be processed.')
+@click.option('-o', '--output', metavar='FILENAME', required=True, help='The filename into which to write the YAML. It should be oc applied against api.ci as art-publish. The file may be empty if there are no buildconfigs.')
 @click.option('--apply', default=False, is_flag=True, help='Apply the output if any buildconfigs are generated')
 @pass_runtime
 def images_streams_gen_buildconfigs(runtime, streams, output, apply):
@@ -157,6 +157,9 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply):
     """
     runtime.initialize(clone_distgits=False, clone_source=False)
     runtime.assert_mutation_is_permitted()
+
+    # Record whether this is for all streams or just user specified
+    all_streams = not streams
 
     if not streams:
         # If not specified, use all.
@@ -357,7 +360,8 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply):
     with open(output, mode='w+', encoding='utf-8') as f:
         objects = list()
         objects.extend(buildconfig_definitions)
-        if buildconfig_definitions:
+        if buildconfig_definitions and all_streams:
+            # Don't update the daemonset unless all streams are accounted for
             objects.append(daemonset_definition)
         yaml.dump_all(objects, f, default_flow_style=False)
 
