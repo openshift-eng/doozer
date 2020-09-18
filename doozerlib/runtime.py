@@ -834,6 +834,12 @@ class Runtime(object):
             f.write(diff)
 
     def resolve_image(self, distgit_name, required=True):
+        """
+        Returns an ImageMetadata for the specified group member name.
+        :param distgit_name: The name of an image member in this group
+        :param required: If True, raise an exception if the member is not found.
+        :return: The ImageMetadata object associated with the name
+        """
         if distgit_name not in self.image_map:
             if not required:
                 return None
