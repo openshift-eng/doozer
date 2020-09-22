@@ -7,16 +7,12 @@ import traceback
 import errno
 from multiprocessing import Lock, Event
 import yaml
-import logging
 import bashlex
-import glob
 import re
 import io
 import copy
 import pathlib
-import json
-from datetime import datetime, timedelta, date
-import koji
+from datetime import date
 
 from dockerfile_parse import DockerfileParser
 
@@ -161,15 +157,21 @@ class DistGitRepo(object):
 
                     self.logger.info("Cloning distgit repository [branch:%s] into: %s" % (distgit_branch, self.distgit_dir))
 
+                    # Has the user specified a specific commit to checkout from distgit on the command line?
+                    distgit_commitish = self.runtime.downstream_commitish_overrides.get(self.metadata.distgit_key, None)
+
                     timeout = str(self.runtime.global_opts['rhpkg_clone_timeout'])
                     rhpkg_clone_depth = int(self.runtime.global_opts.get('rhpkg_clone_depth', '0'))
 
                     if self.metadata.namespace == 'containers' and self.runtime.cache_dir:
                         # Containers don't generally require distgit lookaside. We can rely on normal
                         # git clone & leverage git caches to greatly accelerate things if the user supplied it.
-                        gitargs = ['--branch', distgit_branch, '--single-branch']
+                        gitargs = ['--branch', distgit_branch]
 
-                        if rhpkg_clone_depth > 0:
+                        if not distgit_commitish:
+                            gitargs.append('--single-branch')
+
+                        if not distgit_commitish and rhpkg_clone_depth > 0:
                             gitargs.extend(["--depth", str(rhpkg_clone_depth)])
 
                         self.runtime.git_clone(self.metadata.distgit_remote_url(), self.distgit_dir, gitargs=gitargs,
@@ -188,11 +190,15 @@ class DistGitRepo(object):
                         cmd_list.extend(["clone", self.metadata.qualified_name, self.distgit_dir])
                         cmd_list.extend(["--branch", distgit_branch])
 
-                        if rhpkg_clone_depth > 0:
+                        if not distgit_commitish and rhpkg_clone_depth > 0:
                             cmd_list.extend(["--depth", str(rhpkg_clone_depth)])
 
                         # Clone the distgit repository. Occasional flakes in clone, so use retry.
                         exectools.cmd_assert(cmd_list, retries=3, set_env=constants.GIT_NO_PROMPTS)
+
+                    if distgit_commitish:
+                        with Dir(self.distgit_dir):
+                            exectools.cmd_assert(f'git checkout {distgit_commitish}')
 
     def merge_branch(self, target, allow_overwrite=False):
         self.logger.info('Switching to branch: {}'.format(target))

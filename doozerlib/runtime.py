@@ -24,7 +24,7 @@ import signal
 import io
 import pathlib
 import koji
-from typing import Optional
+from typing import Optional, List, Dict
 import time
 
 from doozerlib import gitdata
@@ -146,6 +146,16 @@ class Runtime(object):
         self.db = None
         self.session_pool = {}
         self.session_pool_available = {}
+        self.brew_event = None
+
+        self.stream: List[str] = []  # Click option. A list of image stream overrides from the command line.
+        self.stream_overrides: Dict[str, str] = {}  # Dict of stream name -> pullspec from command line.
+
+        self.upstreams: List[str] = []  # Click option. A list of upstream source commit to use.
+        self.upstream_commitish_overrides: Dict[str, str] = {}  # Dict from distgit key name to upstream source commit to use.
+
+        self.downstreams: List[str] = []  # Click option. A list of distgit commits to checkout.
+        self.downstream_commitish_overrides: Dict[str, str] = {}  # Dict from distgit key name to distgit commit to check out.
 
         # See get_named_semaphore. The empty string key serves as a lock for the data structure.
         self.named_semaphores = {'': Lock()}
@@ -188,9 +198,6 @@ class Runtime(object):
         # Map of source code repo aliases (e.g. "ose") to a (public_upstream_url, public_upstream_branch) tuple.
         # See registry_repo.
         self.public_upstreams = {}
-
-        # Map of stream alias to image name.
-        self.stream_alias_overrides = {}
 
         self.initialized = False
 
@@ -282,9 +289,8 @@ class Runtime(object):
 
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
-                   no_group=False, clone_source=True, disabled=None,
-                   config_excludes=None,
-                   upstream_commitish_overrides={}):
+                   no_group=False, clone_source=None, disabled=None,
+                   config_excludes=None):
 
         if self.initialized:
             return
@@ -334,6 +340,28 @@ class Runtime(object):
 
         if no_group:
             return  # nothing past here should be run without a group
+
+        if '@' in self.group:
+            self.group, self.group_commitish = self.group.split('@', 1)
+        else:
+            self.group_commitish = self.group
+
+        # For each "--stream alias image" on the command line, register its existence with
+        # the runtime.
+        for s in self.stream:
+            self.register_stream_override(s[0], s[1])
+
+        for upstream in self.upstreams:
+            override_distgit_key = upstream[0]
+            override_commitish = upstream[1]
+            self.logger.warning(f'Upstream source for {override_distgit_key} being set to {override_commitish}')
+            self.upstream_commitish_overrides[override_distgit_key] = override_commitish
+
+        for upstream in self.downstreams:
+            override_distgit_key = upstream[0]
+            override_commitish = upstream[1]
+            self.logger.warning(f'Downstream distgit for {override_distgit_key} will be checked out to {override_commitish}')
+            self.downstream_commitish_overrides[override_distgit_key] = override_commitish
 
         self.resolve_metadata()
 
@@ -446,8 +474,6 @@ class Runtime(object):
             rpm_ex = list(exclude_keys)
             image_keys = flatten_list(self.images)
 
-            self.upstream_commitish_overrides = upstream_commitish_overrides
-
             rpm_keys = flatten_list(self.rpms)
 
             filter_func = None
@@ -500,7 +526,7 @@ class Runtime(object):
 
             if mode in ['images', 'both']:
                 for i in image_data.values():
-                    metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key))
+                    metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key), clone_source=clone_source)
                     self.image_map[metadata.distgit_key] = metadata
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
@@ -518,6 +544,9 @@ class Runtime(object):
 
             if mode in ['rpms', 'both']:
                 for r in rpm_data.values():
+                    if clone_source is None:
+                        # Historically, clone_source defaulted to True for rpms.
+                        clone_source = True
                     metadata = RPMMetadata(self, r, clone_source=clone_source)
                     self.rpm_map[metadata.distgit_key] = metadata
                 if not self.rpm_map:
@@ -595,8 +624,9 @@ class Runtime(object):
         """
         :return: Returns a new koji client instance that will automatically retry
         methods when it receives common exceptions (e.g. Connection Reset)
+        Honors doozer --brew-event.
         """
-        return brew.KojiWrapper(koji.ClientSession(self.group_config.urls.brewhub))
+        return brew.KojiWrapper([self.group_config.urls.brewhub], brew_event=self.brew_event)
 
     @contextmanager
     def shared_koji_client_session(self):
@@ -604,6 +634,7 @@ class Runtime(object):
         Context manager which offers a shared koji client session. You hold a koji specific lock in this context
         manager giving your thread exclusive access. The lock is reentrant, so don't worry about
         call a method that acquires the same lock while you hold it.
+        Honors doozer --brew-event.
         """
         with self.koji_lock:
             if self._koji_client_session is None:
@@ -616,6 +647,7 @@ class Runtime(object):
         Context manager which offers a koji client session from a limited pool. You hold a lock on this
         session until you return. It is not recommended to call other methods that acquire their
         own pooled sessions, because that may lead to deadlock if the pool is exhausted.
+        Honors doozer --brew-event.
         """
         session = None
         session_id = None
@@ -773,9 +805,9 @@ class Runtime(object):
             }
             self.add_record("source_alias", alias=alias, origin_url=origin_url, branch=branch or '?', path=path)
 
-    def register_stream_alias(self, alias, image):
-        self.logger.info("Registering image stream alias override %s: %s" % (alias, image))
-        self.stream_alias_overrides[alias] = image
+    def register_stream_override(self, name, image):
+        self.logger.info("Registering image stream name override %s: %s" % (name, image))
+        self.stream_overrides[name] = image
 
     @property
     def remove_tmp_working_dir(self):
@@ -895,13 +927,13 @@ class Runtime(object):
         """
         :param stream_name: The name of the stream to resolve.
         :return: Resolves and returns the image stream name into its literal value.
-                This is usually a lookup in streams.yaml, but can also be overridden on the command line. If
+                This is usually a lookup in streams.yml, but can also be overridden on the command line. If
                 the stream_name cannot be resolved, an exception is thrown.
         """
 
         # If the stream has an override from the command line, return it.
-        if stream_name in self.stream_alias_overrides:
-            return self.stream_alias_overrides[stream_name]
+        if stream_name in self.stream_overrides:
+            return Model(dict_to_model={'image': self.stream_overrides[stream_name]})
 
         if stream_name not in self.streams:
             raise IOError("Unable to find definition for stream: %s" % stream_name)
@@ -1094,19 +1126,9 @@ class Runtime(object):
                 gitargs = [
                     '--no-single-branch', '--branch', clone_branch
                 ]
-                if not self.group_config.public_upstreams:
-                    # Do a shallow clone only if public upstreams are not specified
-                    gitargs.extend(['--depth', '1'])
+
                 self.git_clone(url, source_dir, gitargs=gitargs, set_env=constants.GIT_NO_PROMPTS)
-                if meta.commitish:
-                    # Commit-ish may not be in the history because of shallow clone. Fetch from upstream if not existing.
-                    self.logger.info(f"Determining if commit-ish {meta.commitish} exists")
-                    cmd = ["git", "-C", source_dir, "branch", "--contains", meta.commitish]
-                    rc, _, _ = exectools.cmd_gather(cmd)
-                    if rc != 0:  # commit-ish does not exist
-                        self.logger.info(f"Fetching commit-ish {meta.commitish} from upstream")
-                        cmd = ["git", "-C", source_dir, "fetch", "origin", "--depth", "1", meta.commitish]
-                        exectools.cmd_assert(cmd)
+
                 # fetch public upstream source
                 if meta.public_upstream_branch:
                     util.setup_and_fetch_public_upstream_source(meta.public_upstream_url, meta.public_upstream_branch, source_dir)
@@ -1118,6 +1140,15 @@ class Runtime(object):
 
             # Store so that the next attempt to resolve the source hits the map
             self.register_source_alias(alias, source_dir)
+
+            if meta.commitish:
+                # With the alias registered, check out the commit we want
+                self.logger.info(f"Determining if commit-ish {meta.commitish} exists")
+                cmd = ["git", "-C", source_dir, "branch", "--contains", meta.commitish]
+                exectools.cmd_assert(cmd)
+                self.logger.info(f"Checking out commit-ish {meta.commitish}")
+                exectools.cmd_assert(["git", "-C", source_dir, "checkout", meta.commitish])
+
             return source_dir
 
     def detect_remote_source_branch(self, source_details):
@@ -1349,5 +1380,5 @@ class Runtime(object):
                  ).format(self.cfg_obj.full_path))
 
         self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
-                                       branch=self.group, logger=self.logger)
+                                       commitish=self.group_commitish, logger=self.logger)
         self.data_dir = self.gitdata.data_dir

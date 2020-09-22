@@ -44,7 +44,7 @@ def print_version(ctx, param, value):
               help="Directory containing docker config.json authentication; defaults to DOCKER_CONFIG env var if set, or `~/.docker/` if not.\n Env var: DOCKER_CONFIG")
 @click.option("--user", metavar='USERNAME', default=None,
               help="Username for rhpkg. Env var: DOOZER_USER")
-@click.option("-g", "--group", default=None, metavar='NAME',
+@click.option("-g", "--group", default=None, metavar='NAME[@commitish]',
               help="The group of images on which to operate. Env var: DOOZER_GROUP")
 @click.option("--branch", default=None, metavar='BRANCH',
               help="DistGit to override any default in group.yml.")
@@ -64,6 +64,12 @@ def print_version(ctx, param, value):
               help='If a base image is not included, lookup latest FROM tag for parent. Implies --ignore-missing-base')
 @click.option("--quiet", "-q", default=False, is_flag=True, help="Suppress non-critical output")
 @click.option('--debug', default=False, is_flag=True, help='Show debug output on console.')
+@click.option("--stream", metavar="STREAM_NAME PULLSPEC", nargs=2, multiple=True,
+              help="Override a stream.yml entry with a specific pullspec.  [multiple]")
+@click.option("--upstream", "upstreams", metavar="DISTGIT_KEY COMMIT-ISH", multiple=True, nargs=2,
+              help="Override upstream source commits. [multiple]")
+@click.option("--downstream", "downstreams", metavar="DISTGIT_KEY COMMIT-ISH", multiple=True, nargs=2,
+              help="Checkout non-HEAD of distgit. This is primarily for testing and cannot be used to build images. [multiple]")
 @click.option("--source", metavar="ALIAS PATH", nargs=2, multiple=True,
               help="Associate a path with a given source alias.  [multiple]")
 @click.option("--sources", metavar="YAML_PATH",
@@ -80,6 +86,8 @@ def print_version(ctx, param, value):
 @click.option("--datastore", metavar="ENV", required=False, default=None,
               help="Whether to store & retrieve data in int / stage / prod database environment")
 @click.option("--profile", metavar="NAME", default="", help="Name of build profile")
+@click.option("--brew-event", metavar='EVENT', default=None,
+              help="Lock koji clients from runtime to this brew event.")
 @click.pass_context
 def cli(ctx, **kwargs):
     global CTX_GLOBAL

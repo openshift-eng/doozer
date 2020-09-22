@@ -20,7 +20,7 @@ from doozerlib.util import BlackBox
 
 class ImageMetadata(Metadata):
 
-    def __init__(self, runtime, data_obj: Dict, commitish: Optional[str] = None):
+    def __init__(self, runtime, data_obj: Dict, commitish: Optional[str] = None, clone_source: Optional[bool] = False):
         super(ImageMetadata, self).__init__('image', runtime, data_obj, commitish)
         self.image_name = self.config.name
         self.required = self.config.get('required', False)
@@ -30,6 +30,8 @@ class ImageMetadata(Metadata):
         dependents = self.config.get('dependents', [])
         for d in dependents:
             self.children.append(self.runtime.late_resolve_image(d, add=True))
+        if clone_source:
+            runtime.resolve_source(self)
 
     def is_ancestor(self, image):
         """
@@ -327,7 +329,7 @@ class ImageMetadata(Metadata):
 
             build_root_changes = brew.tags_changed_since_build(runtime, koji_api, image_build, buildroot_tag_ids)
             if build_root_changes:
-                changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
+                changing_tag_names = build_root_changes.keys()
                 self.logger.info(f'Image will be rebuilt due to buildroot change since {image_nvr} (last build event={image_build_event_id}). Build root changes changes: [{changing_tag_names}]')
                 self.logger.debug(f'Image will be rebuilt due to buildroot change since ({image_build}) (last build event={image_build_event_id}). Build root changes: {build_root_changes}')
                 return True, f'Buildroot tag changes in [{changing_tag_names}] since {image_nvr}'

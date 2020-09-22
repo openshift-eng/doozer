@@ -182,7 +182,7 @@ def is_commit_in_public_upstream(revision: str, public_upstream_branch: str, sou
         return True
     if rc == 1:
         return False
-    raise IOError(f"Couldn't determine if the commit {revision} is in the public upstream source repo. `git fetch` exited with {rc}, stdout={out}, stderr={err}")
+    raise IOError(f"Couldn't determine if the commit {revision} is in the public upstream source repo. `git merge-base` exited with {rc}, stdout={out}, stderr={err}")
 
 
 def is_in_directory(path, directory):
