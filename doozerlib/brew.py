@@ -227,11 +227,52 @@ class KojiWrapper(wrapt.ObjectProxy):
     this wrapper will automatically retry all invocations of koji APIs.
     """
 
+    # A list of methods which support receiving an event parameter
+    methods_with_event = set([
+        'getBuildConfig',
+        'getBuildTarget',
+        'getBuildTargets',
+        'getExternalRepo',
+        'getExternalRepoList',
+        'getFullInheritance',
+        'getGlobalInheritance',
+        'getHost',
+        'getInheritanceData',
+        'getLatestBuilds',
+        'getLatestMavenArchives',
+        'getLatestRPMS',
+        'getPackageConfig',
+        'getRepo',
+        'getTag',
+        'getTagExternalRepos',
+        'getTagGroups',
+        'listChannels',
+        'listExternalRepos',
+        'listPackages',
+        'listTagged',
+        'listTaggedArchives',
+        'listTaggedRPMS',
+        'newRepo'
+    ])
+
+    def __init__(self, obj, brew_event=None):
+        """
+        :param obj: The koji api object to wrap
+        :param brew_event: If specified, all koji queries (that support event=...) will be called with this
+                event. This allows you to lock all calls to this client in time. Make sure the method is in
+                KojiWrapper.methods_with_event if it is a new koji method (added after 2020-9-22).
+        """
+        self.brew_event = None if not brew_event else int(brew_event)
+        super().__init__(obj)
+
     def __call__(self, *args, **kwargs):
         retries = 4
         while retries > 0:
             try:
-                return self.__wrapped__(*args, **kwargs)
+                if self.brew_event and 'event' not in kwargs and self.__wrapped__.__name__ in KojiWrapper.methods_with_event:
+                    return self.__wrapped__(*args, event=self.brew_event, **kwargs)
+                else:
+                    return self.__wrapped__(*args, **kwargs)
             except requests.exceptions.ConnectionError as ce:
                 time.sleep(5)
                 retries -= 1
