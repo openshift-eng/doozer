@@ -59,6 +59,9 @@ class ImageMetadata(Metadata):
         return descendants
 
     def resolve_parent(self):
+        """
+        :return: Resolves and returns imagemeta.parent attribute for this image's parent image OR None if no parent is defined.
+        """
         if 'from' in self.config:
             if 'member' in self.config['from']:
                 base = self.config['from']['member']
@@ -69,6 +72,7 @@ class ImageMetadata(Metadata):
 
                 if self.parent:
                     self.parent.add_child(self)
+        return self.parent
 
     def add_child(self, child):
         """

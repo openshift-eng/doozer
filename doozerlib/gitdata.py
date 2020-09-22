@@ -80,6 +80,8 @@ class GitData(object):
         self.remote_path = None
         self.sub_dir = sub_dir
         self.exts = ['.' + e.lower() for e in exts]
+        self.commit_hash = None
+        self.origin_url = None
         if data_path:
             self.clone_data(data_path)
 
@@ -162,6 +164,10 @@ class GitData(object):
             self.data_dir = os.path.join(self.data_path, self.sub_dir)
         else:
             self.data_dir = self.data_path
+
+        self.origin_url, _ = exectools.cmd_assert(f'git -C {self.data_path} remote get-url origin', strip=True)
+        self.commit_hash, _ = exectools.cmd_assert(f'git -C {self.data_path} rev-parse HEAD', strip=True)
+
         if not os.path.isdir(self.data_dir):
             raise GitDataPathException('{} is not a valid sub-directory in the data'.format(self.sub_dir))
 

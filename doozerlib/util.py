@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import click
 import copy
 import os
-import errno
+import yaml
 import re
 from os.path import abspath
 from typing import Dict
@@ -82,21 +82,72 @@ def dict_get(dct, path, default=DICT_EMPTY):
     return dct
 
 
-def convert_remote_git_to_https(source):
+def remove_prefix(s: str, prefix: str) -> str:
+    if s.startswith(prefix):
+        return s[len(prefix):]
+    else:
+        return s[:]
+
+
+def remove_prefixes(s: str, *args) -> str:
+    for prefix in args:
+        s = remove_prefix(s, prefix)
+    return s
+
+
+def remove_suffix(s: str, suffix: str) -> str:
+    # suffix='' should not call self[:-0].
+    if suffix and s.endswith(suffix):
+        return s[:-len(suffix)]
+    else:
+        return s[:]
+
+
+def convert_remote_git_to_https(source_url: str):
     """
     Accepts a source git URL in ssh or https format and return it in a normalized
-    https format:
+    https format (:port on servers is not supported):
         - https protocol
         - no trailing /
-    :param source: Git remote
+    :param source_url: Git remote
     :return: Normalized https git URL
     """
-    url = re.sub(
-        pattern=r'[^@]+@([^:/]+)[:/]([^\.]+)',
-        repl='https://\\1/\\2',
-        string=source.strip(),
-    )
-    return re.sub(string=url, pattern=r'\.git$', repl='').rstrip('/')
+    url = source_url.strip().rstrip('/')
+    url = remove_prefixes(url, 'http://', 'https://', 'git://', 'git@', 'ssh://')
+    url = remove_suffix(url, '.git')
+    url = url.split('@', 1)[-1]  # Strip username@
+
+    if url.find(':') > -1:
+        server, org_repo = url.rsplit(':', 1)
+    elif url.rfind('/') > -1:
+        server, org_repo = url.rsplit('/', 1)
+    else:
+        return f'https://{url}'  # weird..
+
+    return f'https://{server}/{org_repo}'
+
+
+def split_git_url(url) -> (str, str, str):
+    """
+    :param url: A remote ssh or https github url
+    :return: Splits a github url into the server name, org, and repo name
+    """
+    https_normalized = convert_remote_git_to_https(url)
+    url = https_normalized[8:]  # strip https://
+    server, repo = url.split('/', 1)  # e.g. 'github.com', 'openshift/origin'
+    org, repo_name = repo.split('/', 1)
+    return server, org, repo_name
+
+
+def convert_remote_git_to_ssh(url):
+    """
+    Accepts a remote git URL and turns it into a git@
+    ssh form.
+    :param url: The initial URL
+    :return: A url in git@server:repo.git
+    """
+    server, org, repo_name = split_git_url(url)
+    return f'git@{server}:{org}/{repo_name}.git'
 
 
 def setup_and_fetch_public_upstream_source(public_source_url: str, public_upstream_branch: str, source_dir: str):
@@ -233,6 +284,22 @@ def analyze_debug_timing(file):
                     with_event = list(names)
                     with_event[i] = thread_name + ': ' + event
                     print_em(f' {interval}', *with_event[:i + 1])
+
+
+def what_is_in_master() -> str:
+    """
+    :return: Returns a string like "4.6" to identify which release currently resides in master branch.
+    """
+    # The promotion target of the openshift/images master branch defines this release master is associated with.
+    ci_config_url = 'https://raw.githubusercontent.com/openshift/release/master/ci-operator/config/openshift/images/openshift-images-master.yaml'
+    content = exectools.urlopen_assert(ci_config_url).read()
+    ci_config = yaml.safe_load(content)
+    # Look for something like: https://github.com/openshift/release/blob/251cb12e913dcde7be7a2b36a211650ed91c45c4/ci-operator/config/openshift/images/openshift-images-master.yaml#L64
+    target_release = ci_config.get('promotion', {}).get('name', None)
+    if not target_release:
+        red_print(content)
+        raise IOError('Unable to find which openshift release resides in master')
+    return target_release
 
 
 def extract_version_fields(version, at_least=0):
