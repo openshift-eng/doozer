@@ -436,12 +436,7 @@ class OLMBundle(object):
 
     @property
     def redhat_delivery_tags(self):
-        # @TODO: programatically determine if an operator is not present in OCP 4.5
-        # if operator is not going to be present on OCP 4.5+, value of "versions" should be "v4.4"
-        # References:
-        # https://docs.engineering.redhat.com/display/CFC/Migration
-        # https://issues.redhat.com/browse/ART-1728?focusedCommentId=14054070#comment-14054070
-        versions = 'v4.5'
+        versions = 'v{MAJOR}.{MINOR}'.format(**self.runtime.group_config.vars)
 
         return {
             # 'com.redhat.delivery.backport': 'true',
