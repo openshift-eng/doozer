@@ -161,7 +161,7 @@ def cmd_gather(cmd, set_env=None, realtime=False, strip=False, log_stdout=False,
         try:
             proc = subprocess.Popen(
                 cmd_list, cwd=cwd, env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
         except OSError as exc:
             description = "{}: Errored:\nException:\n{}\nIs {} installed?".format(cmd_info, exc, cmd_list[0])
             logger.error(description)

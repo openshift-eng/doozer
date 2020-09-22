@@ -112,9 +112,10 @@ option_push = click.option('--push/--no-push', default=False, is_flag=True,
 
 
 @cli.command("images:clone", help="Clone a group's image distgit repos locally.")
+@click.option('--clone-upstreams', default=False, is_flag=True, help='Also clone upstream sources.')
 @pass_runtime
-def images_clone(runtime):
-    runtime.initialize(clone_distgits=True)
+def images_clone(runtime, clone_upstreams):
+    runtime.initialize(clone_distgits=True, clone_source=clone_upstreams)
     # Never delete after clone; defeats the purpose of cloning
     runtime.remove_tmp_working_dir = False
 
@@ -303,8 +304,6 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
 
 
 @cli.command("images:update-dockerfile", short_help="Update a group's distgit Dockerfile from metadata.")
-@click.option("--stream", metavar="ALIAS REPO/NAME:TAG", nargs=2, multiple=True,
-              help="Associate an image name with a given stream alias.  [multiple]")
 @click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
               help="Version string to populate in Dockerfiles. \"auto\" gets version from atomic-openshift RPM")
 @click.option("--release", metavar='RELEASE', default=None,
@@ -315,7 +314,7 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
 @option_commit_message
 @option_push
 @pass_runtime
-def images_update_dockerfile(runtime, stream, version, release, repo_type, message, push):
+def images_update_dockerfile(runtime, version, release, repo_type, message, push):
     """
     Updates the Dockerfile in each distgit repository with the latest metadata and
     the version/release information specified. This does not update the Dockerfile
@@ -350,11 +349,6 @@ def images_update_dockerfile(runtime, stream, version, release, repo_type, messa
 
     # If not pushing, do not clean up our work
     runtime.remove_tmp_working_dir = push
-
-    # For each "--stream alias image" on the command line, register its existence with
-    # the runtime.
-    for s in stream:
-        runtime.register_stream_alias(s[0], s[1])
 
     # Get the version from the atomic-openshift package in the RPM repo
     if version == "auto":
@@ -515,8 +509,6 @@ def images_covscan(runtime, result_archive, local_repo, repo_type, preserve_scan
 
 
 @cli.command("images:rebase", short_help="Refresh a group's distgit content from source content.")
-@click.option("--stream", metavar="ALIAS REPO/NAME:TAG", nargs=2, multiple=True,
-              help="Associate an image name with a given stream alias.  [multiple]")
 @click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
               help="Version string to populate in Dockerfiles. \"auto\" gets version from atomic-openshift RPM")
 @click.option("--release", metavar='RELEASE', default=None, help="Release string to populate in Dockerfiles.")
@@ -524,12 +516,10 @@ def images_covscan(runtime, result_archive, local_repo, repo_type, preserve_scan
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
-@click.option("--upstream", "upstreams", metavar="DISTGIT_KEY=COMMIT-ISH", multiple=True,
-              help="Override upstream source commits [multiple]")
 @option_commit_message
 @option_push
 @pass_runtime
-def images_rebase(runtime, stream, version, release, embargoed, repo_type, message, push, upstreams):
+def images_rebase(runtime, version, release, embargoed, repo_type, message, push):
     """
     Many of the Dockerfiles stored in distgit are based off of content managed in GitHub.
     For example, openshift-enterprise-node should always closely reflect the changes
@@ -546,17 +536,7 @@ def images_rebase(runtime, stream, version, release, embargoed, repo_type, messa
     metadata may be applied (base image, tags, etc) along with the version and release.
     """
 
-    upstream_pattern = re.compile(r"(.+)=(.+)")  # TODO: Use a more precise regexp
-    upstream_overrides = {}
-    for upstream in upstreams:
-        click.echo(f"Use {upstream}")
-        m = upstream_pattern.fullmatch(upstream)
-        if not m:
-            raise ValueError(f"Invalid `upstream` string: {upstream}, expecting like some-image=https://github.com/foo/bar#commitish")
-        click.echo(f"\tdistgit={m[1]},commitish={m[2]}")
-        upstream_overrides[m[1]] = m[2]
-
-    runtime.initialize(validate_content_sets=True, upstream_commitish_overrides=upstream_overrides)
+    runtime.initialize(validate_content_sets=True)
 
     if runtime.group_config.public_upstreams and (release is None or release != "+" and not release.endswith(".p?")):
         raise click.BadParameter("You must explicitly specify a `release` ending with `.p?` (or '+') when there is a public upstream mapping in ocp-build-data.")
@@ -572,11 +552,6 @@ def images_rebase(runtime, stream, version, release, embargoed, repo_type, messa
 
     # If not pushing, do not clean up our work
     runtime.remove_tmp_working_dir = push
-
-    # For each "--stream alias image" on the command line, register its existence with
-    # the runtime.
-    for s in stream:
-        runtime.register_stream_alias(s[0], s[1])
 
     # Get the version from the atomic-openshift package in the RPM repo
     if version == "auto":
@@ -1308,7 +1283,7 @@ def images_show_tree(runtime, imagename, yml):
                 print_branch(image)
 
 
-@cli.command("images:print", short_help="Print data from each distgit")
+@cli.command("images:print", short_help="Print data for each image metadata")
 @click.option(
     "--short", default=False, is_flag=True,
     help="Suppress all output other than the data itself")

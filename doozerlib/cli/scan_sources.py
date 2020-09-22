@@ -54,7 +54,9 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
             assessment_reason[key] = reason
 
     with runtime.shared_koji_client_session() as koji_api:
+
         runtime.logger.info(f'Running scan with true latest koji/brew event: {koji_api.getLastEvent()}')
+        runtime.logger.info(f'Emulated override koji/brew event: {runtime.brew_event}')
 
         # Different branches have different build tags & inheritances; cache the results to
         # limit brew queries.
@@ -95,16 +97,23 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
 
             if meta.meta_type == 'rpm':
                 package_name = meta.get_package_name(default=None)
-                if needs_rebuild is False and package_name:  # If we are currently matching, check buildroots to see if it unmatches us
+                if needs_rebuild is False and package_name:  # If no change has been detected, check buildroots to see if it has changed
+
+                    # A package may contain multiple RPMs; find the oldest one in the latest package build.
+                    eldest_rpm_build = None
                     for latest_rpm_build in koji_api.getLatestRPMS(tag=meta.branch() + '-candidate', package=package_name)[1]:
-                        # Detect if our buildroot changed since the last build of this rpm
-                        rpm_build_root_tag_ids = get_build_root_inherited_tags(meta).keys()
-                        build_root_changes = brew.tags_changed_since_build(runtime, koji_api, latest_rpm_build, rpm_build_root_tag_ids)
-                        if build_root_changes:
-                            changing_tag_names = [brc['tag_name'] for brc in build_root_changes]
-                            reason = f'Latest rpm was built before buildroot changes: {changing_tag_names}'
-                            runtime.logger.info(f'{dgk} ({latest_rpm_build}) will be rebuilt because it has not been built since a buildroot change: {build_root_changes}')
-                            needs_rebuild = True
+                        if not eldest_rpm_build or latest_rpm_build['creation_event_id'] < eldest_rpm_build['creation_event_id']:
+                            eldest_rpm_build = latest_rpm_build
+
+                    # Detect if our buildroot changed since the oldest rpm of the latest build of the package was built.
+                    rpm_build_root_tag_ids = get_build_root_inherited_tags(meta).keys()
+                    build_root_changes = brew.tags_changed_since_build(runtime, koji_api, eldest_rpm_build, rpm_build_root_tag_ids)
+
+                    if build_root_changes:
+                        changing_tag_names = build_root_changes.keys()
+                        reason = f'Latest package build was before buildroot changes: {changing_tag_names}'
+                        runtime.logger.info(f'{dgk} ({eldest_rpm_build}) in {package_name} is older than more recent buildroot change: {build_root_changes}')
+                        needs_rebuild = True
 
                 if reason:
                     add_assessment_reason(meta, needs_rebuild, reason=reason)

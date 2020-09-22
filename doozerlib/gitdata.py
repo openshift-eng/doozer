@@ -57,13 +57,13 @@ class DataObj(object):
 
 
 class GitData(object):
-    def __init__(self, data_path=None, clone_dir='./', branch='master',
+    def __init__(self, data_path=None, clone_dir='./', commitish='master',
                  sub_dir=None, exts=['yaml', 'yml', 'json'], logger=None):
         """
         Load structured data from a git source.
         :param str data_path: Git url (git/http/https) or local directory path
         :param str clone_dir: Location to clone data into
-        :param str branch: Repo branch (tag or sha also allowed) to checkout
+        :param str commitish: Repo branch (tag or sha also allowed) to checkout
         :param str sub_dir: Sub dir in data to treat as root
         :param list exts: List of valid extensions to search for in data, with out period
         :param logger: Python logging object to use
@@ -75,7 +75,7 @@ class GitData(object):
             self.logger = logging.getLogger()
 
         self.clone_dir = clone_dir
-        self.branch = branch
+        self.branch = commitish
 
         self.remote_path = None
         self.sub_dir = sub_dir
@@ -144,10 +144,9 @@ class GitData(object):
                 self.logger.info('Cloning config data from {}'.format(self.data_path))
                 if not os.path.isdir(data_destination):
                     # Clone all branches as we must sometimes reference master /OWNERS for maintainer information
-                    cmd = "git clone --no-single-branch -b {} --depth 1 {} {}".format(self.branch, self.data_path, data_destination)
-                    rc, out, err = exectools.cmd_gather(cmd, set_env=constants.GIT_NO_PROMPTS)
-                    if rc:
-                        raise GitDataException('Error while cloning data: {}'.format(err))
+                    cmd = "git clone --no-single-branch {} {}".format(self.data_path, data_destination)
+                    exectools.cmd_assert(cmd, set_env=constants.GIT_NO_PROMPTS)
+                    exectools.cmd_assert(f'git -C {data_destination} checkout {self.branch}', set_env=constants.GIT_NO_PROMPTS)
 
             self.remote_path = self.data_path
             self.data_path = data_destination

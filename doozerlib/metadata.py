@@ -182,7 +182,7 @@ class Metadata(object):
 
     def get_component_name(self, default=-1):
         """
-        :param default: If the component name cannot be determine,
+        :param default: If the component name cannot be determined,
         :return: Returns the component name of the image. This is the name in the nvr
         that brew assigns to this image's build.
         """

@@ -5,10 +5,12 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 # stdlib
 import time
+import threading
 import subprocess
 from multiprocessing import Lock
 import traceback
 import requests
+import json
 from typing import List, Tuple, Dict, Optional
 
 from . import logutil
@@ -16,8 +18,9 @@ from . import logutil
 # 3rd party
 import koji
 import koji_cli.lib
-import wrapt
 
+from .model import Missing
+from .util import red_print
 
 logger = logutil.getLogger(__name__)
 
@@ -196,20 +199,19 @@ def list_build_rpms(build_ids: List[int], session: koji.ClientSession) -> List[O
     return [task.result for task in tasks]
 
 
-# Map that records the most recent change for a tag.
-# Maps tag_id to a list containing the most recent change
-# event returned by koji's tagHistory API.
-latest_tag_change_cache = {}
+# Map that records tagId -> dict of latest package tagging event associated with that tag
+latest_tag_change_events = {}
 cache_lock = Lock()
 
 
-def tags_changed_since_build(runtime, koji_client, build, tag_ids):
+def tags_changed_since_build(runtime, koji_client, build, tag_ids) -> Dict:
     """
+    :param runtime:  The doozer runtime
+    :param koji_client: A koji ClientSession.
     :param build:  A build information dict returned from koji getBuild
     :param tag_ids: A list of tag ids (or tag names) which should be assessed
-    :return: If any of the tags have changed since the specified event, returns a
-                list of information about the tags. If no tags have changed since
-                event, returns an empty list
+    :return: A map (potentially empty) with tagName -> changeEvent (where changeEvent is a map describing the event
+             and occurred after the build creation_event_id).
     """
     build_nvr = build['nvr']
     build_event_id = build['creation_event_id']
@@ -217,39 +219,315 @@ def tags_changed_since_build(runtime, koji_client, build, tag_ids):
     result = []
     for tid in tag_ids:
         with cache_lock:
-            tag_changes = latest_tag_change_cache.get(tid, None)
+            latest_tag_change_event = latest_tag_change_events.get(tid, None)
 
-        if tag_changes is None:
-            # koji returns in reverse chronological order. So we are retrieving the most recent.
-            tag_changes = koji_client.tagHistory(tag=tid, queryOpts={'limit': 1})
+        if latest_tag_change_event is None:
+            # I don't like the use of this queryHistory call. It returns the most recently tagged (active=True)
+            # packages associated with a tag. This is a long list (e.g. 100s of packages for the
+            # rhaos candidate tag, so it might impact performance. What we want out of this is the
+            # very newest tagged package, but queryHistory does not seem to allow this (e.g. limit: 1).
+            # There is another API 'tagHistory' that can do this, but (1) it is supposed to be
+            # deprecated and (2) it does not allow event=# to constrain its search (required
+            # to support --brew-event). So we use this call. The first entry in the tag_listing
+            # field should be the most recently tagged package by this tag.
+            # Example result of full queryHistory: https://gist.github.com/jupierce/943b845c07defe784522fd9fd76f4ab0
+            tag_listing = koji_client.queryHistory(table='tag_listing', tag=tid, active=True)['tag_listing']
+            latest_tag_change_event = {} if not tag_listing else tag_listing[0]
             with cache_lock:
-                latest_tag_change_cache[tid] = tag_changes
+                latest_tag_change_events[tid] = latest_tag_change_event
 
-        if tag_changes:
-            tag_change = tag_changes[0]
-            tag_change_event_id = tag_change['create_event']
-            if tag_change_event_id > build_event_id:
-                result.append(tag_change)
+        if latest_tag_change_event and latest_tag_change_event['create_event'] > build_event_id:
+            result[latest_tag_change_event['tag.name']] = latest_tag_change_event
 
     runtime.logger.debug(f'Found that build of {build_nvr} (event={build_event_id}) occurred before tag changes: {result}')
     return result
 
 
-class KojiWrapper(wrapt.ObjectProxy):
+class KojiWrapperOpts(object):
     """
-    We've see the koji client occasionally get
-    Connection Reset by Peer errors.. "requests.exceptions.ConnectionError: ('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))"
-    Under the theory that these operations just need to be retried,
-    this wrapper will automatically retry all invocations of koji APIs.
+    A structure to carry special options into KojiWrapper API invocations. When using
+    a KojiWrapper instance, any koji api call (or multicall) can include a KojiWrapperOpts
+    as a positional parameter. It will be interpreted by the KojiWrapper and removed
+    prior to sending the request on to the koji server.
     """
 
-    def __call__(self, *args, **kwargs):
+    def __init__(self, logger=None, caching=False, brew_event_aware=False, return_metadata=False):
+        """
+        :param logger: The koji API inputs and outputs will be logged at info level.
+        :param caching: The result of the koji api call will be cached. Identical koji api calls (with caching=True)
+                        will hit the cache instead of the server.
+        :param brew_event_aware: Denotes that the caller is aware that the koji call they are making is NOT
+                        constrainable with an event= or beforeEvent= kwarg. The caller should only be making such
+                        a call if they know it will not affect the idempotency of the execution of tests. If not
+                        specified, non-constrainable koji APIs will cause an exception to be thrown.
+        :param return_metadata: If true, the API call will return KojiWrapperMetaReturn instead of the raw result.
+                        This is for testing purposes (e.g. to see if caching is working). For multicall work, the
+                        metadata wrapper will be returned from call_all()
+        """
+        self.logger = logger
+        self.caching: bool = caching
+        self.brew_event_aware: bool = brew_event_aware
+        self.return_metadata: bool = return_metadata
+
+
+class KojiWrapperMetaReturn(object):
+
+    def __init__(self, result, cache_hit=False):
+        self.result = result
+        self.cache_hit = cache_hit
+
+
+class KojiWrapper(koji.ClientSession):
+    """
+    Using KojiWrapper adds the following to the normal ClientSession:
+    - Calls are retried if requests.exceptions.ConnectionError is encountered.
+    - If the koji api call has a KojiWrapperOpts as a positional parameter:
+        - If opts.logger is set, e.g. wrapper.getLastEvent(KojiWrapperOpts(logger=runtime.logger)), the invocation
+          and results will be logged (the positional argument will not be passed to the koji server).
+        - If opts.cached is True, the result will be cached and an identical invocation (also with caching=True)
+          will return the cached value.
+    """
+
+    koji_wrapper_lock = threading.Lock()
+    koji_call_counter = 0  # Increments atomically to help search logs for koji api calls
+    # Used by the KojiWrapper to cache API calls, when a call's args include a KojiWrapperOpts with caching=True.
+    # The key is either None or a brew event id to which queries are locked. The value is another dict whose
+    # key is a string respresentation of the method to be invoked and the value is the cached value returned
+    # from the server.
+    koji_wrapper_result_cache = {}
+
+    # A list of methods which support receiving an event kwarg. See --brew-event CLI argument.
+    methods_with_event = set([
+        'getBuildConfig',
+        'getBuildTarget',
+        'getBuildTargets',
+        'getExternalRepo',
+        'getExternalRepoList',
+        'getFullInheritance',
+        'getGlobalInheritance',
+        'getHost',
+        'getInheritanceData',
+        'getLatestBuilds',
+        'getLatestMavenArchives',
+        'getLatestRPMS',
+        'getPackageConfig',
+        'getRepo',
+        'getTag',
+        'getTagExternalRepos',
+        'getTagGroups',
+        'listChannels',
+        'listExternalRepos',
+        'listPackages',
+        'listTagged',
+        'listTaggedArchives',
+        'listTaggedRPMS',
+        'newRepo',
+    ])
+
+    def __init__(self, koji_session_args, brew_event=None):
+        """
+        See class description on what this wrapper provides.
+        :param koji_session_args: list to pass as *args to koji.ClientSession superclass
+        :param brew_event: If specified, all koji queries (that support event=...) will be called with this
+                event. This allows you to lock all calls to this client in time. Make sure the method is in
+                KojiWrapper.methods_with_event if it is a new koji method (added after 2020-9-22).
+        """
+        self.___brew_event = None if not brew_event else int(brew_event)
+        super(KojiWrapper, self).__init__(*koji_session_args)
+
+    @classmethod
+    def clear_global_cache(cls):
+        with cls.koji_wrapper_lock:
+            cls.koji_wrapper_result_cache.clear()
+
+    @classmethod
+    def get_next_call_id(cls):
+        global koji_call_counter, koji_wrapper_lock
+        with cls.koji_wrapper_lock:
+            cid = cls.koji_call_counter
+            cls.koji_call_counter = cls.koji_call_counter + 1
+            return cid
+
+    def _get_cache_bucket_unsafe(self):
+        """Call while holding lock!"""
+        cache_bucket = KojiWrapper.koji_wrapper_result_cache.get(self.___brew_event, None)
+        if cache_bucket is None:
+            cache_bucket = {}
+            KojiWrapper.koji_wrapper_result_cache[self.___brew_event] = cache_bucket
+        return cache_bucket
+
+    def _cache_result(self, api_repr, result):
+        with KojiWrapper.koji_wrapper_lock:
+            cache_bucket = self._get_cache_bucket_unsafe()
+            cache_bucket[api_repr] = result
+
+    def _get_cache_result(self, api_repr, return_on_miss):
+        with KojiWrapper.koji_wrapper_lock:
+            cache_bucket = self._get_cache_bucket_unsafe()
+            return cache_bucket.get(api_repr, return_on_miss)
+
+    def modify_koji_call_kwargs(self, method_name, kwargs, kw_opts: KojiWrapperOpts):
+        """
+        For a given koji api method, modify kwargs by inserting an event key if appropriate
+        :param method_name: The koji api method name
+        :param kwargs: The kwargs about to passed in
+        :param kw_opts: The KojiWrapperOpts that can been determined for this invocation.
+        :return: The actual kwargs to pass to the superclass
+        """
+        brew_event = self.___brew_event
+        if brew_event:
+            if method_name == 'queryHistory' and 'beforeEvent' not in kwargs:
+                kwargs = kwargs or {}
+                kwargs['beforeEvent'] = self.brew_event + 1
+            elif 'event' not in kwargs and method_name in KojiWrapper.methods_with_event:
+                kwargs = kwargs or {}
+                kwargs['event'] = brew_event
+            elif not kw_opts.brew_event_aware:
+                # If --brew-event has been specified and non-constrainable API call is invoked, raise
+                # an exception if the caller has not made clear that are ok with that via brew_event_aware option.
+                raise IOError('Non-constrainable koji api call with --brew-event set; you must use KojiWrapperOpts with brew_event_aware=True')
+
+        return kwargs
+
+    def modify_koji_call_params(self, method_name, params, aggregate_kw_opts: KojiWrapperOpts):
+        """
+        For a given koji api method, scan a tuple of arguments being passed to that method.
+        If a KojiWrapperOpts is detected, interpret it. Return a (possible new) tuple with
+        any KojiWrapperOpts removed.
+        :param method_name: The koji api name
+        :param params: The parameters for the method. In a standalone API call, this will just
+                        be normal positional arguments. In a multicall, params will look
+                        something like: (1328870, {'__starstar': True, 'strict': True})
+        :param aggregate_kw_opts: The KojiWrapperOpts to be populated with KojiWrapperOpts instances found in the parameters.
+        :return: The params tuple to pass on to the superclass call
+        """
+        new_params = list()
+        for param in params:
+            if isinstance(param, KojiWrapperOpts):
+                kwOpts: KojiWrapperOpts = param
+
+                # If a logger is specified, use that logger for the call. Only the most last logger
+                # specific in a multicall will be used.
+                aggregate_kw_opts.logger = kwOpts.logger or aggregate_kw_opts.logger
+
+                # Within a multicall, if any call requests caching, the entire multiCall will use caching.
+                # This may be counterintuitive, but avoids having the caller carefully setting caching
+                # correctly for every single call.
+                aggregate_kw_opts.caching |= kwOpts.caching
+
+                aggregate_kw_opts.brew_event_aware |= kwOpts.brew_event_aware
+                aggregate_kw_opts.return_metadata |= kwOpts.return_metadata
+            else:
+                new_params.append(param)
+
+        return tuple(new_params)
+
+    def _callMethod(self, name, args, kwargs=None, retry=True):
+        """
+        This method is invoked by the superclass as part of a normal koji_api.<apiName>(...) OR
+        indirectly after koji.multicall() calls are aggregated and executed (this calls
+        the 'multiCall' koji API).
+        :param name: The name of the koji API.
+        :param args:
+            - When part of an ordinary invocation: a tuple of args. getBuild(1328870, strict=True) -> args=(1328870,)
+            - When part of a multicall, contains methods, args, and kwargs. getBuild(1328870, strict=True) ->
+                args=([{'methodName': 'getBuild','params': (1328870, {'__starstar': True, 'strict': True})}],)
+        :param kwargs:
+            - When part of an ordinary invocation, a map of kwargs. getBuild(1328870, strict=True) -> kwargs={'strict': True}
+            - When part of a multicall, contains nothing? with multicall including getBuild(1328870, strict=True) -> {}
+        :param retry: passed on to superclass retry
+        :return: The value returned from the koji API call.
+        """
+
+        aggregate_kw_opts: KojiWrapperOpts = KojiWrapperOpts()
+
+        if name == 'multiCall':
+            # If this is a multiCall, we need to search through and modify each bundled invocation
+            """
+            Example args:
+            ([  {'methodName': 'getBuild', 'params': (1328870, {'__starstar': True, 'strict': True})},
+                {'methodName': 'getLastEvent', 'params': ()}],)
+            """
+            multiArg = args[0]   # args is a tuple, the first should be our listing of method invocations.
+            for call_dict in multiArg:  # For each method invocation in the multicall
+                method_name = call_dict['methodName']
+                params = self.modify_koji_call_params(method_name, call_dict['params'], aggregate_kw_opts)
+                if params:
+                    # Assess whether we need to inject event of beforeEvent into the koji call kwargs
+                    possible_kwargs = params[-1]  # last element could be normal arg or kwargs dict
+                    if isinstance(possible_kwargs, dict) and possible_kwargs.get('__starstar', None):
+                        # __starstar is a special identifier added by the koji library indicating
+                        # the entry is kwargs and not normal args.
+                        params[-1] = self.modify_koji_call_kwargs(method_name, possible_kwargs, aggregate_kw_opts)
+                call_dict['params'] = tuple(params)
+        else:
+            args = self.modify_koji_call_params(name, args, aggregate_kw_opts)
+            kwargs = self.modify_koji_call_kwargs(name, kwargs, aggregate_kw_opts)
+
+        my_id = KojiWrapper.get_next_call_id()
+
+        logger = aggregate_kw_opts.logger
+        return_metadata = aggregate_kw_opts.return_metadata
+        use_caching = aggregate_kw_opts.caching
+
         retries = 4
         while retries > 0:
             try:
-                return self.__wrapped__(*args, **kwargs)
+                if logger:
+                    logger.info(f'koji-api-call-{my_id}: {name}(args={args}, kwargs={kwargs})')
+
+                def package_result(result, cache_hit: bool):
+                    ret = result
+                    if return_metadata:
+                        # If KojiWrapperOpts asked for information about call metadata back,
+                        # return the results in a wrapper containing that information.
+                        if name == 'multiCall':
+                            # Results are going to be returned as [ [result1], [result2], ... ] if there is no fault.
+                            # If there is a fault, the fault entry will be a dict.
+                            ret = []
+                            for entry in result:
+                                # A fault was entry will not carry metadata, so only package when we see a list
+                                if isinstance(entry, list):
+                                    ret.append([KojiWrapperMetaReturn(entry[0], cache_hit=cache_hit)])
+                                else:
+                                    # Pass on fault without modification.
+                                    ret.append(entry)
+                        else:
+                            ret = KojiWrapperMetaReturn(result, cache_hit=cache_hit)
+                    return ret
+
+                caching_key = None
+                if use_caching:
+                    # We need a reproducible immutable key from a dict with nest dicts. json.dumps
+                    # and sorting keys is a deterministic way of achieving this.
+                    caching_key = json.dumps({
+                        'method_name': name,
+                        'args': args,
+                        'kwargs': kwargs
+                    }, sort_keys=True)
+                    result = self._get_cache_result(caching_key, Missing)
+                    if result is not Missing:
+                        if logger:
+                            logger.info(f'CACHE HIT: koji-api-call-{my_id}: {name} returned={result}')
+                        return package_result(result, True)
+
+                result = super()._callMethod(name, args, kwargs=kwargs, retry=retry)
+
+                if use_caching:
+                    self._cache_result(caching_key, result)
+
+                if logger:
+                    logger.info(f'koji-api-call-{my_id}: {name} returned={result}')
+
+                return package_result(result, False)
             except requests.exceptions.ConnectionError as ce:
+                if logger:
+                    logger.warning(f'koji-api-call-{my_id}: {method_name}(...) failed="{ce}""; retries remaining {retries - 1}')
                 time.sleep(5)
                 retries -= 1
                 if retries == 0:
-                    raise ce
+                    raise
+
+
+
+
