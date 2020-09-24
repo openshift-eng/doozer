@@ -410,7 +410,7 @@ class OLMBundle(object):
 
     @property
     def bundle_brew_component(self):
-        return self.operator_brew_component.replace('-container', '-bundle-container')
+        return self.operator_brew_component.replace('-container', '-metadata-container')
 
     @property
     def branch(self):
