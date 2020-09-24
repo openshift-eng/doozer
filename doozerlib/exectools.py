@@ -5,7 +5,7 @@ ordinary subprocess behaviors.
 """
 
 from __future__ import absolute_import, print_function, unicode_literals
-
+import asyncio
 import subprocess
 import time
 import shlex
@@ -274,3 +274,45 @@ def fire_and_forget(cwd, shell_cmd, quiet=True):
     p = subprocess.Popen(f'{shell_cmd}', env=os.environ.copy(), shell=True, stdin=None, stdout=None, stderr=None,
                          cwd=cwd, close_fds=True, **kwargs)
     assert not p.poll()
+
+
+async def cmd_gather_async(cmd, text_mode=True, set_env=None):
+    """Similar to cmd_gather, but run asynchronously"""
+    if not isinstance(cmd, list):
+        cmd_list = shlex.split(cmd)
+    else:
+        cmd_list = cmd
+
+    cwd = pushd.Dir.getcwd()
+    cmd_info = f'[cwd={cwd}]: {cmd_list}'
+
+    logger.debug("Executing:cmd_gather {}".format(cmd_info))
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, cwd=cwd, env=set_env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE)
+
+    out, err = await proc.communicate()
+    rc = proc.returncode
+
+    if text_mode:
+        out_str = out.decode(encoding="utf-8")
+        err_str = err.decode(encoding="utf-8")
+        logger.debug(
+            "Process {}: exited with: {}\nstdout>>{}<<\nstderr>>{}<<\n".
+            format(cmd_info, rc, out_str, err_str))
+        return rc, out_str, err_str
+    else:
+        logger.debug(
+            "Process {}: exited with: {}".format(cmd_info, rc))
+        return rc, out, err
+
+
+async def cmd_assert_async(cmd, text_mode=True, set_env=None):
+    """Similar to cmd_assert, but run asynchronously"""
+    rc, out, err = await cmd_gather_async(cmd, text_mode=text_mode, set_env=set_env)
+    assertion.success(
+        rc,
+        "Error running [{}] {}. See debug log.".
+        format(pushd.Dir.getcwd(), cmd))
+    return out, err

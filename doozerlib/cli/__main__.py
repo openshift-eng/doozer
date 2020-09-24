@@ -12,6 +12,7 @@ from doozerlib import metadata
 from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.cli.release_gen_payload import release_gen_payload
+from doozerlib.cli.release_validate_rhcos import release_validate_rhcos
 from doozerlib.cli.detect_embargo import detect_embargo
 from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
 from doozerlib.cli.scan_sources import config_scan_source_changes
@@ -2342,8 +2343,10 @@ def main():
         red_print('\nDoozer Failed With Error:\n' + str(ex))
 
         if cli_package.CTX_GLOBAL and cli_package.CTX_GLOBAL.obj:
-            cli_package.CTX_GLOBAL.obj.state['status'] = state.STATE_FAIL
-            cli_package.CTX_GLOBAL.obj.state['msg'] = str(ex)
+            runtime = cli_package.CTX_GLOBAL.obj
+            if hasattr(runtime, "state"):  # only record when state is initialized
+                cli_package.CTX_GLOBAL.obj.state['status'] = state.STATE_FAIL
+                cli_package.CTX_GLOBAL.obj.state['msg'] = str(ex)
         sys.exit(1)
     finally:
         if cli_package.CTX_GLOBAL and cli_package.CTX_GLOBAL.obj and cli_package.CTX_GLOBAL.obj.initialized:

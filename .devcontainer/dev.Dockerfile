@@ -14,7 +14,7 @@ RUN dnf install -y \
     # provides en_US.UTF-8 locale required by tito
     glibc-langpack-en \
     # development dependencies
-    gcc krb5-devel openssl-devel \
+    gcc gcc-c++ krb5-devel openssl-devel \
     python3-devel python3-pip \
     # Microsoft Python Language Server requires .NET Core 2.1 or later
     dotnet-runtime-3.1 \

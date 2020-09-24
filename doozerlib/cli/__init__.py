@@ -1,5 +1,7 @@
+import asyncio
 import os
 import sys
+from functools import update_wrapper
 
 import click
 
@@ -135,3 +137,15 @@ def cli(ctx, **kwargs):
     ctx.obj = Runtime(cfg_obj=cfg, command=ctx.invoked_subcommand, **runtime_args)
     CTX_GLOBAL = ctx
     return ctx
+
+
+def click_coroutine(f):
+    """ A wrapper to allow to use asyncio with click.
+    https://github.com/pallets/click/issues/85
+    """
+    f = asyncio.coroutine(f)
+
+    def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(f(*args, **kwargs))
+    return update_wrapper(wrapper, f)

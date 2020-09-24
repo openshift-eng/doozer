@@ -11,13 +11,13 @@ import errno
 
 # Create FileNotFound for Python2
 try:
-    import FileNotFoundError
+    from builtins import FileNotFoundError
 except ImportError:
     FileNotFoundError = IOError
 
 # Create ChildProcessError for Python2
 try:
-    import ChildProcessError
+    from builtins import ChildProcessError
 except ImportError:
     ChildProcessError = IOError
 

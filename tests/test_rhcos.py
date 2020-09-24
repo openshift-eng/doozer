@@ -1,10 +1,10 @@
-#!/usr/bin/env python
-
-from __future__ import absolute_import, print_function, unicode_literals
+import asyncio
 import json
 import unittest
+from unittest.mock import MagicMock, patch
+
+import mock
 from flexmock import flexmock
-from unittest.mock import patch, MagicMock
 
 from doozerlib import rhcos
 
@@ -49,6 +49,79 @@ class TestRhcos(unittest.TestCase):
 
         id_mock.return_value = None
         self.assertEqual((None, None), rhcos.latest_machine_os_content("4.4"))
+
+    def test_get_rhcos_pullspec_from_image_stream(self):
+        is_namespace = "test-ns"
+        is_name = "test-is-name"
+        rhcos_tag = "tag-2"
+        expect = "quay.io/foo/bar:tag-2"
+        loop = asyncio.get_event_loop()
+        with mock.patch("doozerlib.rhcos.cmd_assert_async") as cmd_assert_async:
+            cmd_assert_async.return_value = ("""{
+                "apiVersion": "image.openshift.io/v1",
+                "kind": "ImageStream",
+                "status": {
+                    "tags": [
+                        {"tag": "tag-1", "items": [{"dockerImageReference": "quay.io/foo/bar:tag-1"}]},
+                        {"tag": "tag-2", "items": [{"dockerImageReference": "quay.io/foo/bar:tag-2"}]},
+                        {"tag": "tag-3", "items": [{"dockerImageReference": "quay.io/foo/bar:tag-3"}]}
+                    ]
+                }
+            }""", "")
+            actual = loop.run_until_complete(rhcos.get_rhcos_pullspec_from_image_stream(is_namespace, is_name, rhcos_tag))
+            self.assertEqual(actual, expect)
+
+    def test_get_rhcos_version_arch(self):
+        pullspec = "quay.io/foo/bar:tag-2"
+        loop = asyncio.get_event_loop()
+        with mock.patch("doozerlib.rhcos.cmd_assert_async") as cmd_assert_async:
+            cmd_assert_async.return_value = ("""{
+                "config": {
+                    "config": {
+                        "Labels": {"version": "46.1.2.3"}
+                    },
+                    "architecture": "amd64"
+                }
+            }""", "")
+            version, arch = loop.run_until_complete(rhcos.get_rhcos_version_arch(pullspec))
+            self.assertEqual(version, "46.1.2.3")
+            self.assertEqual(arch, "x86_64")
+
+    def test_get_rhcos_build_metadata(self):
+        version = "46.1.2.3"
+        arch = "x86_64"
+        metadata = {"foo": "bar"}
+        loop = asyncio.get_event_loop()
+        with mock.patch("aiohttp.ClientSession") as ClientSession:
+            fake_response = ClientSession.return_value.__aenter__.return_value.get.return_value
+
+            fake_response.status = 200
+            fake_response.json.return_value = metadata
+            meta = loop.run_until_complete(rhcos.get_rhcos_build_metadata(version, arch))
+            self.assertEqual(meta, metadata)
+
+            fake_response.status = 403
+            meta = loop.run_until_complete(rhcos.get_rhcos_build_metadata(version, arch))
+            self.assertEqual(meta, None)
+
+    def test_get_rhcos_pullspec_from_release(self):
+        rhcos_tag = "tag-2"
+        release = "registry.svc.ci.openshift.org/foo/bar:tag-1"
+        loop = asyncio.get_event_loop()
+        with mock.patch("doozerlib.rhcos.cmd_assert_async") as cmd_assert_async:
+            cmd_assert_async.return_value = ("""{
+                "references": {
+                    "spec": {
+                        "tags": [
+                            {"name": "tag-1", "from": {"name": "quay.io/foo/bar:tag-1"}},
+                            {"name": "tag-2", "from": {"name": "quay.io/foo/bar:tag-2"}},
+                            {"name": "tag-3", "from": {"name": "quay.io/foo/bar:tag-3"}}
+                        ]
+                    }
+                }
+            }""", "")
+            actual = loop.run_until_complete(rhcos.get_rhcos_pullspec_from_release(release, rhcos_tag))
+            self.assertEqual(actual, "quay.io/foo/bar:tag-2")
 
 
 if __name__ == "__main__":

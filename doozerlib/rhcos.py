@@ -1,7 +1,11 @@
-from __future__ import absolute_import, print_function, unicode_literals
 import json
-from tenacity import retry, stop_after_attempt, wait_fixed
+from typing import Dict
 from urllib import request
+from urllib.parse import quote
+
+import aiohttp
+from doozerlib.exectools import cmd_assert_async
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 RHCOS_BASE_URL = "https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases"
 
@@ -75,3 +79,77 @@ def latest_machine_os_content(version, arch="x86_64", private=False):
         return (None, None)
     m_os_c = rhcos_build_meta(build_id, version, arch, private)['oscontainer']
     return build_id, m_os_c['image'] + "@" + m_os_c['digest']
+
+
+async def get_rhcos_pullspec_from_image_stream(is_name: str, is_namespace: str, rhcos_tag: str) -> str:
+    """ Get RHCOS pullspec from an image stream
+    :param is_name: image stream name
+    :param is_namspace: image stream name
+    :param rhcos_tag: RHCOS image tag in the image stream. e.g. machine-os-content
+    :returns: RHCOS pullspec
+    """
+    cmd = ["oc", "-n", is_namespace, "get", "is", is_name, "-o", "json"]
+    out, _ = await cmd_assert_async(cmd)
+    image_stream = json.loads(out)
+    tags = image_stream["status"].get("tags")
+    if not tags:
+        raise ValueError(f"No tags in imagestream {is_namespace}/{is_name}.")
+    rhcos_entry = next(filter(lambda tag: tag["tag"] == rhcos_tag, tags), None)
+    if not rhcos_entry:
+        raise ValueError(f"No such tag named {rhcos_tag} in imagestream {is_namespace}/{is_name}.")
+    pullspec = rhcos_entry["items"][0]["dockerImageReference"]
+    return pullspec
+
+
+async def get_rhcos_version_arch(pullspec: str) -> (str, str):
+    """ Get RHCOS version and arch for a given RHCOS pullspec
+    :param pullspec: RHCOS pullspec
+    :returns: (version, arch)
+    """
+    cmd = ["oc", "image", "info", "-o", "json", pullspec]
+    out, _ = await cmd_assert_async(cmd)
+    image_manifest = json.loads(out)
+    version = image_manifest["config"]["config"]["Labels"]["version"]
+    arch = image_manifest["config"]["architecture"]
+    if arch == "amd64":
+        arch = "x86_64"  # convert golang arch name to gcc arch name
+    return version, arch
+
+
+async def get_rhcos_build_metadata(version: str, arch: str) -> Dict:
+    """ Get RHCOS build metadata
+    :version: RHCOS build version
+    :arch: RHCOS architecture
+    :returns: build metadata. e.g. https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases/rhcos-4.6-ppc64le/46.82.202008271839-0/ppc64le/meta.json
+    """
+    # Assuming RHCOS versions like 46.82.202009222340-0 are in stream `releases/rhcos-4.6`
+    rhcos_major_version = int(version.split(".", 1)[0])
+    major = rhcos_major_version // 10
+    minor = rhcos_major_version % 10
+    arch_suffix = f"-{arch}" if arch != "x86_64" else ""
+    stream = f"releases/rhcos-{major}.{minor}{arch_suffix}"
+    url = f"https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/{stream}/{quote(version)}/{arch}/meta.json"
+    async with aiohttp.ClientSession() as session:
+        response = await session.get(url)
+        if response.status == 403:  # The URL returns 403 instread of 404 if the RHCOS build doesn't exist
+            return None
+        response.raise_for_status()
+        metadata = await response.json()
+    return metadata
+
+
+async def get_rhcos_pullspec_from_release(release_pullspec: str, rhcos_tag: str) -> str:
+    """ Get RHCOS pullspec from a given release
+    :param release_pullspec: pullspec of the release
+    :param rhcos_tag: RHCOS image tag in the image stream. e.g. machine-os-content
+    :returns: RHCOS pullspec
+    """
+    cmd = ["oc", "adm", "release", "info", release_pullspec, "-o", "json"]
+    out, _ = await cmd_assert_async(cmd)
+    release_info = json.loads(out)
+    tags = release_info["references"]["spec"]["tags"]
+    rhcos_entry = next(filter(lambda tag: tag["name"] == rhcos_tag, tags), None)
+    if not rhcos_entry:
+        raise ValueError(f"No such tag named {rhcos_tag} in {release_pullspec}.")
+    pullspec = rhcos_entry["from"]["name"]
+    return pullspec
