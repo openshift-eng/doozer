@@ -86,10 +86,9 @@ class OLMBundle(object):
         """
         exectools.cmd_assert('rm -rf {}'.format(self.operator_clone_path))
         exectools.cmd_assert('mkdir -p {}'.format(os.path.dirname(self.operator_clone_path)))
-        clone_task = lambda: exectools.cmd_assert('rhpkg{}clone --branch {} {} {}'.format(
+        exectools.cmd_assert('rhpkg{}clone --branch {} {} {}'.format(
             self.rhpkg_opts, self.branch, self.operator_repo_name, self.operator_clone_path
-        ))
-        exectools.retry(retries=3, task_f=clone_task)
+        ), retries=3)
 
     def checkout_operator_to_build_commit(self):
         """Checkout clone of operator repository to specific commit used to build given operator NVR
@@ -102,10 +101,9 @@ class OLMBundle(object):
         """
         exectools.cmd_assert('rm -rf {}'.format(self.bundle_clone_path))
         exectools.cmd_assert('mkdir -p {}'.format(os.path.dirname(self.bundle_clone_path)))
-        clone_task = lambda: exectools.cmd_assert('rhpkg{}clone --branch {} {} {}'.format(
+        exectools.cmd_assert('rhpkg{}clone --branch {} {} {}'.format(
             self.rhpkg_opts, self.branch, self.bundle_repo_name, self.bundle_clone_path
-        ))
-        exectools.retry(retries=3, task_f=clone_task)
+        ), retries=3)
 
     def clean_bundle_contents(self):
         """Delete all files currently present in the bundle repository
@@ -306,8 +304,13 @@ class OLMBundle(object):
         ns = self.runtime.group_config.urls.brew_image_namespace
         image = '{}/{}'.format(ns, image.replace('/', '-')) if ns else image
 
-        cmd = 'oc image info --filter-by-os=linux/amd64 -o json {}/{}'.format(registry, image)
-        _rc, out, _err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+        pull_spec = '{}/{}'.format(registry, image)
+        cmd = 'oc image info --filter-by-os=linux/amd64 -o json {}'.format(pull_spec)
+        try:
+            out, err = exectools.cmd_assert(cmd, retries=3)
+        except:
+            self.runtime.logger.error(f'Unable to find image from CSV: {pull_spec}. Image may have failed to build after CSV rebase.')
+            raise
 
         if self.runtime.group_config.operator_image_ref_mode == 'manifest-list':
             return json.loads(out)['listDigest']

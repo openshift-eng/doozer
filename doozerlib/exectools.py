@@ -223,11 +223,21 @@ def cmd_gather(cmd, set_env=None, realtime=False, strip=False, log_stdout=False,
         out = out.decode('utf-8')
         err = err.decode('utf-8')
 
-        log_output_stdout = out if log_stdout else 'STDOUT not logged'
-        log_output_stderr = err if log_stderr else 'STDERR not logged'
-        logger.debug(
-            "{}: Exited with: {}\nstdout>>{}<<\nstderr>>{}<<\n".
-            format(cmd_info, rc, log_output_stdout, log_output_stderr))
+        log_output_stdout = out
+        log_output_stderr = err
+        if not log_stdout and len(out) > 200:
+            log_output_stdout = f'{out[:200]}\n..truncated..'
+        if not log_stderr and len(err) > 200:
+            log_output_stderr = f'{err[:200]}\n..truncated..'
+
+        if rc:
+            logger.debug(
+                "{}: Exited with error: {}\nstdout>>{}<<\nstderr>>{}<<\n".
+                format(cmd_info, rc, log_output_stdout, log_output_stderr))
+        else:
+            logger.debug(
+                "{}: Exited with: {}\nstdout>>{}<<\nstderr>>{}<<\n".
+                format(cmd_info, rc, log_output_stdout, log_output_stderr))
 
     if strip:
         out = out.strip()
