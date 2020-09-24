@@ -2494,13 +2494,22 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs):
     runtime.initialize(clone_distgits=False)
 
     def rebase_and_build(nvr):
-        olm_bundle = OLMBundle(runtime)
-        olm_bundle.rebase(nvr)
-        return {
-            'success': olm_bundle.build(),
-            'task_url': olm_bundle.task_url,
-            'bundle_nvr': olm_bundle.get_latest_bundle_build(),
-        }
+        try:
+            olm_bundle = OLMBundle(runtime)
+            olm_bundle.rebase(nvr)
+            return {
+                'success': olm_bundle.build(),
+                'task_url': olm_bundle.task_url,
+                'bundle_nvr': olm_bundle.get_latest_bundle_build(),
+            }
+        except:
+            runtime.logger.error('Error during rebase or build for: {}'.format(nvr))
+            traceback.print_exc()
+            return {
+                'success': False,
+                'task_url': None,
+                'bundle_nvr': None,
+            }
 
     results = ThreadPool(len(operator_nvrs)).map(rebase_and_build, operator_nvrs)
 
@@ -2508,7 +2517,13 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs):
         runtime.logger.info('SUCCESS={success} {task_url} {bundle_nvr}'.format(**result))
         click.echo(result['bundle_nvr'])
 
-    sys.exit(0 if all(list(map(lambda i: i['success'], results))) else 1)
+    rc = 0 if all(list(map(lambda i: i['success'], results))) else 1
+
+    if rc:
+        runtime.logger.error('One or more bundles failed; look above for SUCCESS=False')
+        red_print('One or more bundles failed; look above for SUCCESS=False')
+
+    sys.exit(rc)
 
 
 def main():

@@ -47,8 +47,8 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('timeout 600 rhpkg clone containers/my-repo --branch my-branch')
-            .replace_with(lambda *_: '...irrelevant...'))
+            .with_args('timeout 600 rhpkg clone containers/my-repo --branch my-branch', retries=3, on_retry=object)
+            .replace_with(lambda *_, **kwargs: '...irrelevant...'))
 
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime).clone_repo('my-repo', 'my-branch')
 
@@ -69,8 +69,8 @@ class TestOperatorMetadataBuilder(unittest.TestCase):
 
         (flexmock(operator_metadata.exectools)
             .should_receive('cmd_assert')
-            .with_args('timeout 600 rhpkg --user my-user clone containers/my-repo --branch my-branch')
-            .replace_with(lambda *_: '...irrelevant...'))
+            .with_args('timeout 600 rhpkg --user my-user clone containers/my-repo --branch my-branch', retries=3, on_retry=object)
+            .replace_with(lambda *_, **kwargs: '...irrelevant...'))
 
         operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime).clone_repo('my-repo', 'my-branch')
 
@@ -390,9 +390,9 @@ other:
         expected_cmd = 'skopeo inspect --raw docker://brew-img-host/brew-img-ns/openshift-my-image'
 
         (flexmock(operator_metadata.exectools)
-            .should_receive('cmd_gather')
-            .with_args(expected_cmd)
-            .and_return((0, """
+            .should_receive('cmd_assert')
+            .with_args(expected_cmd, retries=3)
+            .and_return(("""
             {
                 "manifests": [
                     {
@@ -1115,18 +1115,6 @@ other:
             'my.registry.svc:5000'
         )
 
-    def test_get_brew_buildinfo(self):
-        nvr = 'my-operator-container-v0.1.2-201901010000'
-        stream = '...irrelevant...'
-        runtime = '...irrelevant...'
-
-        (flexmock(operator_metadata.exectools)
-            .should_receive('cmd_gather')
-            .with_args('brew buildinfo {}'.format(nvr))
-            .replace_with(lambda *_: '...irrelevant...'))
-
-        operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime).get_brew_buildinfo()
-
 
 class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
     def test_get_latest_build(self):
@@ -1148,9 +1136,9 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
                         '--quiet')
 
         (flexmock(operator_metadata.exectools)
-            .should_receive('cmd_gather')
-            .with_args(expected_cmd)
-            .and_return(('..', 'irrelevant', '..')))
+            .should_receive('cmd_assert')
+            .with_args(expected_cmd, retries=3)
+            .and_return(('irrelevant', '..')))
 
         operator_metadata.OperatorMetadataLatestBuildReporter('my-operator', runtime).get_latest_build()
 
@@ -1177,10 +1165,10 @@ class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
                         '--quiet')
 
         (flexmock(operator_metadata.exectools)
-            .should_receive('cmd_gather')
-            .with_args(expected_cmd)
+            .should_receive('cmd_assert')
+            .with_args(expected_cmd, retries=3)
             .once()
-            .and_return(('..', 'irrelevant', '..')))
+            .and_return(('irrelevant', '..')))
 
         operator_metadata.OperatorMetadataLatestBuildReporter('my-operator', runtime).get_latest_build()
 

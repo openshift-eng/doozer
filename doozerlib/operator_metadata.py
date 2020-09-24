@@ -126,17 +126,16 @@ class OperatorMetadataBuilder(object):
         :param string repo: Name of the repository to be cloned
         :param string branch: Which branch of the repository should be cloned
         """
-        def delete_and_clone():
+        cmd = 'timeout 600 rhpkg '
+        cmd += self.runtime.rhpkg_config
+        cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
+        cmd += 'clone containers/{} --branch {}'.format(repo, branch)
+
+        def delete_repo():
             self.delete_repo(repo)
 
-            cmd = 'timeout 600 rhpkg '
-            cmd += self.runtime.rhpkg_config
-            cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
-            cmd += 'clone containers/{} --branch {}'.format(repo, branch)
-            return exectools.cmd_assert(cmd)
-
         with pushd.Dir(self.working_dir):
-            exectools.retry(retries=3, task_f=delete_and_clone)
+            exectools.cmd_assert(cmd, retries=3, on_retry=delete_repo)
 
     @log
     def delete_repo(self, repo):
@@ -416,7 +415,7 @@ class OperatorMetadataBuilder(object):
                 exectools.cmd_assert('git add .')
                 user_option = '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
                 exectools.cmd_assert('rhpkg {} {}commit -m "Update operator metadata"'.format(self.runtime.rhpkg_config, user_option))
-                exectools.retry(retries=3, task_f=lambda: exectools.cmd_assert('timeout 600 rhpkg {}push'.format(user_option)))
+                exectools.cmd_assert('timeout 600 rhpkg {}push'.format(user_option), retries=3)
                 return True
             except Exception:
                 # The metadata repo might be already up to date, so we don't have anything new to commit
@@ -515,11 +514,11 @@ class OperatorMetadataBuilder(object):
 
         if arch == 'manifest-list':
             cmd = 'skopeo inspect docker://{}/{}'.format(registry, image)
-            rc, out, err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+            out, err = exectools.cmd_assert(cmd, retries=3)
             return json.loads(out)['Digest']
 
         cmd = 'skopeo inspect --raw docker://{}/{}'.format(registry, image)
-        rc, out, err = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+        out, err = exectools.cmd_assert(cmd, retries=3)
 
         arch = 'amd64' if arch == 'x86_64' else arch  # x86_64 is called amd64 in skopeo
 
@@ -686,13 +685,6 @@ class OperatorMetadataBuilder(object):
     def get_operator(self):
         return self.runtime.image_map[self.operator_name]
 
-    @log
-    def get_brew_buildinfo(self):
-        """Output of this command is used to extract the operator name and its commit hash
-        """
-        cmd = 'brew buildinfo {}'.format(self.nvr)
-        return exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
-
     def get_csv(self):
         return yaml.safe_load(io.open(self.metadata_csv_yaml_filename(), encoding="utf-8"))['metadata']['name']
 
@@ -719,7 +711,7 @@ class OperatorMetadataLatestBuildReporter(object):
     @log
     def get_latest_build(self):
         cmd = 'brew latest-build {} {} --quiet'.format(self.target, self.metadata_component_name)
-        _rc, stdout, _stderr = exectools.retry(retries=3, task_f=lambda *_: exectools.cmd_gather(cmd))
+        stdout, stderr = exectools.cmd_assert(cmd, retries=3)
         return stdout.split(' ')[0]
 
     @property
