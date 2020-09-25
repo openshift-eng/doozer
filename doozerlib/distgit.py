@@ -1310,7 +1310,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             # appregistry is managed in a separately-built metadata container (ref. ART-874)
             if "com.redhat.delivery.appregistry" in dfp.labels:
-                dfp.labels["com.redhat.delivery.appregistry"] = "false"
+                dfp.labels["com.redhat.delivery.appregistry"] = "False"
 
             # For each bit of maintainer information we have, create a new label in the image
             maintainer = self.metadata.get_maintainer_info()

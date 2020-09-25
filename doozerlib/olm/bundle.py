@@ -172,6 +172,7 @@ class OLMBundle(object):
         bundle_df.content = 'FROM scratch\nCOPY ./manifests /manifests\nCOPY ./metadata /metadata'
         bundle_df.labels = operator_df.labels
         bundle_df.labels['com.redhat.component'] = self.bundle_brew_component
+        bundle_df.labels['com.redhat.delivery.appregistry'] = False
         bundle_df.labels['name'] = 'openshift/ose-{}'.format(self.bundle_name)
         bundle_df.labels['version'] = '{}.{}'.format(
             operator_df.labels['version'],
