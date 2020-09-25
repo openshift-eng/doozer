@@ -1876,6 +1876,21 @@ class ImageDistGitRepo(DistGitRepo):
         if gitignore_path.is_file():
             gitignore_path.unlink()
 
+        owners = []
+        if self.config.owners is not Missing and isinstance(self.config.owners, list):
+            owners = list(self.config.owners)
+
+        maintainer = self.metadata.get_maintainer_info()
+        if owners:
+            record_type = 'bz_maintainer_ok' if maintainer.get('component', None) else 'bz_maintainer_notify'
+            # If upstream has not identified the BZ component, have the pipeline send them a nag note.
+            self.runtime.add_record(record_type,
+                                    distgit=self.metadata.qualified_name,
+                                    image=self.config.name,
+                                    owners=','.join(owners),
+                                    public_upstream_url=util.convert_remote_git_to_https(self.metadata.public_upstream_url),
+                                    public_upstream_branch=self.metadata.public_upstream_branch)
+
         notify_owner = False
 
         # Create a sha for Dockerfile. We use this to determined if we've reconciled it before.
@@ -1892,10 +1907,9 @@ class ImageDistGitRepo(DistGitRepo):
             # Record that we've reconciled against this source file so that we do not notify the owner again.
             shutil.copy(str(source_dockerfile_path), str(reconciled_df_path))
 
-        # Leave a record for external processes that owners will need to be notified.
-
         if not notify_owner:
             return
+        # Leave a record for external processes that owners will need to be notified.
 
         with Dir(self.source_path()):
             author_email = None
@@ -1917,11 +1931,9 @@ class ImageDistGitRepo(DistGitRepo):
             if err:
                 self.logger.info('Unable to get author email for last {} commit: {}'.format(dockerfile_name, err))
 
-        owners = []
-        if self.config.owners is not Missing and isinstance(self.config.owners, list):
-            owners = list(self.config.owners)
         if author_email:
             owners.append(author_email)
+
         sub_path = self.config.content.source.path
         if not sub_path:
             source_dockerfile_subpath = dockerfile_name
