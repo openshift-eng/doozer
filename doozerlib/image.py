@@ -352,6 +352,8 @@ class ImageMetadata(Metadata):
         # The method we call inside also uses the pool.
         for archive_id, rpm_entries in rpm_entries_sets.items():
             self.logger.info(f'Checking whether one of my latest archives ({archive_id}) has any of its {len(rpm_entries)} rpms associated with a package that has been tagged in relevant tag since this image\'s build brew event {image_build_event_id}')
+            rpm_nvrs = [entry['nvr'] for entry in rpm_entries]
+            self.logger.debug(f'RPMS from {archive_id}: {rpm_nvrs}')
             changes_res = runtime.parallel_exec(
                 f=lambda idx, terminate_event: is_image_older_than_package_build_tagging(self, image_build_event_id, idx, rpm_entries, changing_rpm_packages, eldest_image_event_ts),
                 args=range(len(rpm_entries)),
@@ -728,7 +730,23 @@ def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, 
         # This method caches (if all arguments are identical) and is thread safe.
         package_tag_history = query_history(koji_api, table='tag_listing', package=package_name, after=eldest_image_event_ts)['tag_listing']
 
+        # There is a hole here. Given an RPM X with a history of tags {x}, we know we received & installed
+        # the RPM through one of the tags in {x}. What happens if a new RPM Y had a set of tags {y} that
+        # is fully disjoint from {x}. In short, it came in through a completely independent vector, but we
+        # would still find it through that vector if a build was triggered.
+        # This could happen if:
+        # 1. group.yml repos are changed and Y would be pulled from a new source
+        # 2. The new Y is available through a different repo than we found it in last time.
+        # To mitigate #1, we should force build after changing group.yml repos.
+        # For #2, the only way this would typically happen would be if we were pulling from an official
+        # repo for rpm X and then Y was tagged into our candidate tag as an override. To account for
+        # this, always check for changes in our tags.
+        build_tag_set.add(image_meta.branch())
+        build_tag_set.add(image_meta.candidate_brew_tag())
+
         relevant_tagging_events = {}  # tag_name => brew_event which may cause our next image build to pull in a new build of the package
+
+        image_meta.logger.debug(f'Computed relevant tags for image rpm {rpm_entry["nvr"]}: {build_tag_set}')
 
         def register_relevant_tag_event(tag_name, event_id):
             nonlocal relevant_tagging_events

@@ -450,6 +450,7 @@ def config_scan_source_changes(runtime, as_yaml):
             assessment_reason[key] = reason
 
     with runtime.shared_koji_client_session() as koji_api:
+        runtime.logger.info(f'Running scan with true latest koji/brew event: {koji_api.getLastEvent()}')
 
         # Different branches have different build tags & inheritances; cache the results to
         # limit brew queries.
