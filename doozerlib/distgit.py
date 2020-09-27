@@ -15,7 +15,7 @@ import io
 import copy
 import pathlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import koji
 
 from dockerfile_parse import DockerfileParser
@@ -1880,10 +1880,23 @@ class ImageDistGitRepo(DistGitRepo):
         if self.config.owners is not Missing and isinstance(self.config.owners, list):
             owners = list(self.config.owners)
 
+        # If upstream has not identified the BZ component, have the pipeline send them a nag note.
         maintainer = self.metadata.get_maintainer_info()
-        if owners:
-            record_type = 'bz_maintainer_ok' if maintainer.get('component', None) else 'bz_maintainer_notify'
-            # If upstream has not identified the BZ component, have the pipeline send them a nag note.
+        if owners and not maintainer.get('component', None):
+            week_number = date.today().isocalendar()[1]  # Determine current week number
+            oit_path = dg_path.joinpath('.oit')
+            util.mkdirs(oit_path)
+            notified_week_path: pathlib.Path = oit_path.joinpath('last_notified_week')
+            bz_notify = True
+            if notified_week_path.is_file():
+                last_notified_week = notified_week_path.read_text('utf-8')
+                if str(week_number) == last_notified_week.strip():
+                    bz_notify = False  # We've already nagged this week
+
+            # Populate or update the week number in distgit
+            notified_week_path.write_text(str(week_number), 'utf-8')
+
+            record_type = 'bz_maintainer_notify' if bz_notify else 'bz_maintainer_missing'
             self.runtime.add_record(record_type,
                                     distgit=self.metadata.qualified_name,
                                     image=self.config.name,
@@ -1891,7 +1904,7 @@ class ImageDistGitRepo(DistGitRepo):
                                     public_upstream_url=util.convert_remote_git_to_https(self.metadata.public_upstream_url),
                                     public_upstream_branch=self.metadata.public_upstream_branch)
 
-        notify_owner = False
+        dockerfile_notify = False
 
         # Create a sha for Dockerfile. We use this to determined if we've reconciled it before.
         source_dockerfile_hash = hashlib.sha256(io.open(source_dockerfile_path, 'rb').read()).hexdigest()
@@ -1903,53 +1916,51 @@ class ImageDistGitRepo(DistGitRepo):
         # If the file does not exist, the source file has not been reconciled before.
         if not reconciled_df_path.is_file():
             # Something has changed about the file in source control
-            notify_owner = True
+            dockerfile_notify = True
             # Record that we've reconciled against this source file so that we do not notify the owner again.
             shutil.copy(str(source_dockerfile_path), str(reconciled_df_path))
 
-        if not notify_owner:
-            return
-        # Leave a record for external processes that owners will need to be notified.
-
-        with Dir(self.source_path()):
-            author_email = None
-            err = None
-            rc, sha, err = exectools.cmd_gather(
-                # --no-merges because the merge bot is not the real author
-                # --diff-filter=a to omit the "first" commit in a shallow clone which may not be the author
-                #   (though this means when the only commit is the initial add, that is omitted)
-                'git log --no-merges --diff-filter=a -n 1 --pretty=format:%H {}'.format(dockerfile_name)
-            )
-            if rc == 0:
-                rc, ae, err = exectools.cmd_gather('git show -s --pretty=format:%ae {}'.format(sha))
+        if dockerfile_notify:
+            # Leave a record for external processes that owners will need to be notified.
+            with Dir(self.source_path()):
+                author_email = None
+                err = None
+                rc, sha, err = exectools.cmd_gather(
+                    # --no-merges because the merge bot is not the real author
+                    # --diff-filter=a to omit the "first" commit in a shallow clone which may not be the author
+                    #   (though this means when the only commit is the initial add, that is omitted)
+                    'git log --no-merges --diff-filter=a -n 1 --pretty=format:%H {}'.format(dockerfile_name)
+                )
                 if rc == 0:
-                    if ae.lower().endswith('@redhat.com'):
-                        self.logger.info('Last Dockerfile committer: {}'.format(ae))
-                        author_email = ae
-                    else:
-                        err = 'Last committer email found, but is not @redhat.com address: {}'.format(ae)
-            if err:
-                self.logger.info('Unable to get author email for last {} commit: {}'.format(dockerfile_name, err))
+                    rc, ae, err = exectools.cmd_gather('git show -s --pretty=format:%ae {}'.format(sha))
+                    if rc == 0:
+                        if ae.lower().endswith('@redhat.com'):
+                            self.logger.info('Last Dockerfile committer: {}'.format(ae))
+                            author_email = ae
+                        else:
+                            err = 'Last committer email found, but is not @redhat.com address: {}'.format(ae)
+                if err:
+                    self.logger.info('Unable to get author email for last {} commit: {}'.format(dockerfile_name, err))
 
-        if author_email:
-            owners.append(author_email)
+            if author_email:
+                owners.append(author_email)
 
-        sub_path = self.config.content.source.path
-        if not sub_path:
-            source_dockerfile_subpath = dockerfile_name
-        else:
-            source_dockerfile_subpath = "{}/{}".format(sub_path, dockerfile_name)
-        # there ought to be a better way to determine the source alias that was registered:
-        source_root = self.runtime.resolve_source(self.metadata)
-        source_alias = self.config.content.source.get('alias', os.path.basename(source_root))
+            sub_path = self.config.content.source.path
+            if not sub_path:
+                source_dockerfile_subpath = dockerfile_name
+            else:
+                source_dockerfile_subpath = "{}/{}".format(sub_path, dockerfile_name)
+            # there ought to be a better way to determine the source alias that was registered:
+            source_root = self.runtime.resolve_source(self.metadata)
+            source_alias = self.config.content.source.get('alias', os.path.basename(source_root))
 
-        self.runtime.add_record("dockerfile_notify",
-                                distgit=self.metadata.qualified_name,
-                                image=self.config.name,
-                                owners=','.join(owners),
-                                source_alias=source_alias,
-                                source_dockerfile_subpath=source_dockerfile_subpath,
-                                dockerfile=str(dg_path.joinpath('Dockerfile')))
+            self.runtime.add_record("dockerfile_notify",
+                                    distgit=self.metadata.qualified_name,
+                                    image=self.config.name,
+                                    owners=','.join(owners),
+                                    source_alias=source_alias,
+                                    source_dockerfile_subpath=source_dockerfile_subpath,
+                                    dockerfile=str(dg_path.joinpath('Dockerfile')))
 
     def _run_modifications(self):
         """
