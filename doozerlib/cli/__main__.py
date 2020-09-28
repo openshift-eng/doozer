@@ -2522,7 +2522,6 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs):
 
     if rc:
         runtime.logger.error('One or more bundles failed; look above for SUCCESS=False')
-        red_print('One or more bundles failed; look above for SUCCESS=False')
 
     sys.exit(rc)
 
