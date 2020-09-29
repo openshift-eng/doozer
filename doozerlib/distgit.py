@@ -1901,8 +1901,7 @@ class ImageDistGitRepo(DistGitRepo):
                                     distgit=self.metadata.qualified_name,
                                     image=self.config.name,
                                     owners=','.join(owners),
-                                    public_upstream_url=util.convert_remote_git_to_https(self.metadata.public_upstream_url),
-                                    public_upstream_branch=self.metadata.public_upstream_branch)
+                                    public_upstream_url=self.source_url)
 
         dockerfile_notify = False
 
