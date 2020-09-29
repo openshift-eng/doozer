@@ -685,6 +685,14 @@ class OperatorMetadataBuilder(object):
     def get_operator(self):
         return self.runtime.image_map[self.operator_name]
 
+    @log
+    def get_brew_buildinfo(self):
+        """Output of this command is used to extract the operator name and its commit hash
+        """
+        cmd = 'brew buildinfo {}'.format(self.nvr)
+        stdout, stderr = exectools.cmd_assert(cmd, retries=3)
+        return 0, stdout, stderr  # In this used to be cmd_gather, so return rc=0.
+
     def get_csv(self):
         return yaml.safe_load(io.open(self.metadata_csv_yaml_filename(), encoding="utf-8"))['metadata']['name']
 

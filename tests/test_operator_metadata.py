@@ -1115,6 +1115,18 @@ other:
             'my.registry.svc:5000'
         )
 
+    def test_get_brew_buildinfo(self):
+        nvr = 'my-operator-container-v0.1.2-201901010000'
+        stream = '...irrelevant...'
+        runtime = '...irrelevant...'
+
+        (flexmock(operator_metadata.exectools)
+            .should_receive('cmd_assert')
+            .with_args('brew buildinfo {}'.format(nvr), retries=3)
+            .replace_with(lambda *_, **kwargs: ('...irrelevant...', '...irrelevant...')))
+
+        operator_metadata.OperatorMetadataBuilder(nvr, stream, runtime).get_brew_buildinfo()
+
 
 class TestOperatorMetadataLatestBuildReporter(unittest.TestCase):
     def test_get_latest_build(self):
