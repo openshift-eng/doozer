@@ -20,10 +20,30 @@ from doozerlib.util import get_docker_config_json, convert_remote_git_to_ssh, \
 
 @cli.group("images:streams", short_help="Manage ART equivalent images in upstream CI.")
 def images_streams():
+    """
+    When changing streams.yml, the following sequence of operations is required.
+
+    \b
+    1. Set KUBECONFIG to the art-publish service account.
+    2. Run gen-buildconfigs with --apply or 'oc apply' it after the fact.
+    3. Run mirror verb to push the images to the api.ci cluster (consider if --only-if-missing is appropriate).
+    4. Run start-builds to trigger buildconfigs if they have not run already.
+    5. Run 'check-upstream' after about 10 minutes to make sure those builds have succeeded. Investigate any failures.
+    6. Run 'prs open' when check-upstream indicates all builds are complete.
+
+    To test changes before affecting CI:
+
+    \b
+    - You can run, 'gen-buildconfigs', 'start-builds', and 'check-upstream' with the --live-test-mode flag.
+      This will create and run real buildconfigs on api.ci, but they will not promote into locations used by CI.
+    - You can run 'prs open' with --moist-run. This will create forks for the target repos, but will only
+      print out PRs that would be opened instead of creating them.
+
+    """
     pass
 
 
-@images_streams.command('mirror')
+@images_streams.command('mirror', short_help='Reads streams.yml and mirrors out ART equivalent images to api.ci.')
 @click.option('--stream', 'streams', metavar='STREAM_NAME', default=[], multiple=True, help='If specified, only these stream names will be mirrored.')
 @click.option('--only-if-missing', default=False, is_flag=True, help='Only mirror the image if there is presently no equivalent image upstream.')
 @click.option('--live-test-mode', default=False, is_flag=True, help='Append "test" to destination images to exercise live-test-mode buildconfigs')
@@ -79,7 +99,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
                 exectools.cmd_assert(cmd, retries=3, realtime=True)
 
 
-@images_streams.command('check-upstream', short_help='Dumps information about CI buildconfigs/mirrored images associated with this group')
+@images_streams.command('check-upstream', short_help='Dumps information about CI buildconfigs/mirrored images associated with this group.')
 @click.option('--live-test-mode', default=False, is_flag=True, help='Scan for live-test mode buildconfigs')
 @pass_runtime
 def images_streams_check_upstream(runtime, live_test_mode):
@@ -126,7 +146,7 @@ def images_streams_check_upstream(runtime, live_test_mode):
         print()
 
 
-@images_streams.command('start-builds', short_help='Triggers a build for each buildconfig associated with this group')
+@images_streams.command('start-builds', short_help='Triggers a build for each buildconfig associated with this group.')
 @click.option('--live-test-mode', default=False, is_flag=True, help='Act on live-test mode buildconfigs')
 @pass_runtime
 def images_streams_start_buildconfigs(runtime, live_test_mode):
@@ -148,7 +168,7 @@ def images_streams_start_buildconfigs(runtime, live_test_mode):
         print(f'No buildconfigs associated with this group: {group_label}')
 
 
-@images_streams.command('gen-buildconfigs', short_help='Generates buildconfigs necessary to assemble ART equivalent images upstream')
+@images_streams.command('gen-buildconfigs', short_help='Generates buildconfigs necessary to assemble ART equivalent images upstream.')
 @click.option('--stream', 'streams', metavar='STREAM_NAME', default=[], multiple=True, help='If specified, only these stream names will be processed.')
 @click.option('-o', '--output', metavar='FILENAME', required=True, help='The filename into which to write the YAML. It should be oc applied against api.ci as art-publish. The file may be empty if there are no buildconfigs.')
 @click.option('--apply', default=False, is_flag=True, help='Apply the output if any buildconfigs are generated')
@@ -211,6 +231,10 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply, live_test_m
     major = runtime.group_config.vars['MAJOR']
     minor = runtime.group_config.vars['MINOR']
 
+    group_label = runtime.group_config.name
+    if live_test_mode:
+        group_label += '.test'
+
     buildconfig_definitions = []
     ds_container_definitions = []
     streams_config = runtime.streams
@@ -257,10 +281,6 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply, live_test_m
 
         # Make sure that upstream images can discern they are building in CI with ART equivalent images
         dfp.envs['OPENSHIFT_CI'] = 'true'
-
-        group_label = runtime.group_config.name
-        if live_test_mode:
-            group_label += '.test'
 
         dfp.labels['io.k8s.display-name'] = f'{dest_imagestream}-{dest_tag}'
         dfp.labels['io.k8s.description'] = f'ART equivalent image {group_label}-{stream} - {transform}'
@@ -475,13 +495,14 @@ def prs():
     pass
 
 
-@prs.command('open', short_help='Open PRs against upstream component repos that have a FROM that differs from ART metadata')
+@prs.command('open', short_help='Open PRs against upstream component repos that have a FROM that differs from ART metadata.')
 @click.option('--github-access-token', metavar='TOKEN', required=True, help='Github access token for user.')
+@click.option('--bug', metavar='BZ#', required=False, default=None, help='Title with Bug #: prefix')
 @click.option('--ignore-ci-master', default=False, is_flag=True, help='Do not consider what is in master branch when determining what branch to target')
 @click.option('--draft-prs', default=False, is_flag=True, help='Open PRs as draft PRs')
 @click.option('--moist-run', default=False, is_flag=True, help='Do everything except opening the final PRs')
 @pass_runtime
-def images_streams_prs(runtime, github_access_token, ignore_ci_master, draft_prs, moist_run):
+def images_streams_prs(runtime, github_access_token, bug, ignore_ci_master, draft_prs, moist_run):
     runtime.initialize(clone_distgits=False, clone_source=False)
     g = Github(login_or_token=github_access_token)
     github_user = g.get_user()
@@ -617,7 +638,7 @@ def images_streams_prs(runtime, github_access_token, ignore_ci_master, draft_prs
             print(f'Source parents: {source_branch_parents} ({source_branch_parent_digest})')
             print(f'Fork branch digest: {fork_branch_parents} ({fork_branch_parent_digest})')
 
-            pr_title = f"AUTOMATION TESTING - PLEASE DISREGARD - Updating {image_meta.name} builder & base images to be consistent with ART"
+            first_commit_line = f"Updating {image_meta.name} builder & base images to be consistent with ART"
             reconcile_info = f"Reconciling with {convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}"
 
             diff_text = None
@@ -644,7 +665,7 @@ def images_streams_prs(runtime, github_access_token, ignore_ci_master, draft_prs
                         # couple repos have this requirement; openshift/kubernetes & openshift/kubernetes-autoscaler.
                         # This check may suffice  for now, but it may eventually need to be in doozer metadata.
                         commit_prefix = 'UPSTREAM: <carry>: '
-                    commit_msg = f"""{commit_prefix}{pr_title}
+                    commit_msg = f"""{commit_prefix}{first_commit_line}
 {reconcile_info}
 """
                     exectools.cmd_assert(f'git commit -m "{commit_msg}"')  # Add a commit atop the public branch's current state
@@ -652,7 +673,7 @@ def images_streams_prs(runtime, github_access_token, ignore_ci_master, draft_prs
                     exectools.cmd_assert(f'git push --force fork {work_branch_name}:{fork_branch_name}')
 
             # At this point, we have a fork branch in the proper state
-            pr_body = f"""{pr_title}
+            pr_body = f"""{first_commit_line}
 {reconcile_info}
 
 If you have any questions about this pull request, please reach out to `@art-team` in the `#aos-art` coreos slack channel.
@@ -689,6 +710,9 @@ If you have any questions about this pull request, please reach out to `@art-tea
                 else:
                     yellow_print(f'Fork from which PR would be created ({fork_branch_head}) is populated with desired state.')
             else:
+                pr_title = first_commit_line
+                if bug:
+                    pr_title = f'Bug {bug}: {pr_title}'
                 new_pr = public_source_repo.create_pull(title=pr_title, body=pr_body, base=public_branch, head=fork_branch_head, draft=draft_prs)
                 pr_msg = f'A new PR has been opened: {new_pr.html_url}'
                 pr_links[dgk] = new_pr.html_url
