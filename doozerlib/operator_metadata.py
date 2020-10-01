@@ -131,20 +131,10 @@ class OperatorMetadataBuilder(object):
         cmd += '--user {} '.format(self.rhpkg_user) if self.rhpkg_user else ''
         cmd += 'clone containers/{} --branch {}'.format(repo, branch)
 
-        def delete_repo():
-            self.delete_repo(repo)
+        delete_repo = 'rm -rf {}/{}'.format(self.working_dir, repo)
 
         with pushd.Dir(self.working_dir):
             exectools.cmd_assert(cmd, retries=3, on_retry=delete_repo)
-
-    @log
-    def delete_repo(self, repo):
-        """Delete repository from working_dir. Ignore errors if repo is already absent
-        """
-        try:
-            shutil.rmtree('{}/{}'.format(self.working_dir, repo))
-        except OSError:
-            pass
 
     @log
     def checkout_repo(self, repo, commit_hash):
