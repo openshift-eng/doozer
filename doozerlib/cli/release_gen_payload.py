@@ -8,7 +8,7 @@ import koji
 import yaml
 import json
 
-from doozerlib import brew, state, exectools, embargo_detector
+from doozerlib import brew, state, exectools, embargo_detector, rhcos
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.image import ImageMetadata
@@ -213,21 +213,11 @@ that particular tag.
                     }
                 })
 
-            # TODO: @jupierce: Let's comment this out for now. I need to explore some options with the rhcos team.
-            # if private:
-            #     # mirroring rhcos
-            #     runtime.logger.info(f"Getting latest RHCOS pullspec for {arch}...")
-            #     source_is_namespace = target_is_namespace[:-5]  # strip `-priv`
-            #     rhcos_pullspec = get_latest_rhcos_pullspec(source_is_namespace, target_is_name)
-            #     if not rhcos_pullspec:
-            #         yellow_print(f"No RHCOS found from imagestream {target_is_name} in namespace {source_is_namespace}.")  # should we throw an error?
-            #     tag_list.append({
-            #         'name': "machine-os-content",
-            #         'from': {
-            #             'kind': 'DockerImage',
-            #             'name': rhcos_pullspec
-            #         }
-            #     })
+            # mirroring rhcos
+            runtime.logger.info(f"Getting latest RHCOS pullspec for {target_is_name}...")
+            mosc_istag = _latest_mosc_istag(runtime, arch, private)
+            if mosc_istag :
+                tag_list.append(mosc_istag)
 
             # Not all images are built for non-x86 arches (e.g. kuryr), but they
             # may be mentioned in image references. Thus, make sure there is a tag
@@ -266,18 +256,25 @@ that particular tag.
         for img in sorted(invalid_name_items):
             click.echo("   {}".format(img))
 
-# TODO: @jupierce: Let's comment this out for now. I need to explore some options with the rhcos team.
-# def get_latest_rhcos_pullspec(namespace, image_stream_name):
-#     rhcos_tag = "machine-os-content"
-#     out, _ = exectools.cmd_assert(["oc", "get", "imagestream", image_stream_name, "-n", namespace, "-o", "json"])
-#     imagestream = json.loads(out)
-#     for tag_entry in imagestream["status"]["tags"]:
-#         if tag_entry["tag"] != rhcos_tag:
-#             continue
-#         items = tag_entry.get("items")
-#         if items:
-#             return items[0]["dockerImageReference"]  # the first item should be latest
-#     return None  # rhcos image is not found
+
+def _latest_mosc_istag(runtime, arch, private):
+    try:
+        version = runtime.get_minor_version()
+        _, pullspec = rhcos.latest_machine_os_content(version, arch, private)
+        if not pullspec:
+            yellow_print(f"No RHCOS found for {version} arch={arch} private={private}")
+            return None
+    except Exception as ex:
+        yellow_print(f"error finding RHCOS: {ex}")
+        return None
+
+    return {
+        'name': "machine-os-content",
+        'from': {
+            'kind': 'DockerImage',
+            'name': pullspec
+        }
+    }
 
 
 def find_mismatched_siblings(images, builds, archives_list, logger, lstate):
