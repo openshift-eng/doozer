@@ -16,10 +16,10 @@ from doozerlib.util import red_print, yellow_print
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
-@click.option("--is-name", metavar='NAME', required=True,
-              help="ImageStream .metadata.name value. Something like '4.2-art-latest'")
-@click.option("--is-namespace", metavar='NAMESPACE', required=False, default='ocp',
-              help="ImageStream .metadata.namespace value.\ndefault=ocp")
+@click.option("--is-name", metavar='NAME', required=False,
+              help="ImageStream .metadata.name value. For example '4.2-art-latest'")
+@click.option("--is-namespace", metavar='NAMESPACE', required=False,
+              help="ImageStream .metadata.namespace value. For example 'ocp'")
 @click.option("--organization", metavar='ORGANIZATION', required=False, default='openshift-release-dev',
               help="Quay ORGANIZATION to mirror into.\ndefault=openshift-release-dev")
 @click.option("--repository", metavar='REPO', required=False, default='ocp-v4.0-art-dev',
@@ -47,8 +47,9 @@ For automation purposes this command generates a mirroring yaml files
 after the arch-specific files have been generated. The yaml files
 include names of generated content.
 
-YOU MUST PROVIDE the base name for the image streams. The generated
-files will append the -arch suffix to the given name.
+You may provide the namespace and base name for the image streams, or defaults
+will be used. The generated files will append the -arch and -priv suffixes to
+the given name and namespace as needed.
 
 The ORGANIZATION and REPOSITORY options are combined into
 ORGANIZATION/REPOSITORY when preparing for mirroring.
@@ -70,6 +71,11 @@ that particular tag.
     cmd = runtime.command
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
     lstate = runtime.state[cmd]  # get local convenience copy
+
+    if not is_name:
+        is_name = default_is_base_name(runtime.get_minor_version())
+    if not is_namespace:
+        is_namespace = default_is_base_namespace()
 
     images = [i for i in runtime.image_metas()]
     lstate['total'] = len(images)
@@ -164,14 +170,7 @@ that particular tag.
 
         mirror_filename = 'src_dest.{}'.format(key)
         imagestream_filename = 'image_stream.{}'.format(key)
-        target_is_name = is_name
-        target_is_namespace = is_namespace
-        if arch != 'x86_64':
-            target_is_name = '{}-{}'.format(target_is_name, arch)
-            target_is_namespace = '{}-{}'.format(target_is_namespace, arch)
-        if private:
-            target_is_name += "-priv"
-            target_is_namespace += "-priv"
+        target_is_name, target_is_namespace = is_name_and_space(is_name, is_namespace, arch, private)
 
         def build_dest_name(tag_name):
             entry = mirroring[key][tag_name]
@@ -216,7 +215,7 @@ that particular tag.
             # mirroring rhcos
             runtime.logger.info(f"Getting latest RHCOS pullspec for {target_is_name}...")
             mosc_istag = _latest_mosc_istag(runtime, arch, private)
-            if mosc_istag :
+            if mosc_istag:
                 tag_list.append(mosc_istag)
 
             # Not all images are built for non-x86 arches (e.g. kuryr), but they
@@ -255,6 +254,22 @@ that particular tag.
         yellow_print("Images skipped due to siblings mismatch:")
         for img in sorted(invalid_name_items):
             click.echo("   {}".format(img))
+
+
+def default_is_base_name(version):
+    return f"{version}-art-latest"
+
+
+def default_is_base_namespace():
+    return "ocp"
+
+
+def is_name_and_space(base_name, base_namespace, arch, private):
+    arch_suffix = "" if arch == 'x86_64' else f"-{arch}"
+    priv_suffix = "-priv" if private else ""
+    name = f"{base_name}{arch_suffix}{priv_suffix}"
+    namespace = f"{base_namespace}{arch_suffix}{priv_suffix}"
+    return name, namespace
 
 
 def _latest_mosc_istag(runtime, arch, private):
