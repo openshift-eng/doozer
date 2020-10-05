@@ -1303,6 +1303,10 @@ class Runtime(object):
     def get_default_candidate_brew_tag(self):
         return self.branch + '-candidate' if self.branch else None
 
+    def get_minor_version(self):
+        # only applicable if appropriate vars are defined in group config
+        return '.'.join(str(self.group_config.vars[v]) for v in ('MAJOR', 'MINOR'))
+
     def builds_for_group_branch(self):
         # return a dict of all the latest builds for this group, according to
         # the branch's candidate tag in brew. each entry is name => tuple(version, release).
