@@ -1,15 +1,18 @@
 import click
 import yaml
 
-from doozerlib import brew
+from doozerlib import brew, rhcos, exectools
 from doozerlib.cli import cli, pass_runtime
+from doozerlib.cli import release_gen_payload as rgp
 from doozerlib.exceptions import DoozerFatalError
 
 
 @cli.command("config:scan-sources", short_help="Determine if any rpms / images need to be rebuilt.")
+@click.option("--ci-kubeconfig", metavar='KC_PATH', required=False,
+              help="File containing kubeconfig for looking at release-controller imagestreams")
 @click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
 @pass_runtime
-def config_scan_source_changes(runtime, as_yaml):
+def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
     """
     Determine if any rpms / images need to be rebuilt.
 
@@ -28,6 +31,9 @@ def config_scan_source_changes(runtime, as_yaml):
     - Used a builder image (from anywhere in Red Hat) that has changed.
     - Used a builder image from this group that is about to change.
     - If the associated member is a descendant of any image that needs change.
+
+    \b
+    It will report machine-os-content updates available per imagestream.
     """
     runtime.initialize(mode='both', clone_distgits=True)
 
@@ -108,7 +114,7 @@ def config_scan_source_changes(runtime, as_yaml):
                     if package_name:
                         changing_rpm_packages.add(package_name)
                     else:
-                        runtime.logger.warning(f"Appears that {dgk} as never been built before; can't determine package name")
+                        runtime.logger.warning(f"Appears that {dgk} has never been built before; can't determine package name")
             elif meta.meta_type == 'image':
                 if reason:
                     add_assessment_reason(meta, needs_rebuild, reason=reason)
@@ -190,6 +196,9 @@ def config_scan_source_changes(runtime, as_yaml):
             images=image_results
         )
 
+        if ci_kubeconfig:  # we can determine m-os-c needs updating if we can look at imagestreams
+            results['rhcos'] = _detect_rhcos_status(runtime, ci_kubeconfig)
+
         if as_yaml:
             click.echo('---')
             click.echo(yaml.safe_dump(results, indent=4))
@@ -203,6 +212,67 @@ def config_scan_source_changes(runtime, as_yaml):
                 click.echo('  {} is {} (reason: {})'.format(item['name'],
                                                             'changed' if item['changed'] else 'the same',
                                                             item['reason']))
+
+
+def _detect_rhcos_status(runtime, kubeconfig) -> list:
+    """
+    gather the existing machine-os-content tags and compare them to latest rhcos builds
+    @return a list of status entries like:
+        {
+            'name': "4.2-x86_64-priv",
+            'changed': False,
+            'reason': "could not find an RHCOS build to sync",
+        }
+    """
+    statuses = []
+
+    version = runtime.get_minor_version()
+    for arch in runtime.arches:
+        for private in (False, True):
+            name = f"{version}-{arch}{'-priv' if private else ''}"
+            try:
+                tagged_mosc_id = _tagged_mosc_id(kubeconfig, version, arch, private)
+                latest_rhcos_id = _latest_rhcos_build_id(version, arch, private)
+                status = dict(name=name)
+                if not latest_rhcos_id:
+                    status['changed'] = False
+                    status['reason'] = "could not find an RHCOS build to sync"
+                elif tagged_mosc_id == latest_rhcos_id:
+                    status['changed'] = False
+                    status['reason'] = f"latest RHCOS build is still {latest_rhcos_id} -- no change from istag"
+                else:
+                    status['changed'] = True
+                    status['reason'] = f"latest RHCOS build is {latest_rhcos_id} which differs from istag {tagged_mosc_id}"
+                statuses.append(status)
+            except Exception as ex:
+                # don't let flakiness in rhcos lookups prevent us from scanning regular builds;
+                # if anything else changed it will sync anyway.
+                runtime.logger.warning(f"could not determine RHCOS status for {name}: {ex}")
+
+    return statuses
+
+
+def _tagged_mosc_id(kubeconfig, version, arch, private) -> str:
+    """determine what the most recently tagged machine-os-content is in given imagestream"""
+    base_name = rgp.default_is_base_name(version)
+    base_namespace = rgp.default_is_base_namespace()
+    name, namespace = rgp.is_name_and_space(base_name, base_namespace, arch, private)
+    stdout, _ = exectools.cmd_assert(
+        f"oc --kubeconfig '{kubeconfig}' --namespace '{namespace}' get istag '{name}:machine-os-content'"
+        " --template '{{.image.dockerImageMetadata.Config.Labels.version}}'",
+        retries=3,
+        pollrate=5,
+        strip=True,
+    )
+    return stdout if stdout else None
+
+
+def _latest_rhcos_build_id(version, arch, private) -> str:
+    """wrapper to return None if anything goes wrong, which will be taken as no change"""
+    try:
+        return rhcos.latest_rhcos_build_id(version, arch, private)
+    except Exception:
+        return None
 
 
 cli.add_command(config_scan_source_changes)
