@@ -746,7 +746,7 @@ def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, 
 
         relevant_tagging_events = {}  # tag_name => brew_event which may cause our next image build to pull in a new build of the package
 
-        image_meta.logger.debug(f'Computed relevant tags for image rpm {rpm_entry["nvr"]}: {build_tag_set}')
+        # image_meta.logger.debug(f'Computed relevant tags for image rpm {rpm_entry["nvr"]}: {build_tag_set}')
 
         def register_relevant_tag_event(tag_name, event_id):
             nonlocal relevant_tagging_events
