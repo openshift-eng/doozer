@@ -3,6 +3,7 @@ import os
 import click
 import yaml
 import hashlib
+import time
 
 from github import Github, UnknownObjectException, GithubException
 from dockerfile_parse import DockerfileParser
@@ -498,17 +499,19 @@ def prs():
 @prs.command('open', short_help='Open PRs against upstream component repos that have a FROM that differs from ART metadata.')
 @click.option('--github-access-token', metavar='TOKEN', required=True, help='Github access token for user.')
 @click.option('--bug', metavar='BZ#', required=False, default=None, help='Title with Bug #: prefix')
+@click.option('--interstitial', metavar='SECONDS', default=120, required=False, help='Delay after each new PR to prevent flooding CI')
 @click.option('--ignore-ci-master', default=False, is_flag=True, help='Do not consider what is in master branch when determining what branch to target')
 @click.option('--draft-prs', default=False, is_flag=True, help='Open PRs as draft PRs')
 @click.option('--moist-run', default=False, is_flag=True, help='Do everything except opening the final PRs')
 @pass_runtime
-def images_streams_prs(runtime, github_access_token, bug, ignore_ci_master, draft_prs, moist_run):
+def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_ci_master, draft_prs, moist_run):
     runtime.initialize(clone_distgits=False, clone_source=False)
     g = Github(login_or_token=github_access_token)
     github_user = g.get_user()
 
     major = runtime.group_config.vars['MAJOR']
     minor = runtime.group_config.vars['MINOR']
+    interstitial = int(interstitial)
 
     master_major, master_minor = extract_version_fields(what_is_in_master(), at_least=2)
     if not ignore_ci_master and (major > master_major or minor > master_minor):
@@ -719,6 +722,8 @@ If you have any questions about this pull request, please reach out to `@art-tea
                 new_pr_links[dgk] = new_pr.html_url
                 logger.info(pr_msg)
                 yellow_print(pr_msg)
+                print(f'Sleeping {interstitial} seconds before opening another PR to prevent flooding prow...')
+                time.sleep(interstitial)
 
     if new_pr_links:
         print('Newly opened PRs:')
