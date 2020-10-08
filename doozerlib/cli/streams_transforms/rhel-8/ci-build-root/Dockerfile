@@ -9,11 +9,9 @@ FROM replaced-by-buildconfig
 ENV PATH=/opt/google/protobuf/bin:$PATH
 RUN set -euxo pipefail && \
     f=$( mktemp ) && \
-    curl -L http://mirror.openshift.com/pub/openshift-static-ci-deps/protobuf-3.0.0/protoc-3.0.0-linux-x86_64.zip > "${f}" && \
+    curl --fail -L http://mirror.openshift.com/pub/openshift-static-ci-deps/protobuf-3.0.0/protoc-3.0.0-linux-x86_64.zip > "${f}" && \
     mkdir -p /opt/google/protobuf && \
-    unzip "${f}" -d /opt/google/protobuf && \
-    which protoc && protoc --version && \
-    [ "$( protoc --version )" = "libprotoc 3.0.0" ]
+    unzip "${f}" -d /opt/google/protobuf
 
 # Install common CI tools and epel for packages like tito.
 RUN yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && \
@@ -43,13 +41,17 @@ RUN GOFLAGS='' go get golang.org/x/tools/cmd/cover \
     mkdir -p /go/src/github.com/openshift/origin && \
     ln -s /usr/bin/imagebuilder $GOPATH/bin/imagebuilder && \
     ln -s /usr/bin/goimports $GOPATH/bin/goimports && \
-    curl -L https://github.com/golang/dep/releases/download/v0.5.4/dep-linux-amd64 > /usr/bin/dep && \
+    curl --fail -L https://github.com/golang/dep/releases/download/v0.5.4/dep-linux-amd64 > /usr/bin/dep && \
     chmod +x /usr/bin/dep
 
 # make go related directories writeable since builds in CI will run as non-root.
 RUN mkdir -p $GOPATH && \
     chmod g+xw -R $GOPATH && \
     chmod g+xw -R $(go env GOROOT)
+
+# Assert packages in separate RUN block so we are sure env variables are set up correctly
+RUN set -euxo pipefail && \
+    command -v protoc && protoc --version && [ "$( protoc --version )" = "libprotoc 3.0.0" ]
 
 # Some image building tools don't create a missing WORKDIR
 RUN mkdir -p /go/src/github.com/openshift/origin
