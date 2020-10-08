@@ -292,7 +292,12 @@ class Metadata(object):
         if source_dir:
             with Dir(source_dir):
                 # Not every repo has a master branch, they may have a different default; detect it.
-                remote_info, _ = exectools.cmd_assert('git remote show origin')
+                if self.public_upstream_url:
+                    # If there is a public upstream, query it for the default branch. The openshift-priv
+                    # clones seem to be non-deterministic on which branch is set as default.
+                    remote_info, _ = exectools.cmd_assert('git remote show public_upstream')
+                else:
+                    remote_info, _ = exectools.cmd_assert('git remote show origin')
                 head_branch_lines = [i for i in remote_info.splitlines() if i.strip().startswith('HEAD branch:')]  # e.g. [ "  HEAD branch: master" ]
                 if not head_branch_lines:
                     raise IOError('Error trying to detect remote default branch')
