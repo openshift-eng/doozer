@@ -926,7 +926,8 @@ class Runtime(object):
         applicable mapping, the incoming url will still be normalized into https.
         :param remote_git: The URL to analyze for private repo patterns.
         :return: tuple (url, branch)
-            - url: An https normalized remote address with private repo information replaced.
+            - url: An https normalized remote address with private repo information replaced. If there is no
+                   applicable private repo replacement, remote_git will be returned (normalized to https).
             - branch: Optional public branch name if the public upstream source use a different branch name from the private upstream.
         """
         remote_https = util.convert_remote_git_to_https(remote_git)

@@ -102,7 +102,8 @@ class DistGitRepo(object):
         self.source_full_sha = None
         self.source_latest_tag = None
         self.source_date_epoch = None
-        self.source_url = None
+        self.actual_source_url = None
+        self.public_facing_source_url = None
         # This will be set to True if the source contains embargoed (private) CVE fixes. Defaulting to None which means the value should be determined while rebasing.
         self.private_fix = None
 
@@ -365,8 +366,21 @@ class ImageDistGitRepo(DistGitRepo):
         config_overrides = {}
         if self.config.container_yaml is not Missing:
             config_overrides = copy.deepcopy(self.config.container_yaml.primitive())
+
+        if self.config.content.source.pkg_managers is not Missing:
+            # If a package manager is specified, then configure cachito.
+            # https://mojo.redhat.com/docs/DOC-1177281#jive_content_id_Cachito_Integration
+            config_overrides.update({
+                'remote_source': {
+                    'repo': self.actual_source_url,
+                    'ref': self.source_full_sha,
+                    'pkg_managers': self.config.content.source.pkg_managers,
+                }
+            })
+
         if self.image_build_method is not Missing:
             config_overrides['image_build_method'] = self.image_build_method
+
         if arches:
             config_overrides.setdefault('platforms', {})['only'] = arches
 
@@ -1470,9 +1484,9 @@ class ImageDistGitRepo(DistGitRepo):
             srclab = self.source_labels['now']
             if self.source_full_sha:
                 dfp.labels[srclab['sha']] = self.source_full_sha
-                if self.source_url:
-                    dfp.labels[srclab['source']] = self.source_url
-                    dfp.labels[srclab['source_commit']] = '{}/commit/{}'.format(self.source_url, self.source_full_sha)
+                if self.public_facing_source_url:
+                    dfp.labels[srclab['source']] = self.public_facing_source_url
+                    dfp.labels[srclab['source_commit']] = '{}/commit/{}'.format(self.public_facing_source_url, self.source_full_sha)
 
             dfp.labels['version'] = version
 
@@ -1744,7 +1758,7 @@ class ImageDistGitRepo(DistGitRepo):
             self.env_vars_from_source.update(dict(
                 SOURCE_GIT_COMMIT=self.source_full_sha,
                 SOURCE_GIT_TAG=self.source_latest_tag,
-                SOURCE_GIT_URL=self.source_url,
+                SOURCE_GIT_URL=self.public_facing_source_url,
                 SOURCE_DATE_EPOCH=self.source_date_epoch,
                 OS_GIT_VERSION=f'{update_envs["OS_GIT_VERSION"]}-{self.source_full_sha[0:7]}',
                 OS_GIT_COMMIT=f'{self.source_full_sha[0:7]}'
@@ -1817,7 +1831,7 @@ class ImageDistGitRepo(DistGitRepo):
         source_dir = self.source_path()
         with Dir(source_dir):
             if self.metadata.commitish:
-                self.runtime.logger.info(f"Rebasing image {self.name} from speicified commit-ish {self.metadata.commitish}...")
+                self.runtime.logger.info(f"Rebasing image {self.name} from specified commit-ish {self.metadata.commitish}...")
                 cmd = ["git", "checkout", self.metadata.commitish]
                 exectools.cmd_assert(cmd)
             # gather source repo short sha for audit trail
@@ -1830,9 +1844,9 @@ class ImageDistGitRepo(DistGitRepo):
             rc, out, _ = exectools.cmd_gather("git describe --always --tags HEAD")
             self.source_latest_tag = out.strip()
 
-            out, _ = exectools.cmd_assert(["git", "remote", "get-url", "origin"])
-            out = out.strip()
-            self.source_url, _ = self.runtime.get_public_upstream(out)  # Point to public upstream if there are private components to the URL
+            out, _ = exectools.cmd_assert(["git", "remote", "get-url", "origin"], strip=True)
+            self.actual_source_url = out  # This may differ from the URL we report to the public
+            self.public_facing_source_url, _ = self.runtime.get_public_upstream(out)  # Point to public upstream if there are private components to the URL
 
             # If private_fix has not already been set (e.g. by --embargoed), determine if the source contains private fixes by checking if the private org branch commit exists in the public org
             if self.private_fix is None and self.metadata.public_upstream_branch:
@@ -1922,7 +1936,7 @@ class ImageDistGitRepo(DistGitRepo):
                                     distgit=self.metadata.qualified_name,
                                     image=self.config.name,
                                     owners=','.join(owners),
-                                    public_upstream_url=self.source_url)
+                                    public_upstream_url=self.public_facing_source_url)
 
         dockerfile_notify = False
 
