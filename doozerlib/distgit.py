@@ -374,7 +374,7 @@ class ImageDistGitRepo(DistGitRepo):
                 'remote_source': {
                     'repo': self.actual_source_url,
                     'ref': self.source_full_sha,
-                    'pkg_managers': self.config.content.source.pkg_managers,
+                    'pkg_managers': self.config.content.source.pkg_managers.primitive(),
                 }
             })
 
