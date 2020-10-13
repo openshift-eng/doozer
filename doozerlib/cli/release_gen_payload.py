@@ -8,8 +8,7 @@ import koji
 import yaml
 import json
 
-from doozerlib import brew, state, exectools, rhcos
-from doozerlib import build_status_detector as bs_detector
+from doozerlib import brew, state, exectools, rhcos, build_status_detector
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.image import ImageMetadata
@@ -66,6 +65,25 @@ Note that if you use -i to include specific images, you should also include
 openshift-enterprise-cli to satisfy any need for the 'cli' tag. The cli image
 is used automatically as a stand-in for images when an arch does not build
 that particular tag.
+
+## Validation ##
+
+Additionally we want to check that the following conditions are true for each
+imagestream being updated:
+
+* For all architectures built, RHCOS builds must have matching versions of any
+  unshipped RPM they include (per-entry os metadata - the set of RPMs may differ
+  between arches, but versions should not).
+* Any RPMs present in images (including machine-os-content) from unshipped RPM
+  builds included in one of our candidate tags must exactly version-match the
+  latest RPM builds in those candidate tags (ONLY; we never flag what we don't
+  directly ship.)
+
+These checks (and likely more in the future) should run and any failures should
+be listed in brief via a "release.openshift.io/inconsistency" annotation on the
+relevant image istag (these are publicly visible; ref. https://bit.ly/37cseC1)
+and in more detail in state.yaml. The release-controller, per ART-2195, will
+read and propagate/expose this annotation in its display of the release image.
     """
     runtime.initialize(clone_distgits=False, config_excludes='non_release')
     brew_session = runtime.build_retrying_koji_client()
@@ -103,6 +121,7 @@ class PayloadGenerator:
         self.brew_event = brew_event
         self.base_target = base_target
         self.state = runtime.state[runtime.command] = dict(state.TEMPLATE_IMAGE)
+        self.bs_detector = build_status_detector.BuildStatusDetector(brew_session, runtime.logger)
 
     def load_latest_builds(self):
         images = list(self.runtime.image_metas())
@@ -177,12 +196,11 @@ class PayloadGenerator:
             return
 
         # store RPM archives to BuildStatusDetector cache to limit Brew queries
-        detector = bs_detector.BuildStatusDetector(self.brew_session, self.runtime.logger)
         for r in latest_builds:
-            detector.archive_lists[r.build["id"]] = r.archives
+            self.bs_detector.archive_lists[r.build["id"]] = r.archives
 
         # determine if each image build is embargoed (or otherwise "private")
-        embargoed_build_ids = detector.find_embargoed_builds([r.build for r in latest_builds])
+        embargoed_build_ids = self.bs_detector.find_embargoed_builds([r.build for r in latest_builds])
         for r in latest_builds:
             if r.build["id"] in embargoed_build_ids:
                 r.private = True
@@ -190,12 +208,21 @@ class PayloadGenerator:
     def write_mirror_destinations(self, latest_builds, mismatched_siblings):
         self.runtime.logger.info("Creating mirroring lists...")
 
-        # returns map[arch] -> map[image_name] -> { version: version, release: release, image_src: image_src }
+        # returns map[(arch, private)] -> map[image_name] -> { version: release: image_src: digest: build_record: }
         mirror_src_for_arch_and_name = self._get_mirror_sources(latest_builds, mismatched_siblings)
 
+        # we need to evaluate rhcos inconsistencies across architectures (separate builds)
+        rhcos_source_for_priv_arch = {False: {}, True: {}}  # map[private][arch] -> source
+        for arch, private in mirror_src_for_arch_and_name.keys():
+            rhcos_source_for_priv_arch[private][arch] = self._latest_mosc_source(arch, private)
+        rhcos_inconsistencies = {  # map[private] -> map[annotation] -> description
+            private: self._find_rhcos_build_inconsistencies(rhcos_source_for_priv_arch[private])
+            for private in (True, False)
+        }
+
         for dest, source_for_name in mirror_src_for_arch_and_name.items():
-            private = dest.endswith("-priv")
-            arch = dest[:-5] if private else dest  # strip `-priv` suffix
+            arch, private = dest
+            dest = f"{arch}{'-priv' if private else ''}"
 
             # Save the default SRC=DEST input to a file for syncing by 'oc image mirror'
             with io.open(f"src_dest.{dest}", "w+", encoding="utf-8") as out_file:
@@ -209,17 +236,41 @@ class PayloadGenerator:
                 self.base_target.istream_namespace,
                 arch, private)
             target = SyncTarget(self.base_target.orgrepo, name, namespace)
+            x86_source_for_name = mirror_src_for_arch_and_name[('x86_64', private)]
+            istream_spec = self._get_istream_spec(
+                arch, private, target,
+                source_for_name, x86_source_for_name,
+                rhcos_source_for_priv_arch[private][arch], rhcos_inconsistencies[private]
+            )
             with io.open(f"image_stream.{dest}.yaml", "w+", encoding="utf-8") as out_file:
-                x86_source_for_name = mirror_src_for_arch_and_name['x86_64-priv' if private else 'x86_64']
-                istag_spec = self._get_istag_spec(arch, private, target, source_for_name, x86_source_for_name)
-                yaml.safe_dump(istag_spec, out_file, indent=2, default_flow_style=False)
+                yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
+
+    def _find_rhcos_build_inconsistencies(self, rhcos_source_for_arch):
+        inconsistencies = {}
+
+        # gather a list of all rpms used in every arch of rhcos build
+        nvrs_for_rpm = {}
+        for arch, source in rhcos_source_for_arch.items():
+            if not source:  # sometimes could be missing e.g. browser outage; just note that here
+                annotation = f"Could not retrieve RHCOS for {arch}"
+                inconsistencies[annotation] = annotation  # not much more to explain
+                continue
+            for rpm in source['archive']['rpms']:
+                nvrs_for_rpm.setdefault(rpm['name'], set()).add(rpm['nvr'])
+        for name, nvrs in nvrs_for_rpm.items():
+            if len(nvrs) > 1:
+                annotation = f"Multiple versions of RPM {name} used"
+                description = f"RPM {name} has multiple versions across arches: {list(nvrs)}"
+                inconsistencies[annotation] = description
+
+        return inconsistencies
 
     def _get_mirror_sources(self, latest_builds, mismatched_siblings):
         """
         Determine the image sources to mirror to each arch-private-specific imagestream,
         excluding mismatched siblings; also record success/failure per state.
 
-        :return: map[arch] -> map[image_name] -> { version: version, release: release, image_src: image_src }
+        :return: map[(arch, private)] -> map[image_name] -> { version: release: image_src: digest: build_record: }
         """
         mirroring = {}
         for record in latest_builds:
@@ -247,19 +298,21 @@ class PayloadGenerator:
                         version=record.build["version"],
                         release=record.build["release"],
                         image_src=pullspecs[-1],
-                        digest=digest
+                        digest=digest,
+                        build_record=record,
+                        archive=archive,
                     )
 
                     if record.private:  # exclude embargoed images from the ocp[-arch] imagestreams
                         yellow_print(f"Omitting embargoed image {pullspecs[-1]}")
                     else:
                         self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the public mirroring list with imagestream tag {tag_name}...")
-                        mirroring.setdefault(arch, {})[tag_name] = mirroring_value
+                        mirroring.setdefault((arch, False), {})[tag_name] = mirroring_value
 
                     if self.runtime.group_config.public_upstreams:
                         # when public_upstreams are configured, both embargoed and non-embargoed images should be included in the ocp[-arch]-priv imagestreams
                         self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the private mirroring list with imagestream tag {tag_name}...")
-                        mirroring.setdefault(f"{arch}-priv", {})[tag_name] = mirroring_value
+                        mirroring.setdefault((arch, True), {})[tag_name] = mirroring_value
 
             # per build, record in the state whether we can successfully mirror it
             if error:
@@ -275,14 +328,15 @@ class PayloadGenerator:
         tag = source["digest"].replace(":", "-")  # sha256:abcdef -> sha256-abcdef
         return f"quay.io/{orgrepo}:{tag}"
 
-    def _get_istag_spec(self, arch, private, target, source_for_name, x86_source_for_name):
+    def _get_istream_spec(self, arch, private, target, source_for_name, x86_source_for_name,
+                          rhcos_source, rhcos_inconsistencies):
         # Write tag specs for the image stream. The name of each tag
         # spec does not include the 'ose-' prefix. This keeps them
         # consistent between OKD and OCP.
 
         # Template Base Image Stream object.
         tag_list = []
-        istag_spec = {
+        istream_spec = {
             'kind': 'ImageStream',
             'apiVersion': 'image.openshift.io/v1',
             'metadata': {
@@ -295,23 +349,68 @@ class PayloadGenerator:
         }
 
         for tag_name, source in source_for_name.items():
-            tag_list.append({
-                'name': tag_name,
-                'from': {
-                    'kind': 'DockerImage',
-                    'name': self._build_dest_name(source, target.orgrepo)
-                }
-            })
+            tag_list.append(self._get_istag_spec(tag_name, source, target))
 
-        # mirroring rhcos
-        self.runtime.logger.info(f"Getting latest RHCOS pullspec for {target.istream_name}...")
-        mosc_istag = self._latest_mosc_istag(arch, private)
+        # add in rhcos tag
+        mosc_istag = self._get_mosc_istag_spec(rhcos_source, rhcos_inconsistencies)
         if mosc_istag:
             tag_list.append(mosc_istag)
 
         tag_list.extend(self._extra_dummy_tags(arch, private, source_for_name, x86_source_for_name, target))
 
-        return istag_spec
+        return istream_spec
+
+    def _get_istag_spec(self, tag_name, source, target):
+        record = source['build_record']
+        inconsistencies = self._find_rpm_inconsistencies(source['archive'], record.image.candidate_brew_tag())
+        if inconsistencies:  # format {annotation: description}
+            inc_state = self.state.setdefault('inconsistencies', {}).setdefault(tag_name, [])
+            # de-duplicate -- most will be repeated for each arch
+            inc_state.extend([val for val in inconsistencies.values() if val not in inc_state])
+
+        return {
+            'annotations': self._inconsistency_annotation(inconsistencies.keys()),
+            'name': tag_name,
+            'from': {
+                'kind': 'DockerImage',
+                'name': self._build_dest_name(source, target.orgrepo),
+            }
+        }
+
+    def _find_rpm_inconsistencies(self, archive, candidate_tag):
+        # returns a dict describing latest candidate rpms that are mismatched with build contents
+
+        # N.B. the "rpms" installed in an image archive are individual RPMs, not brew rpm package builds.
+        # we compare against the individual RPMs from latest candidate rpm package builds.
+        candidate_rpms = {
+            # the RPMs are collected by name mainly to de-duplicate (same RPM, multiple arches)
+            rpm['name']: rpm for rpm in
+            self.bs_detector.find_unshipped_candidate_rpms(candidate_tag, self.brew_event)
+        }
+
+        inconsistencies = {}
+        archive_rpms = {rpm['name']: rpm for rpm in archive['rpms']}
+        # we expect only a few unshipped candidates most of the the time, so we'll just search for those.
+        for name, rpm in candidate_rpms.items():
+            archive_rpm = archive_rpms.get(name)
+            if archive_rpm and rpm['nvr'] != archive_rpm['nvr']:
+                inconsistencies[f"Contains outdated RPM {rpm['name']}"] = (
+                    f"RPM {archive_rpm['nvr']} is installed in image build {archive['build_id']} but"
+                    f" {rpm['nvr']} from package build {rpm['build_id']} is latest candidate"
+                )
+
+        return inconsistencies  # {annotation: description}
+
+    def _inconsistency_annotation(self, inconsistencies):
+        # given a list of strings, build the annotation for inconsistencies
+        if not inconsistencies:
+            return {}
+
+        inconsistencies = sorted(inconsistencies)
+        if len(inconsistencies) > 5:
+            # an exhaustive list of the problems may be too large; that goes in the state file.
+            inconsistencies[5:] = ["(...and more)"]
+        return {"release.openshift.io/inconsistency": json.dumps(inconsistencies)}
 
     def _extra_dummy_tags(self, arch, private, source_for_name, x86_source_for_name, target):
         """
@@ -343,22 +442,54 @@ class PayloadGenerator:
 
         return tag_list
 
-    def _latest_mosc_istag(self, arch, private):
+    def _latest_mosc_source(self, arch, private):
+        stream_name = f"{arch}{'-priv' if private else ''}"
+        self.runtime.logger.info(f"Getting latest RHCOS source for {stream_name}...")
         try:
             version = self.runtime.get_minor_version()
-            _, pullspec = rhcos.latest_machine_os_content(version, arch, private)
+            build_id, pullspec = rhcos.latest_machine_os_content(version, arch, private)
             if not pullspec:
-                yellow_print(f"No RHCOS found for {version} arch={arch} private={private}")
-                return None
+                raise Exception(f"No RHCOS found for {version}")
+
+            commitmeta = rhcos.rhcos_build_meta(build_id, version, arch, private, meta_type="commitmeta")
+            rpm_list = commitmeta.get("rpmostree.rpmdb.pkglist")
+            if not rpm_list:
+                raise Exception(f"no pkglist in {commitmeta}")
+
         except Exception as ex:
-            yellow_print(f"error finding RHCOS: {ex}")
+            problem = f"{stream_name}: {ex}"
+            red_print(f"error finding RHCOS {problem}")
+            # record when there is a problem; as each arch is a separate build, make an array
+            self.state.setdefault("images", {}).setdefault("machine-os-content", []).append(problem)
             return None
 
+        # create fake brew image archive to be analyzed later for rpm inconsistencies
+        archive = dict(
+            build_id=f"({arch}){build_id}",
+            rpms=[dict(name=r[0], epoch=r[1], nvr=f"{r[0]}-{r[2]}-{r[3]}") for r in rpm_list],
+            # nothing else should be needed - if we need more, will have to fake it here
+        )
+
+        return dict(
+            archive=archive,
+            image_src=pullspec,
+            # nothing else should be needed - if we need more, will have to fake it here
+        )
+
+    def _get_mosc_istag_spec(self, source, inconsistencies):
+        inc = dict(inconsistencies)  # make a copy so original is not altered
+        inc.update(self._find_rpm_inconsistencies(source['archive'], rhcos.rhcos_content_tag(self.runtime)))
+        if inc:  # format {annotation: description}
+            inc_state = self.state.setdefault('inconsistencies', {}).setdefault('machine-os-content', [])
+            inc_state.extend([desc for desc in inc.values() if desc not in inc_state])
+
         return {
+            'annotations': self._inconsistency_annotation(inc.keys()),
             'name': "machine-os-content",
             'from': {
                 'kind': 'DockerImage',
-                'name': pullspec
+                # unlike other images, m-os-c originates in quay, does not need mirroring
+                'name': source['image_src'],
             }
         }
 

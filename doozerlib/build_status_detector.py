@@ -1,4 +1,5 @@
 from logging import Logger
+from multiprocessing import Lock
 from typing import Dict, List, Optional, Union, Set
 
 from koji import ClientSession
@@ -73,3 +74,28 @@ class BuildStatusDetector:
                 self.shipping_statuses[build_id] = shipped  # save to cache
         result = set(filter(lambda build_id: self.shipping_statuses[build_id], build_ids))
         return result
+
+    unshipped_candidate_rpms_cache = {}
+    cache_lock = Lock()
+
+    def find_unshipped_candidate_rpms(self, candidate_tag, event=None):
+        """ find latest RPMs in the candidate tag that have not been shipped yet.
+
+        <lmeyer> i debated whether to consider builds unshipped if not shipped
+        in the same OCP version (IOW the base tag), and ultimately decided we're
+        not concerned if an image is using something already shipped elsewhere,
+        just if it's not using what we're trying to ship new.
+
+        :param candidate_tag: string tag name to search for candidate builds
+        :return: a list of brew RPMs from those builds (not the builds themselves)
+        """
+        key = (candidate_tag, event)
+        with self.cache_lock:
+            if key not in self.unshipped_candidate_rpms_cache:
+                latest = self.koji_session.getLatestBuilds(candidate_tag, event=event, type="rpm")
+                shipped_ids = self.find_shipped_builds([b["id"] for b in latest])
+                unshipped_build_ids = [build["id"] for build in latest if build["id"] not in shipped_ids]
+                rpms_lists = brew.list_build_rpms(unshipped_build_ids, self.koji_session)
+                self.unshipped_candidate_rpms_cache[key] = [r for rpms in rpms_lists for r in rpms]
+
+        return self.unshipped_candidate_rpms_cache[key]

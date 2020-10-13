@@ -184,6 +184,18 @@ def list_image_rpms(image_ids: List[int], session: koji.ClientSession) -> List[O
     return [task.result for task in tasks]
 
 
+def list_build_rpms(build_ids: List[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
+    """ Retrieve RPMs in given package builds (not images)
+    :param build_ids: list of build IDs
+    :param session: instance of Brew session
+    :return: a list of Koji/Brew RPM lists
+    """
+    tasks = []
+    with session.multicall(strict=True) as m:
+        tasks = [m.listBuildRPMs(build) for build in build_ids]
+    return [task.result for task in tasks]
+
+
 # Map that records the most recent change for a tag.
 # Maps tag_id to a list containing the most recent change
 # event returned by koji's tagHistory API.

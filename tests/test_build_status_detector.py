@@ -77,3 +77,28 @@ class TestBuildStatusDetector(TestCase):
             expected = {1, 2}
             actual = BuildStatusDetector(MagicMock(), MagicMock()).find_shipped_builds(build_ids)
             self.assertEqual(actual, expected)
+
+    def test_find_unshipped_candidate_rpms(self):
+        latest = [dict(id=1), dict(id=2), dict(id=3)]
+        shipped_ids = {2}
+        rpms = [  # just need to get the same thing back, not inspect contents
+            [object(), object()],
+            [object()],
+        ]
+        session = MagicMock()
+        detector = BuildStatusDetector(session, MagicMock())
+        session.getLatestBuilds.return_value = latest
+        with patch.object(detector, 'find_shipped_builds') as find_shipped_builds, \
+             patch("doozerlib.brew.list_build_rpms") as list_build_rpms:
+            find_shipped_builds.return_value = shipped_ids
+            list_build_rpms.return_value = rpms
+
+            expected = rpms[0] + rpms[1]
+            actual = detector.find_unshipped_candidate_rpms("tag-candidate")
+            self.assertEqual(actual, expected)
+
+            actual = detector.find_unshipped_candidate_rpms("tag-candidate")  # should be cached
+            self.assertEqual(actual, expected)
+            session.getLatestBuilds.assert_called_once_with("tag-candidate", event=None, type="rpm")
+            find_shipped_builds.assert_called_once_with([1, 2, 3])
+            list_build_rpms.assert_called_once_with([1, 3], session)

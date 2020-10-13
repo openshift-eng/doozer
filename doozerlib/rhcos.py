@@ -40,13 +40,14 @@ def _latest_rhcos_build_id(version, arch="x86_64", private=False):
 
 # this is hard to test with retries, so wrap testable method
 @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
-def rhcos_build_meta(build_id, version, arch="x86_64", private=False):
-    return _rhcos_build_meta(build_id, version, arch, private)
+def rhcos_build_meta(build_id, version, arch="x86_64", private=False, meta_type="meta"):
+    return _rhcos_build_meta(build_id, version, arch, private, meta_type)
 
 
-def _rhcos_build_meta(build_id, version, arch="x86_64", private=False):
+def _rhcos_build_meta(build_id, version, arch="x86_64", private=False, meta_type="meta"):
     """
-    rhcos build record for an id in the given stream in the release browser
+    rhcos metadata for an id in the given stream from the release browser.
+    meta_type is "meta" for the build record or "commitmeta" for its ostree content.
 
     @return  a "meta" build record e.g.:
      https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases/rhcos-4.1/410.81.20200520.0/meta.json
@@ -63,7 +64,7 @@ def _rhcos_build_meta(build_id, version, arch="x86_64", private=False):
     url = f"{rhcos_release_url(version, arch, private)}/{build_id}/"
     # before 4.3 the arch was not included in the path
     vtuple = tuple(int(f) for f in version.split("."))
-    url += "meta.json" if vtuple < (4, 3) else f"{arch}/meta.json"
+    url += f"{meta_type}.json" if vtuple < (4, 3) else f"{arch}/{meta_type}.json"
     with request.urlopen(url) as req:
         return json.loads(req.read().decode())
 
@@ -75,3 +76,9 @@ def latest_machine_os_content(version, arch="x86_64", private=False):
         return (None, None)
     m_os_c = rhcos_build_meta(build_id, version, arch, private)['oscontainer']
     return build_id, m_os_c['image'] + "@" + m_os_c['digest']
+
+
+def rhcos_content_tag(runtime):
+    # return the tag for packages we expect RHCOS to be built from
+    base = runtime.group_config.branch.replace("-rhel-7", "-rhel-8")
+    return f"{base}-candidate"
