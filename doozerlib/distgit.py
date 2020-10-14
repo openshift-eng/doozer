@@ -33,6 +33,7 @@ from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib import constants
 from doozerlib import util
 from doozerlib.dblib import Record
+from doozerlib.util import convert_remote_git_to_https
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -372,7 +373,7 @@ class ImageDistGitRepo(DistGitRepo):
             # https://mojo.redhat.com/docs/DOC-1177281#jive_content_id_Cachito_Integration
             config_overrides.update({
                 'remote_source': {
-                    'repo': self.actual_source_url,
+                    'repo': convert_remote_git_to_https(self.actual_source_url),
                     'ref': self.source_full_sha,
                     'pkg_managers': self.config.content.source.pkg_managers.primitive(),
                 }
