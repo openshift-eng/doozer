@@ -20,17 +20,17 @@ class TestBuildStatusDetector(TestCase):
             [{"name": "foo-candidate"}],
             [{"name": "foo-released"}],
         ]
-        archive_lists = {
-            1: [{"build_id": 1, "id": 11}],
-            2: [{"build_id": 2, "id": 21}],
-            3: [{"build_id": 3, "id": 31}],
-            4: [{"build_id": 4, "id": 41}],
-            5: [{"build_id": 5, "id": 51}],
-        }
         rpm_lists = [
             [{"id": 0, "build_id": 101, "release": "101.p1"}],
             [{"id": 1, "build_id": 201, "release": "201.p1"}],
         ]
+        archive_lists = {
+            1: [{"build_id": 1, "id": 11, "rpms": rpm_lists[0]}],
+            2: [{"build_id": 2, "id": 21, "rpms": rpm_lists[1]}],
+            3: [{"build_id": 3, "id": 31, "rpms": []}],
+            4: [{"build_id": 4, "id": 41, "rpms": []}],
+            5: [{"build_id": 5, "id": 51, "rpms": []}],
+        }
         shipped_builds = {3, 5, 101}
         expected = {2, 4}
 

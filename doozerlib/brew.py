@@ -138,7 +138,7 @@ def list_archives_by_builds(build_ids: List[int], build_type: str, session: koji
     :param build_ids: List of build IDs
     :param build_type: build type, such as "image"
     :param session: instance of Brew session
-    :return: a list of Koji/Brew archive lists
+    :return: a list of Koji/Brew archive lists (augmented with "rpms" entries for RPM lists)
     """
     tasks = []
     with session.multicall(strict=True) as m:
@@ -147,7 +147,15 @@ def list_archives_by_builds(build_ids: List[int], build_type: str, session: koji
                 tasks.append(None)
                 continue
             tasks.append(m.listArchives(buildID=build_id, type=build_type))
-    return [task.result if task else None for task in tasks]
+    archives_list = [task.result if task else None for task in tasks]
+
+    # each archives record contains an archive per arch; look up RPMs for each
+    archives = [ar for rec in archives_list for ar in rec or []]
+    archives_rpms = list_image_rpms([ar["id"] for ar in archives], session)
+    for archive, rpms in zip(archives, archives_rpms):
+        archive["rpms"] = rpms
+
+    return archives_list
 
 
 def get_builds_tags(build_nvrs, session=None):
@@ -172,12 +180,8 @@ def list_image_rpms(image_ids: List[int], session: koji.ClientSession) -> List[O
     """
     tasks = []
     with session.multicall(strict=True) as m:
-        for image_id in image_ids:
-            if image_id is None:
-                tasks.append(None)
-                continue
-            tasks.append(m.listRPMs(imageID=image_id))
-    return [task.result if task else None for task in tasks]
+        tasks = [m.listRPMs(imageID=image_id) for image_id in image_ids]
+    return [task.result for task in tasks]
 
 
 # Map that records the most recent change for a tag.

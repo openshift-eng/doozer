@@ -35,24 +35,25 @@ class BuildStatusDetector:
         # finally, look at the rpms in .p0 images in case they include unshipped .p1 rpms
         suspect_build_ids = {b["id"] for b in suspects if b["id"] not in embargoed}  # non .p1 build IDs
 
-        build_ids = suspect_build_ids - self.archive_lists.keys()  # a set of build IDs that are not in self.archive_lists cache
+        # look up any build IDs not already in self.archive_lists cache
+        build_ids = list(suspect_build_ids - self.archive_lists.keys())
         if build_ids:
-            build_ids = list(build_ids)
             self.logger and self.logger.info(f"Fetching image archives for {len(build_ids)} builds...")
             archive_lists = brew.list_archives_by_builds(build_ids, "image", self.koji_session)  # if a build is not an image (e.g. rpm), Brew will return an empty archive list for that build
-            for index, archive_list in enumerate(archive_lists):
-                self.archive_lists[build_ids[index]] = archive_list  # save to cache
-        suspect_archives = [ar for suspect in suspect_build_ids for ar in self.archive_lists[suspect]]
+            for build_id, archive_list in zip(build_ids, archive_lists):
+                self.archive_lists[build_id] = archive_list  # save to cache
 
-        self.logger and self.logger.info(f'Fetching rpms in {len(suspect_archives)} images...')
-        suspect_rpm_lists = brew.list_image_rpms([ar["id"] for ar in suspect_archives], self.koji_session)
-        for index, rpms in enumerate(suspect_rpm_lists):
-            suspected_rpms = [rpm for rpm in rpms if ".p1" in rpm["release"]]  # there should be a better way to checking the release field...
-            shipped = self.find_shipped_builds([rpm["build_id"] for rpm in suspected_rpms])
-            embargoed_rpms = [rpm for rpm in suspected_rpms if rpm["build_id"] not in shipped]
-            if embargoed_rpms:
-                image_build_id = suspect_archives[index]["build_id"]
-                embargoed.add(image_build_id)
+        # look for embargoed RPMs in the image archives (one per arch for every image)
+        for suspect in suspect_build_ids:
+            for archive in self.archive_lists[suspect]:
+                rpms = archive["rpms"]
+                suspected_rpms = [rpm for rpm in rpms if ".p1" in rpm["release"]]  # there should be a better way to check the release field...
+                shipped = self.find_shipped_builds([rpm["build_id"] for rpm in suspected_rpms])
+                embargoed_rpms = [rpm for rpm in suspected_rpms if rpm["build_id"] not in shipped]
+                if embargoed_rpms:
+                    image_build_id = archive["build_id"]
+                    embargoed.add(image_build_id)
+
         return embargoed
 
     def find_shipped_builds(self, build_ids: Set[Union[int, str]]):
