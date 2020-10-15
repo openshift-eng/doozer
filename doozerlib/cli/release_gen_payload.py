@@ -8,7 +8,8 @@ import koji
 import yaml
 import json
 
-from doozerlib import brew, state, exectools, embargo_detector, rhcos
+from doozerlib import brew, state, exectools, rhcos
+from doozerlib import build_status_detector as bs_detector
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.image import ImageMetadata
@@ -175,8 +176,8 @@ class PayloadGenerator:
             # when public_upstreams are not configured, we assume there is no private content.
             return
 
-        # store RPM archives to EmbargoDetector cache to limit Brew queries
-        detector = embargo_detector.EmbargoDetector(self.brew_session, self.runtime.logger)
+        # store RPM archives to BuildStatusDetector cache to limit Brew queries
+        detector = bs_detector.BuildStatusDetector(self.brew_session, self.runtime.logger)
         for r in latest_builds:
             detector.archive_lists[r.build["id"]] = r.archives
 

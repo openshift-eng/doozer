@@ -1,10 +1,10 @@
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from doozerlib.embargo_detector import EmbargoDetector
+from doozerlib.build_status_detector import BuildStatusDetector
 
 
-class TestEmbargoDetector(TestCase):
+class TestBuildStatusDetector(TestCase):
     def test_find_embargoed_builds(self):
         builds = [
             {"id": 1, "release": "1.p0"},
@@ -36,8 +36,8 @@ class TestEmbargoDetector(TestCase):
 
         with patch("doozerlib.brew.get_builds_tags", return_value=tags), \
              patch("doozerlib.brew.list_image_rpms", return_value=rpm_lists), \
-             patch("doozerlib.embargo_detector.EmbargoDetector.find_shipped_builds", side_effect=lambda builds: {b for b in builds if b in shipped_builds}):
-            detector = EmbargoDetector(MagicMock(), MagicMock())
+             patch("doozerlib.build_status_detector.BuildStatusDetector.find_shipped_builds", side_effect=lambda builds: {b for b in builds if b in shipped_builds}):
+            detector = BuildStatusDetector(MagicMock(), MagicMock())
             detector.archive_lists = archive_lists
             actual = detector.find_embargoed_builds(builds)
             self.assertEqual(actual, expected)
@@ -54,26 +54,26 @@ class TestEmbargoDetector(TestCase):
                 [{"name": "bar-candidate"}, {"name": "bar-released"}, ],
             ]
             expected = {2}
-            actual = EmbargoDetector(MagicMock(), MagicMock()).find_shipped_builds(build_ids)
+            actual = BuildStatusDetector(MagicMock(), MagicMock()).find_shipped_builds(build_ids)
             self.assertEqual(actual, expected)
             get_builds_tags.return_value = [
                 [{"name": "foo-candidate"}, {"name": "bar-released"}],
                 [{"name": "bar-candidate"}, {"name": "bar-released"}, ],
             ]
             expected = {1, 2}
-            actual = EmbargoDetector(MagicMock(), MagicMock()).find_shipped_builds(build_ids)
+            actual = BuildStatusDetector(MagicMock(), MagicMock()).find_shipped_builds(build_ids)
             self.assertEqual(actual, expected)
             get_builds_tags.return_value = [
                 [],
                 [],
             ]
             expected = set()
-            actual = EmbargoDetector(MagicMock(), MagicMock()).find_shipped_builds(build_ids)
+            actual = BuildStatusDetector(MagicMock(), MagicMock()).find_shipped_builds(build_ids)
             self.assertEqual(actual, expected)
             get_builds_tags.return_value = [
                 [{"name": "foo-released"}],
                 [{"name": "bar-candidate"}, {"name": "bar-released"}, ]
             ]
             expected = {1, 2}
-            actual = EmbargoDetector(MagicMock(), MagicMock()).find_shipped_builds(build_ids)
+            actual = BuildStatusDetector(MagicMock(), MagicMock()).find_shipped_builds(build_ids)
             self.assertEqual(actual, expected)

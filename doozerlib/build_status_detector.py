@@ -6,11 +6,11 @@ from koji import ClientSession
 from doozerlib import brew
 
 
-class EmbargoDetector:
-    """ an EmbargoDetector can find builds with embargoed fixes
+class BuildStatusDetector:
+    """ a BuildStatusDetector can find builds with embargoed fixes
     """
     def __init__(self, session: ClientSession, logger: Optional[Logger] = None):
-        """ creates a new EmbargoDetector
+        """ creates a new BuildStatusDetector
         :param session: a koji client session
         :param logger: a logger
         """

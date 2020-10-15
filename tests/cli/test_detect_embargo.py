@@ -17,7 +17,7 @@ class TestDetectEmbargoCli(TestCase):
         nvrs = [b["nvr"] for b in builds]
         expected = [builds[1]]
         with patch("doozerlib.brew.get_build_objects", return_value=builds), \
-             patch("doozerlib.embargo_detector.EmbargoDetector.find_embargoed_builds", return_value=[2]):
+             patch("doozerlib.build_status_detector.BuildStatusDetector.find_embargoed_builds", return_value=[2]):
             actual = detect_embargo.detect_embargoes_in_nvrs(MagicMock(), nvrs)
         self.assertListEqual(actual, expected)
 
@@ -37,7 +37,7 @@ class TestDetectEmbargoCli(TestCase):
         expected = [b for builds in included_builds for b in builds if b["id"] in {13, 23}]
         with patch("doozerlib.brew.get_latest_builds", return_value=included_builds), \
              patch("doozerlib.brew.get_tagged_builds", return_value=excluded_builds), \
-             patch("doozerlib.embargo_detector.EmbargoDetector.find_embargoed_builds", return_value=[13, 23]) as find_embargoed_builds:
+             patch("doozerlib.build_status_detector.BuildStatusDetector.find_embargoed_builds", return_value=[13, 23]) as find_embargoed_builds:
             actual = detect_embargo.detect_embargoes_in_tags(MagicMock(), "all", included_tags, excluded_tags, event_id)
             find_embargoed_builds.assert_called_once_with(builds_to_detect)
         self.assertEqual(actual, expected)
