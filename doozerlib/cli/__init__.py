@@ -66,10 +66,12 @@ def print_version(ctx, param, value):
 @click.option('--debug', default=False, is_flag=True, help='Show debug output on console.')
 @click.option("--stream", metavar="STREAM_NAME PULLSPEC", nargs=2, multiple=True,
               help="Override a stream.yml entry with a specific pullspec.  [multiple]")
-@click.option("--upstream", "upstreams", metavar="DISTGIT_KEY COMMIT-ISH", multiple=True, nargs=2,
+@click.option("--lock-upstream", "upstreams", metavar="DISTGIT_KEY COMMIT-ISH", multiple=True, nargs=2,
               help="Override upstream source commits. [multiple]")
-@click.option("--downstream", "downstreams", metavar="DISTGIT_KEY COMMIT-ISH", multiple=True, nargs=2,
+@click.option("--lock-downstream", "downstreams", metavar="DISTGIT_KEY COMMIT-ISH", multiple=True, nargs=2,
               help="Checkout non-HEAD of distgit. This is primarily for testing and cannot be used to build images. [multiple]")
+@click.option("--lock-runtime-uuid", metavar="UUID", default=None, nargs=1,
+              help="Fixes the otherwise randomly determined run UUI")
 @click.option("--source", metavar="ALIAS PATH", nargs=2, multiple=True,
               help="Associate a path with a given source alias.  [multiple]")
 @click.option("--sources", metavar="YAML_PATH",

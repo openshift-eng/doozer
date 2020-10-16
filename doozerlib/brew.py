@@ -20,7 +20,7 @@ import koji
 import koji_cli.lib
 
 from .model import Missing
-from .util import red_print
+from .util import red_print, total_size
 
 logger = logutil.getLogger(__name__)
 
@@ -204,42 +204,54 @@ latest_tag_change_events = {}
 cache_lock = Lock()
 
 
-def tags_changed_since_build(runtime, koji_client, build, tag_ids) -> Dict:
+def has_tag_changed_since_build(runtime, koji_client, build, tag, inherit=True) -> Dict:
     """
     :param runtime:  The doozer runtime
     :param koji_client: A koji ClientSession.
     :param build:  A build information dict returned from koji getBuild
-    :param tag_ids: A list of tag ids (or tag names) which should be assessed
-    :return: A map (potentially empty) with tagName -> changeEvent (where changeEvent is a map describing the event
-             and occurred after the build creation_event_id).
+    :param tag: A tag name or tag id which should be assessed.
+    :param inherit: If True, uses tag inheritance.
+    :return: None if the tag has not changed since build OR a change event dict for the build that was tagged
+            after the build argument was built.
     """
     build_nvr = build['nvr']
     build_event_id = build['creation_event_id']
 
     result = []
-    for tid in tag_ids:
-        with cache_lock:
-            latest_tag_change_event = latest_tag_change_events.get(tid, None)
+    with cache_lock:
+        latest_tag_change_event = latest_tag_change_events.get(tag, None)
 
-        if latest_tag_change_event is None:
-            # I don't like the use of this queryHistory call. It returns the most recently tagged (active=True)
-            # packages associated with a tag. This is a long list (e.g. 100s of packages for the
-            # rhaos candidate tag, so it might impact performance. What we want out of this is the
-            # very newest tagged package, but queryHistory does not seem to allow this (e.g. limit: 1).
-            # There is another API 'tagHistory' that can do this, but (1) it is supposed to be
-            # deprecated and (2) it does not allow event=# to constrain its search (required
-            # to support --brew-event). So we use this call. The first entry in the tag_listing
-            # field should be the most recently tagged package by this tag.
+    if latest_tag_change_event is None:
+        latest_tag_change_event = {}
+
+        # Note: There is an API 'tagHistory' that can do this, but (1) it is supposed to be
+        # deprecated and (2) it does not allow event=# to constrain its search (required
+        # to support --brew-event). So we use a combination of listTagged and queryHistory.
+
+        # The listTagged API will do much of this work for us. The reason is that it will report updates to
+        # a tag newest->oldest: https://pagure.io/koji/blob/fedf3ee9f9238ed74c34d51c5458a834732b3346/f/hub/kojihub.py#_1351
+        # In other words, listTagged('rhaos-4.7-rhel-8-build', latest=True, inherit=True)[0] describes a bulid that was
+        # most recently tagged into this tag (or inherited tags).
+        last_tagged_builds = koji_client.listTagged(tag, latest=True, inherit=inherit)
+        if last_tagged_builds:
+            last_tagged_build = last_tagged_builds[0]
+            # We now have the build that was tagged, but not WHEN it was tagged. It could have been built
+            # a long time ago, and recently tagged into the tag we care about. To figure this out, we
+            # need to query the tag_listing table.
+
+            found_in_tag_name = last_tagged_build['tag_name']  # If using inheritance, this can differ from tag
             # Example result of full queryHistory: https://gist.github.com/jupierce/943b845c07defe784522fd9fd76f4ab0
-            tag_listing = koji_client.queryHistory(table='tag_listing', tag=tid, active=True)['tag_listing']
-            latest_tag_change_event = {} if not tag_listing else tag_listing[0]
-            with cache_lock:
-                latest_tag_change_events[tid] = latest_tag_change_event
+            tag_listing = koji_client.queryHistory(table='tag_listing',
+                                                   tag=found_in_tag_name, build=last_tagged_build['build_id'])['tag_listing']
+            latest_tag_change_event = tag_listing[0]  # Order is by increasing age, so 0 is the most recent time this build was tagged
 
-        if latest_tag_change_event and latest_tag_change_event['create_event'] > build_event_id:
-            result[latest_tag_change_event['tag.name']] = latest_tag_change_event
+        with cache_lock:
+            latest_tag_change_events[tag] = latest_tag_change_event
 
-    runtime.logger.debug(f'Found that build of {build_nvr} (event={build_event_id}) occurred before tag changes: {result}')
+    if latest_tag_change_event and latest_tag_change_event['create_event'] > build_event_id:
+        runtime.logger.debug(f'Found that build of {build_nvr} (event={build_event_id}) occurred before tag changes: {latest_tag_change_event}')
+        return latest_tag_change_event
+
     return result
 
 
@@ -324,6 +336,16 @@ class KojiWrapper(koji.ClientSession):
         'newRepo',
     ])
 
+    # Methods which cannot be constrained, but are considered safe to allow even wthen brew-event is set.
+    # Why? If you know the parameters, those parameters should have already been constrained by another
+    # koji API call.
+    safe_methods = set([
+        'getEvent',
+        'getBuild',
+        'listArchives',
+        'listRPMs',
+    ])
+
     def __init__(self, koji_session_args, brew_event=None):
         """
         See class description on what this wrapper provides.
@@ -339,6 +361,11 @@ class KojiWrapper(koji.ClientSession):
     def clear_global_cache(cls):
         with cls.koji_wrapper_lock:
             cls.koji_wrapper_result_cache.clear()
+
+    @classmethod
+    def get_cache_size(cls):
+        with cls.koji_wrapper_lock:
+            return total_size(cls.koji_wrapper_result_cache)
 
     @classmethod
     def get_next_call_id(cls):
@@ -376,16 +403,23 @@ class KojiWrapper(koji.ClientSession):
         """
         brew_event = self.___brew_event
         if brew_event:
-            if method_name == 'queryHistory' and 'beforeEvent' not in kwargs:
-                kwargs = kwargs or {}
-                kwargs['beforeEvent'] = self.brew_event + 1
-            elif 'event' not in kwargs and method_name in KojiWrapper.methods_with_event:
-                kwargs = kwargs or {}
-                kwargs['event'] = brew_event
+            if method_name == 'queryHistory':
+                if 'beforeEvent' not in kwargs and 'before' not in kwargs:
+                    # Only set the kwarg if the caller didn't
+                    kwargs = kwargs or {}
+                    kwargs['beforeEvent'] = brew_event + 1
+            elif method_name in KojiWrapper.methods_with_event:
+                if 'event' not in kwargs:
+                    # Only set the kwarg if the caller didn't
+                    kwargs = kwargs or {}
+                    kwargs['event'] = brew_event
+            elif method_name in KojiWrapper.safe_methods:
+                # Let it go through
+                pass
             elif not kw_opts.brew_event_aware:
                 # If --brew-event has been specified and non-constrainable API call is invoked, raise
                 # an exception if the caller has not made clear that are ok with that via brew_event_aware option.
-                raise IOError('Non-constrainable koji api call with --brew-event set; you must use KojiWrapperOpts with brew_event_aware=True')
+                raise IOError(f'Non-constrainable koji api call ({method_name}) with --brew-event set; you must use KojiWrapperOpts with brew_event_aware=True')
 
         return kwargs
 
@@ -527,7 +561,3 @@ class KojiWrapper(koji.ClientSession):
                 retries -= 1
                 if retries == 0:
                     raise
-
-
-
-

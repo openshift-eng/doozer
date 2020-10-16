@@ -21,29 +21,11 @@ class DirTestCase(unittest.TestCase):
     time.
     """
 
-    def test_chdir(self):
-        """
-        Verify that when a Dir is created and used in a `with` context, the
-        CWD changes from current to new and back after exiting the context
-        """
-        cwd = os.getcwd()
-        with pushd.Dir("/"):
-            self.assertEqual(os.getcwd(), "/")
-            with pushd.Dir("/dev"):
-                self.assertEqual(os.getcwd(), "/dev")
-            self.assertEqual(os.getcwd(), "/")
-        self.assertEqual(os.getcwd(), cwd)
-
     def test_getcwd(self, concurrent=False):
         """
         Verify that the directory locking for concurrency is working
         """
-        cwd = os.getcwd()
-        if not concurrent:
-            self.assertEqual(pushd.Dir.getcwd(), cwd)
-        else:
-            # the initial value is not reliable when using multiple threads
-            cwd = pushd.Dir.getcwd()
+        cwd = pushd.Dir.getcwd()
         with pushd.Dir("/"):
             self.assertEqual(pushd.Dir.getcwd(), "/")
             with pushd.Dir("/dev"):

@@ -32,16 +32,22 @@ class DoozerRunnerTestCase(unittest.TestCase):
         if self.dz_user:
             user_arg = ['--user', self.dz_user]
 
-        out, err = exectools.cmd_assert(
-            [
-                *DOOZER_CMD,
-                *user_arg,
-                '--cache-dir', self.dz_cache_dir,
-                '--working-dir', self.dz_working_dir,
-                *args
-            ],
-            strip=True
-        )
+        cmd = [
+            *DOOZER_CMD,
+            *user_arg,
+            '--cache-dir', self.dz_cache_dir,
+            '--working-dir', self.dz_working_dir,
+            *args
+        ]
+
+        print(f'Running doozer with: {cmd}', file=sys.stderr)
+
+        rc, out, err = exectools.cmd_gather(cmd, strip=True)
+        if rc:
+            self.logger.error('Doozer executed with non-zero exit status.')
+            self.logger.error(f'Stderror: {err}')
+            raise IOError('Doozer exited with error; see tests_functional.log')
+
         return out.strip(), err.strip()
 
     def distgit_image_path(self, distgit_name):
@@ -51,7 +57,7 @@ class DoozerRunnerTestCase(unittest.TestCase):
     def setUp(self):
         if os.path.exists(self.dz_working_dir):
             # Since we rm -rf this directory, let's make sure the testing framework creates it
-            raise IOError(f'Did not expect: {self.dz_working_dir}')
+            raise IOError(f'Please delete env.DOOZER_WORKING_DIR before running tests: {self.dz_working_dir}')
         pass
 
     def tearDown(self):
@@ -62,4 +68,3 @@ class DoozerRunnerTestCase(unittest.TestCase):
 
         if os.path.isdir(self.dz_working_dir):
             shutil.rmtree(self.dz_working_dir)
-

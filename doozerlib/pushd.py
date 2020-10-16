@@ -6,19 +6,9 @@ The Dir object is a context_manager that can be used with the Python 'with'
 clause.  The context manager idiom allows the user to execute some commands
 in a working directory other than the CWD and return without needing to
 explicitly handle it.
-
-Example:
-
-  # os.getcwd() returns /tmp/somewhere
-  with Dir("/tmp/somewhere/else"):
-      # os.getcwd() returns /tmp/somewhere/else
-      ....
-
-  # os.getcwd() returns /tmp/somewhere
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
-import os
 import threading
 import pathlib
 
@@ -27,15 +17,13 @@ class Dir(object):
     """
     Context manager to handle directory changes safely.
 
-    On `__enter__`, `chdir`s to the given directory and on `__exit__`, `chdir`s
-    back to restore the previous `cwd`.
+    On `__enter__`, stores a pseudo current working directory. On __exit__
+    any previous Dir context's cwd is restored.
 
-    The current directory is also kept on thread-local storage and can be
-    accessed (e.g. by multi-threaded programs that cannot rely on `chdir`) via
-    the `getcwd` static method.
+    The current directory of the process (e.g. os.getcwd()) is never altered
+    as this would not be a threadsafe operation.
 
-    The `assert_exec` and `gather_exec` member functions use the directory in
-    effect automatically.
+    The exectools library honors these contexts automatically.
     """
     _tl = threading.local()
 
@@ -45,22 +33,21 @@ class Dir(object):
 
     def __enter__(self):
         self.previous_dir = self.getcwd()
-        os.chdir(self.dir)
         self._tl.cwd = self.dir
         return self.dir
 
     def __exit__(self, *args):
-        os.chdir(self.previous_dir)
         self._tl.cwd = self.previous_dir
 
     @classmethod
     def getcwd(cls):
         """
         Provide a context dependent current working directory. This method
-        will return the directory currently holding the lock.
+        will return the directory currently holding the lock. If not within
+        a Dir context, None will be returned.
         """
         if not hasattr(cls._tl, "cwd"):
-            cls._tl.cwd = os.getcwd()
+            return None
         return cls._tl.cwd
 
     @classmethod
@@ -69,4 +56,5 @@ class Dir(object):
         Provide a context dependent current working directory. This method
         will return a pathlib.Path for the directory currently holding the lock.
         """
-        return pathlib.Path(Dir.getcwd())
+        cwd = Dir.getcwd()
+        return None if not cwd else pathlib.Path(Dir.getcwd())

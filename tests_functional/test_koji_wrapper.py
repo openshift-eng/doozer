@@ -63,7 +63,9 @@ class TestKojiWrapper(DoozerRunnerTestCase):
         self.assertEqual(_c2_meta.result, c2_meta.result)
         self.assertEqual(_c2_meta.result['id'], 70115)  # The numeric id for the tag should not change
 
+        cache_size = brew.KojiWrapper.get_cache_size()
         brew.KojiWrapper.clear_global_cache()  # Test clearing cache
+        self.assertGreater(cache_size, brew.KojiWrapper.get_cache_size())
 
         # After clearing the cache, we should miss again
         c1_meta, c2_meta = run_multicall()

@@ -31,7 +31,7 @@ class TestGoLangRebase(DoozerRunnerTestCase):
         target_release = '777'
         _, _ = self.run_doozer(
             '--group', f'rhel-8-golang-1.15@{target_ocp_build_data_commitish}',
-            '--upstream', 'openshift-golang-builder', target_ocp_build_data_commitish,  # this build checks out ocp-build-data as its upstream
+            '--lock-upstream', 'openshift-golang-builder', target_ocp_build_data_commitish,  # this build checks out ocp-build-data as its upstream
             'images:rebase',
             '--version', target_version,
             '--release', target_release,

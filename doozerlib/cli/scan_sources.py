@@ -55,37 +55,8 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
 
     with runtime.shared_koji_client_session() as koji_api:
 
-        runtime.logger.info(f'Running scan with true latest koji/brew event: {koji_api.getLastEvent()}')
-        runtime.logger.info(f'Emulated override koji/brew event: {runtime.brew_event}')
-
-        # Different branches have different build tags & inheritances; cache the results to
-        # limit brew queries.
-        build_root_tag_id_cache = dict()
-
-        def get_build_root_inherited_tags(config_meta):
-            # Create a {map of tags => tag names} which contribute RPMs to a given build root
-            build_tag = config_meta.branch() + '-build'
-            if build_tag in build_root_tag_id_cache:
-                return build_root_tag_id_cache[build_tag]
-            build_tag_ids = [n['parent_id'] for n in koji_api.getFullInheritance(build_tag)]
-            final_build_tag_ids = {}
-            for bid in build_tag_ids:
-                tag_name = koji_api.getTag(bid)['name']
-                if tag_name.endswith(('-candidate', '-pending')):
-                    # We don't want our candidate tag to be taken in consideration. It will always
-                    # be changing as after any build.
-                    continue
-
-                # There are many tags in the buildroots that are unlikely to affect our builds.
-                # (e.g. rhel-7.8-z). Filter these down to those which reasonably affect us.
-                if any(('devtools' in tag_name,  # e.g. devtools-2019.4-rhel-7
-                        '-build' in tag_name,
-                        '-override' in tag_name)):
-                    final_build_tag_ids[bid] = tag_name
-
-            runtime.logger.info(f'For {config_meta.distgit_key}, found buildroot inheritance: {build_tag_ids}; Filtered down to {final_build_tag_ids}')
-            build_root_tag_id_cache[build_tag] = final_build_tag_ids
-            return final_build_tag_ids
+        runtime.logger.info(f'scan-sources coordinate: brew_event: {koji_api.getLastEvent(brew.KojiWrapperOpts(brew_event_aware=True))}')
+        runtime.logger.info(f'scan-sources coordinate: emulated_brew_event: {runtime.brew_event}')
 
         # First, scan for any upstream source code changes. If found, these are guaranteed rebuilds.
         for meta, change_info in runtime.scan_distgit_sources():
@@ -106,13 +77,11 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                             eldest_rpm_build = latest_rpm_build
 
                     # Detect if our buildroot changed since the oldest rpm of the latest build of the package was built.
-                    rpm_build_root_tag_ids = get_build_root_inherited_tags(meta).keys()
-                    build_root_changes = brew.tags_changed_since_build(runtime, koji_api, eldest_rpm_build, rpm_build_root_tag_ids)
+                    build_root_change = brew.has_tag_changed_since_build(runtime, koji_api, eldest_rpm_build, meta.build_root_tag(), inherit=True)
 
-                    if build_root_changes:
-                        changing_tag_names = build_root_changes.keys()
-                        reason = f'Latest package build was before buildroot changes: {changing_tag_names}'
-                        runtime.logger.info(f'{dgk} ({eldest_rpm_build}) in {package_name} is older than more recent buildroot change: {build_root_changes}')
+                    if build_root_change:
+                        reason = 'Oldest package rpm build was before buildroot change'
+                        runtime.logger.info(f'{dgk} ({eldest_rpm_build}) in {package_name} is older than more recent buildroot change: {build_root_change}')
                         needs_rebuild = True
 
                 if reason:
@@ -140,79 +109,90 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                 changing_image_metas.add(descendant_meta)
                 add_assessment_reason(descendant_meta, True, f'Ancestor {meta.distgit_key} is changing')
 
-        # To limit the size of the queries we are going to make, find the oldest image
-        eldest_image_event_ts = koji_api.getLastEvent()['ts']
+        # To limit the size of the queries we are going to make, find the oldest and newest image
+        oldest_image_event_ts = None
+        newest_image_event_ts = 0
         for image_meta in runtime.image_metas():
             info = image_meta.get_latest_build(default=None)
             if info is not None:
                 create_event_ts = koji_api.getEvent(info['creation_event_id'])['ts']
-                if create_event_ts < eldest_image_event_ts:
-                    eldest_image_event_ts = create_event_ts
+                if oldest_image_event_ts is None or create_event_ts < oldest_image_event_ts:
+                    oldest_image_event_ts = create_event_ts
+                if create_event_ts > newest_image_event_ts:
+                    newest_image_event_ts = create_event_ts
 
-        for image_meta in runtime.image_metas():
-            image_change, msg = image_meta.does_image_need_change(eldest_image_event_ts, changing_rpm_packages, get_build_root_inherited_tags(image_meta).keys())
-            if image_change:
-                add_image_meta_change(image_meta, msg)
+    runtime.logger.debug(f'Will be assessing tagging changes between newest_image_event_ts:{newest_image_event_ts} and oldest_image_event_ts:{oldest_image_event_ts}')
+    change_results = runtime.parallel_exec(
+        f=lambda image_meta, terminate_event: image_meta.does_image_need_change(changing_rpm_packages, image_meta.build_root_tag(), newest_image_event_ts, oldest_image_event_ts),
+        args=runtime.image_metas(),
+        n_threads=20
+    )
 
-        # does_image_name_change() checks whether its non-member builder images have changed
-        # but cannot determine whether member builder images have changed until anticipated
-        # changes have been calculated. The following loop does this. It uses while True,
-        # because technically, we could keep finding changes in intermediate builder images
-        # and have to ensure we pull in images that rely on them in the next iteration.
-        # fyi, changes in direct parent images should be detected by RPM changes, which
-        # does does_image_name_change will detect.
-        while True:
-            changing_image_dgks = [meta.distgit_key for meta in changing_image_metas]
-            for image_meta in all_image_metas:
-                dgk = image_meta.distgit_key
-                if dgk in changing_image_dgks:  # Already in? Don't look any further
-                    continue
+    for change_result in change_results.get():
+        meta, changing, msg = change_result
+        if changing:
+            add_image_meta_change(meta, msg)
 
-                for builder in image_meta.config['from'].builder:
-                    if builder.member and builder.member in changing_image_dgks:
-                        runtime.logger.info(f'{dgk} will be rebuilt due to change in builder member ')
-                        add_image_meta_change(image_meta, f'Builder group member has changed: {builder.member}')
-
-            if len(changing_image_metas) == len(changing_image_dgks):
-                # The for loop didn't find anything new, we can break
-                break
-
-        # We have our information. Now build the output report..
-        image_results = []
+    # does_image_name_change() checks whether its non-member builder images have changed
+    # but cannot determine whether member builder images have changed until anticipated
+    # changes have been calculated. The following loop does this. It uses while True,
+    # because technically, we could keep finding changes in intermediate builder images
+    # and have to ensure we pull in images that rely on them in the next iteration.
+    # fyi, changes in direct parent images should be detected by RPM changes, which
+    # does does_image_name_change will detect.
+    while True:
         changing_image_dgks = [meta.distgit_key for meta in changing_image_metas]
         for image_meta in all_image_metas:
             dgk = image_meta.distgit_key
-            is_changing = dgk in changing_image_dgks
-            image_results.append({
-                'name': dgk,
-                'changed': is_changing,
-                'reason': assessment_reason.get(f'{image_meta.qualified_key}+{is_changing}', 'No change detected'),
-            })
+            if dgk in changing_image_dgks:  # Already in? Don't look any further
+                continue
 
-        rpm_results = []
-        changing_rpm_dgks = [meta.distgit_key for meta in changing_rpm_metas]
-        for rpm_meta in all_rpm_metas:
-            dgk = rpm_meta.distgit_key
-            is_changing = dgk in changing_rpm_dgks
-            rpm_results.append({
-                'name': dgk,
-                'changed': is_changing,
-                'reason': assessment_reason.get(f'{rpm_meta.qualified_key}+{is_changing}', 'No change detected'),
-            })
+            for builder in image_meta.config['from'].builder:
+                if builder.member and builder.member in changing_image_dgks:
+                    runtime.logger.info(f'{dgk} will be rebuilt due to change in builder member ')
+                    add_image_meta_change(image_meta, f'Builder group member has changed: {builder.member}')
 
-        results = dict(
-            rpms=rpm_results,
-            images=image_results
-        )
+        if len(changing_image_metas) == len(changing_image_dgks):
+            # The for loop didn't find anything new, we can break
+            break
 
-        if ci_kubeconfig:  # we can determine m-os-c needs updating if we can look at imagestreams
-            results['rhcos'] = _detect_rhcos_status(runtime, ci_kubeconfig)
+    # We have our information. Now build the output report..
+    image_results = []
+    changing_image_dgks = [meta.distgit_key for meta in changing_image_metas]
+    for image_meta in all_image_metas:
+        dgk = image_meta.distgit_key
+        is_changing = dgk in changing_image_dgks
+        image_results.append({
+            'name': dgk,
+            'changed': is_changing,
+            'reason': assessment_reason.get(f'{image_meta.qualified_key}+{is_changing}', 'No change detected'),
+        })
 
-        if as_yaml:
-            click.echo('---')
-            click.echo(yaml.safe_dump(results, indent=4))
-            return
+    rpm_results = []
+    changing_rpm_dgks = [meta.distgit_key for meta in changing_rpm_metas]
+    for rpm_meta in all_rpm_metas:
+        dgk = rpm_meta.distgit_key
+        is_changing = dgk in changing_rpm_dgks
+        rpm_results.append({
+            'name': dgk,
+            'changed': is_changing,
+            'reason': assessment_reason.get(f'{rpm_meta.qualified_key}+{is_changing}', 'No change detected'),
+        })
 
+    results = dict(
+        rpms=rpm_results,
+        images=image_results
+    )
+
+    runtime.logger.debug(f'scan-sources coordinate: results:\n{yaml.safe_dump(results, indent=4)}')
+
+    if ci_kubeconfig:  # we can determine m-os-c needs updating if we can look at imagestreams
+        results['rhcos'] = _detect_rhcos_status(runtime, ci_kubeconfig)
+
+    if as_yaml:
+        click.echo('---')
+        click.echo(yaml.safe_dump(results, indent=4))
+    else:
         for kind, items in results.items():
             if not items:
                 continue
@@ -221,6 +201,8 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                 click.echo('  {} is {} (reason: {})'.format(item['name'],
                                                             'changed' if item['changed'] else 'the same',
                                                             item['reason']))
+
+    runtime.logger.info(f'KojiWrapper cache size: {int(brew.KojiWrapper.get_cache_size() / 1024)}KB')
 
 
 def _detect_rhcos_status(runtime, kubeconfig) -> list:

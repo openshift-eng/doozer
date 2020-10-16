@@ -3,6 +3,7 @@ from .model import Model, ModelException, Missing
 import yaml
 import requests
 import json
+import time
 
 DEFAULT_REPOTYPES = ['unsigned', 'signed']
 
@@ -315,7 +316,15 @@ class Repos(object):
             'Cache-Control': "no-cache"
         }
 
-        response = requests.request("POST", url, data=json.dumps(payload), headers=headers)
+        retry_count = 4
+        for i in range(retry_count):
+            try:
+                response = requests.request("POST", url, data=json.dumps(payload), headers=headers)
+                break
+            except:
+                if i == retry_count - 1:
+                    raise
+                time.sleep(5)
 
         resp_dict = response.json()
 
