@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, unicode_literals
 
-import glob
 import shutil
 import os
 import traceback
 import re
 import io
-import pathlib
-import json
-import logging
 import glob
+from typing import Optional
 
 from . import exectools
 from .pushd import Dir
@@ -41,9 +38,9 @@ remote_git_name = {name}
 
 class RPMMetadata(Metadata):
 
-    def __init__(self, runtime, data_obj, clone_source=True,
+    def __init__(self, runtime, data_obj, commitish: Optional[str] = None, clone_source=True,
                  source_modifier_factory=SourceModifierFactory()):
-        super(RPMMetadata, self).__init__('rpm', runtime, data_obj)
+        super(RPMMetadata, self).__init__('rpm', runtime, data_obj, commitish)
 
         self.source = self.config.content.source
         if self.source is Missing:

@@ -3,16 +3,12 @@ from future import standard_library
 standard_library.install_aliases
 from typing import Dict, Optional, List
 import urllib.parse
-from retry import retry
-import requests
 import yaml
 from collections import OrderedDict
-from functools import lru_cache
 from dockerfile_parse import DockerfileParser
 import pathlib
 import json
 import traceback
-import glob
 
 from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo, DistGitRepo
@@ -122,6 +118,9 @@ class Metadata(object):
             return self.config.distgit.branch
         return self.runtime.branch
 
+    def build_root_tag(self):
+        return '{}-build'.format(self.branch())
+
     def candidate_brew_tag(self):
         return '{}-candidate'.format(self.branch())
 
@@ -196,7 +195,7 @@ class Metadata(object):
         """
         Check whether the commit that we recorded in the distgit content (according to cgit)
         matches the commit of the source (according to git ls-remote) and has been built
-        (according to brew). Nothing is cloned and no existing clones are consulted.
+        (according to brew).
         Returns: (<bool>, message). If True, message describing the details is returned. If False,
                 None is returned.
         """

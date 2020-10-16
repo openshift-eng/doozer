@@ -204,8 +204,7 @@ class Runtime(object):
         # Will be loaded with the streams.yml Model
         self.streams = {}
 
-        # Create a "uuid" which will be used in FROM fields during updates
-        self.uuid = datetime.datetime.now().strftime("%Y%m%d.%H%M%S")
+        self.uuid = None
 
         # Optionally available if self.fetch_rpms_for_tag() is called
         self.rpm_list = None
@@ -305,6 +304,11 @@ class Runtime(object):
         if not no_group and self.group is None:
             click.echo("Group must be specified")
             exit(1)
+
+        if self.lock_runtime_uuid:
+            self.uuid = self.lock_runtime_uuid
+        else:
+            self.uuid = datetime.datetime.now().strftime("%Y%m%d.%H%M%S")
 
         if self.working_dir is None:
             self.working_dir = tempfile.mkdtemp(".tmp", "oit-")
@@ -547,7 +551,7 @@ class Runtime(object):
                     if clone_source is None:
                         # Historically, clone_source defaulted to True for rpms.
                         clone_source = True
-                    metadata = RPMMetadata(self, r, clone_source=clone_source)
+                    metadata = RPMMetadata(self, r, self.upstream_commitish_overrides.get(r.key), clone_source=clone_source)
                     self.rpm_map[metadata.distgit_key] = metadata
                 if not self.rpm_map:
                     self.logger.warning("No rpm metadata directories found for given options within: {}".format(self.group_dir))
@@ -1359,7 +1363,7 @@ class Runtime(object):
         return self.parallel_exec(
             lambda meta, _: (meta, meta.needs_rebuild()),
             self.image_metas() + self.rpm_metas(),
-            n_threads=100,
+            n_threads=20,
         ).get()
 
     def resolve_metadata(self):
