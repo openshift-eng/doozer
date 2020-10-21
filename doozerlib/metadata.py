@@ -215,11 +215,17 @@ class Metadata(object):
         with self.runtime.pooled_koji_client_session() as koji_api:
             # getEvent returns something like {'id': 31825801, 'ts': 1591039601.2667}
             latest_build_creation_ts = int(koji_api.getEvent(latest_build_creation_event_id)['ts'])
+            # Log scan-sources coordinates throughout to simplify setting up scan-sources
+            # function tests to reproduce real-life scenarios.
+            self.logger.debug(f'scan-sources coordinate: latest_build: {latest_build}')
 
         dgr = self.distgit_repo()
         with Dir(dgr.distgit_dir):
-            ts, _ = exectools.cmd_assert('git show -s --format=%ct HEAD')
+            dg_commit, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
+            self.logger.debug(f'scan-sources coordinate: dg_commit: {dg_commit}')
+            ts, _ = exectools.cmd_assert('git show -s --format=%ct HEAD', strip=True)
             distgit_head_commit_millis = int(ts)
+            self.logger.debug(f'scan-sources coordinate: distgit_head_commit_millis: {distgit_head_commit_millis}')
 
         one_hour = (1 * 60 * 60 * 1000)  # in milliseconds
 
@@ -236,6 +242,7 @@ class Metadata(object):
         # We have source.
         with Dir(dgr.source_path()):
             upstream_commit_hash, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
+            self.logger.debug(f'scan-sources coordinate: upstream_commit_hash: {upstream_commit_hash}')
 
         dgr_path = pathlib.Path(dgr.distgit_dir)
         if self.namespace == 'containers' or self.namespace == 'apbs':
@@ -243,9 +250,10 @@ class Metadata(object):
             if not dockerfile_path.is_file():
                 return True, 'Distgit dockerfile not found -- appears that no rebase has ever been performed'
             dfp = DockerfileParser(str(dockerfile_path))
-            last_disgit_rebase_hash = dfp.envs.get('SOURCE_GIT_COMMIT', None)
-            if last_disgit_rebase_hash != upstream_commit_hash:
-                return True, f'Distgit contains SOURCE_GIT_COMMIT hash {last_disgit_rebase_hash} different from upstream HEAD {upstream_commit_hash}'
+            last_distgit_rebase_upstream_hash = dfp.envs.get('SOURCE_GIT_COMMIT', None)
+            self.logger.debug(f'scan-sources coordinate: last_distgit_rebase_upstream_hash: {last_distgit_rebase_upstream_hash}')
+            if last_distgit_rebase_upstream_hash != upstream_commit_hash:
+                return True, f'Distgit contains SOURCE_GIT_COMMIT hash {last_distgit_rebase_upstream_hash} different from upstream HEAD {upstream_commit_hash}'
         elif self.namespace == 'rpms':
             specs = list(dgr_path.glob('*.spec'))
             if not specs:
