@@ -2299,9 +2299,9 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs):
     def rebase_and_build(nvr):
         try:
             olm_bundle = OLMBundle(runtime)
-            olm_bundle.rebase(nvr)
+            did_rebase = olm_bundle.rebase(nvr)
             return {
-                'success': olm_bundle.build(),
+                'success': (olm_bundle.build() if did_rebase else True),
                 'task_url': olm_bundle.task_url,
                 'bundle_nvr': olm_bundle.get_latest_bundle_build(),
             }
