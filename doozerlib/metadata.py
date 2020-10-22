@@ -214,28 +214,29 @@ class Metadata(object):
         latest_build_creation_event_id = latest_build['creation_event_id']
         with self.runtime.pooled_koji_client_session() as koji_api:
             # getEvent returns something like {'id': 31825801, 'ts': 1591039601.2667}
-            latest_build_creation_ts = int(koji_api.getEvent(latest_build_creation_event_id)['ts'])
+            latest_build_creation_ts_seconds = int(koji_api.getEvent(latest_build_creation_event_id)['ts'])
             # Log scan-sources coordinates throughout to simplify setting up scan-sources
             # function tests to reproduce real-life scenarios.
             self.logger.debug(f'scan-sources coordinate: latest_build: {latest_build}')
+            self.logger.debug(f'scan-sources coordinate: latest_build_creation_ts_seconds: {latest_build_creation_ts_seconds}')
 
         dgr = self.distgit_repo()
         with Dir(dgr.distgit_dir):
             dg_commit, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
             self.logger.debug(f'scan-sources coordinate: dg_commit: {dg_commit}')
             ts, _ = exectools.cmd_assert('git show -s --format=%ct HEAD', strip=True)
-            distgit_head_commit_millis = int(ts)
-            self.logger.debug(f'scan-sources coordinate: distgit_head_commit_millis: {distgit_head_commit_millis}')
+            distgit_head_commit_ts_seconds = int(ts)
+            self.logger.debug(f'scan-sources coordinate: distgit_head_commit_ts_seconds: {distgit_head_commit_ts_seconds}')
 
-        one_hour = (1 * 60 * 60 * 1000)  # in milliseconds
+        one_hour = (1 * 60 * 60)  # in milliseconds
 
         if not dgr.has_source():
-            if distgit_head_commit_millis > latest_build_creation_ts:
+            if distgit_head_commit_ts_seconds > latest_build_creation_ts_seconds:
                 # Two options:
                 # 1. A user has made a commit to this dist-git only branch and there has been no build attempt
                 # 2. We've already tried a build and the build failed.
                 # To balance these two options, if the diff > 1 hour, request a build.
-                if (distgit_head_commit_millis - latest_build_creation_ts) > one_hour:
+                if (distgit_head_commit_ts_seconds - latest_build_creation_ts_seconds) > one_hour:
                     return True, 'Distgit only repo commit is at least one hour older than most recent build'
             return False, 'Distgit only repo commit is older than most recent build'
 
@@ -265,14 +266,14 @@ class Metadata(object):
         else:
             raise IOError(f'Unknown namespace type: {self.namespace}')
 
-        if distgit_head_commit_millis > latest_build_creation_ts:
+        if distgit_head_commit_ts_seconds > latest_build_creation_ts_seconds:
             # Distgit is ahead of the latest build.
             # We've likely made an attempt to rebase and the subsequent build failed.
             # Try again if we are at least 6 hours out from the build to avoid
             # pestering image owners will repeated build failures.
-            if distgit_head_commit_millis - latest_build_creation_ts > (6 * one_hour):
+            if distgit_head_commit_ts_seconds - latest_build_creation_ts_seconds > (6 * one_hour):
                 return True, 'It has been 6 hours since last failed build attempt'
-            return False, f'Distgit commit ts {distgit_head_commit_millis} ahead of last successful build ts {latest_build_creation_ts}, but holding off for at least 6 hours before rebuild'
+            return False, f'Distgit commit ts {distgit_head_commit_ts_seconds} ahead of last successful build ts {latest_build_creation_ts_seconds}, but holding off for at least 6 hours before rebuild'
         else:
             # The latest build is newer than the latest distgit commit. No change required.
             return False, 'Latest build is newer than latest upstream/distgit commit -- no build required'
