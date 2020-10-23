@@ -478,6 +478,12 @@ def _get_upstream_source(runtime, image_meta):
     if "git" in image_meta.config.content.source:
         source_repo_url = image_meta.config.content.source.git.url
         source_repo_branch = image_meta.config.content.source.git.branch.target
+        branch_check, err = exectools.cmd_assert(f'git ls-remote --heads {source_repo_url} {source_repo_branch}', strip=True)
+        if not branch_check:
+            # Output is empty if branch does not exist
+            source_repo_branch = image_meta.config.content.source.git.branch.fallback
+            if source_repo_branch is Missing:
+                raise IOError(f'Unable to detect source repository branch for {image_meta.distgit_key}')
     elif "alias" in image_meta.config.content.source:
         alias = image_meta.config.content.source.alias
         if alias not in runtime.group_config.sources:

@@ -954,9 +954,9 @@ class Runtime(object):
                         target_pub_branch = upstream.get("public_branch")
 
             if target_priv_prefix:
-                return (f'{target_pub_prefix}{remote_https[len(target_priv_prefix):]}', target_pub_branch)
+                return f'{target_pub_prefix}{remote_https[len(target_priv_prefix):]}', target_pub_branch
 
-        return (remote_https, None)
+        return remote_https, None
 
     def git_clone(self, remote_url, target_dir, gitargs=None, set_env=None, timeout=0):
         gitargs = gitargs or []
