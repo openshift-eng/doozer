@@ -3,16 +3,12 @@ from future import standard_library
 standard_library.install_aliases
 from typing import Dict, Optional, List
 import urllib.parse
-from retry import retry
-import requests
 import yaml
 from collections import OrderedDict
-from functools import lru_cache
 from dockerfile_parse import DockerfileParser
 import pathlib
 import json
 import traceback
-import glob
 
 from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo, DistGitRepo
