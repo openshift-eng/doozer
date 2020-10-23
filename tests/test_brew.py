@@ -52,22 +52,27 @@ class TestBrew(unittest.TestCase):
 
     def test_list_archives_by_builds(self):
         build_ids = [1, 2, 3, None, 4, 0, 5, None]
+        rpms = [object()]
         expected = [
-            [{"build_id": 1, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 1000000}],
-            [{"build_id": 2, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 2000000}],
-            [{"build_id": 3, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 3000000}],
+            [{"build_id": 1, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 1000000, "rpms": rpms}],
+            [{"build_id": 2, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 2000000, "rpms": rpms}],
+            [{"build_id": 3, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 3000000, "rpms": rpms}],
             None,
-            [{"build_id": 4, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 4000000}],
+            [{"build_id": 4, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 4000000, "rpms": rpms}],
             None,
-            [{"build_id": 5, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 5000000}],
+            [{"build_id": 5, "type_name": "tar", "arch": "x86_64", "btype": "image", "id": 5000000, "rpms": rpms}],
             None,
         ]
 
-        def fake_response(buildID, type):
+        def fake_archives_response(buildID, type):
             return mock.MagicMock(result=[{"build_id": buildID, "type_name": "tar", "arch": "x86_64", "btype": type, "id": buildID * 1000000}])
+
+        def fake_rpms_response(imageID):
+            return mock.MagicMock(result=rpms)
 
         fake_session = mock.MagicMock()
         fake_context_manager = fake_session.multicall.return_value.__enter__.return_value
-        fake_context_manager.listArchives.side_effect = fake_response
+        fake_context_manager.listArchives.side_effect = fake_archives_response
+        fake_context_manager.listRPMs.side_effect = fake_rpms_response
         actual = brew.list_archives_by_builds(build_ids, "image", fake_session)
         self.assertListEqual(actual, expected)

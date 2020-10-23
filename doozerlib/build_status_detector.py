@@ -1,4 +1,5 @@
 from logging import Logger
+from multiprocessing import Lock
 from typing import Dict, List, Optional, Union, Set
 
 from koji import ClientSession
@@ -6,11 +7,11 @@ from koji import ClientSession
 from doozerlib import brew
 
 
-class EmbargoDetector:
-    """ an EmbargoDetector can find builds with embargoed fixes
+class BuildStatusDetector:
+    """ a BuildStatusDetector can find builds with embargoed fixes
     """
     def __init__(self, session: ClientSession, logger: Optional[Logger] = None):
-        """ creates a new EmbargoDetector
+        """ creates a new BuildStatusDetector
         :param session: a koji client session
         :param logger: a logger
         """
@@ -35,24 +36,25 @@ class EmbargoDetector:
         # finally, look at the rpms in .p0 images in case they include unshipped .p1 rpms
         suspect_build_ids = {b["id"] for b in suspects if b["id"] not in embargoed}  # non .p1 build IDs
 
-        build_ids = suspect_build_ids - self.archive_lists.keys()  # a set of build IDs that are not in self.archive_lists cache
+        # look up any build IDs not already in self.archive_lists cache
+        build_ids = list(suspect_build_ids - self.archive_lists.keys())
         if build_ids:
-            build_ids = list(build_ids)
             self.logger and self.logger.info(f"Fetching image archives for {len(build_ids)} builds...")
             archive_lists = brew.list_archives_by_builds(build_ids, "image", self.koji_session)  # if a build is not an image (e.g. rpm), Brew will return an empty archive list for that build
-            for index, archive_list in enumerate(archive_lists):
-                self.archive_lists[build_ids[index]] = archive_list  # save to cache
-        suspect_archives = [ar for suspect in suspect_build_ids for ar in self.archive_lists[suspect]]
+            for build_id, archive_list in zip(build_ids, archive_lists):
+                self.archive_lists[build_id] = archive_list  # save to cache
 
-        self.logger and self.logger.info(f'Fetching rpms in {len(suspect_archives)} images...')
-        suspect_rpm_lists = brew.list_image_rpms([ar["id"] for ar in suspect_archives], self.koji_session)
-        for index, rpms in enumerate(suspect_rpm_lists):
-            suspected_rpms = [rpm for rpm in rpms if ".p1" in rpm["release"]]  # there should be a better way to checking the release field...
-            shipped = self.find_shipped_builds([rpm["build_id"] for rpm in suspected_rpms])
-            embargoed_rpms = [rpm for rpm in suspected_rpms if rpm["build_id"] not in shipped]
-            if embargoed_rpms:
-                image_build_id = suspect_archives[index]["build_id"]
-                embargoed.add(image_build_id)
+        # look for embargoed RPMs in the image archives (one per arch for every image)
+        for suspect in suspect_build_ids:
+            for archive in self.archive_lists[suspect]:
+                rpms = archive["rpms"]
+                suspected_rpms = [rpm for rpm in rpms if ".p1" in rpm["release"]]  # there should be a better way to check the release field...
+                shipped = self.find_shipped_builds([rpm["build_id"] for rpm in suspected_rpms])
+                embargoed_rpms = [rpm for rpm in suspected_rpms if rpm["build_id"] not in shipped]
+                if embargoed_rpms:
+                    image_build_id = archive["build_id"]
+                    embargoed.add(image_build_id)
+
         return embargoed
 
     def find_shipped_builds(self, build_ids: Set[Union[int, str]]):
@@ -72,3 +74,28 @@ class EmbargoDetector:
                 self.shipping_statuses[build_id] = shipped  # save to cache
         result = set(filter(lambda build_id: self.shipping_statuses[build_id], build_ids))
         return result
+
+    unshipped_candidate_rpms_cache = {}
+    cache_lock = Lock()
+
+    def find_unshipped_candidate_rpms(self, candidate_tag, event=None):
+        """ find latest RPMs in the candidate tag that have not been shipped yet.
+
+        <lmeyer> i debated whether to consider builds unshipped if not shipped
+        in the same OCP version (IOW the base tag), and ultimately decided we're
+        not concerned if an image is using something already shipped elsewhere,
+        just if it's not using what we're trying to ship new.
+
+        :param candidate_tag: string tag name to search for candidate builds
+        :return: a list of brew RPMs from those builds (not the builds themselves)
+        """
+        key = (candidate_tag, event)
+        with self.cache_lock:
+            if key not in self.unshipped_candidate_rpms_cache:
+                latest = self.koji_session.getLatestBuilds(candidate_tag, event=event, type="rpm")
+                shipped_ids = self.find_shipped_builds([b["id"] for b in latest])
+                unshipped_build_ids = [build["id"] for build in latest if build["id"] not in shipped_ids]
+                rpms_lists = brew.list_build_rpms(unshipped_build_ids, self.koji_session)
+                self.unshipped_candidate_rpms_cache[key] = [r for rpms in rpms_lists for r in rpms]
+
+        return self.unshipped_candidate_rpms_cache[key]

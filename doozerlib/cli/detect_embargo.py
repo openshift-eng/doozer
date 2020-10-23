@@ -7,7 +7,8 @@ from urllib.parse import urlparse
 import click
 import yaml
 
-from doozerlib import Runtime, brew, embargo_detector, exectools
+from doozerlib import Runtime, brew, exectools
+from doozerlib import build_status_detector as bs_detector
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import green_print
@@ -135,7 +136,7 @@ def detect_embargoes_in_nvrs(runtime: Runtime, nvrs: List[str]):
         if not b:
             raise DoozerFatalError(f"Unable to get {nvrs[i]} from Brew.")
     runtime.logger.info(f"Detecting embargoes for {len(nvrs)} builds...")
-    detector = embargo_detector.EmbargoDetector(brew_session, runtime.logger)
+    detector = bs_detector.BuildStatusDetector(brew_session, runtime.logger)
     embargoed_build_ids = detector.find_embargoed_builds(builds)
     embargoed_builds = [b for b in builds if b["id"] in embargoed_build_ids]
     return embargoed_builds
@@ -162,9 +163,9 @@ def detect_embargoes_in_tags(runtime: Runtime, kind: str, included_tags: List[st
         runtime.logger.info(f"Excluded {len(included_builds) - len(builds)} builds that are also tagged into {excluded_tags}.")
         included_builds = builds
 
-    # Builds may have duplicate entries if we query from multiple tags. Don't worry, EmbargoDetector is smart.
+    # Builds may have duplicate entries if we query from multiple tags. Don't worry, BuildStatusDetector is smart.
     runtime.logger.info(f"Detecting embargoes for {len(included_builds)} builds...")
-    detector = embargo_detector.EmbargoDetector(brew_session, runtime.logger)
+    detector = bs_detector.BuildStatusDetector(brew_session, runtime.logger)
     embargoed_build_ids = detector.find_embargoed_builds(included_builds)
     embargoed_builds = [b for b in included_builds if b["id"] in embargoed_build_ids]
     return embargoed_builds

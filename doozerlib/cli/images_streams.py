@@ -12,7 +12,7 @@ from dockerfile_parse import DockerfileParser
 from doozerlib.model import Missing
 from doozerlib.pushd import Dir
 from doozerlib.cli import cli, pass_runtime
-from doozerlib import brew, state, exectools, embargo_detector
+from doozerlib import brew, state, exectools
 from doozerlib.util import get_docker_config_json, convert_remote_git_to_ssh, \
     split_git_url, remove_prefix, green_print,\
     yellow_print, red_print, convert_remote_git_to_https, \
