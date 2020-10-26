@@ -2279,8 +2279,10 @@ def build_olm_bundle(runtime, operator_names):
 
 @cli.command('olm-bundle:rebase-and-build', short_help='Shortcut for olm-bundle:rebase and olm-bundle:build')
 @click.argument('operator_nvrs', nargs=-1, required=True)
+@click.option("-f", "--force", required=False, is_flag=True,
+              help="Perform a build even if previous bundles for given NVRs already exist")
 @pass_runtime
-def rebase_and_build_olm_bundle(runtime, operator_nvrs):
+def rebase_and_build_olm_bundle(runtime, operator_nvrs, force=False):
     """Having in mind that its primary use will be inside a Jenkins job, this command combines the
     execution of both commands in sequence (since they are commonly used together anyway), using the
     same OLMBundle instance, in order to save time and avoid fetching the same information twice.
@@ -2299,6 +2301,15 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs):
     def rebase_and_build(nvr):
         try:
             olm_bundle = OLMBundle(runtime)
+
+            bundle_nvr = olm_bundle.find_bundle_for(nvr)
+            if bundle_nvr and not force:
+                return {
+                    'success': True,
+                    'task_url': None,
+                    'bundle_nvr': bundle_nvr,
+                }
+
             did_rebase = olm_bundle.rebase(nvr)
             return {
                 'success': olm_bundle.build() if did_rebase else True,

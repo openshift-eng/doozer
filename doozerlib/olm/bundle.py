@@ -24,6 +24,24 @@ class OLMBundle(object):
     def __init__(self, runtime):
         self.runtime = runtime
 
+    def find_bundle_for(self, operator_nvr):
+        """Check if a bundle already exists for a given `operator_nvr`.
+
+        :param string operator_nvr: Operator NVR (format: my-operator-v4.2.30-202004200449)
+        :return string: NVR of latest found bundle build, or None.
+        """
+        self.operator_nvr = operator_nvr
+        self.get_operator_buildinfo()
+
+        _rc, out, _err = exectools.cmd_gather(
+            'brew list-builds --quiet --package={}'.format(self.bundle_brew_component)
+        )
+
+        vr = self.operator_nvr.replace(self.operator_brew_component, '')[1:].replace('-', '.', 1)
+        bundle_nvrs = [line.split(' ')[0] for line in out.split('\n')]
+        found = list(filter(lambda bundle_nvr: vr in bundle_nvr, bundle_nvrs))
+        return found[-1].split(' ')[0] if found else None
+
     def rebase(self, operator_nvr):
         """Update bundle distgit contents with manifests from given operator NVR
         Perform image SHA replacement on manifests before commit & push
