@@ -33,14 +33,15 @@ class OLMBundle(object):
         self.operator_nvr = operator_nvr
         self.get_operator_buildinfo()
 
-        _rc, out, _err = exectools.cmd_gather(
-            'brew list-builds --quiet --package={}'.format(self.bundle_brew_component)
-        )
-
+        builds = brew.get_tagged_builds(tags=[self.target],
+                                        build_type='image',
+                                        event=None,
+                                        session=self.brew_session)[0]
         vr = self.operator_nvr.replace(self.operator_brew_component, '')[1:].replace('-', '.', 1)
-        bundle_nvrs = [line.split(' ')[0] for line in out.split('\n')]
+        bundle_nvrs = [build['nvr'] for build in builds]
         found = list(filter(lambda bundle_nvr: vr in bundle_nvr, bundle_nvrs))
-        return found[-1].split(' ')[0] if found else None
+        found.sort(reverse=True)
+        return found[0] if found else None
 
     def rebase(self, operator_nvr):
         """Update bundle distgit contents with manifests from given operator NVR
