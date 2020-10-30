@@ -335,7 +335,12 @@ class ImageMetadata(Metadata):
             archives = koji_api.listArchives(image_build['id'])
 
             # Compare to the arches in runtime
-            build_arches = {a['extra']['image']['arch'] for a in archives}
+            build_arches = []
+            for a in archives:
+                # When running with cachito, not all archives returned are images. Filter out non-images.
+                if a['btype'] == 'image':
+                    build_arches.append(a['extra']['image']['arch'])
+
             target_arches = set(self.get_arches())
             if target_arches != build_arches:
                 # The latest brew build does not exactly match the required arches as specified in group.yml
