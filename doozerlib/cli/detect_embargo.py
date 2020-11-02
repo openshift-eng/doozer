@@ -114,7 +114,7 @@ def detect_in_release(runtime, pullspecs, as_yaml, as_json):
 
     Example:
 
-        $ doozer --group=openshift-4.6 detect-embargo release registry.svc.ci.openshift.org/ocp/release:4.6.0-0.nightly-2020-07-17-043219
+        $ doozer --group=openshift-4.6 detect-embargo release amd64.ocp.releases.ci.openshift.org/ocp/release:4.6.0-0.nightly-2020-07-17-043219
     """
     if as_yaml and as_json:
         raise click.BadParameter("Must use one of --yaml or --json.")

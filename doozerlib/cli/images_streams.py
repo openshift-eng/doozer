@@ -258,7 +258,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply, live_test_m
         if upstream_dest is Missing or upstream_intermediate_image is Missing:
             raise IOError(f'Unable to render buildconfig for stream {stream} - you must define upstream_image_base AND upstream_image')
 
-        # split a pullspec like registry.svc.ci.openshift.org/ocp/builder:rhel-8-golang-openshift-{MAJOR}.{MINOR}.art
+        # split a pullspec like amd64.ocp.releases.ci.openshift.org/ocp/builder:rhel-8-golang-openshift-{MAJOR}.{MINOR}.art
         # into  OpenShift namespace, imagestream, and tag
         _, intermediate_ns, intermediate_istag = upstream_intermediate_image.rsplit('/', maxsplit=2)
         if live_test_mode:
@@ -358,7 +358,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply, live_test_m
         # define a daemonset container that will keep this image running on all nodes so that it will
         # not be garbage collected by the kubelet in 3.11.
         ds_container_definitions.append({
-            "image": f"registry.svc.ci.openshift.org/{dest_ns}/{dest_istag}",
+            "image": f"amd64.ocp.releases.ci.openshift.org/{dest_ns}/{dest_istag}",
             "command": [
                 "/bin/bash",
                 "-c",
@@ -457,8 +457,8 @@ def resolve_upstream_from(runtime, image_entry):
         # tag name without the ose- prefix.
         image_name = remove_prefix(image_name, 'ose-')
 
-        # e.g. registry.svc.ci.openshift.org/ocp/4.6:base
-        return f'registry.svc.ci.openshift.org/ocp/{major}.{minor}:{image_name}'
+        # e.g. amd64.ocp.releases.ci.openshift.org/ocp/4.6:base
+        return f'amd64.ocp.releases.ci.openshift.org/ocp/{major}.{minor}:{image_name}'
 
     if image_entry.image:
         # CI is on its own. We can't give them an image that isn't available outside the firewall.
