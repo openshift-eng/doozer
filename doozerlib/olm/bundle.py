@@ -37,8 +37,8 @@ class OLMBundle(object):
         vr = self.operator_nvr.replace(self.operator_brew_component, '')[1:].replace('-', '.', 1)
         bundle_nvrs = [build['nvr'] for build in builds]
         found = list(filter(lambda bundle_nvr: vr in bundle_nvr, bundle_nvrs))
-        found.sort(reverse=True)
-        return found[0] if found else None
+        found.sort(reverse=True, key=lambda build: int(build['release']))
+        return found[0]['nvr'] if found else None
 
     def rebase(self, operator_nvr):
         """Update bundle distgit contents with manifests from given operator NVR
