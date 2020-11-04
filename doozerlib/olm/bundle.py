@@ -33,10 +33,7 @@ class OLMBundle(object):
         self.operator_nvr = operator_nvr
         self.get_operator_buildinfo()
 
-        builds = brew.get_tagged_builds(tags=[self.target],
-                                        build_type='image',
-                                        event=None,
-                                        session=self.brew_session)[0]
+        builds = self.brew_session.listTagged(tag=self.target, package=self.bundle_brew_component)
         vr = self.operator_nvr.replace(self.operator_brew_component, '')[1:].replace('-', '.', 1)
         bundle_nvrs = [build['nvr'] for build in builds]
         found = list(filter(lambda bundle_nvr: vr in bundle_nvr, bundle_nvrs))
