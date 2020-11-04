@@ -35,8 +35,7 @@ class OLMBundle(object):
 
         builds = self.brew_session.listTagged(tag=self.target, package=self.bundle_brew_component)
         vr = self.operator_nvr.replace(self.operator_brew_component, '')[1:].replace('-', '.', 1)
-        bundle_nvrs = [build['nvr'] for build in builds]
-        found = list(filter(lambda bundle_nvr: vr in bundle_nvr, bundle_nvrs))
+        found = list(build for build in builds if vr == build['version'])
         found.sort(reverse=True, key=lambda build: int(build['release']))
         return found[0]['nvr'] if found else None
 
