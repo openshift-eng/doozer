@@ -1,28 +1,26 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, unicode_literals
-
-import shutil
-import os
-import traceback
-import re
-import io
 import glob
+import io
+import os
+import re
+import shutil
+import traceback
 from typing import Optional
 
-from . import exectools
-from .pushd import Dir
-from .brew import watch_task
-
-from .metadata import Metadata
-from .model import Missing
+from doozerlib import util, constants
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.source_modifications import SourceModifierFactory
-from doozerlib import util
+
+from . import exectools
+from .brew import watch_tasks
+from .metadata import Metadata
+from .model import Missing
+from .pushd import Dir
 
 RELEASERS_CONF = """
 [{target}]
 releaser = tito.release.DistGitReleaser
 branches = {branch}
+build_targets = {branch}:{brew_target}
 srpm_disttag = .el7aos
 builder.test = 1
 remote_git_name = {name}
@@ -57,6 +55,19 @@ class RPMMetadata(Metadata):
 
         # If populated, extra variables that will added as os_git_vars
         self.extra_os_git_vars = {}
+
+        # List of Brew targets.
+        # The first target is the primary target, against which tito will direct build.
+        # Others are secondary targets. We will use Brew API to build against secondary targets with the same distgit commit as the primary target.
+        self.targets = self.config.get('targets', [])
+        if not self.targets:
+            # If not specified, load from group config
+            profile_name = runtime.profile or runtime.group_config.default_rpm_build_profile
+            if profile_name:
+                self.targets = runtime.group_config.build_profiles.rpm[profile_name].targets.primitive()
+        if not self.targets:
+            # If group config doesn't define the targets either, the target name will be derived from the distgit branch name
+            self.targets = [self.branch() + "-candidate"]
 
         if clone_source:
             self.source_path = self.runtime.resolve_source(self)
@@ -180,9 +191,9 @@ class RPMMetadata(Metadata):
             exectools.cmd_assert('git reset {}'.format(self.pre_init_sha))
 
             with io.open(os.path.join(tito_dir, 'releasers.conf'), 'w', encoding='utf-8') as r:
-                branch = self.config.get('distgit', {}).get('branch', self.runtime.branch)
                 r.write(RELEASERS_CONF.format(
-                    branch=branch,
+                    branch=self.branch(),
+                    brew_target=self.targets[0],
                     name=self.name,
                     target=tito_target,
                     dist=tito_dist,
@@ -354,36 +365,55 @@ class RPMMetadata(Metadata):
             out_lines = out.splitlines()
 
             # Look for a line like: "Created task: 13949050" . Extract the identifier.
-            task_id = next((created_line.split(":")[1]).strip() for created_line in out_lines if
-                           created_line.startswith("Created task:"))
+            primary_task_id = int(next((created_line.split(":")[1]).strip() for created_line in out_lines if created_line.startswith("Created task:")))
 
-            record["task_id"] = task_id
+            record["task_id"] = primary_task_id
 
             # Look for a line like: "Task info: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=13948942"
             task_url = next((info_line.split(":", 1)[1]).strip() for info_line in out_lines if
                             info_line.startswith("Task info:"))
 
-            self.logger.info("Build running: {} - {}".format(self.rpm_name, task_url))
+            self.logger.info("Build running: %s - %s - %s", self.rpm_name, self.targets[0], task_url)
 
             record["task_url"] = task_url
+            task_ids = [primary_task_id]
 
-            # Now that we have the basics about the task, wait for it to complete
-            error = watch_task(self.runtime.group_config.urls.brewhub, self.logger.info, task_id, terminate_event)
+            brew_session = self.runtime.build_retrying_koji_client()
+
+            # Build against secondary targets
+            secondary_targets = self.targets[1:]
+            if secondary_targets:
+                brew_session.krb_login()
+                source, _, _ = brew_session.getTaskRequest(primary_task_id)
+                for target in secondary_targets:
+                    self.logger.info(f"Submitting task for secondary target {target}")
+                    tid = brew_session.build(source, target)
+                    task_ids.append(tid)
+                    task_url = f"{constants.BREWWEB_URL}/taskinfo?taskID={tid}"
+                    self.logger.info("Build running: %s - %s - %s", self.rpm_name, target, task_url)
+            record["targets"] = self.targets
+            record["task_ids"] = task_ids
+
+            # Wait for all tasks to complete
+            errors = watch_tasks(brew_session, self.logger.info, task_ids, terminate_event)
 
             # Gather brew-logs
-            logs_dir = "%s/%s" % (self.runtime.brew_logs_dir, self.name)
-            logs_rc, _, logs_err = exectools.cmd_gather(
-                ["brew", "download-logs", "-d", logs_dir, task_id])
+            for target, task_id in zip(self.targets, task_ids):
+                logs_dir = os.path.join(self.runtime.brew_logs_dir, self.name, f"{target}-{task_id}")
+                logs_rc, _, logs_err = exectools.cmd_gather(
+                    ["brew", "download-logs", "--recurse", "-d", logs_dir, task_id])
+                if logs_rc != 0:
+                    self.logger.info("Error downloading build logs from brew for task %s: %s" % (task_id, logs_err))
 
-            if logs_rc != 0:
-                self.logger.info("Error downloading build logs from brew for task %s: %s" % (task_id, logs_err))
-
-            if error is not None:
+            failed_tasks = {task_id for task_id, error in errors.items() if error is not None}
+            if failed_tasks:
                 # An error occurred. We don't have a viable build.
-                self.logger.info("Error building rpm: {}, {}".format(task_url, error))
+                self.logger.info("Error building rpm %s:", self.rpm_name)
+                for task_id in failed_tasks:
+                    self.logger.info("\tTask %s failed: %s", task_id, errors[task_id])
                 return False
 
-            self.logger.info("Successfully built rpm: {} ; {}".format(self.rpm_name, task_url))
+            self.logger.info("Successfully built rpm: {} ; {}".format(self.rpm_name, [f"{constants.BREWWEB_URL}/taskinfo?taskID={tid}" for tid in task_ids]))
         return True
 
     def build_rpm(self, version, release, terminate_event, scratch=False, retries=3, local=False, dry_run=False):

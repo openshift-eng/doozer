@@ -1064,7 +1064,7 @@ class ImageDistGitRepo(DistGitRepo):
             record["task_url"] = task_url
 
             # Now that we have the basics about the task, wait for it to complete
-            error = watch_task(self.runtime.group_config.urls.brewhub, self.logger.info, task_id, terminate_event)
+            error = watch_task(self.runtime.build_retrying_koji_client(), self.logger.info, task_id, terminate_event)
 
             # Looking for something like the following to conclude the image has already been built:
             # BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961

@@ -1,93 +1,60 @@
-#!/usr/bin/env python
-"""
-Test the ImageMetadata class
-"""
-from __future__ import absolute_import, print_function, unicode_literals
 import unittest
-
-import os
-import logging
-import tempfile
-import shutil
-try:
-    from importlib import reload
-except ImportError:
-    pass
-
-TEST_YAML = """---
-name: 'test'
-content:
-  source:
-    alias: enterprise-images-upstream-example
-distgit:
-  namespace: 'hello'
-"""
-
-
-class MockRuntime(object):
-
-    def __init__(self, tmpdir, logger):
-        self.tmpdir = tmpdir
-        self.logger = logger
-
-    def resolve_source(self, meta):
-        return self.tmpdir
+from unittest import mock
+from doozerlib.rpmcfg import RPMMetadata
+import yaml
 
 
 class TestRPMMetadata(unittest.TestCase):
+    FOO_RPM_CONFIG = """
+content:
+  source:
+    git:
+      branch:
+        target: release-4.7
+      url: git@github.com:openshift/foo.git
+    specfile: foo.spec
+name: foo
+owners:
+- aos-master@redhat.com
+distgit:
+  branch: rhaos-4.7-rhel-7
+targets:
+- rhaos-4.7-rhel-7-candidate
+- rhaos-4.7-rhel-8-candidate
+    """
 
-    def setUp(self):
-        self.test_dir = tempfile.mkdtemp(prefix="ocp-cd-test-logs")
-
-        self.test_file = os.path.join(self.test_dir, "test_file")
-        logging.basicConfig(filename=self.test_file, level=logging.DEBUG)
-        self.logger = logging.getLogger()
-
-        self.cwd = os.getcwd()
-        os.chdir(self.test_dir)
-
-        test_yml = open('test.yml', 'w')
-        test_yml.write(TEST_YAML)
-        test_yml.close()
-
-        test_spec = open('test.spec', 'w')
-        test_spec.write("")
-        test_spec.close()
-
-    def tearDown(self):
-        os.chdir(self.cwd)
-
-        logging.shutdown()
-        reload(logging)
-        shutil.rmtree(self.test_dir)
-
-    @unittest.skip("assertion failing, check if desired behavior changed")
-    def test_init(self):
-        """
-        The metadata object appears to need to be created while CWD is
-        in the root of a git repo containing a file called '<name>.yml'
-        This file must contain a structure:
-           {'distgit': {'namespace': '<value>'}}
-
-        The metadata object requires:
-          a type string <image|rpm>
-          a Runtime object placeholder
-
-        """
-
-        #
-        # Check the logs
-        #
-        logs = [log.rstrip() for log in open(self.test_file).readlines()]
-
-        expected = 12
-        actual = len(logs)
-
-        self.assertEqual(
-            expected, actual,
-            "logging lines - expected: {}, actual: {}".
-            format(expected, actual))
-
-
-if __name__ == "__main__":
-    unittest.main()
+    @mock.patch("doozerlib.logutil.EntityLoggingAdapter")
+    @mock.patch("doozerlib.rpmcfg.Dir")
+    def test__build_rpm(self, MockDir, MockEntityLoggingAdapter):
+        runtime = mock.MagicMock(brew_logs_dir="/path/to/brew/logs")
+        koji_session = runtime.build_retrying_koji_client.return_value
+        data_obj = mock.MagicMock(
+            key="foo",
+            filename="foo.yml",
+            path="/path/to/ocp-build-data/rpms/foo.yml",
+            data=yaml.safe_load(TestRPMMetadata.FOO_RPM_CONFIG)
+        )
+        metadata = RPMMetadata(runtime, data_obj, clone_source=False)
+        metadata.source_path = "/path/to/sources/foo"
+        record = {}
+        terminate_event = mock.MagicMock()
+        with mock.patch("doozerlib.rpmcfg.exectools.cmd_gather") as mock_cmd_gather, \
+             mock.patch("doozerlib.rpmcfg.watch_tasks") as mock_watch_tasks:
+            def fake_cmd_gather(cmd, **kwargs):
+                if cmd == ['tito', 'release', '--debug', '--yes', '--test', 'aos']:
+                    return 0, "Created task: 1\nTask info: https://brewweb.example.com/brew/taskinfo?taskID=1", ""
+                if len(cmd) >= 2 and cmd[0] == "brew" and cmd[1] == "download-logs" and "--recurse" in cmd:
+                    return 0, "", ""
+                raise ValueError(f"Unexpected command: {cmd}")
+            mock_cmd_gather.side_effect = fake_cmd_gather
+            koji_session.getTaskRequest.return_value = ("https://distgit.example.com/rpms/foo.git#abcdefg", "rhaos-4.7-rhel-7-candidate", {})
+            koji_session.build.return_value = 2
+            mock_watch_tasks.return_value = {1: None, 2: None}
+            result = metadata._build_rpm(False, record, terminate_event)
+            self.assertTrue(result)
+            self.assertEqual(record["task_id"], 1)
+            self.assertListEqual(record["task_ids"], [1, 2])
+            mock_cmd_gather.assert_called()
+            koji_session.getTaskRequest.assert_called()
+            koji_session.build.assert_called()
+            mock_watch_tasks.assert_called()

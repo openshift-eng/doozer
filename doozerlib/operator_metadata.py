@@ -535,7 +535,7 @@ class OperatorMetadataBuilder(object):
         :return: string with an error if an error happens, None otherwise
         """
         return brew.watch_task(
-            self.runtime.group_config.urls.brewhub, logger.info, task_id, threading.Event()
+            self.runtime.build_retrying_koji_client(), logger.info, task_id, threading.Event()
         )
 
     @property
