@@ -251,7 +251,7 @@ class OLMBundle(object):
         """
         self.runtime.logger.info('Build running: {}'.format(self.task_url))
         error = brew.watch_task(
-            self.runtime.group_config.urls.brewhub,
+            self.runtime.build_retrying_koji_client(),
             self.runtime.logger.info,
             self.task_id,
             threading.Event()

@@ -1,6 +1,8 @@
 import unittest
 from unittest import mock
 
+import koji
+
 from doozerlib import brew
 
 
@@ -76,3 +78,52 @@ class TestBrew(unittest.TestCase):
         fake_context_manager.listRPMs.side_effect = fake_rpms_response
         actual = brew.list_archives_by_builds(build_ids, "image", fake_session)
         self.assertListEqual(actual, expected)
+
+    @mock.patch("koji_cli.lib.TaskWatcher")
+    @mock.patch("koji.ClientSession")
+    @mock.patch("time.time", return_value=10000)
+    def test_watch_tasks(self, mock_time, MockSession, MockWatcher):
+        brew_session = mock.MagicMock()
+        log_func = mock.MagicMock()
+        tasks = [1, 2, 3]
+        terminate_event = mock.MagicMock()
+
+        # all tasks are finished successfully
+        MockWatcher.return_value.is_done.return_value = True
+        MockWatcher.return_value.is_success.return_value = True
+        MockWatcher.return_value.info = {"state": koji.TASK_STATES['CLOSED']}
+        errors = brew.watch_tasks(brew_session, log_func, tasks, terminate_event)
+        self.assertFalse(any(errors.values()))
+
+        # all tasks fails with "some reason"
+        MockWatcher.return_value.is_success.return_value = False
+        MockWatcher.return_value.get_failure.return_value = "some reason"
+        MockWatcher.return_value.info = {"state": koji.TASK_STATES['FAILED']}
+        errors = brew.watch_tasks(brew_session, log_func, tasks, terminate_event)
+        self.assertTrue(all(map(lambda failure: failure == "some reason", errors.values())))
+
+        # interrupted
+        MockWatcher.return_value.is_done.return_value = False
+        MockWatcher.return_value.info = {"state": koji.TASK_STATES['OPEN']}
+        terminate_event.wait.return_value = True
+        brew_session.cancelTask.return_value = True
+        errors = brew.watch_tasks(brew_session, log_func, tasks, terminate_event)
+        self.assertTrue(all(map(lambda failure: failure == "Interrupted", errors.values())))
+        brew_session.cancelTask.assert_has_calls([mock.call(task, recurse=True) for task in tasks], any_order=True)
+
+        # timed out
+        terminate_event.wait.return_value = False
+        counter = 0
+
+        def fake_time_func():
+            nonlocal counter
+            counter += 1
+            if counter > 1:
+                return 10000 + 5 * 60 * 60  # 5 hours
+            return 10000
+        mock_time.side_effect = fake_time_func
+        brew_session.cancelTask.return_value = True
+        brew_session.cancelTask.reset_mock()
+        errors = brew.watch_tasks(brew_session, log_func, tasks, terminate_event)
+        self.assertTrue(all(map(lambda failure: failure == "Timeout watching task", errors.values())))
+        brew_session.cancelTask.assert_has_calls([mock.call(task, recurse=True) for task in tasks], any_order=True)
