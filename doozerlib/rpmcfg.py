@@ -3,10 +3,13 @@ import io
 import os
 import re
 import shutil
+import threading
 import traceback
 from typing import Optional
 
-from doozerlib import util, constants
+import rpm
+
+from doozerlib import brew, constants, util
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.source_modifications import SourceModifierFactory
 
@@ -474,6 +477,14 @@ class RPMMetadata(Metadata):
                 # Status defaults to failure until explicitly set by succcess. This handles raised exceptions.
             }
 
+            if len(self.targets) > 1:  # for a multi target build, we need to ensure all buildroots have valid versions of golang compilers
+                self.logger.info("Checking whether this is a golang package...")
+                out, _ = exectools.cmd_assert(["rpmspec", "-q", "--buildrequires", "--", self.specfile])
+                if any(dep.startswith("golang") for dep in out.splitlines()):
+                    # assert buildroots contain the correct versions of golang
+                    self.logger.info("This is a golang package. Checking whether buildroots contain consistent versions of golang compilers...")
+                    self.assert_golang_versions()
+
             try:
                 def wait(n):
                     self.logger.info("Async error in rpm build thread [attempt #{}]: {}".format(n + 1, self.qualified_name))
@@ -505,6 +516,63 @@ class RPMMetadata(Metadata):
 
             self.post_build(scratch)
             return self.distgit_key, self.build_status
+
+    target_golangs = {}  # a dict of cached target -> golang_version mappings
+    target_golangs_lock = threading.Lock()
+
+    def assert_golang_versions(self):
+        """ Assert all buildroots have consistent versions of golang compilers
+        """
+        check_mode = self.runtime.group_config.check_golang_versions or "x.y"  # no: do not check; x.y: only major and minor version; exact: the z-version must be the same
+        if check_mode == "no":
+            return
+
+        # populate target_golangs with information from Brew
+        with RPMMetadata.target_golangs_lock:
+            uncached_targets = set(self.targets) - RPMMetadata.target_golangs.keys()
+        if uncached_targets:
+            uncached_targets = list(uncached_targets)
+            self.logger.debug(f"Querying golang compiler versions for targets {uncached_targets}...")
+            brew_session = self.runtime.build_retrying_koji_client()
+            # get buildroots for uncached targets
+            with brew_session.multicall(strict=True) as m:
+                tasks = [m.getBuildTarget(target) for target in uncached_targets]
+            buildroots = [task.result["build_tag_name"] for task in tasks]
+            # get latest build of golang compiler for each buildroot
+            golang_components = ["golang", "golang-scl-shim"]
+            for target, buildroot in zip(uncached_targets, buildroots):
+                latest_builds = brew.get_latest_builds([(buildroot, component) for component in golang_components], "rpm", None, brew_session)
+                latest_builds = [builds[0] for builds in latest_builds if builds]  # flatten latest_builds
+                # It is possible that a buildroot has multiple golang compiler packages (golang and golang-scl-shim) tagged in.
+                # We need to find the maximum version in each buildroot.
+                max_golang_nevr = None
+                for build in latest_builds:
+                    nevr = (build["name"], build["epoch"], build["version"], build["release"])
+                    if max_golang_nevr is None or rpm.labelCompare(nevr[1:], max_golang_nevr[1:]) > 0:
+                        max_golang_nevr = nevr
+                if max_golang_nevr is None:
+                    raise DoozerFatalError(f"Buildroot {buildroot} doesn't contain any golang compiler packages.")
+                if max_golang_nevr[0] == "golang-scl-shim":
+                    # golang-scl-shim is not an actual compiler but an adaptor to make go-toolset look like golang for an RPM build.
+                    # We need to check the actual go-toolset build it requires.
+                    # See https://source.redhat.com/groups/public/atomicopenshift/atomicopenshift_wiki/what_art_needs_to_know_about_golang#jive_content_id_golangsclshim
+                    major, minor = max_golang_nevr[2].split(".")[:2]
+                    go_toolset_builds = brew_session.getLatestBuilds(buildroot, package=f"go-toolset-{major}.{minor}", type="rpm")
+                    if not go_toolset_builds:
+                        raise DoozerFatalError(f"Buildroot {buildroot} doesn't have go-toolset-{major}.{minor} tagged in.")
+                    max_golang_nevr = (go_toolset_builds[0]["name"], go_toolset_builds[0]["epoch"], go_toolset_builds[0]["version"], go_toolset_builds[0]["release"])
+                with RPMMetadata.target_golangs_lock:
+                    RPMMetadata.target_golangs[target] = max_golang_nevr
+
+        # assert all buildroots have the same version of golang compilers
+        it = iter(self.targets)
+        first_target = next(it)
+        with RPMMetadata.target_golangs_lock:
+            first_nevr = RPMMetadata.target_golangs[first_target]
+            for target in it:
+                nevr = RPMMetadata.target_golangs[target]
+                if (check_mode == "exact" and nevr[2] != first_nevr[2]) or (check_mode == "x.y" and nevr[2].split(".")[:2] != first_nevr[2].split(".")[:2]):
+                    raise DoozerFatalError(f"Buildroot for target {target} has inconsistent golang compiler version {nevr[2]} while target {first_target} has {first_nevr[2]}.")
 
     def get_package_name(self, default=-1):
         """
