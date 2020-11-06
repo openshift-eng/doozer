@@ -2,6 +2,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import errno
 import os
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta
 
 import flexmock
@@ -51,6 +52,7 @@ class TestGenericDistGit(TestDistgit):
                             "skipping clone: my-root-dir/my-namespace/my-distgit-key")
         logger = flexmock()
         logger.should_receive("info").with_args(expected_log_msg).once()
+        logger.should_receive("debug")
 
         metadata = flexmock(namespace="my-namespace",
                             distgit_key="my-distgit-key",
@@ -59,7 +61,8 @@ class TestGenericDistGit(TestDistgit):
                             logger=logger,
                             name="_irrelevant_")
 
-        distgit.DistGitRepo(metadata, autoclone=False).clone("my-root-dir", "my-branch")
+        with mock.patch("doozerlib.distgit.exectools.cmd_assert", return_value=('', '')):
+            distgit.DistGitRepo(metadata, autoclone=False).clone("my-root-dir", "my-branch")
 
     def test_clone_fails_to_create_namespace_dir(self):
         # preventing tests from interacting with the real filesystem

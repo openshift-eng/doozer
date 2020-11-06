@@ -139,8 +139,18 @@ class DistGitRepo(object):
 
             if os.path.isdir(self.distgit_dir):
                 self.logger.info("Distgit directory already exists; skipping clone: %s" % self.distgit_dir)
+                with Dir(self.distgit_dir):
+                    self.logger.debug(f"Checking out branch {distgit_branch}")
+                    # discard untracked files
+                    cmd = ["git", "-C", self.distgit_dir, "clean", "-fdx"]
+                    exectools.cmd_assert(cmd)
+                    # discard staged files
+                    cmd = ["git", "-C", self.distgit_dir, "checkout", "--force", "HEAD"]
+                    exectools.cmd_assert(cmd)
+                    # fetch and switch branch
+                    cmd = ["rhpkg", "switch-branch", "--fetch", distgit_branch]
+                    exectools.cmd_assert(cmd)
             else:
-
                 # Make a directory for the distgit namespace if it does not already exist
                 try:
                     os.mkdir(namespace_dir)

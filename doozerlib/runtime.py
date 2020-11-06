@@ -1071,21 +1071,34 @@ class Runtime(object):
                 self.logger.debug("returning previously resolved path for alias {}: {}".format(alias, path))
                 return path
 
+            clone_branch, _ = self.detect_remote_source_branch(source_details)
+            url = source_details["url"]
+            if self.group_config.public_upstreams:
+                meta.public_upstream_url, meta.public_upstream_branch = self.get_public_upstream(url)
+                if not meta.public_upstream_branch:  # default to the same branch name as private upstream
+                    meta.public_upstream_branch = clone_branch
+
             # If this source has already been extracted for this working directory
             if os.path.isdir(source_dir):
+                # fetch source
+                cmd = ["git", "-C", source_dir, "fetch", "origin", clone_branch]
+                exectools.cmd_assert(cmd)
+                # discard untracked files
+                cmd = ["git", "-C", source_dir, "clean", "-fdx"]
+                exectools.cmd_assert(cmd)
+                # switch to clone_branch, reset to origin/clone_branch, and discard staged modifications
+                self.logger.info(f"Checking out branch {clone_branch}")
+                cmd = ["git", "-C", source_dir, "checkout", "-B", clone_branch, "--track", f"origin/{clone_branch}", "--force"]
+                exectools.cmd_assert(cmd)
+                # fetch public upstream source
+                if meta.public_upstream_branch:
+                    util.setup_and_fetch_public_upstream_source(meta.public_upstream_url, meta.public_upstream_branch, source_dir)
                 # Store so that the next attempt to resolve the source hits the map
                 self.register_source_alias(alias, source_dir)
                 if self.group_config.public_upstreams:
                     _, _, _, meta.public_upstream_url, meta.public_upstream_branch = self.source_resolutions[alias]
                 self.logger.info("Source '{}' already exists in (skipping clone): {}".format(alias, source_dir))
                 return source_dir
-
-            url = source_details["url"]
-            clone_branch, _ = self.detect_remote_source_branch(source_details)
-            if self.group_config.public_upstreams:
-                meta.public_upstream_url, meta.public_upstream_branch = self.get_public_upstream(url)
-                if not meta.public_upstream_branch:  # default to the same branch name as private upstream
-                    meta.public_upstream_branch = clone_branch
 
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             try:
