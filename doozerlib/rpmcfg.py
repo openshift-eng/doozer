@@ -507,3 +507,9 @@ class RPMMetadata(Metadata):
 
     def get_component_name(self, default=-1):
         return self.get_package_name(default=default)
+
+    def candidate_brew_tag(self):
+        return self.targets[0]
+
+    def candidate_brew_tags(self):
+        return self.targets.copy()

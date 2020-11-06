@@ -1,7 +1,4 @@
-from __future__ import absolute_import, print_function, unicode_literals
-from future import standard_library
-standard_library.install_aliases
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 import urllib.parse
 import yaml
 from collections import OrderedDict
@@ -14,6 +11,7 @@ from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo, DistGitRepo
 from . import exectools
 from . import logutil
+from . import brew
 
 from .model import Model, Missing
 
@@ -121,6 +119,9 @@ class Metadata(object):
     def candidate_brew_tag(self):
         return '{}-candidate'.format(self.branch())
 
+    def candidate_brew_tags(self):
+        return [self.candidate_brew_tag()]
+
     def get_arches(self):
         """
         :return: Returns the list of architecture this image/rpm should build for. This is an intersection
@@ -180,7 +181,7 @@ class Metadata(object):
             return default
         return build['name'], build['version'], build['release']
 
-    def get_component_name(self, default=-1):
+    def get_component_name(self, default=-1) -> str:
         """
         :param default: If the component name cannot be determine,
         :return: Returns the component name of the image. This is the name in the nvr
@@ -188,7 +189,7 @@ class Metadata(object):
         """
         raise IOError('Subclass must implement')
 
-    def needs_rebuild(self):
+    def needs_rebuild(self) -> Tuple[bool, str]:
         """
         Check whether the commit that we recorded in the distgit content (according to cgit)
         matches the commit of the source (according to git ls-remote) and has been built
@@ -202,13 +203,20 @@ class Metadata(object):
             # distgit.
             return True, 'Could not find component name; assuming never built'
 
-        latest_build = self.get_latest_build(default='')
-        if not latest_build:
-            # Truly never built.
-            return True, f'Component {component_name} has never been built'
-
-        latest_build_creation_event_id = latest_build['creation_event_id']
+        # latest_build_creation_event_id = latest_build['creation_event_id']
+        # all candidate Brew tags configured for this component. e.g. [rhaos-4.7-rhel-8-candidate, rhaos-4.7-rhel-7-candidate]
+        candidate_tags = self.candidate_brew_tags()
         with self.runtime.pooled_koji_client_session() as koji_api:
+            # latest builds of this component in all candidate Brew tags (e.g. [rhaos-4.7-rhel-8-candidate, rhaos-4.7-rhel-7-candidate])
+            build_lists = brew.get_latest_builds([(tag, component_name) for tag in candidate_tags], None, None, koji_api)
+            latest_builds = [builds[0] if builds else None for builds in build_lists]
+            tags_without_builds = {tag for tag, _ in filter(lambda tag_build: tag_build[1] is None, zip(candidate_tags, latest_builds))}
+            if tags_without_builds:
+                return True, f'Component {component_name} has never been built against {tags_without_builds}'
+
+            # latest_build is the eldest among those latest builds for different targets
+            latest_build = min(latest_builds, key=lambda build: build['creation_event_id'])
+            latest_build_creation_event_id = latest_build['creation_event_id']
             # getEvent returns something like {'id': 31825801, 'ts': 1591039601.2667}
             latest_build_creation_ts_seconds = int(koji_api.getEvent(latest_build_creation_event_id)['ts'])
             # Log scan-sources coordinates throughout to simplify setting up scan-sources
@@ -342,7 +350,7 @@ class Metadata(object):
         """
         envs = dict()
 
-        upstream_source_path: pathlib.Path = self.distgit_repo(autoclone=True).source_repo_path()
+        upstream_source_path: pathlib.Path = self.runtime.resolve_source(self)
         if not upstream_source_path:
             # distgit only. Return empty.
             return envs
