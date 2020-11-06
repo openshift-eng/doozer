@@ -31,7 +31,7 @@
 		"python.testing.nosetestsEnabled": false,
 		"python.testing.unittestEnabled": true,
 		"python.jediEnabled": false,  // false to use Microsoft Python Language Server. This requires .NET Core 2.1+
-		"python.languageServer": "Microsoft",
+		"python.languageServer": "Pylance",
 	},
 
 	// Uncomment the next line if you want to publish any ports.
@@ -42,8 +42,7 @@
 
 	// Add the IDs of extensions you want installed when the container is created in the array below.
 	"extensions": [
-		"ms-python.python",
-		"visualstudioexptteam.vscodeintellicode",
+		"ms-python.vscode-pylance",
 		"eamodio.gitlens"
 	]
 }
