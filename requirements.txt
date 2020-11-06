@@ -1,4 +1,5 @@
 bashlex
+boto3
 click >= 6.7
 dockerfile-parse >= 0.0.13
 future
@@ -6,10 +7,10 @@ koji
 mock
 PyGitHub >= 1.46
 pyyaml >= 5.1
-retry
 requests
 requests_kerberos
+retry
+rpm-py-installer
 semver
-boto3
-wrapt
 tenacity
+wrapt
