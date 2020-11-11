@@ -2102,13 +2102,13 @@ def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_
 
     def get_build_suggestions(suggestions_url, major, minor, arch):
         """
-        Loads suggestions_url/major.minor.yaml and returns minor_floor, minor_block_list,
-        z_floor, and z_block_list
+        Loads suggestions_url/major.minor.yaml and returns minor_min, minor_max,
+        minor_block_list, z_min, z_max, and z_block_list
         :param suggestions_url: Base url to /{major}.{minor}.yaml
         :param major: Major version
         :param minor: Minor version
         :param arch: Architecture to lookup
-        :return: {minor_floor, minor_block_list, z_floor, z_block_list}
+        :return: {minor_min, minor_max, minor_block_list, z_min, z_max, z_block_list}
         """
         url = f'{suggestions_url}/{major}.{minor}.yaml'
         req = urllib.request.Request(url)
@@ -2124,12 +2124,13 @@ def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_
     curr_versions, current_edges = get_channel_versions(candidate_channel)
     suggestions = get_build_suggestions(suggestions_url, major, minor, arch)
     for v in prev_versions:
-        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['minor_floor'])
-                and semver.VersionInfo.parse(v) < semver.VersionInfo.parse(f'{major}.{minor}.0')
+        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['minor_min'])
+                and semver.VersionInfo.parse(v) < semver.VersionInfo.parse(suggestions['minor_max'])
                 and v not in suggestions['minor_block_list']):
             upgrade_from.add(v)
     for v in curr_versions:
-        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['z_floor'])
+        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['z_min'])
+                and semver.VersionInfo.parse(v) < semver.VersionInfo.parse(suggestions['z_max'])
                 and v not in suggestions['z_block_list']):
             upgrade_from.add(v)
 
