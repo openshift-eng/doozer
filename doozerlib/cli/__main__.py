@@ -1339,6 +1339,10 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
     {build} - Shorthand for {component}-{version}-{release} (e.g. container-engine-v3.6.173.0.25-1)
     {repository} - Shorthand for {image}:{version}-{release}
     {label} - The label you want to print from the Dockerfile (Empty string if n/a)
+    {bz_info} - All known BZ component information for the component
+    {bz_product} - The BZ product, if known
+    {bz_component} - The BZ component, if known
+    {bz_subcomponent} - The BZ subcomponent, if known
     {lf} - Line feed
 
     If pattern contains no braces, it will be wrapped with them automatically. For example:
@@ -1402,6 +1406,16 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         s = s.replace("{image_name}", image.image_name)
         s = s.replace("{image_name_short}", image.image_name_short)
         s = s.replace("{component}", image.get_component_name())
+
+        if '{bz_' in s:
+            mi = image.get_maintainer_info()
+            desc = ''
+            for k, v in mi.items():
+                desc += f'[{k}={v}] '
+            s = s.replace('{bz_info}', desc)
+            s = s.replace('{bz_product}', mi.get('product', 'Unknown'))
+            s = s.replace('{bz_component}', mi.get('component', 'Unknown'))
+            s = s.replace('{bz_subcomponent}', mi.get('subcomponent', 'N/A'))
 
         if '{image}' in s:
             s = s.replace("{image}", get_dfp().labels["name"])
