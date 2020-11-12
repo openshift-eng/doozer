@@ -509,9 +509,9 @@ def prs():
 @click.option('--ignore-ci-master', default=False, is_flag=True, help='Do not consider what is in master branch when determining what branch to target')
 @click.option('--draft-prs', default=False, is_flag=True, help='Open PRs as draft PRs')
 @click.option('--moist-run', default=False, is_flag=True, help='Do everything except opening the final PRs')
-@click.option('--skip-labels', default=True, is_flag=True, help='Do not autolabel PRs; unless running as openshift-bot, you probably lack the privilege to do so')
+@click.option('--add-labels', default=False, is_flag=True, help='Add auto_labels to PRs; unless running as openshift-bot, you probably lack the privilege to do so')
 @pass_runtime
-def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_ci_master, draft_prs, moist_run, skip_labels):
+def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_ci_master, draft_prs, moist_run, add_labels):
     runtime.initialize(clone_distgits=False, clone_source=False)
     g = Github(login_or_token=github_access_token)
     github_user = g.get_user()
@@ -530,10 +530,18 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
     pr_links = {}  # map of distgit_key to PR URLs associated with updates
     new_pr_links = {}
+    skipping_dgks = set()  # If a distgit key is skipped, it children will see it in this list and skip themselves.
     for image_meta in runtime.ordered_image_metas():
         dgk = image_meta.distgit_key
         logger = image_meta.logger
         logger.info('Analyzing image')
+
+        alignment_prs_config = image_meta.config.content.source.ci_alignment.streams_prs
+
+        if alignment_prs_config and alignment_prs_config.enabled is not Missing and not alignment_prs_config.enabled:
+            # Make sure this is an explicit False. Missing means the default or True.
+            logger.info('The image has alignment PRs disabled; ignoring')
+            continue
 
         from_config = image_meta.config['from']
         if not from_config:
@@ -689,12 +697,21 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 If you have any questions about this pull request, please reach out to `@art-team` in the `#aos-art` coreos slack channel.
 """
 
-            alignment_prs_config = image_meta.config.content.source.alignment_prs
             parent_pr_url = None
             parent_meta = image_meta.resolve_parent()
             if parent_meta:
+                if parent_meta.distgit_key in skipping_dgks:
+                    skipping_dgks.add(image_meta.distgit_key)
+                    yellow_print(f'Image has parent {parent_meta.distgit_key} which was skipped; skipping self: {image_meta.distgit_key}')
+                    continue
+
                 parent_pr_url = pr_links.get(parent_meta.distgit_key, None)
                 if parent_pr_url:
+                    if parent_meta.config.content.source.ci_alignment.streams_prs.merge_first:
+                        skipping_dgks.add(image_meta.distgit_key)
+                        yellow_print(f'Image has parent {parent_meta.distgit_key} open PR ({parent_pr_url}) and streams_prs.merge_first==True; skipping PR opening for this image {image_meta.distgit_key}')
+                        continue
+
                     # If the parent has an open PR associated with it, make sure the
                     # child PR notes that the parent PR should merge first.
                     pr_body += f'\nDepends on {parent_pr_url} . Allow it to merge and then run `/test all` on this PR.'
@@ -706,9 +723,9 @@ If you have any questions about this pull request, please reach out to `@art-tea
                 # Update body, but never title; The upstream team may need set something like a Bug XXXX: there.
                 # Don't muck with it.
 
-                if alignment_prs_config.auto_label and not skip_labels:
+                if alignment_prs_config.auto_label and add_labels:
                     # If we are to automatically add labels to this upstream PR, do so.
-                    existing_pr.set_labels(alignment_prs_config.auto_label)
+                    existing_pr.set_labels(*alignment_prs_config.auto_label)
 
                 existing_pr.edit(body=pr_body)
                 pr_url = existing_pr.html_url
@@ -731,9 +748,9 @@ If you have any questions about this pull request, please reach out to `@art-tea
                 if bug:
                     pr_title = f'Bug {bug}: {pr_title}'
                 new_pr = public_source_repo.create_pull(title=pr_title, body=pr_body, base=public_branch, head=fork_branch_head, draft=draft_prs)
-                if alignment_prs_config.auto_label and not skip_labels:
+                if alignment_prs_config.auto_label and add_labels:
                     # If we are to automatically add labels to this upstream PR, do so.
-                    new_pr.set_labels(alignment_prs_config.auto_label)
+                    new_pr.set_labels(*alignment_prs_config.auto_label)
                 pr_msg = f'A new PR has been opened: {new_pr.html_url}'
                 pr_links[dgk] = new_pr.html_url
                 new_pr_links[dgk] = new_pr.html_url
