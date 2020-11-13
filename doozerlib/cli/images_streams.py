@@ -148,22 +148,29 @@ def images_streams_check_upstream(runtime, live_test_mode):
 
 
 @images_streams.command('start-builds', short_help='Triggers a build for each buildconfig associated with this group.')
+@click.option('--as', 'as_user', metavar='CLUSTER_USERNAME', required=False, default=None, help='Specify --as during oc start-build')
 @click.option('--live-test-mode', default=False, is_flag=True, help='Act on live-test mode buildconfigs')
 @pass_runtime
-def images_streams_start_buildconfigs(runtime, live_test_mode):
+def images_streams_start_buildconfigs(runtime, as_user, live_test_mode):
     runtime.initialize(clone_distgits=False, clone_source=False)
 
     group_label = runtime.group_config.name
     if live_test_mode:
         group_label += '.test'
 
-    bc_stdout, bc_stderr = exectools.cmd_assert(f'oc -n ci get -o=name buildconfigs -l art-builder-group={group_label}')
+    cmd = f'oc -n ci get -o=name buildconfigs -l art-builder-group={group_label}'
+    if as_user:
+        cmd += f' --as {as_user}'
+    bc_stdout, bc_stderr = exectools.cmd_assert(cmd)
     bc_stdout = bc_stdout.strip()
 
     if bc_stdout:
         for name in bc_stdout.splitlines():
             print(f'Triggering: {name}')
-            stdout, stderr = exectools.cmd_assert(f'oc -n ci start-build {name}')
+            cmd = f'oc -n ci start-build {name}'
+            if as_user:
+                cmd += f' --as {as_user}'
+            stdout, stderr = exectools.cmd_assert(cmd)
             print('   ' + stdout or stderr)
     else:
         print(f'No buildconfigs associated with this group: {group_label}')
@@ -172,10 +179,11 @@ def images_streams_start_buildconfigs(runtime, live_test_mode):
 @images_streams.command('gen-buildconfigs', short_help='Generates buildconfigs necessary to assemble ART equivalent images upstream.')
 @click.option('--stream', 'streams', metavar='STREAM_NAME', default=[], multiple=True, help='If specified, only these stream names will be processed.')
 @click.option('-o', '--output', metavar='FILENAME', required=True, help='The filename into which to write the YAML. It should be oc applied against api.ci as art-publish. The file may be empty if there are no buildconfigs.')
+@click.option('--as', 'as_user', metavar='CLUSTER_USERNAME', required=False, default=None, help='Specify --as during oc apply')
 @click.option('--apply', default=False, is_flag=True, help='Apply the output if any buildconfigs are generated')
 @click.option('--live-test-mode', default=False, is_flag=True, help='Generate live-test mode buildconfigs')
 @pass_runtime
-def images_streams_gen_buildconfigs(runtime, streams, output, apply, live_test_mode):
+def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, live_test_mode):
     """
     ART has a mandate to make "ART equivalent" images available usptream for CI workloads. This enables
     CI to compile with the same golang version ART is using and use identical UBI8 images, etc. To accomplish
@@ -232,6 +240,8 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply, live_test_m
     major = runtime.group_config.vars['MAJOR']
     minor = runtime.group_config.vars['MINOR']
 
+    rpm_repos_conf = runtime.group_config.repos or {}
+
     group_label = runtime.group_config.name
     if live_test_mode:
         group_label += '.test'
@@ -286,14 +296,42 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply, live_test_m
         dfp.labels['io.k8s.display-name'] = f'{dest_imagestream}-{dest_tag}'
         dfp.labels['io.k8s.description'] = f'ART equivalent image {group_label}-{stream} - {transform}'
 
+        def add_localdev_repo_profile(profile):
+            """
+            The images we push to CI are used in two contexts:
+            1. In CI builds, running on the CI clusters.
+            2. In local development (e.g. docker build).
+            This method is enabling the latter. If a developer is connected to the VPN,
+            they will not be able to resolve RPMs through the RPM mirroring service running
+            on CI, but they will be able to pull RPMs directly from the sources ART does.
+            Since skip_if_unavailable is True globally, it doesn't matter if they can't be
+            accessed via CI.
+            """
+            for repo_name in rpm_repos_conf.keys():
+                repo_desc = rpm_repos_conf[repo_name]
+                localdev_repo_name = f'localdev-{repo_name}'
+                repo_conf = repo_desc.conf
+                ci_alignment = repo_conf.ci_alignment
+                if ci_alignment.localdev.enabled and profile in ci_alignment.profiles:
+                    # CI only really deals with with x86_64 at this time.
+                    if repo_conf.baseurl.unsigned:
+                        x86_64_url = repo_conf.baseurl.unsigned.x86_64
+                    else:
+                        x86_64_url = repo_conf.baseurl.x86_64
+                    if not x86_64_url:
+                        raise IOError(f'Expected x86_64 baseurl for repo {repo_name}')
+                    dfp.add_lines(f"RUN echo -e '[{localdev_repo_name}]\\nname = {localdev_repo_name}\\nid = {localdev_repo_name}\\nbaseurl = {x86_64_url}\\nenabled = 1\\ngpgcheck = 0\\n' > /etc/yum.repos.d/{localdev_repo_name}.repo")
+
         if transform == transform_rhel_8_base_repos or config.transform == transform_rhel_8_golang:
             # The repos transform create a build config that will layer the base image with CI appropriate yum
             # repository definitions.
             dfp.add_lines(f'RUN rm -rf /etc/yum.repos.d/*.repo && curl http://base-{major}-{minor}-rhel8.ocp.svc > /etc/yum.repos.d/ci-rpm-mirrors.repo')
+
             # Allow the base repos to be used BEFORE art begins mirroring 4.x to openshift mirrors.
             # This allows us to establish this locations later -- only disrupting CI for those
             # components that actually need reposync'd RPMs from the mirrors.
             dfp.add_lines('RUN yum config-manager --setopt=skip_if_unavailable=True --save')
+            add_localdev_repo_profile('el8')
 
         if transform == transform_rhel_7_base_repos or config.transform == transform_rhel_7_golang:
             # The repos transform create a build config that will layer the base image with CI appropriate yum
@@ -303,6 +341,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply, live_test_m
             # This allows us to establish this locations later -- only disrupting CI for those
             # components that actually need reposync'd RPMs from the mirrors.
             dfp.add_lines("RUN yum-config-manager --save '--setopt=*.skip_if_unavailable=True'")
+            add_localdev_repo_profile('el7')
 
         # We've arrived at a Dockerfile.
         dockerfile_content = dfp.content
@@ -423,7 +462,10 @@ def images_streams_gen_buildconfigs(runtime, streams, output, apply, live_test_m
     if apply:
         if buildconfig_definitions:
             print('Applying buildconfigs...')
-            exectools.cmd_assert(f'oc apply -f {output}')
+            cmd = f'oc apply -f {output}'
+            if as_user:
+                cmd += f' --as {as_user}'
+            exectools.cmd_assert(cmd)
         else:
             print('No buildconfigs were generated; skipping apply.')
 
