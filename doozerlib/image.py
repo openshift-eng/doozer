@@ -290,8 +290,9 @@ class ImageMetadata(Metadata):
                     if extra_latest_tagging_event > image_build_event_id:
                         return self, True, f'Image {dgk} is sensitive to extra_packages {extra_package_name} which changed at event {extra_latest_tagging_event}'
 
-            # Collect build times from any builder images used to create this image
-            builders = self.config['from'].builder or []
+            # Collect build times from any parent/builder images used to create this image
+            builders = list(self.config['from'].builder) or []
+            builders.append(self.config['from'])  # Add the parent image to the builders
             for builder in builders:
                 if builder.member:
                     # We can't determine if images are about to change. Defer to scan-sources.
@@ -302,7 +303,7 @@ class ImageMetadata(Metadata):
                 elif builder.stream:
                     builder_image_name = runtime.resolve_stream(builder.stream).image
                 else:
-                    raise IOError(f'Unable to determine builder image pullspec from {builder}')
+                    raise IOError(f'Unable to determine builder or parent image pullspec from {builder}')
 
                 # builder_image_name example: "openshift/ose-base:ubi8"
                 brew_image_url = self.runtime.resolve_brew_image_url(builder_image_name)
@@ -320,11 +321,11 @@ class ImageMetadata(Metadata):
                     builder_image_nvr = '-'.join(builder_nvr_list)
                     builder_brew_build = koji_api.getBuild(builder_image_nvr)
                     ImageMetadata.builder_image_builds[brew_image_url] = builder_brew_build
-                    self.logger.debug(f'Found that builder image {brew_image_url} has event {builder_brew_build}')
+                    self.logger.debug(f'Found that builder or parent image {brew_image_url} has event {builder_brew_build}')
 
                 if image_build_event_id < builder_brew_build['creation_event_id']:
-                    self.logger.info(f'will be rebuilt because a builder image changed: {builder_image_name}')
-                    return self, True, f'A builder image {builder_image_name} has changed since {image_nvr} was built'
+                    self.logger.info(f'will be rebuilt because a builder or parent image changed: {builder_image_name}')
+                    return self, True, f'A builder or parent image {builder_image_name} has changed since {image_nvr} was built'
 
             build_root_change = brew.has_tag_changed_since_build(runtime, koji_api, image_build, buildroot_tag, inherit=True)
             if build_root_change:
