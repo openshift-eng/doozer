@@ -556,6 +556,7 @@ class KojiWrapper(koji.ClientSession):
                 method_name = call_dict['methodName']
                 params = self.modify_koji_call_params(method_name, call_dict['params'], aggregate_kw_opts)
                 if params:
+                    params = list(params)
                     # Assess whether we need to inject event of beforeEvent into the koji call kwargs
                     possible_kwargs = params[-1]  # last element could be normal arg or kwargs dict
                     if isinstance(possible_kwargs, dict) and possible_kwargs.get('__starstar', None):
