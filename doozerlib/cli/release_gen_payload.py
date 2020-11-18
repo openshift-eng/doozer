@@ -94,8 +94,13 @@ read and propagate/expose this annotation in its display of the release image.
     )
 
     gen = PayloadGenerator(runtime, brew_session, event_id, base_target)
-    latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings = gen.load_latest_builds()
+    latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items = gen.load_latest_builds()
     gen.write_mirror_destinations(latest_builds, mismatched_siblings)
+
+    if non_release_items:
+        yellow_print("Images skipped due to non_release tag:")
+        for img in sorted(non_release_items):
+            click.echo("   {}".format(img))
 
     if invalid_name_items:
         yellow_print("Images skipped due to invalid naming:")
@@ -129,12 +134,25 @@ class PayloadGenerator:
 
         self.runtime.logger.info("Fetching latest image builds from Brew...")
         payload_images, invalid_name_items = self._get_payload_images(images)
-        self.state['payload_images'] = len(payload_images)
-        latest_builds, images_missing_builds = self._get_latest_builds(payload_images)
+        release_payload_images, non_release_items = self._get_non_release_images(payload_images)
+        self.state['payload_images'] = len(release_payload_images)
+        latest_builds, images_missing_builds = self._get_latest_builds(release_payload_images)
         self._designate_privacy(latest_builds)
         mismatched_siblings = self._find_mismatched_siblings(latest_builds)
 
-        return latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings
+        return latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items
+
+    def _get_non_release_images(self, images):
+        payload_images = []
+        non_release_items = []
+        for image in images:
+            if image.is_release:
+                payload_images.append(image)
+                continue
+            non_release_items.append(image.image_name_short)
+            red_print(f"NOT adding to IS (non_release: true): {image.image_name_short}")
+
+        return payload_images, non_release_items
 
     def _get_payload_images(self, images):
         # images is a list of image metadata - pick out payload images
