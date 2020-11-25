@@ -1348,10 +1348,10 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         images = list(runtime.image_metas())
     else:
         for i in runtime.image_metas():
-            if not i.is_release:
-                non_release_images.append(i.distgit_key)
-            else:
+            if i.is_release:
                 images.append(i)
+            else:
+                non_release_images.append(i.distgit_key)
 
     for image in images:
         # skip base images unless requested
