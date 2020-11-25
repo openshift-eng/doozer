@@ -342,10 +342,6 @@ class Metadata(object):
 
         return sorted_maintainer
 
-    @property
-    def is_release(self):
-        return self.config.get('for_release', True)
-
     def extract_kube_env_vars(self) -> Dict[str, str]:
         """
         Analyzes the source_base_dir for either Godeps or go.mod and looks for information about
