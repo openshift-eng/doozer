@@ -85,7 +85,7 @@ relevant image istag (these are publicly visible; ref. https://bit.ly/37cseC1)
 and in more detail in state.yaml. The release-controller, per ART-2195, will
 read and propagate/expose this annotation in its display of the release image.
     """
-    runtime.initialize(clone_distgits=False, config_excludes='non_release')
+    runtime.initialize(clone_distgits=False)
     brew_session = runtime.build_retrying_koji_client()
     base_target = SyncTarget(  # where we will mirror and record the tags
         orgrepo=f"{organization}/{repository}",
