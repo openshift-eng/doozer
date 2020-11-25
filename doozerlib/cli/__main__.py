@@ -1180,7 +1180,7 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, filte
         failed = runtime.filter_failed_image_trees(pre_failed)
         yellow_print('The following images failed the last step (or are children of failed images) and will be skipped:\n{}'.format('\n'.join(failed)))
         # reload after fail filtered
-        items = [m.distgit_repo() for m in runtime.ordered_image_metas()]
+        items = runtime.ordered_image_metas()
 
         if not items:
             runtime.logger.info("No images left to build after failures and children filtered out.")
