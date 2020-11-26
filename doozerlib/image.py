@@ -97,7 +97,7 @@ class ImageMetadata(Metadata):
     @property
     def is_release(self):
         return self.config.get('for_release', True)
-    
+
     def get_component_name(self, default=-1):
         """
         :param default: Not used. Here to stay consistent with similar rpmcfg.get_component_name
