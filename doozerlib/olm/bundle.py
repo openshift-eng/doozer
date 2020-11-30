@@ -429,6 +429,11 @@ class OLMBundle(object):
 
     @property
     def bundle_brew_component(self):
+        config = self.runtime.image_map[self.operator_name].config
+
+        if 'distgit' in config and 'bundle_component' in config['distgit']:
+            return config['distgit']['bundle_component']
+
         return self.operator_brew_component.replace('-container', '-metadata-container')
 
     @property
