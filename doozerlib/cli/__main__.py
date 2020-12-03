@@ -461,8 +461,8 @@ def images_covscan(runtime, result_archive, local_repo, repo_type, preserve_scan
     Caching coverity repos locally:
     Use --local-repos to supply coverity repositories for the scanner image.
     $ reposync  -c covscan.repo -a x86_64 -d -p covscan_repos -n -e covscan_cache -r covscan -r covscan-testing
-    $ createrepo covscan_repos/covscan
-    $ createrepo covscan_repos/covscan-testing
+    $ createrepo_c covscan_repos/covscan
+    $ createrepo_c covscan_repos/covscan-testing
     Where covscan.repo is:
         [covscan]
         name=Copr repo for covscan
@@ -2010,12 +2010,12 @@ installonly_limit=3
                     runtime.logger.warning('Failed to sync repo {} but marked as optional: {}'.format(repo.name, err))
                     optional_fails.append(repo.name)
             else:
-                rc, out, err = exectools.cmd_gather('createrepo {}'.format(os.path.join(output, repo.name)))
+                rc, out, err = exectools.cmd_gather('createrepo_c {}'.format(os.path.join(output, repo.name)))
                 if rc != 0:
                     if not repo.cs_optional:
                         raise DoozerFatalError(err)
                     else:
-                        runtime.logger.warning('Failed to run createrepo on {} but marked as optional: {}'.format(repo.name, err))
+                        runtime.logger.warning('Failed to run createrepo_c on {} but marked as optional: {}'.format(repo.name, err))
                         optional_fails.append(repo.name)
     finally:
         yc_file.close()
