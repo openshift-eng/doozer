@@ -661,7 +661,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
         with Dir(clone_dir):
             exectools.cmd_assert(f'git remote add public {public_repo_url}')
             exectools.cmd_assert(f'git remote add fork {convert_remote_git_to_ssh(fork_repo.git_url)}')
-            exectools.cmd_assert('git fetch --all')
+            exectools.cmd_assert('git fetch --all', retries=3)
 
             # The path to the Dockerfile in the target branch
             if image_meta.config.content.source.dockerfile is not Missing:

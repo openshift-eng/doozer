@@ -58,7 +58,7 @@ class DataObj(object):
 
 class GitData(object):
     def __init__(self, data_path=None, clone_dir='./', commitish='master',
-                 sub_dir=None, exts=['yaml', 'yml', 'json'], logger=None):
+                 sub_dir=None, exts=['yaml', 'yml', 'json'], reclone=False, logger=None):
         """
         Load structured data from a git source.
         :param str data_path: Git url (git/http/https) or local directory path
@@ -66,6 +66,7 @@ class GitData(object):
         :param str commitish: Repo branch (tag or sha also allowed) to checkout
         :param str sub_dir: Sub dir in data to treat as root
         :param list exts: List of valid extensions to search for in data, with out period
+        :param reclone: If a clone is already present, remove it and reclone latest.
         :param logger: Python logging object to use
         :raises GitDataException:
         """
@@ -82,6 +83,7 @@ class GitData(object):
         self.exts = ['.' + e.lower() for e in exts]
         self.commit_hash = None
         self.origin_url = None
+        self.reclone = reclone
         if data_path:
             self.clone_data(data_path)
 
@@ -97,6 +99,10 @@ class GitData(object):
             data_name = os.path.splitext(os.path.basename(data_url.path))[0]
             data_destination = os.path.join(self.clone_dir, data_name)
             clone_data = True
+
+            if self.reclone and os.path.isdir(data_destination):
+                shutil.rmtree(data_destination)
+
             if os.path.isdir(data_destination):
                 self.logger.info('Data clone directory already exists, checking commit sha')
                 with Dir(data_destination):
