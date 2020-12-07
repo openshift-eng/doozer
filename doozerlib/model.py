@@ -109,6 +109,8 @@ class ListModel(list):
     def primitive(self):
         lst = []
         for e in self:
+            if isinstance(e, Model) or isinstance(e, ListModel):
+                e = e.primitive()
             lst.append(e)
         return lst
 

@@ -1,19 +1,19 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
-from typing import Dict, Optional
 import hashlib
-import pathlib
-import os
 import json
+import os
+import pathlib
 import random
+from typing import Any, Dict, Optional
 
+from dockerfile_parse import DockerfileParser
+
+from doozerlib import brew, exectools, util
 from doozerlib.distgit import pull_image
 from doozerlib.metadata import Metadata
 from doozerlib.model import Missing, Model
 from doozerlib.pushd import Dir
-from doozerlib import assertion, exectools
-from dockerfile_parse import DockerfileParser
-from doozerlib import brew
 
 
 class ImageMetadata(Metadata):
@@ -656,6 +656,31 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
             archive_diff_results_html_path.write_text(diff_results_html, encoding='utf-8')
 
             write_record()
+
+    def calculate_config_digest(self, group_config, streams):
+        image_config: Dict[str, Any] = self.config.primitive()  # primitive() should create a shallow clone for the underlying dict
+        group_config: Dict[str, Any] = group_config.primitive()
+        streams: Dict[str, Any] = streams.primitive()
+        del image_config["owners"]  # ignore the owners entry for the digest: https://issues.redhat.com/browse/ART-1080
+        message = {
+            "config": image_config,
+        }
+
+        repos = set(image_config.get("enabled_repos", []) + image_config.get("non_shipping_repos", []))
+        if repos:
+            message["repos"] = {repo: group_config["repos"][repo] for repo in repos}
+
+        builders = image_config.get("from", {}).get("builder", [])
+        from_stream = image_config.get("from", {}).get("stream")
+        referred_streams = {builder.get("stream") for builder in builders if builder.get("stream")}
+        if from_stream:
+            referred_streams.add(from_stream)
+        if referred_streams:
+            message["streams"] = {stream: streams[stream] for stream in referred_streams}
+
+        message = util.sort_dict(message)
+        digest = hashlib.sha256(json.dumps(message).encode("utf-8")).hexdigest()
+        return "sha256:" + digest
 
 
 def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, package_build, newest_image_event_ts, oldest_image_event_ts):

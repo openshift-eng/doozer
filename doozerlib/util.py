@@ -393,3 +393,15 @@ def total_size(o, handlers={}, verbose=False):
         return s
 
     return sizeof(o)
+
+
+def sort_dict(item: Dict):
+    """
+    Sort nested dict
+    Example:
+         Input: {'a': 1, 'c': 3, 'b': {'b2': 2, 'b1': 1}}
+         Output: {'a': 1, 'b': {'b1': 1, 'b2': 2}, 'c': 3}
+    """
+    # from Python 3.6, dictionary keeps the insertion order
+    # https://gist.github.com/gyli/f60f0374defc383aa098d44cfbd318eb
+    return {k: sort_dict(v) if isinstance(v, dict) else v for k, v in sorted(item.items())}

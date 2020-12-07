@@ -1,35 +1,33 @@
 from __future__ import absolute_import, print_function, unicode_literals
+
+import copy
+import errno
 import hashlib
+import io
 import os
+import pathlib
+import re
 import shutil
 import time
 import traceback
-import errno
-from multiprocessing import Lock, Event
-import yaml
-import bashlex
-import re
-import io
-import copy
-import pathlib
 from datetime import date
+from multiprocessing import Event, Lock
+from typing import Any, Dict
 
+import bashlex
+import yaml
 from dockerfile_parse import DockerfileParser
 
-from . import logutil
-from . import assertion
-from . import exectools
-from .pushd import Dir
-from .brew import watch_task, get_build_objects
-from .model import Model, Missing, ListModel
-from doozerlib.exceptions import DoozerFatalError
-from doozerlib.util import yellow_print
-from doozerlib import state
-from doozerlib.source_modifications import SourceModifierFactory
-from doozerlib import constants
-from doozerlib import util
+from doozerlib import constants, state, util
 from doozerlib.dblib import Record
-from doozerlib.util import convert_remote_git_to_https
+from doozerlib.exceptions import DoozerFatalError
+from doozerlib.source_modifications import SourceModifierFactory
+from doozerlib.util import convert_remote_git_to_https, yellow_print
+
+from . import assertion, exectools, logutil
+from .brew import get_build_objects, watch_task
+from .model import ListModel, Missing, Model
+from .pushd import Dir
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -1291,6 +1289,8 @@ class ImageDistGitRepo(DistGitRepo):
 
             self._generate_repo_conf()
 
+            self._generate_config_digest()
+
             self._write_osbs_image_config()
 
             self._write_cvp_owners()
@@ -1555,6 +1555,14 @@ class ImageDistGitRepo(DistGitRepo):
             self._update_csv(version, release)
 
             return version, release
+
+    def _generate_config_digest(self):
+        # The config digest is used by scan-sources to detect config changes
+        self.logger.info("Calculating config digest...")
+        digest = self.metadata.calculate_config_digest(self.runtime.group_config, self.runtime.streams)
+        with self.dg_path.joinpath(".oit", "config_digest").open('w') as f:
+            f.write(digest)
+        self.logger.info("Saved config digest %s to .oit/config_digest", digest)
 
     def _get_csv_file_and_refs(self, csv_config):
         gvars = self.runtime.group_config.vars
