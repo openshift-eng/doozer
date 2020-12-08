@@ -678,7 +678,6 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
         if referred_streams:
             message["streams"] = {stream: streams[stream] for stream in referred_streams}
 
-        message = util.sort_dict(message)
         digest = hashlib.sha256(json.dumps(message, sort_keys=True).encode("utf-8")).hexdigest()
         return "sha256:" + digest
 
