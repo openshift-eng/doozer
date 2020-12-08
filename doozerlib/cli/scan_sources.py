@@ -109,9 +109,10 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                     dgr = meta.distgit_repo()
                     path = Path(dgr.distgit_dir).joinpath(".oit", "config_digest")
                     if not path.exists():  # alway request a buiild if config_digest hasn't been stored
-                        runtime.logger.info('%s config_digest does not exist; request a build', dgk)
-                        needs_rebuild = True
-                        reason = '.oit/config_digest does not exist'
+                        pass  # TODO: uncomment the following after a week of natural rebuilds
+                        # runtime.logger.info('%s config_digest does not exist; request a build', dgk)
+                        # needs_rebuild = True
+                        # reason = '.oit/config_digest does not exist'
                     else:
                         with path.open('r') as f:
                             prev_digest = f.read()
