@@ -28,7 +28,8 @@ class OLMBundle(object):
         """Check if a bundle already exists for a given `operator_nvr`.
 
         :param string operator_nvr: Operator NVR (format: my-operator-v4.2.30-202004200449)
-        :return string: NVR of latest found bundle build, or None.
+        :return string: NVR of latest found bundle build, or None if there is no bundle build nvr
+                        corresponding to the last operator build's nvr.
         """
         self.operator_nvr = operator_nvr
         self.get_operator_buildinfo()
@@ -38,6 +39,20 @@ class OLMBundle(object):
         found = list(build for build in builds if vr == build['version'])
         found.sort(reverse=True, key=lambda build: int(build['release']))
         return found[0]['nvr'] if found else None
+
+    def get_latest_bundle_build(self):
+        """
+        Return information about the latest build of bundle associated with the current operator.
+        Note that this may not correspond to the latest build of the operator itself IF the operator was:
+        1. Built again after this bundle
+        2. The latest operator build failed to successfully build its bundle
+        :return: A dict containing koji build information; None if no build is found
+        """
+        builds = self.brew_session.getLatestBuilds(tag=self.target, package=self.bundle_brew_component)
+        if builds:
+            return builds[0]
+        else:
+            return None
 
     def rebase(self, operator_nvr):
         """Update bundle distgit contents with manifests from given operator NVR
@@ -77,19 +92,26 @@ class OLMBundle(object):
 
         return self.watch_bundle_container_build()
 
-    def get_latest_bundle_build(self):
+    def get_latest_bundle_build_nvr(self):
         """Get NVR of latest bundle build tagged on given target
 
         :return string: NVR of latest bundle build, or "" if there is none.
         """
-        _rc, out, _err = exectools.cmd_gather(
-            'brew latest-build --quiet {} {}'.format(self.target, self.bundle_brew_component)
-        )
-        return out.split(' ')[0]
+        build = self.get_latest_bundle_build()
+        if not build or 'nvr' not in build:
+            return None
+        return build['nvr']
 
-    def get_operator_buildinfo(self):
+    def get_bundle_image_name(self):
+        return 'openshift/ose-{}'.format(self.bundle_name)
+
+    def get_operator_buildinfo(self, nvr=None):
         """Get operator distgit repository name and commit hash used to build given operator NVR
+        :param nvr: If specified, used to set self.operator_nvr.
         """
+        if nvr:
+            self.operator_nvr = nvr
+
         operator_buildinfo = brew.get_build_objects([self.operator_nvr], self.brew_session)[0]
         match = re.search(r'([^#]+)#(\w+)', operator_buildinfo['source'])
 
@@ -186,7 +208,7 @@ class OLMBundle(object):
         bundle_df.labels = operator_df.labels
         bundle_df.labels['com.redhat.component'] = self.bundle_brew_component
         bundle_df.labels['com.redhat.delivery.appregistry'] = False
-        bundle_df.labels['name'] = 'openshift/ose-{}'.format(self.bundle_name)
+        bundle_df.labels['name'] = self.get_bundle_image_name()
         bundle_df.labels['version'] = '{}.{}'.format(
             operator_df.labels['version'],
             operator_df.labels['release']
