@@ -95,7 +95,7 @@ class ImageMetadata(Metadata):
         return self.config.get('for_payload', False)
 
     @property
-    def is_release(self):
+    def for_release(self):
         return self.config.get('for_release', True)
 
     def get_component_name(self, default=-1):

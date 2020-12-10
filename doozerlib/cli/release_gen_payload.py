@@ -134,7 +134,7 @@ class PayloadGenerator:
 
         self.runtime.logger.info("Fetching latest image builds from Brew...")
         payload_images, invalid_name_items = self._get_payload_images(images)
-        release_payload_images, non_release_items = self._get_non_release_images(payload_images)
+        release_payload_images, non_release_items = self._get_payload_and_non_release_images(payload_images)
         self.state['payload_images'] = len(release_payload_images)
         latest_builds, images_missing_builds = self._get_latest_builds(release_payload_images)
         self._designate_privacy(latest_builds)
@@ -142,11 +142,11 @@ class PayloadGenerator:
 
         return latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items
 
-    def _get_non_release_images(self, images):
+    def _get_payload_and_non_release_images(self, images):
         payload_images = []
         non_release_items = []
         for image in images:
-            if image.is_release:
+            if image.for_release:
                 payload_images.append(image)
                 continue
             non_release_items.append(image.image_name_short)
