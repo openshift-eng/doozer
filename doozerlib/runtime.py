@@ -288,8 +288,7 @@ class Runtime(object):
 
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
-                   no_group=False, clone_source=None, disabled=None,
-                   config_excludes=None):
+                   no_group=False, clone_source=None, disabled=None):
 
         if self.initialized:
             return
@@ -493,11 +492,6 @@ class Runtime(object):
             replace_vars = {}
             if self.group_config.vars:
                 replace_vars = self.group_config.vars.primitive()
-
-            if config_excludes:
-                excludes = self.group_config.get(config_excludes, {})
-                image_ex.extend(excludes.get('images', []))
-                rpm_ex.extend(excludes.get('rpms', []))
 
             # pre-load the image data to get the names for all images
             # eventually we can use this to allow loading images by
