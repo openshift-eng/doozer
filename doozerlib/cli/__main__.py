@@ -1961,7 +1961,6 @@ def config_update_required(runtime, image_list):
                 break
         if not found:
             optional.append(img)
-            red_print('yuxzhu: {}'.format(name))
 
     missing = list(set(image_list) - set(resolved))
     if missing:

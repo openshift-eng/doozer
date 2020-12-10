@@ -1,7 +1,9 @@
+from pathlib import Path
+
 import click
 import yaml
 
-from doozerlib import brew, rhcos, exectools
+from doozerlib import brew, exectools, rhcos
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.cli import release_gen_payload as rgp
 from doozerlib.exceptions import DoozerFatalError
@@ -53,8 +55,15 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
         if key not in assessment_reason:
             assessment_reason[key] = reason
 
-    with runtime.shared_koji_client_session() as koji_api:
+    def add_image_meta_change(meta, msg):
+        nonlocal changing_image_metas
+        changing_image_metas.add(meta)
+        add_assessment_reason(meta, True, msg)
+        for descendant_meta in meta.get_descendants():
+            changing_image_metas.add(descendant_meta)
+            add_assessment_reason(descendant_meta, True, f'Ancestor {meta.distgit_key} is changing')
 
+    with runtime.shared_koji_client_session() as koji_api:
         runtime.logger.info(f'scan-sources coordinate: brew_event: {koji_api.getLastEvent(brew.KojiWrapperOpts(brew_event_aware=True))}')
         runtime.logger.info(f'scan-sources coordinate: emulated_brew_event: {runtime.brew_event}')
 
@@ -94,20 +103,28 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                     else:
                         runtime.logger.warning(f"Appears that {dgk} has never been built before; can't determine package name")
             elif meta.meta_type == 'image':
-                if reason:
-                    add_assessment_reason(meta, needs_rebuild, reason=reason)
+                if not needs_rebuild:  # If no change has been detected, check configurations like image meta, repos, and streams to see if they have changed
+                    # We detect config changes by comparing their digest changes.
+                    # The config digest of the previous build is stored at .oit/config_digest on distgit repo.
+                    dgr = meta.distgit_repo()
+                    path = Path(dgr.distgit_dir).joinpath(".oit", "config_digest")
+                    if not path.exists():  # alway request a buiild if config_digest hasn't been stored
+                        pass  # TODO: uncomment the following after a week of natural rebuilds
+                        # runtime.logger.info('%s config_digest does not exist; request a build', dgk)
+                        # needs_rebuild = True
+                        # reason = '.oit/config_digest does not exist'
+                    else:
+                        with path.open('r') as f:
+                            prev_digest = f.read()
+                        current_digest = meta.calculate_config_digest(runtime.group_config, runtime.streams)
+                        if current_digest.strip() != prev_digest.strip():
+                            runtime.logger.info('%s config_digest %s is differing from %s', dgk, prev_digest, current_digest)
+                            needs_rebuild = True
+                            reason = 'Config changed'
                 if needs_rebuild:
-                    changing_image_metas.add(meta)
+                    add_image_meta_change(meta, reason)
             else:
                 raise IOError(f'Unsupported meta type: {meta.meta_type}')
-
-        def add_image_meta_change(meta, msg):
-            nonlocal changing_image_metas
-            changing_image_metas.add(meta)
-            add_assessment_reason(meta, True, msg)
-            for descendant_meta in meta.get_descendants():
-                changing_image_metas.add(descendant_meta)
-                add_assessment_reason(descendant_meta, True, f'Ancestor {meta.distgit_key} is changing')
 
         # To limit the size of the queries we are going to make, find the oldest and newest image
         oldest_image_event_ts = None
@@ -133,7 +150,7 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
         if changing:
             add_image_meta_change(meta, msg)
 
-    # does_image_name_change() checks whether its non-member builder images have changed
+    # does_image_need_change() checks whether its non-member builder images have changed
     # but cannot determine whether member builder images have changed until anticipated
     # changes have been calculated. The following loop does this. It uses while True,
     # because technically, we could keep finding changes in intermediate builder images
