@@ -661,7 +661,8 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
         image_config: Dict[str, Any] = self.config.primitive()  # primitive() should create a shallow clone for the underlying dict
         group_config: Dict[str, Any] = group_config.primitive()
         streams: Dict[str, Any] = streams.primitive()
-        del image_config["owners"]  # ignore the owners entry for the digest: https://issues.redhat.com/browse/ART-1080
+        if "owners" in image_config:
+            del image_config["owners"]  # ignore the owners entry for the digest: https://issues.redhat.com/browse/ART-1080
         message = {
             "config": image_config,
         }
