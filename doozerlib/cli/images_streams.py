@@ -440,7 +440,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
                 "type": "RollingUpdate"
             }
         },
-        "apiVersion": "extensions/v1beta1",
+        "apiVersion": "apps/v1",
         "metadata": {
             "labels": {
                 "app": ds_name,
