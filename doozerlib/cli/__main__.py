@@ -2138,6 +2138,88 @@ def list_olm_operators(runtime):
             print(image.get_component_name())
 
 
+@cli.command("olm-bundle:print", short_help="Print data for each operator",
+             context_settings=dict(
+                 ignore_unknown_options=True,  # permit patterns starting with dash; allows printing yaml lists
+             ))
+@click.argument("pattern", default="{component}", nargs=1)
+@pass_runtime
+def olm_bundles_print(runtime, pattern):
+    """
+    Prints data from each distgit. The pattern specified should be a string
+    with replacement fields:
+
+    \b
+    {distgit_key} - The distgit key of the operator
+    {component} - The component identified in the Dockerfile
+    {nvr} - NVR of latest operator build
+    {bundle_component} - The operator's bundle component name
+    {paired_bundle_nvr} - NVR of bundle associated with the latest operator NVR (may not exist)
+    {paired_bundle_pullspec} - The pullspec for the bundle associated with the latest operator NVR (may not exist)
+    {bundle_nvr} - NVR of latest operator bundle build
+    {bundle_pullspec} - The pullspec for the latest build
+    {lf} - Line feed
+
+    If pattern contains no braces, it will be wrapped with them automatically. For example:
+    "component" will be treated as "{component}"
+    """
+
+    runtime.initialize(clone_distgits=False)
+
+    # If user omitted braces, add them.
+    if "{" not in pattern:
+        pattern = "{%s}" % pattern.strip()
+
+    for image in runtime.ordered_image_metas():
+        if not image.enabled or image.config['update-csv'] is Missing:
+            continue
+        olm_bundle = OLMBundle(runtime)
+
+        s = pattern
+        s = s.replace("{lf}", "\n")
+        s = s.replace("{distgit_key}", image.distgit_key)
+        s = s.replace("{component}", image.get_component_name())
+
+        build_info = image.get_latest_build()
+        nvr = build_info['nvr']
+        s = s.replace('{nvr}', nvr)
+        olm_bundle.get_operator_buildinfo(nvr=nvr)  # Populate the object for the operator we are interested in.
+        s = s.replace('{bundle_component}', olm_bundle.bundle_brew_component)
+        bundle_image_name = olm_bundle.get_bundle_image_name()
+
+        if '{paired_' in s:
+            # Paired bundle values must correspond exactly to the latest operator NVR.
+            paired_bundle_nvr = olm_bundle.find_bundle_for(nvr)
+            if not paired_bundle_nvr:
+                paired_bundle_nvr = 'None'  # Doesn't exist
+                paired_pullspec = 'None'
+            else:
+                paired_version_release = paired_bundle_nvr[len(olm_bundle.bundle_brew_component) + 1:]
+                paired_pullspec = runtime.resolve_brew_image_url(f'{bundle_image_name}:{paired_version_release}')
+            s = s.replace('{paired_bundle_nvr}', paired_bundle_nvr)
+            s = s.replace('{paired_bundle_pullspec}', paired_pullspec)
+
+        if '{bundle_' in s:
+            # Unpaired is just whatever bundle build was most recent
+            build = olm_bundle.get_latest_bundle_build()
+            if not build:
+                bundle_nvr = 'None'
+                bundle_pullspec = 'None'
+            else:
+                bundle_nvr = build['nvr']
+                version_release = bundle_nvr[len(olm_bundle.bundle_brew_component) + 1:]
+                # Build pullspec like: registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-clusterresourceoverride-operator-bundle:v4.7.0.202012082225.p0-1
+                bundle_pullspec = runtime.resolve_brew_image_url(f'{bundle_image_name}:{version_release}')
+
+            s = s.replace('{bundle_nvr}', bundle_nvr)
+            s = s.replace('{bundle_pullspec}', bundle_pullspec)
+
+        if "{" in s:
+            raise IOError("Unrecognized fields remaining in pattern: %s" % s)
+
+        click.echo(s)
+
+
 @cli.command('olm-bundle:rebase', short_help='Update bundle distgit repo with manifests from given operator NVR')
 @click.argument('operator_nvrs', nargs=-1, required=True)
 @pass_runtime
@@ -2205,7 +2287,7 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs, force=False):
             return {
                 'success': olm_bundle.build() if did_rebase else True,
                 'task_url': olm_bundle.task_url if hasattr(olm_bundle, 'task_url') else None,
-                'bundle_nvr': olm_bundle.get_latest_bundle_build(),
+                'bundle_nvr': olm_bundle.get_latest_bundle_build_nvr(),
             }
         except:
             runtime.logger.error('Error during rebase or build for: {}'.format(nvr))
