@@ -315,7 +315,7 @@ class ImageMetadata(Metadata):
 
                 if not builder_brew_build:
                     out, err = exectools.cmd_assert(f'oc image info {brew_image_url} --filter-by-os amd64 -o=json', retries=5, pollrate=10)
-                    latest_builder_image_info = Model(json.loads(out, encoding='utf-8'))
+                    latest_builder_image_info = Model(json.loads(out))
                     builder_info_labels = latest_builder_image_info.config.config.Labels
                     builder_nvr_list = [builder_info_labels['com.redhat.component'], builder_info_labels['version'], builder_info_labels['release']]
 
