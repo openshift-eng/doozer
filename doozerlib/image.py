@@ -683,7 +683,10 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
         if referred_streams:
             message["streams"] = {stream: streams[stream] for stream in referred_streams}
 
-        digest = hashlib.sha256(json.dumps(message, sort_keys=True).encode("utf-8")).hexdigest()
+        # Avoid non serializable objects. Known to occur for PosixPath objects in content.source.modifications.
+        default = lambda o: f"<<non-serializable: {type(o).__qualname__}>>"
+
+        digest = hashlib.sha256(json.dumps(message, sort_keys=True, default=default).encode("utf-8")).hexdigest()
         return "sha256:" + digest
 
 
