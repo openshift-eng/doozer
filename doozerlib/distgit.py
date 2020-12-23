@@ -80,6 +80,13 @@ def build_image_ref_name(name):
     return 'openshift/ose-' + re.sub(pattern='^ose-', repl='', string=name)
 
 
+def map_image_name(name, image_map):
+    for match, replacement in image_map.items():
+        if name.find(match) != -1:
+            return name.replace(match, replacement)
+    return name
+
+
 class DistGitRepo(object):
     def __init__(self, metadata, autoclone=True):
         self.metadata = metadata
@@ -1594,10 +1601,12 @@ class ImageDistGitRepo(DistGitRepo):
 
         csv_file, image_refs = self._get_csv_file_and_refs(csv_config)
         registry = csv_config['registry'].rstrip("/")
+        image_map = csv_config.get('image-map', {})
 
         for ref in image_refs:
             try:
                 name = build_image_ref_name(ref['name'])
+                name = map_image_name(name, image_map)
                 spec = ref['from']['name']
             except:
                 raise DoozerFatalError('Error loading image-references data for {}'.format(self.metadata.distgit_key))
