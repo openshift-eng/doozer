@@ -1,17 +1,16 @@
-from __future__ import absolute_import, print_function, unicode_literals
-import os
 import io
-from future.standard_library import install_aliases
-install_aliases()
+import os
 from urllib.parse import urlparse
-import requests
 
-from doozerlib.logutil import getLogger
-from doozerlib.util import mkdirs, is_in_directory
-from doozerlib.model import Missing
+import requests
+import yaml
+
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.exectools import cmd_assert
+from doozerlib.logutil import getLogger
+from doozerlib.model import Missing
 from doozerlib.pushd import Dir
+from doozerlib.util import is_in_directory, mkdirs
 
 LOGGER = getLogger(__name__)
 
@@ -84,6 +83,7 @@ class AddModifier(object):
         self.source = kwargs["source"]
         self.path = kwargs["path"]
         self.overwriting = kwargs.get("overwriting", False)
+        self.validate = kwargs.get("validate", None)
 
     def act(self, *args, **kwargs):
         """ Run the modification action
@@ -112,9 +112,17 @@ class AddModifier(object):
         LOGGER.debug("Getting out-of-tree source {}...".format(source_url))
         response = session.get(source_url)
         response.raise_for_status()
+        content = response.content
+        if self.validate:
+            if self.validate == "yaml":
+                yml = yaml.safe_load(content.decode("utf-8"))  # will raise an Error if invalid
+                if yml is None:
+                    raise IOError(f"Yaml file {source_url} is empty.")
+            else:
+                raise ValueError("Unknown 'validate' value: {self.validate}")
         mkdirs(os.path.dirname(path))
         with io.open(path, "wb") as dest_file:
-            dest_file.write(response.content)
+            dest_file.write(content)
         LOGGER.debug("Out-of-tree source saved: {} -> {}".format(source_url, path))
 
 
