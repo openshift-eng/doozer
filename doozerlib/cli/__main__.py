@@ -407,15 +407,17 @@ def images_update_dockerfile(runtime, version, release, repo_type, message, push
 @cli.command("images:covscan", short_help="Run a coverity scan for the specified images")
 @click.option("--result-archive", metavar="ARCHIVE_DIR", required=True,
               help="The covscan process computes diffs between different runs. Location where all runs can store data.")
-@click.option("-l", "--local-repo", metavar="REPO_DIR", default=[], multiple=True,
-              help="Absolute path of yum repo to make available for scanner images")
+@click.option("--local-repo-rhel-7", metavar="REPO_DIR", default=[], multiple=True,
+              help="Absolute path of yum repo to make available for rhel-7 scanner images")
+@click.option("--local-repo-rhel-8", metavar="REPO_DIR", default=[], multiple=True,
+              help="Absolute path of yum repo to make available for rhel-8 scanner images")
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
 @click.option('--preserve-scanner-images', default=False, is_flag=True,
               help='Reuse any previous builders')
 @pass_runtime
-def images_covscan(runtime, result_archive, local_repo, repo_type, preserve_scanner_images):
+def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8, repo_type, preserve_scanner_images):
     """
     Runs a coverity scan against the specified images.
 
@@ -432,8 +434,8 @@ def images_covscan(runtime, result_archive, local_repo, repo_type, preserve_scan
        under the watchful eye of the coverity tools. In order words, this Dockerfile will run the build
        instructions from the first stage of the distgit Dockerfile, but with coverity monitoring the build
        and creating data files that can be used for analysis later. This data is written to a volume mounted on
-       the host filesystem so that it can be used by subseqent containers.
-    6. After a previous image runs the build, the host volume has coverity data acculated from the build process.
+       the host filesystem so that it can be used by subsequent containers.
+    6. After a previous image runs the build, the host volume has coverity data accumulated from the build process.
     7. Using the scanner image again (since it has the coverity tools installed), the 'cov-analyze' command
        is run against this data. This is an hours long process for a large codebase and consumes all CPU
        on a system for that period. Data from this analysis is also written to the host volume.
@@ -459,7 +461,7 @@ def images_covscan(runtime, result_archive, local_repo, repo_type, preserve_scan
         given commit hash on in the results archive, it will not recompute them with coverity.
 
     \b
-    Caching coverity repos locally:
+    Caching coverity repos for rhel-7 locally:
     Use --local-repos to supply coverity repositories for the scanner image.
     $ reposync  -c covscan.repo -a x86_64 -d -p covscan_repos -n -e covscan_cache -r covscan -r covscan-testing
     $ createrepo_c covscan_repos/covscan
@@ -488,7 +490,8 @@ def images_covscan(runtime, result_archive, local_repo, repo_type, preserve_scan
         return str(pathlib.Path(path).absolute())
 
     result_archive = absolutize(result_archive)
-    local_repo = [absolutize(repo) for repo in local_repo]
+    local_repo_rhel_7 = [absolutize(repo) for repo in local_repo_rhel_7]
+    local_repo_rhel_8 = [absolutize(repo) for repo in local_repo_rhel_8]
 
     runtime.initialize()
     metas = runtime.image_metas()
@@ -506,7 +509,7 @@ def images_covscan(runtime, result_archive, local_repo, repo_type, preserve_scan
                 runtime.logger.warning(f'Unable to delete images: {targets}:\n{err}')
 
     for meta in metas:
-        meta.covscan(result_archive=result_archive, repo_type=repo_type, local_repo=local_repo)
+        meta.covscan(result_archive=result_archive, repo_type=repo_type, local_repo_rhel_7=local_repo_rhel_7, local_repo_rhel_8=local_repo_rhel_8)
 
 
 @cli.command("images:rebase", short_help="Refresh a group's distgit content from source content.")

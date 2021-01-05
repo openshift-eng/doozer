@@ -387,7 +387,7 @@ class ImageMetadata(Metadata):
 
         return self, False, None
 
-    def covscan(self, result_archive, repo_type='unsigned', local_repo=[]):
+    def covscan(self, result_archive, repo_type='unsigned', local_repo_rhel_7=[], local_repo_rhel_8=[]):
         self.logger.info('Setting up for coverity scan')
         all_js = 'all_results.js'
         diff_js = 'diff_results.js'
@@ -483,21 +483,37 @@ class ImageMetadata(Metadata):
                 vol_mount_arg = ''
                 make_image_repo_files = ''
 
-                if local_repo:
-                    for idx, lr in enumerate(local_repo):
+                if local_repo_rhel_7:
+                    for idx, lr in enumerate(local_repo_rhel_7):
                         make_image_repo_files += f"""
 # Create a repo able to pull from the local filesystem and prioritize it for speed.
-RUN echo '[covscan_local_{idx}]' > /etc/yum.repos.d/covscan_local_{idx}.repo
-RUN echo 'baseurl=file:///covscan_local_{idx}' >> /etc/yum.repos.d/covscan_local_{idx}.repo
-RUN echo skip_if_unavailable=True >> /etc/yum.repos.d/covscan_local_{idx}.repo
-RUN echo gpgcheck=0 >> /etc/yum.repos.d/covscan_local_{idx}.repo
-RUN echo enabled=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo
-RUN echo enabled_metadata=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo
-RUN echo priority=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo
+RUN if cat /etc/redhat-release | grep "release 7"; then echo '[covscan_local_{idx}]' > /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo 'baseurl=file:///covscan_local_{idx}_rhel_7' >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo skip_if_unavailable=True >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo gpgcheck=0 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo enabled=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo enabled_metadata=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo priority=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo; fi
     """
-                        vol_mount_arg += f' -mount {lr}:/covscan_local_{idx}'
+                        vol_mount_arg += f' -mount {lr}:/covscan_local_{idx}_rhel_7'
                 else:
-                    make_image_repo_files = 'RUN wget https://cov01.lab.eng.brq.redhat.com/coverity/install/covscan/covscan-rhel-7.repo -O /etc/yum.repos.d/covscan.repo\n'
+                    make_image_repo_files = 'RUN if cat /etc/redhat-release | grep "release 7"; then wget --no-check-certificate https://cov01.lab.eng.brq.redhat.com/coverity/install/covscan/covscan-rhel-7.repo -O /etc/yum.repos.d/covscan.repo; fi\n'
+
+                if local_repo_rhel_8:
+                    for idx, lr in enumerate(local_repo_rhel_8):
+                        make_image_repo_files += f"""
+# Create a repo able to pull from the local filesystem and prioritize it for speed.
+RUN if cat /etc/redhat-release | grep "release 8"; then echo '[covscan_local_{idx}]' > /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo 'baseurl=file:///covscan_local_{idx}_rhel_8' >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo skip_if_unavailable=True >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo gpgcheck=0 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo enabled=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo enabled_metadata=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo priority=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo; fi
+    """
+                        vol_mount_arg += f' -mount {lr}:/covscan_local_{idx}_rhel_8'
+                else:
+                    make_image_repo_files = 'RUN if cat /etc/redhat-release | grep "release 8"; then wget --no-check-certificate https://cov01.lab.eng.brq.redhat.com/coverity/install/covscan/covscan-rhel-8.repo -O /etc/yum.repos.d/covscan.repo; fi\n'
 
                 df_out.write(f'''FROM {first_parent_url}
 LABEL DOOZER_COVSCAN_PARENT_IMAGE=true
@@ -512,8 +528,9 @@ RUN wget {self.cgit_url(".oit/" + repo_type + ".repo")} -O /etc/yum.repos.d/oit.
 RUN yum install -y python36
 
 # Enable epel for csmock
-RUN wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-RUN yum -y install epel-release-latest-7.noarch.rpm
+RUN if cat /etc/redhat-release | grep "release 7"; then wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && yum -y install epel-release-latest-7.noarch.rpm; fi
+RUN if cat /etc/redhat-release | grep "release 8"; then wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && yum -y install epel-release-latest-8.noarch.rpm; fi
+
 
 # Certs necessary to install from covscan repos
 RUN wget https://password.corp.redhat.com/RH-IT-Root-CA.crt -O /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --no-check-certificate
