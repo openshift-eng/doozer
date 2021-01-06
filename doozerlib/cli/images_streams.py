@@ -412,51 +412,9 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
             "imagePullPolicy": "Always"
         })
 
-    ds_name = 'art-managed-' + group_label + '-dont-gc-me-bro'
-    daemonset_definition = {
-        "kind": "DaemonSet",
-        "spec": {
-            "revisionHistoryLimit": 1,
-            "template": {
-                "spec": {
-                    "containers": ds_container_definitions
-                },
-                "metadata": {
-                    "labels": {
-                        "app": ds_name
-                    }
-                }
-            },
-            "selector": {
-                "matchLabels": {
-                    "app": ds_name
-                }
-            },
-            "templateGeneration": 1,
-            "updateStrategy": {
-                "rollingUpdate": {
-                    "maxUnavailable": "50%"
-                },
-                "type": "RollingUpdate"
-            }
-        },
-        "apiVersion": "apps/v1",
-        "metadata": {
-            "labels": {
-                "app": ds_name,
-                'art-builder-group': runtime.group_config.name,
-            },
-            "namespace": "ci",
-            "name": ds_name
-        }
-    }
-
     with open(output, mode='w+', encoding='utf-8') as f:
         objects = list()
         objects.extend(buildconfig_definitions)
-        if buildconfig_definitions and all_streams:
-            # Don't update the daemonset unless all streams are accounted for
-            objects.append(daemonset_definition)
         yaml.dump_all(objects, f, default_flow_style=False)
 
     if apply:
