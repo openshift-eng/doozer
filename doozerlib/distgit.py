@@ -2041,10 +2041,9 @@ class ImageDistGitRepo(DistGitRepo):
         path = os.pathsep.join([os.environ['PATH'], metadata_scripts_path])
 
         for modification in self.config.content.source.modifications:
-            modification['distgit_path'] = self.dg_path
             if self.source_modifier_factory.supports(modification.action):
                 # run additional modifications supported by source_modifier_factory
-                modifier = self.source_modifier_factory.create(**modification)
+                modifier = self.source_modifier_factory.create(**modification, distgit_path=self.dg_path)
                 # pass context as a dict so that the act function can modify its content
                 context = {
                     "component_name": self.metadata.distgit_key,
