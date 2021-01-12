@@ -213,9 +213,6 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
     runtime.initialize(clone_distgits=False, clone_source=False)
     runtime.assert_mutation_is_permitted()
 
-    # Record whether this is for all streams or just user specified
-    all_streams = not streams
-
     if not streams:
         # If not specified, use all.
         streams = runtime.get_stream_names()
