@@ -290,7 +290,7 @@ class Repos(object):
         return CONTENT_SETS + yaml.dump(result, default_flow_style=False)
 
     def _validate_content_sets(self, arch, names):
-        url = "https://pulp.dist.prod.ext.phx2.redhat.com/pulp/api/v2/repositories/search/"
+        url = "https://rhsm-pulp.corp.redhat.com/pulp/api/v2/repositories/search/"
         payload = {
             "criteria": {
                 "fields": [
