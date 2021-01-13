@@ -454,8 +454,8 @@ def resolve_upstream_from(runtime, image_entry):
         # tag name without the ose- prefix.
         image_name = remove_prefix(image_name, 'ose-')
 
-        # e.g. registry.svc.ci.openshift.org/ocp/4.6:base
-        return f'registry.svc.ci.openshift.org/ocp/{major}.{minor}:{image_name}'
+        # e.g. registry.ci.openshift.org/ocp/4.6:base
+        return f'registry.ci.openshift.org/ocp/{major}.{minor}:{image_name}'
 
     if image_entry.image:
         # CI is on its own. We can't give them an image that isn't available outside the firewall.
