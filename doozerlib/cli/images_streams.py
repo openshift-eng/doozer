@@ -2,6 +2,7 @@ import io
 import os
 import click
 import yaml
+import json
 import hashlib
 import time
 
@@ -744,7 +745,18 @@ If you have any questions about this pull request, please reach out to `@art-tea
                 pr_title = first_commit_line
                 if bug:
                     pr_title = f'Bug {bug}: {pr_title}'
-                new_pr = public_source_repo.create_pull(title=pr_title, body=pr_body, base=public_branch, head=fork_branch_head, draft=draft_prs)
+                try:
+                    new_pr = public_source_repo.create_pull(title=pr_title, body=pr_body, base=public_branch, head=fork_branch_head, draft=draft_prs)
+                except GithubException as ge:
+                    if 'already exists' in json.dumps(ge.data):
+                        # In one execution to date, get_pulls did not find the open PR and the code repeatedly hit this
+                        # branch -- attempting to recreate the PR. Everything seems right, but the github api is not
+                        # returning it. So catch the error and try to move on.
+                        pr_url = f'UnknownPR-{fork_branch_head}'
+                        pr_links[dgk] = pr_url
+                        yellow_print(f'Issue attempting to find it, but a PR is already open requesting desired reconciliation with ART')
+                        continue
+
                 if alignment_prs_config.auto_label and add_labels:
                     # If we are to automatically add labels to this upstream PR, do so.
                     new_pr.set_labels(*alignment_prs_config.auto_label)
