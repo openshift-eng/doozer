@@ -416,7 +416,7 @@ class ImageMetadata(Metadata):
 
             def write_record():
                 diff = json.loads(archive_diff_results_js_path.read_text(encoding='utf-8'))
-                diff_count = len(diff['issues'])
+                diff_count = len(diff.get('issues', []))
                 if diff_count == 0:
                     self.logger.info('No new issues found during scan')
                     archive_waived_flag_path.write_text('')  # No new differences, mark as waived
