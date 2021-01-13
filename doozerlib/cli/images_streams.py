@@ -763,3 +763,7 @@ If you have any questions about this pull request, please reach out to `@art-tea
     if pr_links:
         print('Currently open PRs:')
         print(yaml.safe_dump(pr_links))
+
+    if skipping_dgks:
+        print('Some PRs were skipped; Exiting with return code 25 to indicate this')
+        exit(25)
