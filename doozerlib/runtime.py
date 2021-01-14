@@ -1037,7 +1037,7 @@ class Runtime(object):
             # Pull content to update the cache. This should be safe for multiple doozer instances to perform.
             self.logger.info(f'Updating cache directory for git remote: {remote_url}')
             # Fire and forget this fetch -- just used to keep cache as fresh as possible
-            exectools.fire_and_forget(repo_dir, 'git fetch --all', retries=3)
+            exectools.fire_and_forget(repo_dir, 'git fetch --all')
             gitargs.extend(['--dissociate', '--reference-if-able', repo_dir])
 
         self.logger.info(f'Cloning to: {target_dir}')
