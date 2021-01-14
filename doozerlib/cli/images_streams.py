@@ -162,7 +162,7 @@ def images_streams_start_buildconfigs(runtime, as_user, live_test_mode):
     cmd = f'oc -n ci get -o=name buildconfigs -l art-builder-group={group_label}'
     if as_user:
         cmd += f' --as {as_user}'
-    bc_stdout, bc_stderr = exectools.cmd_assert(cmd)
+    bc_stdout, bc_stderr = exectools.cmd_assert(cmd, retries=3)
     bc_stdout = bc_stdout.strip()
 
     if bc_stdout:
@@ -171,7 +171,7 @@ def images_streams_start_buildconfigs(runtime, as_user, live_test_mode):
             cmd = f'oc -n ci start-build {name}'
             if as_user:
                 cmd += f' --as {as_user}'
-            stdout, stderr = exectools.cmd_assert(cmd)
+            stdout, stderr = exectools.cmd_assert(cmd, retries=3)
             print('   ' + stdout or stderr)
     else:
         print(f'No buildconfigs associated with this group: {group_label}')
@@ -421,7 +421,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
             cmd = f'oc apply -f {output}'
             if as_user:
                 cmd += f' --as {as_user}'
-            exectools.cmd_assert(cmd)
+            exectools.cmd_assert(cmd, retries=3)
         else:
             print('No buildconfigs were generated; skipping apply.')
 
@@ -686,7 +686,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 """
                     exectools.cmd_assert(f'git commit -m "{commit_msg}"')  # Add a commit atop the public branch's current state
                     # Create or update the remote fork branch
-                    exectools.cmd_assert(f'git push --force fork {work_branch_name}:{fork_branch_name}')
+                    exectools.cmd_assert(f'git push --force fork {work_branch_name}:{fork_branch_name}', retries=3)
 
             # At this point, we have a fork branch in the proper state
             pr_body = f"""{first_commit_line}
