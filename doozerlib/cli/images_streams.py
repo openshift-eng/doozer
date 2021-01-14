@@ -476,7 +476,7 @@ def _get_upstream_source(runtime, image_meta):
     if "git" in image_meta.config.content.source:
         source_repo_url = image_meta.config.content.source.git.url
         source_repo_branch = image_meta.config.content.source.git.branch.target
-        branch_check, err = exectools.cmd_assert(f'git ls-remote --heads {source_repo_url} {source_repo_branch}', strip=True)
+        branch_check, err = exectools.cmd_assert(f'git ls-remote --heads {source_repo_url} {source_repo_branch}', strip=True, retries=3)
         if not branch_check:
             # Output is empty if branch does not exist
             source_repo_branch = image_meta.config.content.source.git.branch.fallback
@@ -617,7 +617,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
         with Dir(clone_dir):
             exectools.cmd_assert(f'git remote add public {public_repo_url}')
             exectools.cmd_assert(f'git remote add fork {convert_remote_git_to_ssh(fork_repo.git_url)}')
-            exectools.cmd_assert('git fetch --all')
+            exectools.cmd_assert('git fetch --all', retries=3)
 
             # The path to the Dockerfile in the target branch
             if image_meta.config.content.source.dockerfile is not Missing:
