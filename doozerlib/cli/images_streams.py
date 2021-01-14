@@ -507,9 +507,10 @@ def prs():
 @click.option('--ignore-ci-master', default=False, is_flag=True, help='Do not consider what is in master branch when determining what branch to target')
 @click.option('--draft-prs', default=False, is_flag=True, help='Open PRs as draft PRs')
 @click.option('--moist-run', default=False, is_flag=True, help='Do everything except opening the final PRs')
-@click.option('--add-labels', default=False, is_flag=True, help='Add auto_labels to PRs; unless running as openshift-bot, you probably lack the privilege to do so')
+@click.option('--add-auto-labels', default=False, is_flag=True, help='Add auto_labels to PRs; unless running as openshift-bot, you probably lack the privilege to do so')
+@click.option('--add-label', default=[], multiple=True, help='Add a label to all open PRs (new and existing) - Requires being openshift-bot')
 @pass_runtime
-def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_ci_master, draft_prs, moist_run, add_labels):
+def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_ci_master, draft_prs, moist_run, add_auto_labels, add_label):
     runtime.initialize(clone_distgits=False, clone_source=False)
     g = Github(login_or_token=github_access_token)
     github_user = g.get_user()
@@ -721,9 +722,12 @@ If you have any questions about this pull request, please reach out to `@art-tea
                 # Update body, but never title; The upstream team may need set something like a Bug XXXX: there.
                 # Don't muck with it.
 
-                if alignment_prs_config.auto_label and add_labels:
+                if alignment_prs_config.auto_label and add_auto_labels:
                     # If we are to automatically add labels to this upstream PR, do so.
-                    existing_pr.set_labels(*alignment_prs_config.auto_label)
+                    existing_pr.add_to_labels(*alignment_prs_config.auto_label)
+
+                if add_label:
+                    existing_pr.add_to_labels(*add_label)
 
                 existing_pr.edit(body=pr_body)
                 pr_url = existing_pr.html_url
@@ -757,9 +761,13 @@ If you have any questions about this pull request, please reach out to `@art-tea
                         yellow_print(f'Issue attempting to find it, but a PR is already open requesting desired reconciliation with ART')
                         continue
 
-                if alignment_prs_config.auto_label and add_labels:
+                if alignment_prs_config.auto_label and add_auto_labels:
                     # If we are to automatically add labels to this upstream PR, do so.
-                    new_pr.set_labels(*alignment_prs_config.auto_label)
+                    new_pr.add_to_labels(*alignment_prs_config.auto_label)
+
+                if add_label:
+                    new_pr.add_to_labels(*add_label)
+
                 pr_msg = f'A new PR has been opened: {new_pr.html_url}'
                 pr_links[dgk] = new_pr.html_url
                 new_pr_links[dgk] = new_pr.html_url
