@@ -722,12 +722,16 @@ If you have any questions about this pull request, please reach out to `@art-tea
                 # Update body, but never title; The upstream team may need set something like a Bug XXXX: there.
                 # Don't muck with it.
 
-                if alignment_prs_config.auto_label and add_auto_labels:
-                    # If we are to automatically add labels to this upstream PR, do so.
-                    existing_pr.add_to_labels(*alignment_prs_config.auto_label)
+                try:
+                    if alignment_prs_config.auto_label and add_auto_labels:
+                        # If we are to automatically add labels to this upstream PR, do so.
+                        existing_pr.add_to_labels(*alignment_prs_config.auto_label)
 
-                if add_label:
-                    existing_pr.add_to_labels(*add_label)
+                    if add_label:
+                        existing_pr.add_to_labels(*add_label)
+                except GithubException as pr_e:
+                    # We are not admin on all repos
+                    yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
                 existing_pr.edit(body=pr_body)
                 pr_url = existing_pr.html_url
@@ -761,12 +765,16 @@ If you have any questions about this pull request, please reach out to `@art-tea
                         yellow_print(f'Issue attempting to find it, but a PR is already open requesting desired reconciliation with ART')
                         continue
 
-                if alignment_prs_config.auto_label and add_auto_labels:
-                    # If we are to automatically add labels to this upstream PR, do so.
-                    new_pr.add_to_labels(*alignment_prs_config.auto_label)
+                try:
+                    if alignment_prs_config.auto_label and add_auto_labels:
+                        # If we are to automatically add labels to this upstream PR, do so.
+                        new_pr.add_to_labels(*alignment_prs_config.auto_label)
 
-                if add_label:
-                    new_pr.add_to_labels(*add_label)
+                    if add_label:
+                        new_pr.add_to_labels(*add_label)
+                except GithubException as pr_e:
+                    # We are not admin on all repos
+                    yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
                 pr_msg = f'A new PR has been opened: {new_pr.html_url}'
                 pr_links[dgk] = new_pr.html_url
