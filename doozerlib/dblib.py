@@ -325,15 +325,15 @@ class DB(object):
 
             insert_string = f"insert into {table_name}({columns}) values({values})"
 
-            if not dry_run:
-                cursor = self.connection.cursor()
-                cursor.execute(insert_string)
-                self.connection.commit()
-                cursor.close()
-                return 0
-            else:
+            if dry_run:
                 print(insert_string)
                 return 0
+            
+            cursor = self.connection.cursor()
+            cursor.execute(insert_string)
+            self.connection.commit()
+            cursor.close()
+            return 0
 
         except Exception as e:
             self.runtime.logger.error("Something went wrong creating payload entry in the database. Payload is {}. Exception is {}.".format(payload, e), exc_info=True)
