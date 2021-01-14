@@ -140,6 +140,11 @@ class DistGitRepo(object):
 
             if os.path.isdir(self.distgit_dir):
                 self.logger.info("Distgit directory already exists; skipping clone: %s" % self.distgit_dir)
+                if self.runtime.upcycle:
+                    self.logger.info("Refreshing source for '{}' due to --upcycle".format(self.distgit_dir))
+                    with Dir(self.distgit_dir):
+                        exectools.cmd_assert('git fetch --all', retries=3)
+                        exectools.cmd_assert('git reset --hard @{upstream}', retries=3)
             else:
 
                 # Make a directory for the distgit namespace if it does not already exist

@@ -275,7 +275,6 @@ class Runtime(object):
         return tmp_config
 
     def init_state(self):
-        self.state_file = os.path.join(self.working_dir, 'state.yaml')
         self.state = dict(state.TEMPLATE_BASE_STATE)
         if os.path.isfile(self.state_file):
             with io.open(self.state_file, 'r', encoding='utf-8') as f:
@@ -320,14 +319,29 @@ class Runtime(object):
                 os.makedirs(self.working_dir)
 
         self.distgits_dir = os.path.join(self.working_dir, "distgits")
+        self.distgits_diff_dir = os.path.join(self.working_dir, "distgits-diffs")
+        self.sources_dir = os.path.join(self.working_dir, "sources")
+        self.record_log_path = os.path.join(self.working_dir, "record.log")
+        self.brew_logs_dir = os.path.join(self.working_dir, "brew-logs")
+        self.flags_dir = os.path.join(self.working_dir, "flags")
+        self.state_file = os.path.join(self.working_dir, 'state.yaml')
+        self.debug_log_path = os.path.join(self.working_dir, "debug.log")
+
+        if self.upcycle:
+            # A working directory may be upcycle'd numerous times.
+            # Don't let anything grow unbounded.
+            shutil.rmtree(self.brew_logs_dir, ignore_errors=True)
+            shutil.rmtree(self.flags_dir, ignore_errors=True)
+            for path in (self.record_log_path, self.state_file, self.debug_log_path):
+                if os.path.exists(path):
+                    os.unlink(path)
+
         if not os.path.isdir(self.distgits_dir):
             os.mkdir(self.distgits_dir)
 
-        self.distgits_diff_dir = os.path.join(self.working_dir, "distgits-diffs")
         if not os.path.isdir(self.distgits_diff_dir):
             os.mkdir(self.distgits_diff_dir)
 
-        self.sources_dir = os.path.join(self.working_dir, "sources")
         if not os.path.isdir(self.sources_dir):
             os.mkdir(self.sources_dir)
 
@@ -368,17 +382,14 @@ class Runtime(object):
 
         self.resolve_metadata()
 
-        self.record_log_path = os.path.join(self.working_dir, "record.log")
         self.record_log = io.open(self.record_log_path, 'a', encoding='utf-8')
         atexit.register(close_file, self.record_log)
 
         # Directory where brew-logs will be downloaded after a build
-        self.brew_logs_dir = os.path.join(self.working_dir, "brew-logs")
         if not os.path.isdir(self.brew_logs_dir):
             os.mkdir(self.brew_logs_dir)
 
         # Directory for flags between invocations in the same working-dir
-        self.flags_dir = os.path.join(self.working_dir, "flags")
         if not os.path.isdir(self.flags_dir):
             os.mkdir(self.flags_dir)
 
@@ -611,7 +622,6 @@ class Runtime(object):
         main_stream_handler.setLevel(log_level)
         self.logger.addHandler(main_stream_handler)
 
-        self.debug_log_path = os.path.join(self.working_dir, "debug.log")
         debug_log_handler = logging.FileHandler(self.debug_log_path)
         # Add thread information for debug log
         debug_log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s (%(thread)d) %(message)s'))
@@ -1027,7 +1037,7 @@ class Runtime(object):
             # Pull content to update the cache. This should be safe for multiple doozer instances to perform.
             self.logger.info(f'Updating cache directory for git remote: {remote_url}')
             # Fire and forget this fetch -- just used to keep cache as fresh as possible
-            exectools.fire_and_forget(repo_dir, 'git fetch --all')
+            exectools.fire_and_forget(repo_dir, 'git fetch --all', retries=3)
             gitargs.extend(['--dissociate', '--reference-if-able', repo_dir])
 
         self.logger.info(f'Cloning to: {target_dir}')
@@ -1108,6 +1118,11 @@ class Runtime(object):
                 if self.group_config.public_upstreams:
                     _, _, _, meta.public_upstream_url, meta.public_upstream_branch = self.source_resolutions[alias]
                 self.logger.info("Source '{}' already exists in (skipping clone): {}".format(alias, source_dir))
+                if self.upcycle:
+                    self.logger.info("Refreshing source for '{}' due to --upcycle: {}".format(alias, source_dir))
+                    with Dir(source_dir):
+                        exectools.cmd_assert('git fetch --all', retries=3)
+                        exectools.cmd_assert('git reset --hard @{upstream}', retries=3)
                 return source_dir
 
             url = source_details["url"]
@@ -1378,5 +1393,5 @@ class Runtime(object):
                  ).format(self.cfg_obj.full_path))
 
         self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
-                                       commitish=self.group_commitish, logger=self.logger)
+                                       commitish=self.group_commitish, reclone=self.upcycle, logger=self.logger)
         self.data_dir = self.gitdata.data_dir

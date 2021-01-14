@@ -54,7 +54,7 @@ class TestGenericDistGit(TestDistgit):
 
         metadata = flexmock(namespace="my-namespace",
                             distgit_key="my-distgit-key",
-                            runtime=flexmock(local=False, branch="_irrelevant_"),
+                            runtime=flexmock(local=False, branch="_irrelevant_", upcycle=False),
                             config=MockConfig(),
                             logger=logger,
                             name="_irrelevant_")
