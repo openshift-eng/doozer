@@ -299,7 +299,7 @@ class Metadata(object):
         source_dir = self.runtime.resolve_source(self)
 
         # Maintainer info can be defined in metadata, so try there first.
-        maintainer = self.config.maintainer or dict()
+        maintainer = self.config.maintainer.copy() or dict()
 
         # This tuple will also define key ordering in the returned OrderedDict
         known_fields = ('product', 'component', 'subcomponent')
