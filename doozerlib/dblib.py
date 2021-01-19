@@ -328,7 +328,7 @@ class DB(object):
             if dry_run:
                 print(insert_string)
                 return 0
-            
+
             cursor = self.connection.cursor()
             cursor.execute(insert_string)
             self.connection.commit()

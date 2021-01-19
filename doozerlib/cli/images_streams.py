@@ -762,7 +762,7 @@ If you have any questions about this pull request, please reach out to `@art-tea
                         # returning it. So catch the error and try to move on.
                         pr_url = f'UnknownPR-{fork_branch_head}'
                         pr_links[dgk] = pr_url
-                        yellow_print(f'Issue attempting to find it, but a PR is already open requesting desired reconciliation with ART')
+                        yellow_print('Issue attempting to find it, but a PR is already open requesting desired reconciliation with ART')
                         continue
 
                 try:
