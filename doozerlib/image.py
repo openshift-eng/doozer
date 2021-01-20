@@ -283,16 +283,16 @@ class ImageMetadata(Metadata):
                     # Example output: https://gist.github.com/jupierce/3bbc8be7265348a8f549d401664c9972
                     extra_latest_tagging_infos = koji_api.queryHistory(table='tag_listing', tag=extra_package_brew_tag, package=extra_package_name, active=True)['tag_listing']
 
-                    if not extra_latest_tagging_infos:
-                        raise IOError(f'{dgk} unable to find tagging event for for extra_packages {extra_package_name} in tag {extra_package_brew_tag}')
-
-                    # Otherwise, we have information about the most recent time this package was tagged into the
-                    # relevant tag. Why the tagging event and not the build time? Well, the build could have been
-                    # made long ago, but only tagged into the relevant tag recently.
-                    extra_latest_tagging_event = extra_latest_tagging_infos[0]['create_event']
-                    self.logger.debug(f'Checking image creation time against extra_packages {extra_package_name} in tag {extra_package_brew_tag} @ tagging event {extra_latest_tagging_event}')
-                    if extra_latest_tagging_event > image_build_event_id:
-                        return self, True, f'Image {dgk} is sensitive to extra_packages {extra_package_name} which changed at event {extra_latest_tagging_event}'
+                    if extra_latest_tagging_infos:
+                        # We have information about the most recent time this package was tagged into the
+                        # relevant tag. Why the tagging event and not the build time? Well, the build could have been
+                        # made long ago, but only tagged into the relevant tag recently.
+                        extra_latest_tagging_event = extra_latest_tagging_infos[0]['create_event']
+                        self.logger.debug(f'Checking image creation time against extra_packages {extra_package_name} in tag {extra_package_brew_tag} @ tagging event {extra_latest_tagging_event}')
+                        if extra_latest_tagging_event > image_build_event_id:
+                            return self, True, f'Image {dgk} is sensitive to extra_packages {extra_package_name} which changed at event {extra_latest_tagging_event}'
+                    else:
+                        self.logger.warning(f'{dgk} unable to find tagging event for for extra_packages {extra_package_name} in tag {extra_package_brew_tag} ; Possible metadata error.')
 
             # Collect build times from any parent/builder images used to create this image
             builders = list(self.config['from'].builder) or []
