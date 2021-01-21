@@ -4,11 +4,16 @@ import time
 import os
 import threading
 import traceback
-import mysql.connector as mysql_connector
 from doozerlib import constants
 import functools
 from .model import Missing
 import datetime
+
+try:
+    import mysql.connector as mysql_connector
+except:
+    # Allow this module to be missing
+    pass
 
 
 class DBLibException(Exception):
@@ -105,6 +110,8 @@ class DB(object):
             self.runtime.logger.error("Environment variables required for db operation missing. Doozer will be running"
                                       "in no DB use mode.")
             return False
+
+        import mysql.connector as mysql_connector
 
         # if required configuration parameters are found, set instance attributes to configuration values
         self.host = os.getenv(constants.DB_HOST, constants.default_db_params[constants.DB_HOST])
