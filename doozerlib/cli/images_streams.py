@@ -439,6 +439,15 @@ def extract_parent_digest(dockerfile_path):
     return calc_parent_digest(dfp.parent_images), dfp.parent_images
 
 
+def compute_dockerfile_digest(dockerfile_path):
+    with dockerfile_path.open(mode='r') as handle:
+        # Read in and standardize linefeed
+        content = '\n'.join(handle.read().splitlines())
+        m = hashlib.md5()
+        m.update(content.encode('utf-8'))
+        return m.hexdigest()
+
+
 def resolve_upstream_from(runtime, image_entry):
     """
     :param runtime: The runtime object
@@ -633,48 +642,73 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
             df_path = df_path.joinpath(dockerfile_name)
 
+            fork_branch_df_digest = None  # digest of entire dockerfile
             fork_branch_parent_digest = None
             fork_branch_parents = None
             if fork_branch:
+                # There is already an ART reconciliation branch. Our fork branch might be up-to-date
+                # OR behind the times (e.g. if someone commited changes to the upstream Dockerfile).
+                # Let's check.
+
                 # If there is already an art reconciliation branch, get an MD5
                 # of the FROM images in the Dockerfile in that branch.
                 exectools.cmd_assert(f'git checkout fork/{fork_branch_name}')
                 fork_branch_parent_digest, fork_branch_parents = extract_parent_digest(df_path)
+                fork_branch_df_digest = compute_dockerfile_digest(df_path)
 
             # Now change over to the target branch in the actual public repo
             exectools.cmd_assert(f'git checkout public/{public_branch}')
-
             source_branch_parent_digest, source_branch_parents = extract_parent_digest(df_path)
 
+            print(f'Desired parents: {desired_parents} ({desired_parent_digest})')
+            print(f'Source parents: {source_branch_parents} ({source_branch_parent_digest})')
             if desired_parent_digest == source_branch_parent_digest:
                 green_print('Desired digest and source digest match; Upstream is in a good state')
                 continue
 
+            cardinality_mismatch = False
+            if len(desired_parents) != len(source_branch_parents):
+                # The number of FROM statements in the ART metadata does not match the number
+                # of FROM statements in the upstream Dockerfile.
+                cardinality_mismatch = True
+
             yellow_print(f'Upstream dockerfile does not match desired state in {public_repo_url}/blob/{public_branch}/{dockerfile_name}')
-            print(f'Desired parents: {desired_parents} ({desired_parent_digest})')
-            print(f'Source parents: {source_branch_parents} ({source_branch_parent_digest})')
-            print(f'Fork branch digest: {fork_branch_parents} ({fork_branch_parent_digest})')
+            print(f'Fork Dockerfile digest: {fork_branch_df_digest}')
 
             first_commit_line = f"Updating {image_meta.name} builder & base images to be consistent with ART"
             reconcile_info = f"Reconciling with {convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}"
 
             diff_text = None
-            if fork_branch_parent_digest != desired_parent_digest:
-                # The fork branch either does not exist, or does not have the desired parent image state
-                # Let's create a local branch that will contain the Dockerfile in the state we desire.
-                work_branch_name = '__mod'
-                exectools.cmd_assert(f'git checkout public/{public_branch}')
-                exectools.cmd_assert(f'git checkout -b {work_branch_name}')
-                with df_path.open(mode='r+') as handle:
-                    dfp = DockerfileParser(cache_content=True, fileobj=io.BytesIO())
-                    dfp.content = handle.read()
+            # Three possible states at this point:
+            # 1. No fork branch exists
+            # 2. It does exist, but is out of date (e.g. metadata has changed or upstream Dockerfile has changed)
+            # 3. It does exist, and is exactly how we want it.
+            # Let's create a local branch that will contain the Dockerfile in the state we desire.
+            work_branch_name = '__mod'
+            exectools.cmd_assert(f'git checkout public/{public_branch}')
+            exectools.cmd_assert(f'git checkout -b {work_branch_name}')
+            with df_path.open(mode='r+') as handle:
+                dfp = DockerfileParser(cache_content=True, fileobj=io.BytesIO())
+                dfp.content = handle.read()
+                handle.truncate(0)
+                handle.seek(0)
+                if not cardinality_mismatch:
                     dfp.parent_images = desired_parents
-                    handle.truncate(0)
-                    handle.seek(0)
-                    handle.write(dfp.content)
+                else:
+                    handle.writelines([
+                        '# URGENT! ART metadata configuration has a different number of FROMs\n',
+                        '# than this Dockerfile. ART will be unable to build your component or\n',
+                        '# reconcile this Dockerfile until that disparity is addressed.\n'
+                    ])
+                handle.write(dfp.content)
 
-                diff_text, _ = exectools.cmd_assert(f'git diff {str(df_path)}')
+            diff_text, _ = exectools.cmd_assert(f'git diff {str(df_path)}')
 
+            desired_df_digest = compute_dockerfile_digest(df_path)
+            print(f'Desired Dockerfile digest: {desired_df_digest}')
+
+            if desired_df_digest != fork_branch_df_digest:
+                yellow_print('Found that fork branch is not in sync with public Dockerfile changes')
                 if not moist_run:
                     exectools.cmd_assert(f'git add {str(df_path)}')
                     commit_prefix = ''
