@@ -84,7 +84,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
             if only_if_missing:
                 check_cmd = f'oc image info {upstream_dest}'
                 rc, check_out, check_err = exectools.cmd_gather(check_cmd)
-                if 'does not exist' not in check_err:  # should be 'error: image does not exist or you don't have permission to access the repository'
+                if rc == 0:
                     print(f'Image {upstream_dest} seems to exist already; skipping because of --only-if-missing')
                     continue
 
