@@ -1,5 +1,4 @@
 bashlex
-boto3
 click >= 6.7
 dockerfile-parse >= 0.0.13
 future
