@@ -303,9 +303,18 @@ class Repos(object):
                             arch
                         ]
                     },
-                    "notes.content_set": {
-                        "$in": names
-                    }
+                    # per CLOUDWF-4852 content sets may now be specified as pulp repo names.
+                    "$or": [
+                        {
+                            "notes.content_set": {
+                                "$in": names
+                            }
+                        }, {
+                            "id": {
+                                "$in": names
+                            }
+                        }
+                    ]
                 }
             }
         }
@@ -328,11 +337,13 @@ class Repos(object):
 
         resp_dict = response.json()
 
-        result = []
-        for cs in resp_dict:
-            result.append(Model(cs).notes.content_set)
+        result = set()
+        for repo in [Model(repo) for repo in resp_dict]:
+            # per CLOUDWF-4852 content sets may now be specified as pulp repo names.
+            # since we may be searching by either, return both to be compared against the request.
+            result.update([repo.id, repo.notes.content_set])
 
-        return set(result)
+        return result
 
     def validate_content_sets(self):
         # Determine repos that have no content sets defined at all; we will give these a pass if nothing tries to use them.
