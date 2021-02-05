@@ -1737,7 +1737,10 @@ def config_gencsv(runtime, keys, as_type, output):
               help="Override content from stable channel - primarily for testing")
 @click.option("--graph-content-candidate", metavar='JSON_FILE', required=False,
               help="Override content from stable channel - primarily for testing")
-def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate):
+@click.option("--suggestions-url", metavar='SUGGESTIONS_URL', required=False,
+              default="https://raw.githubusercontent.com/openshift/cincinnati-graph-data/master/build-suggestions/",
+              help="Suggestions URL, load from {major}-{minor}-{arch}.yaml")
+def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate, suggestions_url):
     major, minor = extract_version_fields(version, at_least=2)[:2]
     if arch == 'x86_64':
         arch = 'amd64'  # Cincinnati is go code, and uses a different arch name than brew
@@ -1747,9 +1750,7 @@ def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_
 
     # Get the names of channels we need to analyze
     candidate_channel = get_cincinnati_channels(major, minor)[0]
-    stable_channel = get_cincinnati_channels(major, minor)[-1]
     prev_candidate_channel = get_cincinnati_channels(major, minor - 1)[0]
-    prev_stable_channel = get_cincinnati_channels(major, minor - 1)[-1]
 
     def sort_semver(versions):
         return sorted(versions, key=functools.cmp_to_key(semver.compare), reverse=True)
@@ -1797,16 +1798,41 @@ def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_
 
         return descending_versions, edges
 
+    def get_build_suggestions(suggestions_url, major, minor, arch):
+        """
+        Loads suggestions_url/major.minor.yaml and returns minor_min, minor_max,
+        minor_block_list, z_min, z_max, and z_block_list
+        :param suggestions_url: Base url to /{major}.{minor}.yaml
+        :param major: Major version
+        :param minor: Minor version
+        :param arch: Architecture to lookup
+        :return: {minor_min, minor_max, minor_block_list, z_min, z_max, z_block_list}
+        """
+        url = f'{suggestions_url}/{major}.{minor}.yaml'
+        req = urllib.request.Request(url)
+        req.add_header('Accept', 'application/yaml')
+        suggestions = yaml.safe_load(exectools.urlopen_assert(req))
+        if arch in suggestions:
+            return suggestions[arch]
+        else:
+            return suggestions['default']
+
     upgrade_from = set()
-    upgrade_from.update(get_channel_versions(prev_candidate_channel)[0][:2])
-    upgrade_from.update(get_channel_versions(prev_stable_channel)[0][:2])
+    prev_versions, prev_edges = get_channel_versions(prev_candidate_channel)
+    curr_versions, current_edges = get_channel_versions(candidate_channel)
+    suggestions = get_build_suggestions(suggestions_url, major, minor, arch)
+    for v in prev_versions:
+        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['minor_min'])
+                and semver.VersionInfo.parse(v) < semver.VersionInfo.parse(suggestions['minor_max'])
+                and v not in suggestions['minor_block_list']):
+            upgrade_from.add(v)
+    for v in curr_versions:
+        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['z_min'])
+                and semver.VersionInfo.parse(v) < semver.VersionInfo.parse(suggestions['z_max'])
+                and v not in suggestions['z_block_list']):
+            upgrade_from.add(v)
 
     candidate_channel_versions, candidate_edges = get_channel_versions(candidate_channel)
-    upgrade_from.update(candidate_channel_versions[:2])  # Add up to the most recent two
-
-    stable_channel_versions, stable_edges = get_channel_versions(stable_channel)
-    upgrade_from.update(stable_channel_versions[:10])  # Add up to the most recent ten
-
     # 'nightly' was an older convention. This nightly variant check can be removed by Oct 2020.
     if 'nightly' not in version and 'hotfix' not in version:
         # If we are not calculating a previous list for standard release, we want edges from previously
