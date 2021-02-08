@@ -370,8 +370,8 @@ class PayloadGenerator:
             tag_list.append(self._get_istag_spec(tag_name, source, target))
 
         # add in rhcos tag
-        mosc_istag = self._get_mosc_istag_spec(rhcos_source, rhcos_inconsistencies)
-        if mosc_istag:
+        if rhcos_source:  # missing rhcos should not prevent syncing everything else
+            mosc_istag = self._get_mosc_istag_spec(rhcos_source, rhcos_inconsistencies)
             tag_list.append(mosc_istag)
 
         tag_list.extend(self._extra_dummy_tags(arch, private, source_for_name, x86_source_for_name, target))
