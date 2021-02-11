@@ -338,8 +338,9 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
             # Allow the base repos to be used BEFORE art begins mirroring 4.x to openshift mirrors.
             # This allows us to establish this locations later -- only disrupting CI for those
             # components that actually need reposync'd RPMs from the mirrors.
-            dfp.add_lines("RUN yum-config-manager --save '--setopt=*.skip_if_unavailable=True'")
             add_localdev_repo_profile('el7')
+            dfp.add_lines("RUN yum-config-manager --save '--setopt=skip_if_unavailable=True'")
+            dfp.add_lines("RUN yum-config-manager --save '--setopt=*.skip_if_unavailable=True'")
 
         # We've arrived at a Dockerfile.
         dockerfile_content = dfp.content
