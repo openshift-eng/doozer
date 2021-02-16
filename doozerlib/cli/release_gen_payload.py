@@ -452,11 +452,11 @@ class PayloadGenerator:
                 })
         elif self.runtime.group_config.public_upstreams and not private:
             # If cli is embargoed, it is expected that cli is missing in any non *-priv imagestreams.
-            self.runtime.logger.warning(f"Unable to find cli tag from {arch} imagestream. Is `cli` image embargoed?")
+            self.runtime.logger.warning(f"Unable to find cli tag from {arch} imagestream. Is `cli` image embargoed or out of sync with siblings?")
         else:
             # if CVE embargoes supporting is disabled or the "cli" image is also
             # missing in *-priv namespaces, an error will be raised.
-            raise DoozerFatalError('A dummy image is required for tag {} on arch {}, but unable to find cli tag for this arch'.format(tag_name, arch))
+            raise DoozerFatalError(f"A dummy image is required for arch {arch}, but `cli` image is not available to stand in")
 
         return tag_list
 
