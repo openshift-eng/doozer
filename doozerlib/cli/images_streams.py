@@ -643,9 +643,17 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
             df_path = df_path.joinpath(dockerfile_name)
 
-            fork_branch_df_digest = None  # digest of entire dockerfile
-            fork_branch_parent_digest = None
-            fork_branch_parents = None
+            assignee = None
+            try:
+                root_owners_path = Dir.getpath().joinpath('OWNERS')
+                if root_owners_path.exists():
+                    parsed_owners = yaml.load(root_owners_path.read_text())
+                    if 'approvers' in parsed_owners:
+                        assignee = parsed_owners['approvers'][0]
+            except Exception as owners_e:
+                yellow_print(f'Error finding assignee in OWNERS for {public_repo_url}: {owners_e}')
+
+            fork_branch_df_digest = None  # digest of dockerfile image names
             if fork_branch:
                 # There is already an ART reconciliation branch. Our fork branch might be up-to-date
                 # OR behind the times (e.g. if someone commited changes to the upstream Dockerfile).
@@ -654,17 +662,24 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 # If there is already an art reconciliation branch, get an MD5
                 # of the FROM images in the Dockerfile in that branch.
                 exectools.cmd_assert(f'git checkout fork/{fork_branch_name}')
-                fork_branch_parent_digest, fork_branch_parents = extract_parent_digest(df_path)
                 fork_branch_df_digest = compute_dockerfile_digest(df_path)
 
             # Now change over to the target branch in the actual public repo
             exectools.cmd_assert(f'git checkout public/{public_branch}')
             source_branch_parent_digest, source_branch_parents = extract_parent_digest(df_path)
+            public_branch_commit, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
 
             print(f'Desired parents: {desired_parents} ({desired_parent_digest})')
             print(f'Source parents: {source_branch_parents} ({source_branch_parent_digest})')
             if desired_parent_digest == source_branch_parent_digest:
                 green_print('Desired digest and source digest match; Upstream is in a good state')
+                if fork_branch:
+                    for pr in list(public_source_repo.get_pulls(state='open', head=fork_branch_head)):
+                        if moist_run:
+                            yellow_print(f'Would have closed existing PR: {pr.html_url}')
+                        else:
+                            yellow_print(f'Closing unnecessary PR: {pr.html_url}')
+                            pr.edit(status='Closed')
                 continue
 
             cardinality_mismatch = False
@@ -768,10 +783,28 @@ If you have any questions about this pull request, please reach out to `@art-tea
                     # We are not admin on all repos
                     yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
-                existing_pr.edit(body=pr_body)
                 pr_url = existing_pr.html_url
                 pr_links[dgk] = pr_url
-                yellow_print(f'A PR is already open requesting desired reconciliation with ART: {pr_url}')
+
+                # The pr_body may change and the base branch may change (i.e. at branch cut,
+                # a version 4.6 in master starts being tracked in release-4.6 and master tracks
+                # 4.7.
+                if moist_run:
+                    if existing_pr.base.sha != public_branch_commit:
+                        yellow_print(f'Would have changed PR {pr_url} to use base {public_branch} ({public_branch_commit}) vs existing {existing_pr.base.sha}')
+                    if existing_pr.body != pr_body:
+                        yellow_print(f'Would have changed PR {pr_url} to use body "{pr_body}" vs existing "{existing_pr.body}"')
+                    if not existing_pr.assignees and assignee:
+                        yellow_print(f'Would have changed PR assignee to {assignee}')
+                else:
+                    if not existing_pr.assignees and assignee:
+                        try:
+                            existing_pr.add_to_assignees(assignee)
+                        except Exception as access_issue:
+                            # openshift-bot does not have admin on *all* repositories; permit this error.
+                            yellow_print(f'Unable to set assignee for {pr_url}: {access_issue}')
+                    existing_pr.edit(body=pr_body, base=public_branch)
+                    yellow_print(f'A PR is already open requesting desired reconciliation with ART: {pr_url}')
                 continue
 
             # Otherwise, we need to create a pull request
@@ -799,7 +832,7 @@ If you have any questions about this pull request, please reach out to `@art-tea
                         pr_links[dgk] = pr_url
                         yellow_print('Issue attempting to find it, but a PR is already open requesting desired reconciliation with ART')
                         continue
-                    raise ge
+                    raise
 
                 try:
                     if alignment_prs_config.auto_label and add_auto_labels:
