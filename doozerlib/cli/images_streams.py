@@ -723,7 +723,19 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             desired_df_digest = compute_dockerfile_digest(df_path)
             print(f'Desired Dockerfile digest: {desired_df_digest}')
 
-            if desired_df_digest != fork_branch_df_digest:
+            # Check for any existing open PR
+            open_prs = list(public_source_repo.get_pulls(state='open', head=fork_branch_head))
+
+            # A note on why the following `if` cares about whether there is a PR open.
+            # We need to check on an edge case.. if the upstream merged our reconciliation PR and THEN proceeded to change
+            # their Dockerfile FROMs again, our desired_df_digest will always equal fork_branch_df_digest and
+            # we might conclude that we just need to open a PR with our fork branch. However, in this scenario,
+            # GitHub will throw an exception like:
+            # "No commits between openshift:master and openshift-bot:art-consistency-openshift-4.8-ptp-operator-must-gather"
+            # So... to prevent this, if there is no open PR, we should force push to the fork branch to bring it
+            # it's commit ahead of the public branch.
+
+            if desired_df_digest != fork_branch_df_digest or not open_prs:
                 yellow_print('Found that fork branch is not in sync with public Dockerfile changes')
                 if not moist_run:
                     exectools.cmd_assert(f'git add {str(df_path)}')
@@ -765,8 +777,6 @@ If you have any questions about this pull request, please reach out to `@art-tea
                     # child PR notes that the parent PR should merge first.
                     pr_body += f'\nDepends on {parent_pr_url} . Allow it to merge and then run `/test all` on this PR.'
 
-            # Let's see if there is a PR opened
-            open_prs = list(public_source_repo.get_pulls(state='open', head=fork_branch_head))
             if open_prs:
                 existing_pr = open_prs[0]
                 # Update body, but never title; The upstream team may need set something like a Bug XXXX: there.
