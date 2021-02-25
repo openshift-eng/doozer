@@ -679,7 +679,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                             yellow_print(f'Would have closed existing PR: {pr.html_url}')
                         else:
                             yellow_print(f'Closing unnecessary PR: {pr.html_url}')
-                            pr.edit(status='Closed')
+                            pr.edit(state='closed')
                 continue
 
             cardinality_mismatch = False
