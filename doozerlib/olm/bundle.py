@@ -482,7 +482,7 @@ class OLMBundle(object):
 
     @property
     def redhat_delivery_tags(self):
-        versions = 'v{MAJOR}.{MINOR}'.format(**self.runtime.group_config.vars)
+        versions = '=v{MAJOR}.{MINOR}'.format(**self.runtime.group_config.vars)
 
         return {
             # 'com.redhat.delivery.backport': 'true',
