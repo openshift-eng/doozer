@@ -123,6 +123,18 @@ class DB(object):
         self.runtime.logger.info("Found all environment variables required for db setup.")
         return True
 
+    def select(self, expr, limit):
+        exeresult=""
+        if self.mysql_db_env_var_setup:
+            db_connection = mysql_connector.connect(host=self.host,
+                                                      user=self.db_user,
+                                                      password=self.pwd)
+            cursor = db_connection.cursor()
+            cursor.execute("{} LIMIT {}".format(expr,limit))
+            exeresult = cursor.fetchall()
+            cursor.close()
+        return exeresult
+
     def check_database_exists(self):
 
         """
