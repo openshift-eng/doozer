@@ -662,7 +662,12 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 # If there is already an art reconciliation branch, get an MD5
                 # of the FROM images in the Dockerfile in that branch.
                 exectools.cmd_assert(f'git checkout fork/{fork_branch_name}')
-                fork_branch_df_digest = compute_dockerfile_digest(df_path)
+                if df_path.exists():
+                    fork_branch_df_digest = compute_dockerfile_digest(df_path)
+                else:
+                    # It is possible someone has moved the Dockerfile around since we
+                    # made the fork.
+                    fork_branch_df_digest = 'DOCKERFILE_NOT_FOUND'
 
             # Now change over to the target branch in the actual public repo
             exectools.cmd_assert(f'git checkout public/{public_branch}')
