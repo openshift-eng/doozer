@@ -61,41 +61,48 @@ def get_concerns(image, runtime, limit, url_markup):
 
     latest_success_idx = -1
     latest_success_bi = None
+    latest_success_bi_task_url = ''
+    latest_success_bi_build_url = ''
+    latest_success_bi_dt = ''
+
     for idx, record in enumerate(records):
-        bi = extract_buildinfo(record)
-        if bi.task_state == 'success':
+        # record=( jobid, state, timestamp, joburl)
+        if record[1] == 'success':
             latest_success_idx = idx
-            latest_success_bi = bi
+            latest_success_bi = record
+            latest_success_bi_task_url = f"https://brewweb.engineering.redhat.com/brew/taskinfo?taskID={latest_success_bi[0]}"
+            latest_success_bi_build_url = latest_success_bi[3]
+            latest_success_bi_dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(latest_success_bi[2] / 1000))
             break
 
-    latest_attempt_bi = extract_buildinfo(records[0])
-    oldest_attempt_bi = extract_buildinfo(records[-1])
+    latest_attempt_build_url = records[0][3]
+    latest_attempt_task_url = f"https://brewweb.engineering.redhat.com/brew/taskinfo?taskID={records[0][0]}"
+    oldest_attempt_bi_dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(records[-1][2] / 1000))
 
     if latest_success_idx != 0:
-        msg = f'Latest attempt {url_text(latest_attempt_bi.task_url, "failed")} ({url_text(latest_attempt_bi.build_url, "jenkins job")}); '
+        msg = f'Latest attempt {url_text(latest_attempt_task_url, "failed")} ({url_text(latest_attempt_build_url, "jenkins job")}); '
         # The latest attempt was a failure
         if latest_success_idx == -1:
             # No success record was found
-            msg += f'Failing for at least the last {len(records)} attempts / {oldest_attempt_bi.dt}'
+            msg += f'Failing for at least the last {len(records)} attempts / {oldest_attempt_bi_dt}'
         else:
-            msg += f'Last {url_text(latest_success_bi.task_url, "success")} was {latest_success_idx} attempts ago on {latest_success_bi.dt}'
+            msg += f'Last {url_text(latest_success_bi_task_url, "success")} was {latest_success_idx} attempts ago on {latest_success_bi_dt}'
 
         add_concern(msg)
 
     else:
         if older_than_two_weeks(latest_success_bi):
             # This could be made smarter by recording rebase attempts in the database..
-            add_concern(f'Last {url_text(latest_success_bi.task_url, "build")} ({url_text(latest_success_bi.build_url, "jenkins job")}) was over two weeks ago.')
+            add_concern(f'Last {url_text(latest_success_bi_task_url, "build")} ({url_text(latest_success_bi_build_url, "jenkins job")}) was over two weeks ago.')
 
     return image_concerns
 
 
 def query(name, runtime, limit=100):
-    domain = f'`ART_{runtime.datastore}_build`'
-
-    fields_str = "`brew.task_id`, `brew.task_state`, `build.time.unix`, `jenkins.build_url`"
-    where_str = f'WHERE `group`="{runtime.group_config.name}" and `dg.qualified_key`="{name}" and `build.time.unix` is not null'
-    sort_by_str = ' ORDER BY `build.time.unix` DESC'
+    domain = "`log_build`"
+    fields_str = "`brew_task_id`, `brew_task_state`, `time_unix`, `jenkins_build_url`"
+    where_str = f'WHERE `group`="{runtime.group_config.name}" and `dg_qualified_key`="{name}" and `time_unix` is not null'
+    sort_by_str = ' ORDER BY `time_unix` DESC'
 
     expr = f'SELECT {fields_str} FROM {domain} {where_str} {sort_by_str}'
     return runtime.db.select(expr, limit=int(limit))
@@ -128,4 +135,4 @@ def extract_buildinfo(record):
 
 
 def older_than_two_weeks(task_record):
-    return task_record.ts - now_unix_ts > 2 * 7 * millis_day
+    return task_record[2] - now_unix_ts > 2 * 7 * millis_day
