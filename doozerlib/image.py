@@ -309,12 +309,18 @@ class ImageMetadata(Metadata):
                 else:
                     raise IOError(f'Unable to determine builder or parent image pullspec from {builder}')
 
-                # builder_image_name example: "openshift/ose-base:ubi8"
-                brew_image_url = self.runtime.resolve_brew_image_url(builder_image_name)
-                builder_brew_build = ImageMetadata.builder_image_builds.get(brew_image_url, None)
+                slash_count = builder_image_name.count('/')
+                if slash_count > 1:
+                    # assume this is a full pullspec; e.g. "registry.redhat.io/ubi8/nodejs-12:1-45"
+                    builder_image_url = builder_image_name
+                else:
+                    # Assume this is a org/repo name relative to brew; e.g. "openshift/ose-base:ubi8"
+                    builder_image_url = self.runtime.resolve_brew_image_url(builder_image_name)
+
+                builder_brew_build = ImageMetadata.builder_image_builds.get(builder_image_url, None)
 
                 if not builder_brew_build:
-                    out, err = exectools.cmd_assert(f'oc image info {brew_image_url} --filter-by-os amd64 -o=json', retries=5, pollrate=10)
+                    out, err = exectools.cmd_assert(f'oc image info {builder_image_url} --filter-by-os amd64 -o=json', retries=5, pollrate=10)
                     latest_builder_image_info = Model(json.loads(out))
                     builder_info_labels = latest_builder_image_info.config.config.Labels
                     builder_nvr_list = [builder_info_labels['com.redhat.component'], builder_info_labels['version'], builder_info_labels['release']]
@@ -324,8 +330,8 @@ class ImageMetadata(Metadata):
 
                     builder_image_nvr = '-'.join(builder_nvr_list)
                     builder_brew_build = koji_api.getBuild(builder_image_nvr)
-                    ImageMetadata.builder_image_builds[brew_image_url] = builder_brew_build
-                    self.logger.debug(f'Found that builder or parent image {brew_image_url} has event {builder_brew_build}')
+                    ImageMetadata.builder_image_builds[builder_image_url] = builder_brew_build
+                    self.logger.debug(f'Found that builder or parent image {builder_image_url} has event {builder_brew_build}')
 
                 if image_build_event_id < builder_brew_build['creation_event_id']:
                     self.logger.info(f'will be rebuilt because a builder or parent image changed: {builder_image_name}')
