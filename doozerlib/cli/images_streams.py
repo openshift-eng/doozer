@@ -540,6 +540,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
     pr_links = {}  # map of distgit_key to PR URLs associated with updates
     new_pr_links = {}
     skipping_dgks = set()  # If a distgit key is skipped, it children will see it in this list and skip themselves.
+    existing_images = set()  # A PR will not be opened unless the upstream image exists; keep track of ones we have checked.
     for image_meta in runtime.ordered_image_metas():
         dgk = image_meta.distgit_key
         logger = image_meta.logger
@@ -564,6 +565,16 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             if not upstream_image:
                 logger.warning(f'Unable to resolve upstream image for: {builder}')
                 break
+            if upstream_image not in existing_images:
+                # We don't know yet whether this image exists; perhaps a buildconfig is
+                # failing. Don't open PRs for images that don't yet exist.
+                try:
+                    exectools.cmd_assert(f'oc image info {upstream_image}', retries=3)
+                except:
+                    logger.warning(f'Unable to access upstream image {upstream_image} -- check whether buildconfigs are running successfully.')
+                    raise
+                existing_images.add(upstream_image)  # Don't check this image again since it is a little slow to do so.
+
             desired_parents.append(upstream_image)
 
         parent_upstream_image = resolve_upstream_from(runtime, from_config)
