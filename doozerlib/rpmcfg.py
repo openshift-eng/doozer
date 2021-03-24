@@ -523,8 +523,13 @@ class RPMMetadata(Metadata):
     def assert_golang_versions(self):
         """ Assert all buildroots have consistent versions of golang compilers
         """
-        check_mode = self.runtime.group_config.check_golang_versions or "x.y"  # no: do not check; x.y: only major and minor version; exact: the z-version must be the same
-        if check_mode == "no":
+        # no: do not check; x.y: only major and minor version; exact: the z-version must be the same
+        check_mode = self.runtime.group_config.check_golang_versions
+        if check_mode is Missing:
+            check_mode = "x.y"
+
+        if check_mode == "no" or check_mode is False:
+            # if 'no' is not wrapped in quotes in the yaml, it is interpreted as False; so check both
             return
 
         # populate target_golangs with information from Brew
