@@ -1,4 +1,4 @@
-FROM fedora:32
+FROM fedora:33
 
 # Trust the Red Hat IT Root CA and set up rcm-tools repo
 RUN curl -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --fail -L \
@@ -14,8 +14,8 @@ RUN dnf install -y \
     # provides en_US.UTF-8 locale required by tito
     glibc-langpack-en \
     # development dependencies
-    gcc krb5-devel openssl-devel libgit2-devel \
-    python3-devel python3-pip \
+    gcc krb5-devel \
+    python3-devel python3-pip python3-wheel \
     # other tools for development and troubleshooting
     bash-completion vim tmux procps-ng psmisc wget net-tools iproute socat \
     # install rcm-tools
