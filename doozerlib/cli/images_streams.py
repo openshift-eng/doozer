@@ -186,11 +186,11 @@ def get_transform_entries(runtime, stream_names=None):
             raise IOError(f'Did not find stream {stream} in streams.yml for this group')
         transform_entries[stream] = streams_config[stream]
 
-    # Some images also have their own upstream transform information. This allows them to
-    # be mirrored out into upstream, transformed, and made available as builder images for
+    # Some images also have their own upstream information. This allows them to
+    # be mirrored out into upstream, optionally transformed, and made available as builder images for
     # other images without being in streams.yml.
     for image_meta in runtime.ordered_image_metas():
-        if image_meta.config.content.source.ci_alignment is not Missing:
+        if image_meta.config.content.source.ci_alignment.upstream_image is not Missing:
             transform_entry = model.Model(dict_to_model=image_meta.config.content.source.ci_alignment.primitive())  # Make a copy
             transform_entry['image'] = image_meta.pull_url()  # Make the image metadata entry match what would exist in streams.yml.
             transform_entries[image_meta.distgit_key] = transform_entry
