@@ -7,13 +7,12 @@ import hashlib
 import time
 
 from github import Github, UnknownObjectException, GithubException
-from dockerfile_parse import DockerfileParser
 
 from dockerfile_parse import DockerfileParser
 from doozerlib.model import Missing
 from doozerlib.pushd import Dir
 from doozerlib.cli import cli, pass_runtime
-from doozerlib import brew, state, exectools
+from doozerlib import brew, state, exectools, model
 from doozerlib.util import get_docker_config_json, convert_remote_git_to_ssh, \
     split_git_url, remove_prefix, green_print,\
     yellow_print, red_print, convert_remote_git_to_https, \
@@ -61,20 +60,17 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
         user_specified = False
         streams = runtime.get_stream_names()
 
-    streams_config = runtime.streams
-    for stream in streams:
-        if streams_config[stream] is Missing:
-            raise IOError(f'Did not find stream {stream} in streams.yml for this group')
+    transform_entries = get_transform_entries(runtime, streams)
 
-        config = streams_config[stream]
+    for transform_entry_name, config in transform_entries.items():
         if config.mirror is True or user_specified:
             upstream_dest = config.upstream_image
             if upstream_dest is Missing:
-                raise IOError(f'Unable to mirror stream {stream} as upstream_image is not defined')
+                raise IOError(f'Unable to mirror {transform_entry_name} since upstream_image is not defined')
 
             # If the configuration specifies a upstream_image_base, then ART is responsible for mirroring
-            # that location and NOT the upstream_image. DPTP will take the upstream_image_base and
-            # formulate the upstream_image.
+            # that location and NOT the upstream_image. A buildconfig from gen-buildconfig is responsible
+            # for transforming upstream_image_base to upstream_image.
             if config.upstream_image_base is not Missing:
                 upstream_dest = config.upstream_image_base
 
@@ -96,7 +92,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
             if runtime.registry_config_dir is not None:
                 cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_dir)}"
             if dry_run:
-                print(f'For {stream}, would have run: {cmd}')
+                print(f'For {transform_entry_name}, would have run: {cmd}')
             else:
                 exectools.cmd_assert(cmd, retries=3, realtime=True)
 
@@ -107,14 +103,10 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
 def images_streams_check_upstream(runtime, live_test_mode):
     runtime.initialize(clone_distgits=False, clone_source=False)
 
-    streams = runtime.get_stream_names()
-    streams_config = runtime.streams
     istags_status = []
-    for stream in streams:
-        config = streams_config[stream]
+    transform_entries = get_transform_entries(runtime)
 
-        if not(config.transform or config.mirror):
-            continue
+    for transform_entry_name, config in transform_entries.items():
 
         upstream_dest = config.upstream_image
         _, dest_ns, dest_istag = upstream_dest.rsplit('/', maxsplit=2)
@@ -124,9 +116,9 @@ def images_streams_check_upstream(runtime, live_test_mode):
 
         rc, stdout, stderr = exectools.cmd_gather(f'oc get -n {dest_ns} istag {dest_istag} --no-headers')
         if rc:
-            istags_status.append(f'ERROR: {stream}\nIs not yet represented upstream in {dest_ns} istag/{dest_istag}')
+            istags_status.append(f'ERROR: {transform_entry_name}\nIs not yet represented upstream in {dest_ns} istag/{dest_istag}')
         else:
-            istags_status.append(f'OK: {stream} exists, but check whether it is recently updated\n{stdout}')
+            istags_status.append(f'OK: {transform_entry_name} exists, but check whether it is recently updated\n{stdout}')
 
     group_label = runtime.group_config.name
     if live_test_mode:
@@ -134,9 +126,6 @@ def images_streams_check_upstream(runtime, live_test_mode):
 
     bc_stdout, bc_stderr = exectools.cmd_assert(f'oc -n ci get -o=wide buildconfigs -l art-builder-group={group_label}')
     builds_stdout, builds_stderr = exectools.cmd_assert(f'oc -n ci get -o=wide builds -l art-builder-group={group_label}')
-    ds_stdout, ds_stderr = exectools.cmd_assert(f'oc -n ci get ds -l art-builder-group={group_label}')
-    print('Daemonset status (pins image to prevent gc on node; verify that READY=CURRENT):')
-    print(ds_stdout or ds_stderr)
     print('Build configs:')
     print(bc_stdout or bc_stderr)
     print('Recent builds:')
@@ -177,6 +166,38 @@ def images_streams_start_buildconfigs(runtime, as_user, live_test_mode):
         print(f'No buildconfigs associated with this group: {group_label}')
 
 
+def get_transform_entries(runtime, stream_names=None):
+    """
+    Looks through streams.yml entries and each image metadata for upstream
+    transform information.
+    :param runtime: doozer runtime
+    :param stream_names: A list of streams to look for in streams.yml. If None or empty, all will be searched.
+    :return: Returns a map[name] => { transform: '...', upstream_image.... } where name is a stream name or distgit key.
+    """
+
+    if not stream_names:
+        # If not specified, use all.
+        stream_names = runtime.get_stream_names()
+
+    transform_entries = {}
+    streams_config = runtime.streams
+    for stream in stream_names:
+        if streams_config[stream] is Missing:
+            raise IOError(f'Did not find stream {stream} in streams.yml for this group')
+        transform_entries[stream] = streams_config[stream]
+
+    # Some images also have their own upstream transform information. This allows them to
+    # be mirrored out into upstream, transformed, and made available as builder images for
+    # other images without being in streams.yml.
+    for image_meta in runtime.ordered_image_metas():
+        if image_meta.config.content.source.ci_alignment is not Missing:
+            transform_entry = model.Model(dict_to_model=image_meta.config.content.source.ci_alignment.primitive())  # Make a copy
+            transform_entry['image'] = image_meta.pull_url()  # Make the image metadata entry match what would exist in streams.yml.
+            transform_entries[image_meta.distgit_key] = transform_entry
+
+    return transform_entries
+
+
 @images_streams.command('gen-buildconfigs', short_help='Generates buildconfigs necessary to assemble ART equivalent images upstream.')
 @click.option('--stream', 'streams', metavar='STREAM_NAME', default=[], multiple=True, help='If specified, only these stream names will be processed.')
 @click.option('-o', '--output', metavar='FILENAME', required=True, help='The filename into which to write the YAML. It should be oc applied against api.ci as art-publish. The file may be empty if there are no buildconfigs.')
@@ -214,10 +235,6 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
     runtime.initialize(clone_distgits=False, clone_source=False)
     runtime.assert_mutation_is_permitted()
 
-    if not streams:
-        # If not specified, use all.
-        streams = runtime.get_stream_names()
-
     transform_rhel_7_base_repos = 'rhel-7/base-repos'
     transform_rhel_8_base_repos = 'rhel-8/base-repos'
     transform_rhel_7_golang = 'rhel-7/golang'
@@ -245,13 +262,10 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
         group_label += '.test'
 
     buildconfig_definitions = []
-    ds_container_definitions = []
-    streams_config = runtime.streams
-    for stream in streams:
-        if streams_config[stream] is Missing:
-            raise IOError(f'Did not find stream {stream} in streams.yml for this group')
 
-        config = streams_config[stream]
+    transform_entries = get_transform_entries(runtime, streams)
+
+    for entry_name, config in transform_entries.items():
 
         transform = config.transform
         if transform is Missing:
@@ -259,12 +273,12 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
             continue
 
         if transform not in transforms:
-            raise IOError(f'Unable to render buildconfig for stream {stream} - transform {transform} not found within {transforms}')
+            raise IOError(f'Unable to render buildconfig for upstream config {entry_name} - transform {transform} not found within {transforms}')
 
         upstream_dest = config.upstream_image
         upstream_intermediate_image = config.upstream_image_base
         if upstream_dest is Missing or upstream_intermediate_image is Missing:
-            raise IOError(f'Unable to render buildconfig for stream {stream} - you must define upstream_image_base AND upstream_image')
+            raise IOError(f'Unable to render buildconfig for upstream config {entry_name} - you must define upstream_image_base AND upstream_image')
 
         # split a pullspec like registry.svc.ci.openshift.org/ocp/builder:rhel-8-golang-openshift-{MAJOR}.{MINOR}.art
         # into  OpenShift namespace, imagestream, and tag
@@ -280,8 +294,16 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
 
         python_file_dir = os.path.dirname(__file__)
 
-        # should align with files like: doozerlib/cli/streams_transforms/rhel-7/base-repos
-        transform_template = os.path.join(python_file_dir, 'streams_transforms', transform, 'Dockerfile')
+        # should align with files like: doozerlib/cli/ci_transforms/rhel-7/base-repos
+        # OR ocp-build-data branch ci_transforms/rhel-7/base-repos . The latter is given
+        # priority.
+        ocp_build_data_transform = os.path.join(runtime.data_dir, 'ci_transforms', transform, 'Dockerfile')
+        if os.path.exists(ocp_build_data_transform):
+            transform_template = os.path.join(runtime.data_dir, 'ci_transforms', transform, 'Dockerfile')
+        else:
+            # fall back to the doozerlib versions
+            transform_template = os.path.join(python_file_dir, 'ci_transforms', transform, 'Dockerfile')
+
         with open(transform_template, mode='r', encoding='utf-8') as tt:
             transform_template_content = tt.read()
 
@@ -292,7 +314,8 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
         dfp.envs['OPENSHIFT_CI'] = 'true'
 
         dfp.labels['io.k8s.display-name'] = f'{dest_imagestream}-{dest_tag}'
-        dfp.labels['io.k8s.description'] = f'ART equivalent image {group_label}-{stream} - {transform}'
+        dfp.labels['io.k8s.description'] = f'ART equivalent image {group_label}-{entry_name} - {transform}'
+        dfp.add_lines('USER 0')  # Make sure we are root so that repos can be modified
 
         def add_localdev_repo_profile(profile):
             """
@@ -354,7 +377,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
                 'namespace': 'ci',
                 'labels': {
                     'art-builder-group': group_label,
-                    'art-builder-stream': stream,
+                    'art-builder-stream': entry_name,
                 },
                 'annotations': {
                     'description': 'Generated by the ART pipeline by doozer. Processes raw ART images into ART equivalent images for CI.'
@@ -392,24 +415,6 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
         }
 
         buildconfig_definitions.append(buildconfig)
-
-        # define a daemonset container that will keep this image running on all nodes so that it will
-        # not be garbage collected by the kubelet in 3.11.
-        ds_container_definitions.append({
-            "image": f"registry.svc.ci.openshift.org/{dest_ns}/{dest_istag}",
-            "command": [
-                "/bin/bash",
-                "-c",
-                "#!/bin/bash\nset -euo pipefail\ntrap 'jobs -p | xargs -r kill || true; exit 0' TERM\nwhile true; do\n  sleep 600 &\n  wait $!\ndone\n"
-            ],
-            "name": f"{dest_ns}-{dest_imagestream}-{dest_tag}".replace('.', '-'),
-            "resources": {
-                    "requests": {
-                        "cpu": "50m"
-                    }
-            },
-            "imagePullPolicy": "Always"
-        })
 
     with open(output, mode='w+', encoding='utf-8') as f:
         objects = list()
@@ -460,13 +465,18 @@ def resolve_upstream_from(runtime, image_entry):
 
     if image_entry.member:
         target_meta = runtime.resolve_image(image_entry.member, True)
-        image_name = target_meta.config.name.split('/')[-1]
-        # In release payloads, images are promoted into an imagestream
-        # tag name without the ose- prefix.
-        image_name = remove_prefix(image_name, 'ose-')
 
-        # e.g. registry.ci.openshift.org/ocp/4.6:base
-        return f'registry.ci.openshift.org/ocp/{major}.{minor}:{image_name}'
+        if target_meta.config.content.source.ci_alignment.upstream_image is not Missing:
+            # If the upstream is specified in the metadata, use this information
+            # directly instead of a heuristic.
+            return target_meta.config.content.source.ci_alignment.upstream_image
+        else:
+            image_name = target_meta.config.name.split('/')[-1]
+            # In release payloads, images are promoted into an imagestream
+            # tag name without the ose- prefix.
+            image_name = remove_prefix(image_name, 'ose-')
+            # e.g. registry.ci.openshift.org/ocp/4.6:base
+            return f'registry.ci.openshift.org/ocp/{major}.{minor}:{image_name}'
 
     if image_entry.image:
         # CI is on its own. We can't give them an image that isn't available outside the firewall.
@@ -515,12 +525,14 @@ def prs():
 @click.option('--bug', metavar='BZ#', required=False, default=None, help='Title with Bug #: prefix')
 @click.option('--interstitial', metavar='SECONDS', default=120, required=False, help='Delay after each new PR to prevent flooding CI')
 @click.option('--ignore-ci-master', default=False, is_flag=True, help='Do not consider what is in master branch when determining what branch to target')
+@click.option('--ignore-missing-image', default=False, is_flag=True, help='Do not exit if an image is missing upstream.')
 @click.option('--draft-prs', default=False, is_flag=True, help='Open PRs as draft PRs')
 @click.option('--moist-run', default=False, is_flag=True, help='Do everything except opening the final PRs')
 @click.option('--add-auto-labels', default=False, is_flag=True, help='Add auto_labels to PRs; unless running as openshift-bot, you probably lack the privilege to do so')
 @click.option('--add-label', default=[], multiple=True, help='Add a label to all open PRs (new and existing) - Requires being openshift-bot')
 @pass_runtime
-def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_ci_master, draft_prs, moist_run, add_auto_labels, add_label):
+def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_ci_master,
+                       ignore_missing_image, draft_prs, moist_run, add_auto_labels, add_label):
     runtime.initialize(clone_distgits=False, clone_source=False)
     g = Github(login_or_token=github_access_token)
     github_user = g.get_user()
@@ -571,8 +583,9 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 try:
                     exectools.cmd_assert(f'oc image info {upstream_image}', retries=3)
                 except:
-                    logger.warning(f'Unable to access upstream image {upstream_image} -- check whether buildconfigs are running successfully.')
-                    raise
+                    yellow_print(f'Unable to access upstream image {upstream_image} for {dgk}-- check whether buildconfigs are running successfully.')
+                    if not ignore_missing_image:
+                        raise
                 existing_images.add(upstream_image)  # Don't check this image again since it is a little slow to do so.
 
             desired_parents.append(upstream_image)

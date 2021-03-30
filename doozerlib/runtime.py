@@ -912,7 +912,10 @@ class Runtime(object):
         e.g. "openshift/jenkins:5"  => "registry-proxy.engineering.redhat.com/rh-osbs/openshift-jenkins:5"
         """
 
-        if self.group_config.urls.brew_image_namespace is not Missing:
+        if self.group_config.urls.brew_image_host in image_name_and_version:
+            # Seems like a full brew url already
+            url = image_name_and_version
+        elif self.group_config.urls.brew_image_namespace is not Missing:
             # if there is a namespace, we need to flatten the image name.
             # e.g. openshift/image:latest => openshift-image:latest
             # ref: https://mojo.redhat.com/docs/DOC-1204856
