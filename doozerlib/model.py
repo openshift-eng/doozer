@@ -80,6 +80,8 @@ class ListModel(list):
 
     def __init__(self, list_to_model):
         super(self.__class__, self).__init__()
+        if isinstance(list_to_model, ListModel):
+            list_to_model = list_to_model.primitive()
         if list_to_model is not None:
             self.extend(list_to_model)
 
@@ -120,6 +122,8 @@ class Model(dict):
     def __init__(self, dict_to_model=None):
         super(Model, self).__init__()
         if dict_to_model is not None:
+            if isinstance(dict_to_model, Model):
+                dict_to_model = dict_to_model.primitive()
             for k, v in dict_to_model.items():
                 self[k] = v
 
