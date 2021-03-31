@@ -60,13 +60,13 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
         user_specified = False
         streams = runtime.get_stream_names()
 
-    transform_entries = get_transform_entries(runtime, streams)
+    upstreaming_entries = _get_upstreaming_entries(runtime, streams)
 
-    for transform_entry_name, config in transform_entries.items():
+    for upstream_entry_name, config in upstreaming_entries.items():
         if config.mirror is True or user_specified:
             upstream_dest = config.upstream_image
             if upstream_dest is Missing:
-                raise IOError(f'Unable to mirror {transform_entry_name} since upstream_image is not defined')
+                raise IOError(f'Unable to mirror {upstream_entry_name} since upstream_image is not defined')
 
             # If the configuration specifies a upstream_image_base, then ART is responsible for mirroring
             # that location and NOT the upstream_image. A buildconfig from gen-buildconfig is responsible
@@ -92,7 +92,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
             if runtime.registry_config_dir is not None:
                 cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_dir)}"
             if dry_run:
-                print(f'For {transform_entry_name}, would have run: {cmd}')
+                print(f'For {upstream_entry_name}, would have run: {cmd}')
             else:
                 exectools.cmd_assert(cmd, retries=3, realtime=True)
 
@@ -104,9 +104,9 @@ def images_streams_check_upstream(runtime, live_test_mode):
     runtime.initialize(clone_distgits=False, clone_source=False)
 
     istags_status = []
-    transform_entries = get_transform_entries(runtime)
+    upstreaming_entries = _get_upstreaming_entries(runtime)
 
-    for transform_entry_name, config in transform_entries.items():
+    for upstream_entry_name, config in upstreaming_entries.items():
 
         upstream_dest = config.upstream_image
         _, dest_ns, dest_istag = upstream_dest.rsplit('/', maxsplit=2)
@@ -116,9 +116,9 @@ def images_streams_check_upstream(runtime, live_test_mode):
 
         rc, stdout, stderr = exectools.cmd_gather(f'oc get -n {dest_ns} istag {dest_istag} --no-headers')
         if rc:
-            istags_status.append(f'ERROR: {transform_entry_name}\nIs not yet represented upstream in {dest_ns} istag/{dest_istag}')
+            istags_status.append(f'ERROR: {upstream_entry_name}\nIs not yet represented upstream in {dest_ns} istag/{dest_istag}')
         else:
-            istags_status.append(f'OK: {transform_entry_name} exists, but check whether it is recently updated\n{stdout}')
+            istags_status.append(f'OK: {upstream_entry_name} exists, but check whether it is recently updated\n{stdout}')
 
     group_label = runtime.group_config.name
     if live_test_mode:
@@ -166,7 +166,7 @@ def images_streams_start_buildconfigs(runtime, as_user, live_test_mode):
         print(f'No buildconfigs associated with this group: {group_label}')
 
 
-def get_transform_entries(runtime, stream_names=None):
+def _get_upstreaming_entries(runtime, stream_names=None):
     """
     Looks through streams.yml entries and each image metadata for upstream
     transform information.
@@ -182,9 +182,11 @@ def get_transform_entries(runtime, stream_names=None):
     transform_entries = {}
     streams_config = runtime.streams
     for stream in stream_names:
-        if streams_config[stream] is Missing:
+        config = streams_config[stream]
+        if config is Missing:
             raise IOError(f'Did not find stream {stream} in streams.yml for this group')
-        transform_entries[stream] = streams_config[stream]
+        if config.upstream_image is not Missing:
+            transform_entries[stream] = streams_config[stream]
 
     # Some images also have their own upstream information. This allows them to
     # be mirrored out into upstream, optionally transformed, and made available as builder images for
@@ -263,9 +265,9 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
 
     buildconfig_definitions = []
 
-    transform_entries = get_transform_entries(runtime, streams)
+    upstreaming_entries = _get_upstreaming_entries(runtime, streams)
 
-    for entry_name, config in transform_entries.items():
+    for entry_name, config in upstreaming_entries.items():
 
         transform = config.transform
         if transform is Missing:
