@@ -527,14 +527,14 @@ def prs():
 @click.option('--bug', metavar='BZ#', required=False, default=None, help='Title with Bug #: prefix')
 @click.option('--interstitial', metavar='SECONDS', default=120, required=False, help='Delay after each new PR to prevent flooding CI')
 @click.option('--ignore-ci-master', default=False, is_flag=True, help='Do not consider what is in master branch when determining what branch to target')
-@click.option('--ignore-missing-image', default=False, is_flag=True, help='Do not exit if an image is missing upstream.')
+@click.option('--ignore-missing-images', default=False, is_flag=True, help='Do not exit if an image is missing upstream.')
 @click.option('--draft-prs', default=False, is_flag=True, help='Open PRs as draft PRs')
 @click.option('--moist-run', default=False, is_flag=True, help='Do everything except opening the final PRs')
 @click.option('--add-auto-labels', default=False, is_flag=True, help='Add auto_labels to PRs; unless running as openshift-bot, you probably lack the privilege to do so')
 @click.option('--add-label', default=[], multiple=True, help='Add a label to all open PRs (new and existing) - Requires being openshift-bot')
 @pass_runtime
 def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_ci_master,
-                       ignore_missing_image, draft_prs, moist_run, add_auto_labels, add_label):
+                       ignore_missing_images, draft_prs, moist_run, add_auto_labels, add_label):
     runtime.initialize(clone_distgits=False, clone_source=False)
     g = Github(login_or_token=github_access_token)
     github_user = g.get_user()
@@ -567,9 +567,13 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             logger.info('The image has alignment PRs disabled; ignoring')
             continue
 
+        if image_meta.config.for_release is False:
+            logger.info('Skipping PR check since image is for_release: false')
+            continue
+
         from_config = image_meta.config['from']
         if not from_config:
-            logger.info('Skipping PRs since there is no configured .from')
+            logger.info('Skipping PR check since there is no configured .from')
             continue
 
         desired_parents = []
@@ -586,7 +590,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                     exectools.cmd_assert(f'oc image info {upstream_image}', retries=3)
                 except:
                     yellow_print(f'Unable to access upstream image {upstream_image} for {dgk}-- check whether buildconfigs are running successfully.')
-                    if not ignore_missing_image:
+                    if not ignore_missing_images:
                         raise
                 existing_images.add(upstream_image)  # Don't check this image again since it is a little slow to do so.
 
@@ -597,14 +601,29 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             logger.warning('Unable to find all ART equivalent upstream images for this image')
             continue
 
+        desired_ci_build_root_coordinate = None
+        if alignment_prs_config.ci_build_root is not Missing:
+            desired_ci_build_root_image = resolve_upstream_from(runtime, alignment_prs_config.ci_build_root)
+            # Split the pullspec into an openshift namespace, imagestream, and tag.
+            # e.g. registry.openshift.org:999/ocp/release:golang-1.16 => tag=golang-1.16, namespace=ocp, imagestream=release
+            pre_tag, tag = desired_ci_build_root_image.rsplit(':', 1)
+            _, namespace, imagestream = pre_tag.rsplit('/', 2)
+            # https://docs.ci.openshift.org/docs/architecture/ci-operator/#build-root-image
+            desired_ci_build_root_coordinate = {
+                'namespace': namespace,
+                'name': imagestream,
+                'tag': tag,
+            }
+
         desired_parents.append(parent_upstream_image)
         desired_parent_digest = calc_parent_digest(desired_parents)
         logger.info(f'Found desired FROM state of: {desired_parents} with digest: {desired_parent_digest}')
 
         source_repo_url, source_repo_branch = _get_upstream_source(runtime, image_meta)
 
-        if not source_repo_url:
+        if not source_repo_url or 'github.com' not in source_repo_url:
             # No upstream to clone; no PRs to open
+            logger.info('Skipping PR check since there is no configured github source URL')
             continue
 
         public_repo_url, public_branch = runtime.get_public_upstream(source_repo_url)
@@ -668,12 +687,13 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 dockerfile_name = os.path.join(image_meta.config.content.source.path, dockerfile_name)
 
             df_path = df_path.joinpath(dockerfile_name)
+            ci_operator_config_path = Dir.getpath().joinpath('.ci-operator.yaml')  # https://docs.ci.openshift.org/docs/architecture/ci-operator/#build-root-image
 
             assignee = None
             try:
                 root_owners_path = Dir.getpath().joinpath('OWNERS')
                 if root_owners_path.exists():
-                    parsed_owners = yaml.load(root_owners_path.read_text())
+                    parsed_owners = yaml.safe_load(root_owners_path.read_text())
                     if 'approvers' in parsed_owners:
                         assignee = parsed_owners['approvers'][0]
             except Exception as owners_e:
@@ -682,7 +702,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             fork_branch_df_digest = None  # digest of dockerfile image names
             if fork_branch:
                 # There is already an ART reconciliation branch. Our fork branch might be up-to-date
-                # OR behind the times (e.g. if someone commited changes to the upstream Dockerfile).
+                # OR behind the times (e.g. if someone committed changes to the upstream Dockerfile).
                 # Let's check.
 
                 # If there is already an art reconciliation branch, get an MD5
@@ -695,15 +715,27 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                     # made the fork.
                     fork_branch_df_digest = 'DOCKERFILE_NOT_FOUND'
 
+                fork_ci_build_root_coordinate = None
+                if ci_operator_config_path.exists():
+                    fork_ci_operator_config = yaml.safe_load(ci_operator_config_path.read_text(encoding='utf-8'))  # Read in content from fork
+                    fork_ci_build_root_coordinate = fork_ci_operator_config.get('build_root_image', None)
+
             # Now change over to the target branch in the actual public repo
             exectools.cmd_assert(f'git checkout public/{public_branch}')
             source_branch_parent_digest, source_branch_parents = extract_parent_digest(df_path)
+            source_branch_ci_build_root_coordinate = None
+            if ci_operator_config_path.exists():
+                source_branch_ci_operator_config = yaml.safe_load(ci_operator_config_path.read_text(encoding='utf-8'))  # Read in content from public source
+                source_branch_ci_build_root_coordinate = source_branch_ci_operator_config.get('build_root_image', None)
+
             public_branch_commit, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
 
             print(f'Desired parents: {desired_parents} ({desired_parent_digest})')
+            print(f'Desired build_root: {desired_ci_build_root_coordinate}')
             print(f'Source parents: {source_branch_parents} ({source_branch_parent_digest})')
-            if desired_parent_digest == source_branch_parent_digest:
-                green_print('Desired digest and source digest match; Upstream is in a good state')
+            print(f'Source build_root in .ci-operator.yaml: {source_branch_ci_build_root_coordinate}')
+            if desired_parent_digest == source_branch_parent_digest and desired_ci_build_root_coordinate == source_branch_ci_build_root_coordinate:
+                green_print('Desired digest and source digest match; desired build_root coordinates match; Upstream is in a good state')
                 if fork_branch:
                     for pr in list(public_source_repo.get_pulls(state='open', head=fork_branch_head)):
                         if moist_run:
@@ -721,6 +753,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
             yellow_print(f'Upstream dockerfile does not match desired state in {public_repo_url}/blob/{public_branch}/{dockerfile_name}')
             print(f'Fork Dockerfile digest: {fork_branch_df_digest}')
+            print(f'Fork build_root: {fork_ci_build_root_coordinate}')
 
             first_commit_line = f"Updating {image_meta.name} builder & base images to be consistent with ART"
             reconcile_info = f"Reconciling with {convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}"
@@ -730,7 +763,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             # 1. No fork branch exists
             # 2. It does exist, but is out of date (e.g. metadata has changed or upstream Dockerfile has changed)
             # 3. It does exist, and is exactly how we want it.
-            # Let's create a local branch that will contain the Dockerfile in the state we desire.
+            # Let's create a local branch that will contain the Dockerfile/.ci-operator.yaml in the state we desire.
             work_branch_name = '__mod'
             exectools.cmd_assert(f'git checkout public/{public_branch}')
             exectools.cmd_assert(f'git checkout -b {work_branch_name}')
@@ -749,7 +782,16 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                     ])
                 handle.write(dfp.content)
 
-            diff_text, _ = exectools.cmd_assert(f'git diff {str(df_path)}')
+            if desired_ci_build_root_coordinate:
+                if ci_operator_config_path.exists():
+                    ci_operator_config = yaml.safe_load(ci_operator_config_path.read_text(encoding='utf-8'))
+                else:
+                    ci_operator_config = {}
+
+                # Overwrite the existing build_root_image if it exists. Preserve any other settings.
+                ci_operator_config['build_root_image'] = desired_ci_build_root_coordinate
+                with ci_operator_config_path.open(mode='w+', encoding='utf-8') as config_file:
+                    yaml.safe_dump(ci_operator_config, config_file, default_flow_style=False)
 
             desired_df_digest = compute_dockerfile_digest(df_path)
             print(f'Desired Dockerfile digest: {desired_df_digest}')
@@ -766,13 +808,17 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             # So... to prevent this, if there is no open PR, we should force push to the fork branch to bring it
             # it's commit ahead of the public branch.
 
-            if desired_df_digest != fork_branch_df_digest or not open_prs:
-                yellow_print('Found that fork branch is not in sync with public Dockerfile changes')
+            diff_text = None
+            if desired_df_digest != fork_branch_df_digest or desired_ci_build_root_coordinate != fork_ci_build_root_coordinate or not open_prs:
+                yellow_print('Found that fork branch is not in sync with public Dockerfile/.ci-operator.yaml changes')
+                exectools.cmd_assert(f'git add {str(df_path)}')
+                exectools.cmd_assert(f'git add {str(ci_operator_config_path)}')
+                diff_text, _ = exectools.cmd_assert('git diff HEAD')
+
                 if not moist_run:
-                    exectools.cmd_assert(f'git add {str(df_path)}')
                     commit_prefix = ''
                     if repo_name.startswith('kubernetes'):
-                        # couple repos have this requirement; openshift/kubernetes & openshift/kubernetes-autoscaler.
+                        # A couple repos have this requirement; openshift/kubernetes & openshift/kubernetes-autoscaler.
                         # This check may suffice  for now, but it may eventually need to be in doozer metadata.
                         commit_prefix = 'UPSTREAM: <carry>: '
                     commit_msg = f"""{commit_prefix}{first_commit_line}
@@ -785,7 +831,18 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             # At this point, we have a fork branch in the proper state
             pr_body = f"""{first_commit_line}
 {reconcile_info}
+"""
+            if desired_ci_build_root_coordinate:
+                pr_body += """
+ART has been configured to reconcile your CI build root image (see https://docs.ci.openshift.org/docs/architecture/ci-operator/#build-root-image).
+In order for your upstream .ci-operator.yaml configuration to be honored, you must set the following in your openshift/release ci-operator configuration file:
+```
+build_root:
+  from_repository: true
+```
+"""
 
+            pr_body += """
 If you have any questions about this pull request, please reach out to `@art-team` in the `#aos-art` coreos slack channel.
 """
 
@@ -852,9 +909,13 @@ If you have any questions about this pull request, please reach out to `@art-tea
             if moist_run:
                 pr_links[dgk] = f'MOIST-RUN-PR:{dgk}'
                 green_print(f'Would have opened PR against: {public_source_repo.html_url}/blob/{public_branch}/{dockerfile_name}.')
+                yellow_print('PR body would have been:')
+                yellow_print(pr_body)
+
                 if parent_pr_url:
                     green_print(f'Would have identified dependency on PR: {parent_pr_url}.')
                 if diff_text:
+                    yellow_print('PR diff would have been:')
                     yellow_print(diff_text)
                 else:
                     yellow_print(f'Fork from which PR would be created ({fork_branch_head}) is populated with desired state.')
