@@ -554,15 +554,16 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
     pr_links = {}  # map of distgit_key to PR URLs associated with updates
     new_pr_links = {}
     skipping_dgks = set()  # If a distgit key is skipped, it children will see it in this list and skip themselves.
-    existing_images = set()  # A PR will not be opened unless the upstream image exists; keep track of ones we have checked.
+    checked_upstream_images = set()  # A PR will not be opened unless the upstream image exists; keep track of ones we have checked.
+
     for image_meta in runtime.ordered_image_metas():
         dgk = image_meta.distgit_key
         logger = image_meta.logger
         logger.info('Analyzing image')
 
-        alignment_prs_config = image_meta.config.content.source.ci_alignment.streams_prs
+        streams_pr_config = image_meta.config.content.source.ci_alignment.streams_prs
 
-        if alignment_prs_config and alignment_prs_config.enabled is not Missing and not alignment_prs_config.enabled:
+        if streams_pr_config and streams_pr_config.enabled is not Missing and not streams_pr_config.enabled:
             # Make sure this is an explicit False. Missing means the default or True.
             logger.info('The image has alignment PRs disabled; ignoring')
             continue
@@ -576,14 +577,8 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             logger.info('Skipping PR check since there is no configured .from')
             continue
 
-        desired_parents = []
-        builders = from_config.builder or []
-        for builder in builders:
-            upstream_image = resolve_upstream_from(runtime, builder)
-            if not upstream_image:
-                logger.warning(f'Unable to resolve upstream image for: {builder}')
-                break
-            if upstream_image not in existing_images:
+        def check_if_upstream_image_exists(upstream_image):
+            if upstream_image not in checked_upstream_images:
                 # We don't know yet whether this image exists; perhaps a buildconfig is
                 # failing. Don't open PRs for images that don't yet exist.
                 try:
@@ -592,18 +587,46 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                     yellow_print(f'Unable to access upstream image {upstream_image} for {dgk}-- check whether buildconfigs are running successfully.')
                     if not ignore_missing_images:
                         raise
-                existing_images.add(upstream_image)  # Don't check this image again since it is a little slow to do so.
+                checked_upstream_images.add(upstream_image)  # Don't check this image again since it is a little slow to do so.
 
-            desired_parents.append(upstream_image)
+        desired_parents = []
 
-        parent_upstream_image = resolve_upstream_from(runtime, from_config)
-        if len(desired_parents) != len(builders) or not parent_upstream_image:
-            logger.warning('Unable to find all ART equivalent upstream images for this image')
-            continue
+        # There are two methods to find the desired parents for upstream Dockerfiles.
+        # 1. We can analyze the image_metadata "from:" stanza and determine the upstream
+        #    equivalents for streams and members. This is the most common flow of the code.
+        # 2. In rare circumstances, we need to circumvent this analysis and specify the
+        #    desired upstreams equivalents directly in the image metadata. This is only
+        #    required when the upstream Dockerfile uses something wholly different
+        #    than the downstream build. Use this method by specifying:
+        #      source.ci_alignment.streams_prs.from: [ list of full pullspecs ]
+        # We check for option 2 first
+        if streams_pr_config['from'] is not Missing:
+            desired_parents = streams_pr_config['from'].primitive()  # This should be list; so we're done.
+        else:
+            builders = from_config.builder or []
+            for builder in builders:
+                upstream_image = resolve_upstream_from(runtime, builder)
+                if not upstream_image:
+                    logger.warning(f'Unable to resolve upstream image for: {builder}')
+                    break
+                check_if_upstream_image_exists(upstream_image)
+                desired_parents.append(upstream_image)
+
+            parent_upstream_image = resolve_upstream_from(runtime, from_config)
+            if len(desired_parents) != len(builders) or not parent_upstream_image:
+                logger.warning('Unable to find all ART equivalent upstream images for this image')
+                continue
+
+            desired_parents.append(parent_upstream_image)
+
+        desired_parent_digest = calc_parent_digest(desired_parents)
+        logger.info(f'Found desired FROM state of: {desired_parents} with digest: {desired_parent_digest}')
 
         desired_ci_build_root_coordinate = None
-        if alignment_prs_config.ci_build_root is not Missing:
-            desired_ci_build_root_image = resolve_upstream_from(runtime, alignment_prs_config.ci_build_root)
+        if streams_pr_config.ci_build_root is not Missing:
+            desired_ci_build_root_image = resolve_upstream_from(runtime, streams_pr_config.ci_build_root)
+            check_if_upstream_image_exists(desired_ci_build_root_image)
+
             # Split the pullspec into an openshift namespace, imagestream, and tag.
             # e.g. registry.openshift.org:999/ocp/release:golang-1.16 => tag=golang-1.16, namespace=ocp, imagestream=release
             pre_tag, tag = desired_ci_build_root_image.rsplit(':', 1)
@@ -614,10 +637,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 'name': imagestream,
                 'tag': tag,
             }
-
-        desired_parents.append(parent_upstream_image)
-        desired_parent_digest = calc_parent_digest(desired_parents)
-        logger.info(f'Found desired FROM state of: {desired_parents} with digest: {desired_parent_digest}')
+            logger.info(f'Found desired build_root state of: {desired_ci_build_root_coordinate}')
 
         source_repo_url, source_repo_branch = _get_upstream_source(runtime, image_meta)
 
@@ -884,9 +904,9 @@ If you have any questions about this pull request, please reach out to `@art-tea
                 # Don't muck with it.
 
                 try:
-                    if alignment_prs_config.auto_label and add_auto_labels:
+                    if streams_pr_config.auto_label and add_auto_labels:
                         # If we are to automatically add labels to this upstream PR, do so.
-                        existing_pr.add_to_labels(*alignment_prs_config.auto_label)
+                        existing_pr.add_to_labels(*streams_pr_config.auto_label)
 
                     if add_label:
                         existing_pr.add_to_labels(*add_label)
@@ -950,9 +970,9 @@ If you have any questions about this pull request, please reach out to `@art-tea
                     raise
 
                 try:
-                    if alignment_prs_config.auto_label and add_auto_labels:
+                    if streams_pr_config.auto_label and add_auto_labels:
                         # If we are to automatically add labels to this upstream PR, do so.
-                        new_pr.add_to_labels(*alignment_prs_config.auto_label)
+                        new_pr.add_to_labels(*streams_pr_config.auto_label)
 
                     if add_label:
                         new_pr.add_to_labels(*add_label)
