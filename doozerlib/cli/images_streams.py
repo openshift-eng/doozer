@@ -60,13 +60,13 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
         user_specified = False
         streams = runtime.get_stream_names()
 
-    upstreaming_entries = _get_upstreaming_entries(runtime, streams)
+    transform_entries = get_transform_entries(runtime, streams)
 
-    for upstream_entry_name, config in upstreaming_entries.items():
+    for transform_entry_name, config in transform_entries.items():
         if config.mirror is True or user_specified:
             upstream_dest = config.upstream_image
             if upstream_dest is Missing:
-                raise IOError(f'Unable to mirror {upstream_entry_name} since upstream_image is not defined')
+                raise IOError(f'Unable to mirror {transform_entry_name} since upstream_image is not defined')
 
             # If the configuration specifies a upstream_image_base, then ART is responsible for mirroring
             # that location and NOT the upstream_image. A buildconfig from gen-buildconfig is responsible
@@ -92,7 +92,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
             if runtime.registry_config_dir is not None:
                 cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_dir)}"
             if dry_run:
-                print(f'For {upstream_entry_name}, would have run: {cmd}')
+                print(f'For {transform_entry_name}, would have run: {cmd}')
             else:
                 exectools.cmd_assert(cmd, retries=3, realtime=True)
 
@@ -104,9 +104,9 @@ def images_streams_check_upstream(runtime, live_test_mode):
     runtime.initialize(clone_distgits=False, clone_source=False)
 
     istags_status = []
-    upstreaming_entries = _get_upstreaming_entries(runtime)
+    transform_entries = get_transform_entries(runtime)
 
-    for upstream_entry_name, config in upstreaming_entries.items():
+    for transform_entry_name, config in transform_entries.items():
 
         upstream_dest = config.upstream_image
         _, dest_ns, dest_istag = upstream_dest.rsplit('/', maxsplit=2)
@@ -116,9 +116,9 @@ def images_streams_check_upstream(runtime, live_test_mode):
 
         rc, stdout, stderr = exectools.cmd_gather(f'oc get -n {dest_ns} istag {dest_istag} --no-headers')
         if rc:
-            istags_status.append(f'ERROR: {upstream_entry_name}\nIs not yet represented upstream in {dest_ns} istag/{dest_istag}')
+            istags_status.append(f'ERROR: {transform_entry_name}\nIs not yet represented upstream in {dest_ns} istag/{dest_istag}')
         else:
-            istags_status.append(f'OK: {upstream_entry_name} exists, but check whether it is recently updated\n{stdout}')
+            istags_status.append(f'OK: {transform_entry_name} exists, but check whether it is recently updated\n{stdout}')
 
     group_label = runtime.group_config.name
     if live_test_mode:
@@ -166,7 +166,7 @@ def images_streams_start_buildconfigs(runtime, as_user, live_test_mode):
         print(f'No buildconfigs associated with this group: {group_label}')
 
 
-def _get_upstreaming_entries(runtime, stream_names=None):
+def get_transform_entries(runtime, stream_names=None):
     """
     Looks through streams.yml entries and each image metadata for upstream
     transform information.
@@ -265,9 +265,9 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
 
     buildconfig_definitions = []
 
-    upstreaming_entries = _get_upstreaming_entries(runtime, streams)
+    transform_entries = get_transform_entries(runtime, streams)
 
-    for entry_name, config in upstreaming_entries.items():
+    for entry_name, config in transform_entries.items():
 
         transform = config.transform
         if transform is Missing:
@@ -734,7 +734,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             print(f'Desired build_root: {desired_ci_build_root_coordinate}')
             print(f'Source parents: {source_branch_parents} ({source_branch_parent_digest})')
             print(f'Source build_root in .ci-operator.yaml: {source_branch_ci_build_root_coordinate}')
-            if desired_parent_digest == source_branch_parent_digest and (desired_ci_build_root_coordinate and desired_ci_build_root_coordinate == source_branch_ci_build_root_coordinate):
+            if desired_parent_digest == source_branch_parent_digest and (desired_ci_build_root_coordinate is None or desired_ci_build_root_coordinate == source_branch_ci_build_root_coordinate):
                 green_print('Desired digest and source digest match; desired build_root coordinates match; Upstream is in a good state')
                 if fork_branch:
                     for pr in list(public_source_repo.get_pulls(state='open', head=fork_branch_head)):
@@ -755,7 +755,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             print(f'Fork Dockerfile digest: {fork_branch_df_digest}')
             print(f'Fork build_root: {fork_ci_build_root_coordinate}')
 
-            first_commit_line = f"Updating {image_meta.name} builder & base images to be consistent with ART"
+            first_commit_line = f"Updating {image_meta.name} images to be consistent with ART"
             reconcile_info = f"Reconciling with {convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}"
 
             diff_text = None
@@ -782,6 +782,8 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                     ])
                 handle.write(dfp.content)
 
+            exectools.cmd_assert(f'git add {str(df_path)}')
+
             if desired_ci_build_root_coordinate:
                 if ci_operator_config_path.exists():
                     ci_operator_config = yaml.safe_load(ci_operator_config_path.read_text(encoding='utf-8'))
@@ -792,6 +794,8 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 ci_operator_config['build_root_image'] = desired_ci_build_root_coordinate
                 with ci_operator_config_path.open(mode='w+', encoding='utf-8') as config_file:
                     yaml.safe_dump(ci_operator_config, config_file, default_flow_style=False)
+
+                exectools.cmd_assert(f'git add {str(ci_operator_config_path)}')
 
             desired_df_digest = compute_dockerfile_digest(df_path)
             print(f'Desired Dockerfile digest: {desired_df_digest}')
@@ -805,15 +809,12 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             # we might conclude that we just need to open a PR with our fork branch. However, in this scenario,
             # GitHub will throw an exception like:
             # "No commits between openshift:master and openshift-bot:art-consistency-openshift-4.8-ptp-operator-must-gather"
-            # So... to prevent this, if there is no open PR, we should force push to the fork branch to bring it
-            # it's commit ahead of the public branch.
+            # So... to prevent this, if there is no open PR, we should force push to the fork branch to make its
+            # commit something different than what is in the public branch.
 
-            diff_text = None
-            if desired_df_digest != fork_branch_df_digest or (desired_ci_build_root_coordinate and desired_ci_build_root_coordinate != fork_ci_build_root_coordinate) or not open_prs:
+            diff_text, _ = exectools.cmd_assert('git diff HEAD', strip=True)
+            if diff_text or not open_prs:
                 yellow_print('Found that fork branch is not in sync with public Dockerfile/.ci-operator.yaml changes')
-                exectools.cmd_assert(f'git add {str(df_path)}')
-                exectools.cmd_assert(f'git add {str(ci_operator_config_path)}')
-                diff_text, _ = exectools.cmd_assert('git diff HEAD')
 
                 if not moist_run:
                     commit_prefix = ''
