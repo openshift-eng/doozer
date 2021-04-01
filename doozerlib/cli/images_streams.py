@@ -734,7 +734,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             print(f'Desired build_root: {desired_ci_build_root_coordinate}')
             print(f'Source parents: {source_branch_parents} ({source_branch_parent_digest})')
             print(f'Source build_root in .ci-operator.yaml: {source_branch_ci_build_root_coordinate}')
-            if desired_parent_digest == source_branch_parent_digest and desired_ci_build_root_coordinate == source_branch_ci_build_root_coordinate:
+            if desired_parent_digest == source_branch_parent_digest and (desired_ci_build_root_coordinate and desired_ci_build_root_coordinate == source_branch_ci_build_root_coordinate):
                 green_print('Desired digest and source digest match; desired build_root coordinates match; Upstream is in a good state')
                 if fork_branch:
                     for pr in list(public_source_repo.get_pulls(state='open', head=fork_branch_head)):
