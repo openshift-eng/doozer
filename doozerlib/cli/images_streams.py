@@ -60,13 +60,13 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
         user_specified = False
         streams = runtime.get_stream_names()
 
-    transform_entries = get_transform_entries(runtime, streams)
+    upstreaming_entries = _get_upstreaming_entries(runtime, streams)
 
-    for transform_entry_name, config in transform_entries.items():
+    for upstream_entry_name, config in upstreaming_entries.items():
         if config.mirror is True or user_specified:
             upstream_dest = config.upstream_image
             if upstream_dest is Missing:
-                raise IOError(f'Unable to mirror {transform_entry_name} since upstream_image is not defined')
+                raise IOError(f'Unable to mirror {upstream_entry_name} since upstream_image is not defined')
 
             # If the configuration specifies a upstream_image_base, then ART is responsible for mirroring
             # that location and NOT the upstream_image. A buildconfig from gen-buildconfig is responsible
@@ -92,7 +92,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
             if runtime.registry_config_dir is not None:
                 cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_dir)}"
             if dry_run:
-                print(f'For {transform_entry_name}, would have run: {cmd}')
+                print(f'For {upstream_entry_name}, would have run: {cmd}')
             else:
                 exectools.cmd_assert(cmd, retries=3, realtime=True)
 
@@ -104,9 +104,9 @@ def images_streams_check_upstream(runtime, live_test_mode):
     runtime.initialize(clone_distgits=False, clone_source=False)
 
     istags_status = []
-    transform_entries = get_transform_entries(runtime)
+    upstreaming_entries = _get_upstreaming_entries(runtime)
 
-    for transform_entry_name, config in transform_entries.items():
+    for upstream_entry_name, config in upstreaming_entries.items():
 
         upstream_dest = config.upstream_image
         _, dest_ns, dest_istag = upstream_dest.rsplit('/', maxsplit=2)
@@ -116,9 +116,9 @@ def images_streams_check_upstream(runtime, live_test_mode):
 
         rc, stdout, stderr = exectools.cmd_gather(f'oc get -n {dest_ns} istag {dest_istag} --no-headers')
         if rc:
-            istags_status.append(f'ERROR: {transform_entry_name}\nIs not yet represented upstream in {dest_ns} istag/{dest_istag}')
+            istags_status.append(f'ERROR: {upstream_entry_name}\nIs not yet represented upstream in {dest_ns} istag/{dest_istag}')
         else:
-            istags_status.append(f'OK: {transform_entry_name} exists, but check whether it is recently updated\n{stdout}')
+            istags_status.append(f'OK: {upstream_entry_name} exists, but check whether it is recently updated\n{stdout}')
 
     group_label = runtime.group_config.name
     if live_test_mode:
@@ -166,7 +166,7 @@ def images_streams_start_buildconfigs(runtime, as_user, live_test_mode):
         print(f'No buildconfigs associated with this group: {group_label}')
 
 
-def get_transform_entries(runtime, stream_names=None):
+def _get_upstreaming_entries(runtime, stream_names=None):
     """
     Looks through streams.yml entries and each image metadata for upstream
     transform information.
@@ -179,25 +179,25 @@ def get_transform_entries(runtime, stream_names=None):
         # If not specified, use all.
         stream_names = runtime.get_stream_names()
 
-    transform_entries = {}
+    upstreaming_entries = {}
     streams_config = runtime.streams
     for stream in stream_names:
         config = streams_config[stream]
         if config is Missing:
             raise IOError(f'Did not find stream {stream} in streams.yml for this group')
         if config.upstream_image is not Missing:
-            transform_entries[stream] = streams_config[stream]
+            upstreaming_entries[stream] = streams_config[stream]
 
     # Some images also have their own upstream information. This allows them to
     # be mirrored out into upstream, optionally transformed, and made available as builder images for
     # other images without being in streams.yml.
     for image_meta in runtime.ordered_image_metas():
         if image_meta.config.content.source.ci_alignment.upstream_image is not Missing:
-            transform_entry = model.Model(dict_to_model=image_meta.config.content.source.ci_alignment.primitive())  # Make a copy
-            transform_entry['image'] = image_meta.pull_url()  # Make the image metadata entry match what would exist in streams.yml.
-            transform_entries[image_meta.distgit_key] = transform_entry
+            upstream_entry = model.Model(dict_to_model=image_meta.config.content.source.ci_alignment.primitive())  # Make a copy
+            upstream_entry['image'] = image_meta.pull_url()  # Make the image metadata entry match what would exist in streams.yml.
+            upstreaming_entries[image_meta.distgit_key] = upstream_entry
 
-    return transform_entries
+    return upstreaming_entries
 
 
 @images_streams.command('gen-buildconfigs', short_help='Generates buildconfigs necessary to assemble ART equivalent images upstream.')
@@ -265,9 +265,9 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
 
     buildconfig_definitions = []
 
-    transform_entries = get_transform_entries(runtime, streams)
+    upstreaming_entries = _get_upstreaming_entries(runtime, streams)
 
-    for entry_name, config in transform_entries.items():
+    for upstream_entry_name, config in upstreaming_entries.items():
 
         transform = config.transform
         if transform is Missing:
@@ -275,12 +275,12 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
             continue
 
         if transform not in transforms:
-            raise IOError(f'Unable to render buildconfig for upstream config {entry_name} - transform {transform} not found within {transforms}')
+            raise IOError(f'Unable to render buildconfig for upstream config {upstream_entry_name} - transform {transform} not found within {transforms}')
 
         upstream_dest = config.upstream_image
         upstream_intermediate_image = config.upstream_image_base
         if upstream_dest is Missing or upstream_intermediate_image is Missing:
-            raise IOError(f'Unable to render buildconfig for upstream config {entry_name} - you must define upstream_image_base AND upstream_image')
+            raise IOError(f'Unable to render buildconfig for upstream config {upstream_entry_name} - you must define upstream_image_base AND upstream_image')
 
         # split a pullspec like registry.svc.ci.openshift.org/ocp/builder:rhel-8-golang-openshift-{MAJOR}.{MINOR}.art
         # into  OpenShift namespace, imagestream, and tag
@@ -316,7 +316,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
         dfp.envs['OPENSHIFT_CI'] = 'true'
 
         dfp.labels['io.k8s.display-name'] = f'{dest_imagestream}-{dest_tag}'
-        dfp.labels['io.k8s.description'] = f'ART equivalent image {group_label}-{entry_name} - {transform}'
+        dfp.labels['io.k8s.description'] = f'ART equivalent image {group_label}-{upstream_entry_name} - {transform}'
         dfp.add_lines('USER 0')  # Make sure we are root so that repos can be modified
 
         def add_localdev_repo_profile(profile):
@@ -379,7 +379,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
                 'namespace': 'ci',
                 'labels': {
                     'art-builder-group': group_label,
-                    'art-builder-stream': entry_name,
+                    'art-builder-stream': upstream_entry_name,
                 },
                 'annotations': {
                     'description': 'Generated by the ART pipeline by doozer. Processes raw ART images into ART equivalent images for CI.'
