@@ -809,7 +809,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             # it's commit ahead of the public branch.
 
             diff_text = None
-            if desired_df_digest != fork_branch_df_digest or desired_ci_build_root_coordinate != fork_ci_build_root_coordinate or not open_prs:
+            if desired_df_digest != fork_branch_df_digest or (desired_ci_build_root_coordinate and desired_ci_build_root_coordinate != fork_ci_build_root_coordinate) or not open_prs:
                 yellow_print('Found that fork branch is not in sync with public Dockerfile/.ci-operator.yaml changes')
                 exectools.cmd_assert(f'git add {str(df_path)}')
                 exectools.cmd_assert(f'git add {str(ci_operator_config_path)}')
