@@ -730,12 +730,17 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
             public_branch_commit, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
 
-            print(f'Desired parents: {desired_parents} ({desired_parent_digest})')
-            print(f'Desired build_root: {desired_ci_build_root_coordinate}')
-            print(f'Source parents: {source_branch_parents} ({source_branch_parent_digest})')
-            print(f'Source build_root in .ci-operator.yaml: {source_branch_ci_build_root_coordinate}')
+            logger.info(f'''
+Desired parents: {desired_parents} ({desired_parent_digest})
+Desired build_root (in .ci-operator.yaml): {desired_ci_build_root_coordinate}
+
+Source parents: {source_branch_parents} ({source_branch_parent_digest})
+Source build_root (in .ci-operator.yaml): {source_branch_ci_build_root_coordinate}
+
+Fork build_root (in .ci-operator.yaml): {fork_ci_build_root_coordinate}
+''')
             if desired_parent_digest == source_branch_parent_digest and (desired_ci_build_root_coordinate is None or desired_ci_build_root_coordinate == source_branch_ci_build_root_coordinate):
-                green_print('Desired digest and source digest match; desired build_root coordinates match; Upstream is in a good state')
+                green_print('Desired digest and source digest match; desired build_root unset OR coordinates match; Upstream is in a good state')
                 if fork_branch:
                     for pr in list(public_source_repo.get_pulls(state='open', head=fork_branch_head)):
                         if moist_run:
@@ -752,8 +757,6 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 cardinality_mismatch = True
 
             yellow_print(f'Upstream dockerfile does not match desired state in {public_repo_url}/blob/{public_branch}/{dockerfile_name}')
-            print(f'Fork Dockerfile digest: {fork_branch_df_digest}')
-            print(f'Fork build_root: {fork_ci_build_root_coordinate}')
 
             first_commit_line = f"Updating {image_meta.name} images to be consistent with ART"
             reconcile_info = f"Reconciling with {convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}"
@@ -798,10 +801,15 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 exectools.cmd_assert(f'git add {str(ci_operator_config_path)}')
 
             desired_df_digest = compute_dockerfile_digest(df_path)
-            print(f'Desired Dockerfile digest: {desired_df_digest}')
 
             # Check for any existing open PR
             open_prs = list(public_source_repo.get_pulls(state='open', head=fork_branch_head))
+
+            logger.info(f'''
+Desired Dockerfile digest: {desired_df_digest}
+Fork Dockerfile digest: {fork_branch_df_digest}
+open_prs: {open_prs}
+''')
 
             # A note on why the following `if` cares about whether there is a PR open.
             # We need to check on an edge case.. if the upstream merged our reconciliation PR and THEN proceeded to change
@@ -813,7 +821,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             # commit something different than what is in the public branch.
 
             diff_text, _ = exectools.cmd_assert('git diff HEAD', strip=True)
-            if desired_parent_digest != fork_branch_df_digest or \
+            if desired_df_digest != fork_branch_df_digest or \
                     (desired_ci_build_root_coordinate and desired_ci_build_root_coordinate != fork_ci_build_root_coordinate) or \
                     not open_prs:
 
