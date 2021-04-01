@@ -813,8 +813,12 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             # commit something different than what is in the public branch.
 
             diff_text, _ = exectools.cmd_assert('git diff HEAD', strip=True)
-            if diff_text or not open_prs:
+            if desired_parent_digest != source_branch_parent_digest or \
+                    (desired_ci_build_root_coordinate and desired_ci_build_root_coordinate != source_branch_ci_build_root_coordinate) or \
+                    not open_prs:
+
                 yellow_print('Found that fork branch is not in sync with public Dockerfile/.ci-operator.yaml changes')
+                yellow_print(diff_text)
 
                 if not moist_run:
                     commit_prefix = ''
