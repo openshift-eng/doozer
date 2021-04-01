@@ -17,7 +17,6 @@ You must have valid corporate IT certificates imported on your system:
 ```
 $ cd /etc/pki/ca-trust/source/anchors
 $ sudo curl -O https://password.corp.redhat.com/RH-IT-Root-CA.crt
-$ sudo curl -O https://password.corp.redhat.com/legacy.crt
 $ sudo curl -k -O https://engineering.redhat.com/Eng-CA.crt
 $ sudo update-ca-trust extract
 ```
