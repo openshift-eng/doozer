@@ -309,9 +309,8 @@ class ImageMetadata(Metadata):
                 else:
                     raise IOError(f'Unable to determine builder or parent image pullspec from {builder}')
 
-                slash_count = builder_image_name.count('/')
-                if slash_count > 1:
-                    # assume this is a full pullspec; e.g. "registry.redhat.io/ubi8/nodejs-12:1-45"
+                if "." in builder_image_name.split('/', 2)[0]:
+                    # looks like full pullspec with domain name; e.g. "registry.redhat.io/ubi8/nodejs-12:1-45"
                     builder_image_url = builder_image_name
                 else:
                     # Assume this is a org/repo name relative to brew; e.g. "openshift/ose-base:ubi8"
