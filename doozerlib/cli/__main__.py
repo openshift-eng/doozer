@@ -10,12 +10,13 @@ from doozerlib.model import Missing
 from doozerlib.brew import get_watch_task_info_copy
 from doozerlib import metadata
 from doozerlib.config import MetaDataConfig as mdc
-from doozerlib.cli import cli, pass_runtime
+from doozerlib.cli import cli, pass_runtime, validate_semver_major_minor_patch
 from doozerlib.cli.release_gen_payload import release_gen_payload
 from doozerlib.cli.detect_embargo import detect_embargo
 from doozerlib.cli.images_health import images_health
 from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
 from doozerlib.cli.scan_sources import config_scan_source_changes
+from doozerlib.cli.rpms_build import rpms_build
 
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
@@ -72,33 +73,6 @@ class RemoteRequired(click.Option):
 
         return super(RemoteRequired, self).handle_parse_result(
             ctx, opts, args)
-
-
-def validate_semver_major_minor_patch(ctx, param, version):
-    """
-    For non-None, non-auto values, ensures that the incoming parameter meets the criteria vX.Y.Z or X.Y.Z.
-    If minor or patch is not supplied, the value is modified to possess
-    minor.major to meet semver requirements.
-    :param ctx: Click context
-    :param param: The parameter specified on the command line
-    :param version: The version specified on the command line
-    :return:
-    """
-    if version == 'auto' or version is None:
-        return version
-
-    vsplit = version.split(".")
-    try:
-        int(vsplit[0].lstrip('v'))
-        minor_version = int('0' if len(vsplit) < 2 else vsplit[1])
-        patch_version = int('0' if len(vsplit) < 3 else vsplit[2])
-    except ValueError:
-        raise click.BadParameter('Expected integers in version fields')
-
-    if len(vsplit) > 3:
-        raise click.BadParameter('Expected X, X.Y, or X.Y.Z (with optional "v" prefix)')
-
-    return f'{vsplit[0]}.{minor_version}.{patch_version}'
 
 
 option_commit_message = click.option("--message", "-m", cls=RemoteRequired, metavar='MSG', help="Commit message for dist-git.")

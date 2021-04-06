@@ -1,5 +1,7 @@
+aiofiles
 bashlex
 click >= 6.7
+contextvars ; python_version<"3.7"
 dockerfile-parse >= 0.0.13
 future
 koji

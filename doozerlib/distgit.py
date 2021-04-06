@@ -12,7 +12,7 @@ import time
 import traceback
 from datetime import date
 from multiprocessing import Event, Lock
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 import bashlex
 import yaml
@@ -259,6 +259,9 @@ class DistGitRepo(object):
         assertion.isdir(path, "Unable to find path for source [%s] for config: %s" % (path, self.metadata.config_filename))
         return path
 
+    def _get_diff(self):
+        return None  # to actually record a diff, child classes must override this function
+
     def commit(self, commit_message, log_diff=False):
         if self.runtime.local:
             return ''  # no commits if local
@@ -266,9 +269,9 @@ class DistGitRepo(object):
         with Dir(self.distgit_dir):
             self.logger.info("Adding commit to local repo: {}".format(commit_message))
             if log_diff:
-                rc, out, err = exectools.cmd_gather(["git", "diff", "Dockerfile"])
-                assertion.success(rc, 'Failed fetching distgit diff')
-                self.runtime.add_distgits_diff(self.metadata.distgit_key, out)
+                diff = self._get_diff()
+                if diff and diff.strip():
+                    self.runtime.add_distgits_diff(self.metadata.distgit_key, diff)
             if self.source_sha:
                 # add short sha of source for audit trail
                 commit_message += " - {}".format(self.source_sha)
@@ -279,6 +282,35 @@ class DistGitRepo(object):
             rc, sha, err = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
             assertion.success(rc, "Failure fetching commit SHA for {}".format(self.distgit_dir))
         return sha.strip()
+
+    def push(self):
+        with Dir(self.distgit_dir):
+            self.logger.info("Pushing distgit repository %s", self.name)
+            try:
+                # When initializing new release branches, an large amount of data needs to
+                # be pushed. If every distgit within a release is being pushed at the same
+                # time, a single push invocation can take hours to complete -- making the
+                # timeout value counterproductive. Limit to 5 simultaneous pushes.
+                with self.runtime.get_named_semaphore('rhpkg::push', count=5):
+                    timeout = str(self.runtime.global_opts['rhpkg_push_timeout'])
+                    exectools.cmd_assert("timeout {} rhpkg push".format(timeout), retries=3)
+                    # rhpkg will create but not push tags :(
+                    # Not asserting this exec since this is non-fatal if a tag already exists,
+                    # and tags in dist-git can't be --force overwritten
+                    exectools.cmd_gather(['timeout', '60', 'git', 'push', '--tags'])
+            except IOError as e:
+                return (self.metadata, repr(e))
+            return (self.metadata, True)
+
+    @exectools.limit_concurrency(limit=5)
+    async def push_async(self):
+        self.logger.info("Pushing distgit repository %s", self.name)
+        # When initializing new release branches, an large amount of data needs to
+        # be pushed. If every distgit within a release is being pushed at the same
+        # time, a single push invocation can take hours to complete -- making the
+        # timeout value counterproductive. Limit to 5 simultaneous pushes.
+        timeout = str(self.runtime.global_opts['rhpkg_push_timeout'])
+        await exectools.cmd_assert_async(["timeout", f"{timeout}", "git", "push", "--follow-tags"], cwd=self.distgit_dir, retries=3)
 
     def tag(self, version, release):
         if self.runtime.local:
@@ -325,6 +357,11 @@ class ImageDistGitRepo(DistGitRepo):
     def clone(self, distgits_root_dir, distgit_branch):
         super(ImageDistGitRepo, self).clone(distgits_root_dir, distgit_branch)
         self._read_master_data()
+
+    def _get_diff(self):
+        rc, out, _ = exectools.cmd_gather(["git", "-C", self.distgit_dir, "diff", "Dockerfile"])
+        assertion.success(rc, 'Failed fetching distgit diff')
+        return out
 
     @property
     def image_build_method(self):
@@ -1195,25 +1232,6 @@ class ImageDistGitRepo(DistGitRepo):
         except OSError as e:
             self.logger.warning("Exception while trying to analyze build logs in {}: {}".format(logs_dir, e))
 
-    def push(self):
-        with Dir(self.distgit_dir):
-            self.logger.info("Pushing repository")
-            try:
-                # When initializing new release branches, an large amount of data needs to
-                # be pushed. If every distgit within a release is being pushed at the same
-                # time, a single push invocation can take hours to complete -- making the
-                # timeout value counterproductive. Limit to 5 simultaneous pushes.
-                with self.runtime.get_named_semaphore('rhpkg::push', count=5):
-                    timeout = str(self.runtime.global_opts['rhpkg_push_timeout'])
-                    exectools.cmd_assert("timeout {} rhpkg push".format(timeout), retries=3)
-                    # rhpkg will create but not push tags :(
-                    # Not asserting this exec since this is non-fatal if a tag already exists,
-                    # and tags in dist-git can't be --force overwritten
-                    exectools.cmd_gather(['timeout', '60', 'git', 'push', '--tags'])
-            except IOError as e:
-                return (self.metadata, repr(e))
-            return (self.metadata, True)
-
     @staticmethod
     def _mangle_yum(cmd):
         # alter the arg by splicing its content
@@ -2029,7 +2047,6 @@ class ImageDistGitRepo(DistGitRepo):
         """
         Interprets and applies content.source.modify steps in the image metadata.
         """
-
         dg_path = self.dg_path
         df_path = dg_path.joinpath('Dockerfile')
         with df_path.open('r', encoding="utf-8") as df:
@@ -2058,14 +2075,14 @@ class ImageDistGitRepo(DistGitRepo):
                     "distgit_path": self.dg_path,
                 }
                 modifier.act(context=context, ceiling_dir=str(dg_path))
-                dockerfile_data = context["content"]
+                new_dockerfile_data = context.get("result")
             else:
                 raise IOError("Don't know how to perform modification action: %s" % modification.action)
+        if new_dockerfile_data is not None and new_dockerfile_data != dockerfile_data:
+            with df_path.open('w', encoding="utf-8") as df:
+                df.write(new_dockerfile_data)
 
-        with df_path.open('w', encoding="utf-8") as df:
-            df.write(dockerfile_data)
-
-    def extract_version_release_private_fix(self) -> (str, str, str):
+    def extract_version_release_private_fix(self) -> Tuple[str, str, str]:
         """
         Extract version, release, and private_fix fields from Dockerfile.
         """
@@ -2142,10 +2159,3 @@ class RPMDistGitRepo(DistGitRepo):
         self.source = self.config.content.source
         if self.source.specfile is Missing:
             raise ValueError('Must specify spec file name for RPMs.')
-
-    def _find_in_spec(self, spec, regex, desc):
-        match = re.search(regex, spec)
-        if match:
-            return match.group(1)
-        self.logger.error("No {} found in specfile '{}'".format(desc, self.source.specfile))
-        return ""

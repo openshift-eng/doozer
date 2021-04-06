@@ -382,12 +382,13 @@ class TestGenericDistGit(TestDistgit):
                             config=flexmock(distgit=flexmock(branch="_irrelevant_")),
                             logger=flexmock(info=lambda _: None),
                             name="_irrelevant_")
+        (flexmock(distgit.DistGitRepo).should_receive("_get_diff").once().and_raise(ChildProcessError, "Command returned non-zero exit status: Failed fetching distgit diff"))
         repo = distgit.DistGitRepo(metadata, autoclone=False)
 
         try:
             repo.commit("commit msg", log_diff=True)
             self.fail()
-        except IOError as e:
+        except ChildProcessError as e:
             expected_msg = ("Command returned non-zero exit status: "
                             "Failed fetching distgit diff")
             self.assertEqual(expected_msg, str(e))
@@ -412,6 +413,8 @@ class TestGenericDistGit(TestDistgit):
             .with_args("my-distgit-key", "stdout")
             .once()
             .and_return(None))
+
+        (flexmock(distgit.DistGitRepo).should_receive("_get_diff").once().and_return("stdout"))
 
         distgit.DistGitRepo(metadata, autoclone=False).commit("commit msg", log_diff=True)
 
