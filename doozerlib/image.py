@@ -609,7 +609,15 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
 
             cov_path.mkdir(exist_ok=True)
             emit_path = cov_path.joinpath('emit')
+
             if not emit_path.exists():
+                # cov-capture will search for files like .js, typescript, python in the source directory;
+                # cov-analyze will then search for issues within those non-compiled files.
+                # https://community.synopsys.com/s/question/0D52H000054zcvZSAQ/i-would-like-to-know-the-coverity-static-analysis-process-for-node-js-could-you-please-provide-me-the-sample-steps-to-run-coverity-for-node-js
+                rc, out, err = exectools.cmd_gather(f'docker run --hostname=covscan --rm -v {str(cov_path)}:/cov:z -v {str(dg_path)}:/covscan-src:z {run_tag} cov-capture --dir /cov --source-dir /covscan-src')
+                if rc != 0:
+                    self.logger.error('Error running source detection')
+
                 rc, out, err = exectools.cmd_gather(f'docker run --hostname=covscan --rm -v {str(cov_path)}:/cov:z {run_tag} cov-build --dir=/cov /{build_script_name}')
                 if rc != 0:
                     self.logger.error('Did not achieve full compilation')
@@ -625,12 +633,12 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
                 self.logger.info('covscan emit already exists -- skipping this step')
 
             def run_docker_cov(cmd):
-                return exectools.cmd_assert(f'docker run --hostname=covscan --rm -v {str(cov_path)}:/cov:z {run_tag} {cmd}')
+                return exectools.cmd_assert(f'docker run --hostname=covscan --rm -v {str(cov_path)}:/cov:z {str(dg_path)}:/covscan-src:z {run_tag} {cmd}')
 
             summary_path = cov_path.joinpath('output', 'summary.txt')
             if not summary_path.exists() or 'Time taken by analysis' not in summary_path.read_text(encoding='utf-8'):
                 # This can take an extremely long time and use virtually all CPU
-                run_docker_cov('cov-analyze  --dir=/cov "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--security" "--concurrency" --allow-unmerged-emits')
+                run_docker_cov('cov-analyze  --dir=/cov "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits')
             else:
                 self.logger.info('covscan analysis already exists -- skipping this step')
 
