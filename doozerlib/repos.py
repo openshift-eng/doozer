@@ -37,7 +37,8 @@ class Repo(object):
 
         self.repotypes = DEFAULT_REPOTYPES
         self.baseurl(DEFAULT_REPOTYPES[0], self._valid_arches[0])  # run once just to populate self.repotypes
-        self.reposync_enabled = True if self._data.reposync.enabled is Missing else self._data.reposync.enabled
+        self.reposync_enabled = True if self._data.reposync.enabled is Missing or self._data.reposync.enabled else self._data.reposync.enabled
+        self.reposync_latest_only = True if self._data.reposync.latest_only is Missing or self._data.reposync.latest_only else False
 
     @property
     def enabled(self):
@@ -58,6 +59,9 @@ class Repo(object):
 
     def is_reposync_enabled(self):
         return self.reposync_enabled
+
+    def is_reposync_latest_only(self):
+        return self.reposync_latest_only
 
     def __repr__(self):
         """For debugging mainly, to display contents as a dict"""
