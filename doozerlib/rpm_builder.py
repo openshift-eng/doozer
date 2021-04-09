@@ -11,7 +11,7 @@ import aiofiles
 import aiofiles.os
 
 from doozerlib import brew, exectools
-from doozerlib.distgit import DistGitRepo, RPMDistGitRepo
+from doozerlib.distgit import RPMDistGitRepo
 from doozerlib.model import Missing
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.runtime import Runtime
@@ -84,6 +84,7 @@ class RPMBuilder:
         dg_specfile_path = dg.dg_path / Path(rpm.specfile).name
         async with aiofiles.open(dg_specfile_path, "w") as f:
             await f.writelines(specfile)
+        rpm.specfile = str(dg_specfile_path)
 
         # create tarball source as Source0
         logger.info("Creating tarball source...")
@@ -169,10 +170,17 @@ class RPMBuilder:
         """
         logger = rpm.logger
         dg = rpm.distgit_repo()
+        if rpm.specfile is None:
+            rpm.specfile, nvr, rpm.pre_init_sha = await dg.resolve_specfile_async()
+            rpm.set_nvr(nvr[1], nvr[2])
+        if rpm.private_fix is None:
+            rpm.private_fix = ".p1" in rpm.release
+        if rpm.private_fix:
+            logger.warning("This rpm build contains embargoed fixes.")
 
         if len(rpm.targets) > 1:  # for a multi target build, we need to ensure all buildroots have valid versions of golang compilers
             logger.info("Checking whether this is a golang package...")
-            if await self._golang_required(dg.dg_path / Path(rpm.specfile).name):
+            if await self._golang_required(rpm.specfile):
                 # assert buildroots contain the correct versions of golang
                 logger.info(
                     "This is a golang package. Checking whether buildroots contain consistent versions of golang compilers..."

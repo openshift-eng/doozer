@@ -8,7 +8,7 @@ import json
 import traceback
 
 from .pushd import Dir
-from .distgit import ImageDistGitRepo, RPMDistGitRepo, DistGitRepo
+from .distgit import ImageDistGitRepo, RPMDistGitRepo
 from . import exectools
 from . import logutil
 from . import brew
@@ -106,7 +106,7 @@ class Metadata(object):
             return f'ssh://{self.runtime.user}@{pkgs_host}/{self.qualified_name}'
         return f'ssh://{pkgs_host}/{self.qualified_name}'
 
-    def distgit_repo(self, autoclone=True) -> DistGitRepo:
+    def distgit_repo(self, autoclone=True) -> RPMDistGitRepo:
         if self._distgit_repo is None:
             self._distgit_repo = DISTGIT_TYPES[self.meta_type](self, autoclone=autoclone)
         return self._distgit_repo

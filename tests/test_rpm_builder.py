@@ -103,12 +103,13 @@ class TestRPMBuilder(unittest.TestCase):
         builder._watch_tasks_async = mock.AsyncMock(side_effect=lambda task_ids, _: {
             task_id: None for task_id in task_ids})
         mocked_cmd_gather_async.return_value = (0, "some stdout", "some stderr")
+        dg.resolve_specfile_async = mock.AsyncMock(return_value=(dg.dg_path / "foo.spec", ("foo", "1.2.3", "1"), source_sha))
 
         actual = asyncio.get_event_loop().run_until_complete(builder.build(rpm, retries=3))
         expected = ([10001, 10002], ["https://brewweb.example.com/brew/taskinfo?taskID=10001", "https://brewweb.example.com/brew/taskinfo?taskID=10002"])
         self.assertEqual(actual, expected)
         self.assertTrue(rpm.build_status)
-        builder._golang_required.assert_called_once_with(dg.dg_path / Path(rpm.specfile).name)
+        builder._golang_required.assert_called_once_with(rpm.specfile)
         rpm.assert_golang_versions.assert_called_once()
         builder._build_target_async.assert_any_call(rpm, "rhaos-4.4-rhel-8-candidate")
         builder._build_target_async.assert_any_call(rpm, "rhaos-4.4-rhel-7-candidate")
@@ -134,6 +135,7 @@ class TestRPMBuilder(unittest.TestCase):
         builder._watch_tasks_async = mock.AsyncMock(side_effect=lambda task_ids, _: {
             task_id: "Some error" for task_id in task_ids})
         mocked_cmd_gather_async.return_value = (0, "some stdout", "some stderr")
+        dg.resolve_specfile_async = mock.AsyncMock(return_value=(dg.dg_path / "foo.spec", ("foo", "1.2.3", "1"), source_sha))
 
         with self.assertRaises(RetryException) as cm:
             asyncio.get_event_loop().run_until_complete(builder.build(rpm, retries=3))
@@ -142,7 +144,7 @@ class TestRPMBuilder(unittest.TestCase):
         self.assertEqual(cm.exception.args[1], expected)
         self.assertIn("Giving up after 3 failed attempt(s):", cm.exception.args[0])
         self.assertFalse(rpm.build_status)
-        builder._golang_required.assert_called_once_with(dg.dg_path / Path(rpm.specfile).name)
+        builder._golang_required.assert_called_once_with(rpm.specfile)
         rpm.assert_golang_versions.assert_called_once()
         builder._build_target_async.assert_any_call(rpm, "rhaos-4.4-rhel-8-candidate")
         builder._build_target_async.assert_any_call(rpm, "rhaos-4.4-rhel-7-candidate")

@@ -1,7 +1,9 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
+import asyncio
 import copy
 import errno
+import glob
 import hashlib
 import io
 import os
@@ -14,6 +16,7 @@ from datetime import date
 from multiprocessing import Event, Lock
 from typing import Any, Dict, Tuple
 
+import aiofiles
 import bashlex
 import yaml
 from dockerfile_parse import DockerfileParser
@@ -2157,5 +2160,33 @@ class RPMDistGitRepo(DistGitRepo):
     def __init__(self, metadata, autoclone=True):
         super(RPMDistGitRepo, self).__init__(metadata, autoclone)
         self.source = self.config.content.source
-        if self.source.specfile is Missing:
-            raise ValueError('Must specify spec file name for RPMs.')
+        # if self.source.specfile is Missing:
+        #     raise ValueError('Must specify spec file name for RPMs.')
+
+    async def resolve_specfile_async(self) -> Tuple[pathlib.Path, Tuple[str, str, str], str]:
+        """ Returns the path, NVR, and commit hash of the spec file in distgit_dir
+
+        :return: (spec_path, NVR, commit)
+        """
+        specs = glob.glob(f'{self.distgit_dir}/*.spec')
+        if len(specs) != 1:
+            raise IOError('Unable to find .spec file in RPM distgit: ' + self.name)
+        spec_path = pathlib.Path(specs[0])
+
+        async def _get_nvr():
+            cmd = ["rpmspec", "-q", "--qf", "%{name}-%{version}-%{release}", "--srpm", "--undefine", "dist", "--", spec_path]
+            out, _ = await exectools.cmd_assert_async(cmd, strip=True)
+            return out.rsplit("-", 2)
+
+        async def _get_commit():
+            async with aiofiles.open(spec_path, "r") as f:
+                async for line in f:
+                    line = line.strip()
+                    k = "%global commit "
+                    if line.startswith(k):
+                        return line[len(k):]
+            return None
+
+        nvr, commit = await asyncio.gather(_get_nvr(), _get_commit())
+
+        return spec_path, nvr, commit
