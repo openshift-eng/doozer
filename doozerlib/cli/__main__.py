@@ -1933,7 +1933,10 @@ installonly_limit=3
                 continue
 
             color_print('Syncing repo {}'.format(repo.name), 'blue')
-            cmd = f'reposync -c {yc_file.name} -p {output} --delete --arch {arch} -n -r {repo.name} -e {metadata_dir}'
+            cmd = f'reposync -c {yc_file.name} -p {output} --delete --arch {arch} -r {repo.name} -e {metadata_dir}'
+            if repo.is_reposync_latest_only():
+                cmd += ' -n'
+
             rc, out, err = exectools.cmd_gather(cmd, realtime=True)
             if rc != 0:
                 if not repo.cs_optional:
