@@ -539,7 +539,6 @@ RUN if cat /etc/redhat-release | grep "release 8"; then wget https://dl.fedorapr
 
 # Certs necessary to install from covscan repos
 RUN wget https://password.corp.redhat.com/RH-IT-Root-CA.crt -O /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --no-check-certificate
-RUN wget https://password.corp.redhat.com/legacy.crt -O /etc/pki/ca-trust/source/anchors/legacy.crt --no-check-certificate
 RUN wget https://engineering.redhat.com/Eng-CA.crt -O /etc/pki/ca-trust/source/anchors/Eng-CA.crt --no-check-certificate
 RUN update-ca-trust
 RUN update-ca-trust enable

@@ -394,7 +394,6 @@ class OLMBundle(object):
         if not hasattr(self, '_brew_session'):
             self._brew_session = brew.koji.ClientSession(
                 self.runtime.group_config.urls.brewhub,
-                opts={'serverca': '/etc/pki/brew/legacy.crt'}
             )
         return self._brew_session
 
