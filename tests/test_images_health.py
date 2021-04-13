@@ -4,18 +4,11 @@ from unittest.mock import MagicMock
 from doozerlib.cli import images_health
 
 
-def add_record(image, state, task_id=123, build_url='link', time='2000', name='name'):
+def add_record(image, state, task_id=123, build_url='link', time=1617641142670, name='name'):
     '''Helper function to set up data for querying'''
     if image not in data:
         data[image] = []
-    data[image].append({
-        'Name': name,
-        'Attributes': [
-            {'Name': 'brew.task_id', 'Value': str(task_id)},
-            {'Name': 'brew.task_state', 'Value': state},
-            {'Name': 'jenkins.build_url', 'Value': build_url},
-            {'Name': 'build.time.unix', 'Value': time}]
-    })
+    data[image].append([str(task_id), state, time, build_url])
 
 
 def get_concerns(image):
@@ -34,7 +27,7 @@ add_record('new_failure', 'success')
 add_record('all_fail', 'fail')
 add_record('all_fail', 'fail')
 
-add_record('old_success', 'success', time=500)
+add_record('old_success', 'success', time=1614641142670)
 
 
 class TestImagesHealthCli(unittest.TestCase):
@@ -42,7 +35,7 @@ class TestImagesHealthCli(unittest.TestCase):
         return data[name]
 
     def mock_older_than_two_weeks(task_record):
-        return task_record.ts < 1000
+        return 1617641142670 - task_record[2] > 1209600000
 
     images_health.query = MagicMock(side_effect=mock_query)
     images_health.older_than_two_weeks = MagicMock(side_effect=mock_older_than_two_weeks)

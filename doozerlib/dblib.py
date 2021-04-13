@@ -123,6 +123,36 @@ class DB(object):
         self.runtime.logger.info("Found all environment variables required for db setup.")
         return True
 
+    def select(self, expr, limit=100):
+
+        """
+        :param expr [string] the SQL command want to query from DB
+        :param limit [number] limit the length of the return value
+        :return [dict] return a list of results from SQL query output, return [] if get nothing or get error
+
+        This funtion pass the native SQL query command to DB, return the query result in dict format.
+        If query failed or get nothing then return empty dict.
+        By default limit the result length to 100.
+
+        """
+
+        exeresult = []
+        if self.mysql_db_env_var_setup:
+            db_connection = mysql_connector.connect(host=self.host,
+                                                    user=self.db_user,
+                                                    password=self.pwd,
+                                                    database=self.db)
+            cursor = db_connection.cursor()
+            try:
+                cursor.execute("{} LIMIT {}".format(expr, limit))
+                exeresult = cursor.fetchall()
+                self.runtime.logger.info(exeresult)
+            except Exception as e:
+                self.runtime.logger.error("Error executing command in database. Exception is [{}].".format(e))
+            finally:
+                cursor.close()
+        return exeresult
+
     def check_database_exists(self):
 
         """

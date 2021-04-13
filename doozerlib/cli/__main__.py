@@ -246,7 +246,7 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
         # https://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/SortingDataSelect.html
         sort_by_str = f' ORDER BY `{sort_by}` ASC'
 
-    domain = f'`ART_{runtime.datastore}_{operation}`'
+    domain = f'`{runtime.datastore}_{operation}`'
 
     result = runtime.db.select(f'SELECT {names} FROM {domain}{where_str}{sort_by_str}', limit=int(limit))
 

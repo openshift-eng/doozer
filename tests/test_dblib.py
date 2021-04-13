@@ -6,6 +6,7 @@ import datetime
 import pathlib
 import traceback
 import sys
+import mock
 
 
 class FakeMetaData(object):
@@ -92,6 +93,10 @@ class DBLibTest(unittest.TestCase):
         except Exception:
             traceback.print_exc()
             self.setup_failed = True
+
+    def test_select_withoutenv(self):
+        if not self.setup_failed:
+            self.assertEqual(len(self.db.select("select * from test", 10)), 0)
 
     def test_record(self):
         if not self.setup_failed:
