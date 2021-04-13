@@ -290,7 +290,7 @@ class DistGitRepo(object):
         with Dir(self.distgit_dir):
             self.logger.info("Pushing distgit repository %s", self.name)
             try:
-                # When initializing new release branches, an large amount of data needs to
+                # When initializing new release branches, a large amount of data needs to
                 # be pushed. If every distgit within a release is being pushed at the same
                 # time, a single push invocation can take hours to complete -- making the
                 # timeout value counterproductive. Limit to 5 simultaneous pushes.
