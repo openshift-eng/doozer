@@ -5,18 +5,21 @@ Test functions related to controlled command execution
 
 from __future__ import absolute_import, print_function, unicode_literals
 
+import asyncio
 import unittest
+
+import mock
+
 try:
     from importlib import reload
 except ImportError:
     pass
-import os
-import tempfile
-import shutil
-
 import logging
+import os
+import shutil
+import tempfile
 
-from doozerlib import exectools
+from doozerlib import exectools, assertion
 
 
 class RetryTestCase(unittest.TestCase):
@@ -183,6 +186,51 @@ class TestGather(unittest.TestCase):
         lines = log_file.readlines()
 
         self.assertEqual(len(lines), 6)
+
+    def test_cmd_gather_async(self):
+        loop = asyncio.get_event_loop()
+        cmd = ["uname", "-a"]
+        fake_cwd = "/foo/bar"
+        fake_stdout = b"fake_stdout"
+        fake_stderr = b"fake_stderr"
+        with mock.patch("asyncio.create_subprocess_exec") as create_subprocess_exec, \
+                mock.patch("doozerlib.pushd.Dir.getcwd", return_value=fake_cwd):
+            proc = create_subprocess_exec.return_value
+            proc.returncode = 0
+            proc.communicate.return_value = (fake_stdout, fake_stderr)
+
+            rc, out, err = loop.run_until_complete(exectools.cmd_gather_async(cmd, text_mode=True))
+            create_subprocess_exec.assert_called_once_with(*cmd, cwd=fake_cwd, env=None, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, stdin=asyncio.subprocess.DEVNULL)
+            self.assertEqual(rc, 0)
+            self.assertEqual(out, fake_stdout.decode("utf-8"))
+            self.assertEqual(err, fake_stderr.decode("utf-8"))
+
+            create_subprocess_exec.reset_mock()
+            rc, out, err = loop.run_until_complete(exectools.cmd_gather_async(cmd, text_mode=False))
+            create_subprocess_exec.assert_called_once_with(*cmd, cwd=fake_cwd, env=None, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, stdin=asyncio.subprocess.DEVNULL)
+            self.assertEqual(rc, 0)
+            self.assertEqual(out, fake_stdout)
+            self.assertEqual(err, fake_stderr)
+
+    def test_cmd_assert_async(self):
+        loop = asyncio.get_event_loop()
+        cmd = ["uname", "-a"]
+        fake_cwd = "/foo/bar"
+        with mock.patch("doozerlib.exectools.cmd_gather_async") as cmd_gather_async:
+            cmd_gather_async.return_value = (0, "fake_stdout", "fake_stderr")
+
+            out, err = loop.run_until_complete(exectools.cmd_assert_async(cmd, cwd=fake_cwd, text_mode=True))
+            cmd_gather_async.assert_called_once_with(cmd, text_mode=True, cwd=fake_cwd, set_env=None, strip=False, log_stdout=False, log_stderr=True)
+            self.assertEqual(out, "fake_stdout")
+            self.assertEqual(err, "fake_stderr")
+
+        with mock.patch("doozerlib.exectools.cmd_gather_async") as cmd_gather_async:
+            cmd_gather_async.return_value = (1, "fake_stdout", "fake_stderr")
+            with self.assertRaises(assertion.ChildProcessError):
+                out, err = loop.run_until_complete(exectools.cmd_assert_async(cmd, cwd=fake_cwd, text_mode=True))
+            cmd_gather_async.assert_called_once_with(cmd, text_mode=True, cwd=fake_cwd, set_env=None, strip=False, log_stdout=False, log_stderr=True)
+            self.assertEqual(out, "fake_stdout")
+            self.assertEqual(err, "fake_stderr")
 
 
 if __name__ == "__main__":

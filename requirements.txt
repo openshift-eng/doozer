@@ -1,14 +1,14 @@
+aiofiles
 bashlex
 click >= 6.7
+contextvars ; python_version<"3.7"
 dockerfile-parse >= 0.0.13
 future
 koji
-mock
 PyGitHub >= 1.46
 pyyaml >= 5.1
 requests
 requests_kerberos
-retry
 rpm-py-installer
 semver
 tenacity

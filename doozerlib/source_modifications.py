@@ -164,7 +164,7 @@ class ReplaceModifier(object):
         LOGGER.debug(
             "Performed string replace '%s' -> '%s':\n%s\n" %
             (match, replacement, post))
-        context["content"] = post
+        context["result"] = post
 
 
 SourceModifierFactory.MODIFICATIONS["replace"] = ReplaceModifier
@@ -186,7 +186,8 @@ class CommandModifier(object):
         """
         context = kwargs["context"]
         set_env = context["set_env"]
-        with Dir(context['distgit_path']):
+        ceiling_dir = kwargs["ceiling_dir"]
+        with Dir(ceiling_dir):
             cmd_assert(self.command, set_env=set_env)
 
 

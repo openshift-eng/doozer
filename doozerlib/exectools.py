@@ -5,6 +5,10 @@ ordinary subprocess behaviors.
 """
 
 from __future__ import absolute_import, print_function, unicode_literals
+import asyncio
+from asyncio import events
+import contextvars
+import functools
 
 import subprocess
 import time
@@ -13,6 +17,7 @@ import os
 import threading
 import platform
 import sys
+from typing import Dict, List, Optional, Tuple, Union
 import urllib
 import errno
 
@@ -33,7 +38,9 @@ class RetryException(Exception):
     """
     Provide a custom exception for retry failures
     """
-    pass
+
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
 
 
 def retry(retries, task_f, check_f=bool, wait_f=None):
@@ -274,3 +281,140 @@ def fire_and_forget(cwd, shell_cmd, quiet=True):
     p = subprocess.Popen(f'{shell_cmd}', env=os.environ.copy(), shell=True, stdin=None, stdout=None, stderr=None,
                          cwd=cwd, close_fds=True, **kwargs)
     assert not p.poll()
+
+
+async def cmd_gather_async(cmd: Union[str, List[str]], text_mode=True, cwd: Optional[str] = None, set_env: Optional[Dict[str, str]] = None,
+                           strip=False, log_stdout=False, log_stderr=True) -> Union[Tuple[int, str, str], Tuple[int, bytes, bytes]]:
+    """Similar to cmd_gather, but run asynchronously
+
+    :param cmd: The command and arguments to execute
+    :param text_mode: True to decode stdout to string
+    :param cwd: Set current working directory
+    :param set_env: Dict of env vars to override in the current doozer environment.
+    :param strip: Strip extra whitespace from stdout/err before returning. Requires text_mode = True.
+    :param log_stdout: Whether stdout should be logged into the DEBUG log.
+    :param log_stderr: Whether stderr should be logged into the DEBUG log
+    :return: (rc, stdout, stderr)
+    """
+    if strip and not text_mode:
+        raise ValueError("Can't strip if text_mode is False.")
+
+    if not isinstance(cmd, list):
+        cmd_list = shlex.split(cmd)
+    else:
+        cmd_list = [str(c) for c in cmd]
+    if not cwd:
+        cwd = pushd.Dir.getcwd()
+    cmd_info = f"[cwd={cwd}]: {cmd_list}"
+
+    logger.debug("Executing:cmd_gather %s", cmd_info)
+    proc = await asyncio.create_subprocess_exec(
+        *cmd_list,
+        cwd=cwd,
+        env=set_env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        stdin=subprocess.DEVNULL)
+
+    out, err = await proc.communicate()
+    rc = proc.returncode
+
+    out_str = out.decode(encoding="utf-8") if text_mode else out.hex()
+    err_str = err.decode(encoding="utf-8")
+
+    log_output_stdout = out_str if log_stdout else f'{out_str[:200]}\n..truncated..'
+    log_output_stderr = err_str if log_stderr else f'{err_str[:200]}\n..truncated..'
+
+    if rc:
+        logger.debug(
+            "%s: Exited with error: %s\nstdout>>%s<<\nstderr>>%s<<\n",
+            cmd_info, rc, log_output_stdout, log_output_stderr)
+    else:
+        logger.debug(
+            "{}: Exited with: {}\nstdout>>{}<<\nstderr>>{}<<\n".
+            format(cmd_info, rc, log_output_stdout, log_output_stderr))
+
+    if text_mode:
+        return (rc, out_str, err_str) if not strip else (rc, out_str.strip(), err_str.strip())
+    else:
+        return rc, out, err
+
+
+async def cmd_assert_async(cmd: Union[str, List[str]], text_mode=True, retries=1, pollrate=60, on_retry: Optional[Union[str, List[str]]] = None,
+                           cwd: Optional[str] = None, set_env: Optional[Dict[str, str]] = None, strip=False,
+                           log_stdout: bool = False, log_stderr: bool = True) -> Union[Tuple[str, str], Tuple[bytes, bytes]]:
+    """
+    Similar to cmd_assert, but run asynchronously
+
+    :param cmd: A shell command
+    :param text_mode: True to decode stdout to string
+    :param retries: The number of times to try before declaring failure
+    :param pollrate: How long to sleep between tries
+    :param on_retry: A shell command to run before retrying a failure
+    :param cwd: Set current working directory
+    :param set_env: Dict of env vars to set for command (overriding existing)
+    :param strip: Strip extra whitespace from stdout/err before returning.
+    :param log_stdout: Whether stdout should be logged into the DEBUG log.
+    :param log_stderr: Whether stderr should be logged into the DEBUG log
+    :return: (stdout,stderr) if exit code is zero
+    """
+    if retries <= 0:
+        raise ValueError("`retries` must be greater than 0.")
+    cmd_list = [str(c) for c in cmd] if isinstance(cmd, list) else shlex.split(cmd)
+    if not cwd:
+        cwd = pushd.Dir.getcwd()
+
+    for try_num in range(0, retries):
+        if try_num > 0:
+            logger.debug(
+                "cmd_assert: Failed %s times. Retrying in %s seconds: %s",
+                try_num, pollrate, cmd_list)
+            await asyncio.sleep(pollrate)
+            if on_retry is not None:
+                # Run the recovery command between retries. Nothing to collect or assert -- just try it.
+                await cmd_gather_async(cmd_list, cwd=cwd, set_env=set_env)
+        result, out, err = await cmd_gather_async(cmd_list, text_mode=text_mode, cwd=cwd, set_env=set_env, strip=strip, log_stdout=log_stdout, log_stderr=log_stderr)
+        if result == SUCCESS:
+            break
+
+    logger.debug("cmd_assert: Final result = %s in %s tries.", result, try_num)
+    assertion.success(result, "Error running [{}] {}. See debug log.".format(cwd, cmd_list))
+    return out, err
+
+
+async def to_thread(func, *args, **kwargs):
+    """Asynchronously run function *func* in a separate thread.
+
+    This function is a backport of asyncio.to_thread from Python 3.9.
+
+    Any *args and **kwargs supplied for this function are directly passed
+    to *func*. Also, the current :class:`contextvars.Context` is propogated,
+    allowing context variables from the main thread to be accessed in the
+    separate thread.
+
+    Return a coroutine that can be awaited to get the eventual result of *func*.
+    """
+    loop = asyncio.get_event_loop()
+    ctx = contextvars.copy_context()
+    func_call = functools.partial(ctx.run, func, *args, **kwargs)
+    return await loop.run_in_executor(None, func_call)
+
+
+def limit_concurrency(limit=5):
+    """A decorator to limit the number of parallel tasks with asyncio.
+
+    It should be noted that when the decorator function is executed, the created Semaphore is bound to the default event loop.
+    https://stackoverflow.com/a/66289885
+    """
+    # use asyncio.BoundedSemaphore(5) instead of Semaphore to prevent accidentally increasing the original limit (stackoverflow.com/a/48971158/6687477)
+    sem = asyncio.BoundedSemaphore(limit)
+
+    def executor(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            async with sem:
+                return await func(*args, **kwargs)
+
+        return wrapper
+
+    return executor

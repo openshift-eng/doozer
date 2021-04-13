@@ -1340,7 +1340,7 @@ class Runtime(object):
             while not ret.ready():
                 ret.wait(60)
         except KeyboardInterrupt:
-            self.logger.warn('SIGINT received, signaling threads to terminate...')
+            self.logger.warning('SIGINT received, signaling threads to terminate...')
             terminate_event.set()
         pool.join()
         return ret

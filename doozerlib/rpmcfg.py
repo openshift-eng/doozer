@@ -53,8 +53,8 @@ class RPMMetadata(Metadata):
         self.tag = None
         self.build_status = False
         self.pre_init_sha = None
-        # This will be set to True if the source contains embargoed (private) CVE fixes. Defaulting to False for distgit only repos.
-        self.private_fix = False
+        # This will be set to True if the source contains embargoed (private) CVE fixes. Defaulting to None means this should be auto-determined.
+        self.private_fix = None
 
         # If populated, extra variables that will added as os_git_vars
         self.extra_os_git_vars = {}
@@ -72,37 +72,45 @@ class RPMMetadata(Metadata):
             # If group config doesn't define the targets either, the target name will be derived from the distgit branch name
             self.targets = [self.branch() + "-candidate"]
 
+        self.source_path = None
+        self.source_head = None
+        # path to the specfile
+        self.specfile = None
         if clone_source:
-            self.source_path = self.runtime.resolve_source(self)
-            self.source_head = self.runtime.resolve_source_head(self)
+            self.clone_source()
+
+    def clone_source(self):
+        self.source_path = self.runtime.resolve_source(self)
+        self.source_head = self.runtime.resolve_source_head(self)
+        with Dir(self.source_path):
+            # gather source repo short sha for audit trail
+            out, _ = exectools.cmd_assert(["git", "rev-parse", "HEAD"])
+            self.pre_init_sha = source_full_sha = out.strip()
+
+            # Determine if the source contains private fixes by checking if the private org branch commit exists in the public org
+            if self.private_fix is None and self.public_upstream_branch:
+                self.private_fix = not util.is_commit_in_public_upstream(source_full_sha, self.public_upstream_branch, self.source_path)
+
+            self.extra_os_git_vars.update(self.extract_kube_env_vars())
+
+        if self.source.specfile:
+            self.specfile = os.path.join(self.source_path, self.source.specfile)
+            if not os.path.isfile(self.specfile):
+                raise ValueError('{} config specified a spec file that does not exist: {}'.format(
+                    self.config_filename, self.specfile
+                ))
+        else:
             with Dir(self.source_path):
-                # gather source repo short sha for audit trail
-                out, _ = exectools.cmd_assert(["git", "rev-parse", "HEAD"])
-                source_full_sha = out.strip()
-
-                # Determine if the source contains private fixes by checking if the private org branch commit exists in the public org
-                if self.public_upstream_branch:
-                    self.private_fix = not util.is_commit_in_public_upstream(source_full_sha, self.public_upstream_branch, self.source_path)
-
-                self.extra_os_git_vars.update(self.extract_kube_env_vars())
-
-            if self.source.specfile:
-                self.specfile = os.path.join(self.source_path, self.source.specfile)
-                if not os.path.isfile(self.specfile):
-                    raise ValueError('{} config specified a spec file that does not exist: {}'.format(
-                        self.config_filename, self.specfile
-                    ))
-            else:
-                with Dir(self.source_path):
-                    specs = []
-                    for spec in glob.glob('*.spec'):
-                        specs.append(spec)
-                    if len(specs) > 1:
-                        raise ValueError('More than one spec file found. Specify correct file in config yaml')
-                    elif len(specs) == 0:
-                        raise ValueError('Unable to find any spec files in {}'.format(self.source_path))
-                    else:
-                        self.specfile = os.path.join(self.source_path, specs[0])
+                specs = []
+                for spec in glob.glob('*.spec'):
+                    specs.append(spec)
+                if len(specs) > 1:
+                    raise ValueError('More than one spec file found. Specify correct file in config yaml')
+                elif len(specs) == 0:
+                    raise ValueError('Unable to find any spec files in {}'.format(self.source_path))
+                else:
+                    self.specfile = os.path.join(self.source_path, specs[0])
+        return self.source_path
 
     def set_nvr(self, version, release):
         self.version = version
@@ -218,11 +226,14 @@ class RPMMetadata(Metadata):
                         self.logger.info('Renaming extraneous spec file before build: {} (only want {})'.format(f, self.source.specfile))
                         os.rename(found_path, '{}.ignore'.format(found_path))
 
-    def _run_modifications(self):
+    def _run_modifications(self, specfile: Optional[os.PathLike] = None, cwd: Optional[os.PathLike] = None):
         """
         Interprets and applies content.source.modify steps in the image metadata.
+
+        :param specfile: Path to an alternative specfile. None means use the specfile in the source dir
+        :param cwd: If set, change current working directory. None means use the source dir
         """
-        with io.open(self.specfile, 'r', encoding='utf-8') as df:
+        with io.open(specfile or self.specfile, 'r', encoding='utf-8') as df:
             specfile_data = df.read()
 
         self.logger.debug(
@@ -246,13 +257,14 @@ class RPMMetadata(Metadata):
                     "content": specfile_data,
                     "set_env": {"PATH": path},
                 }
-                modifier.act(context=context, ceiling_dir=os.getcwd())
-                specfile_data = context["content"]
+                modifier.act(context=context, ceiling_dir=cwd or Dir.getcwd())
+                new_specfile_data = context.get("result")
             else:
                 raise IOError("%s: Don't know how to perform modification action: %s" % (self.distgit_key, modification.action))
 
-        with io.open(self.specfile, 'w', encoding='utf-8') as df:
-            df.write(specfile_data)
+        if new_specfile_data is not None and new_specfile_data != specfile_data:
+            with io.open(specfile or self.specfile, 'w', encoding='utf-8') as df:
+                df.write(new_specfile_data)
 
     def update_spec(self):
         if self.config.content.build.use_source_tito_config:

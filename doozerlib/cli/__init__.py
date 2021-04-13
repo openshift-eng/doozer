@@ -1,5 +1,7 @@
+import asyncio
 import os
 import sys
+from functools import update_wrapper
 
 import click
 
@@ -147,3 +149,42 @@ def cli(ctx, **kwargs):
     ctx.obj = Runtime(cfg_obj=cfg, command=ctx.invoked_subcommand, **runtime_args)
     CTX_GLOBAL = ctx
     return ctx
+
+
+def click_coroutine(f):
+    """ A wrapper to allow to use asyncio with click.
+    https://github.com/pallets/click/issues/85
+    """
+    f = asyncio.coroutine(f)
+
+    def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(f(*args, **kwargs))
+    return update_wrapper(wrapper, f)
+
+
+def validate_semver_major_minor_patch(ctx, param, version):
+    """
+    For non-None, non-auto values, ensures that the incoming parameter meets the criteria vX.Y.Z or X.Y.Z.
+    If minor or patch is not supplied, the value is modified to possess
+    minor.major to meet semver requirements.
+    :param ctx: Click context
+    :param param: The parameter specified on the command line
+    :param version: The version specified on the command line
+    :return:
+    """
+    if version == 'auto' or version is None:
+        return version
+
+    vsplit = version.split(".")
+    try:
+        int(vsplit[0].lstrip('v'))
+        minor_version = int('0' if len(vsplit) < 2 else vsplit[1])
+        patch_version = int('0' if len(vsplit) < 3 else vsplit[2])
+    except ValueError:
+        raise click.BadParameter('Expected integers in version fields')
+
+    if len(vsplit) > 3:
+        raise click.BadParameter('Expected X, X.Y, or X.Y.Z (with optional "v" prefix)')
+
+    return f'{vsplit[0]}.{minor_version}.{patch_version}'

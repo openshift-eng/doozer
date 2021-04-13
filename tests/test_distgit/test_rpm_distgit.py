@@ -1,7 +1,10 @@
 from __future__ import absolute_import, print_function, unicode_literals
-import unittest
 
-import flexmock
+import asyncio
+import unittest
+from pathlib import Path
+
+from mock import Mock, patch
 
 from doozerlib import distgit, model
 
@@ -14,26 +17,19 @@ class TestRPMDistGit(TestDistgit):
         self.rpm_dg = distgit.RPMDistGitRepo(self.md, autoclone=False)
         self.rpm_dg.runtime.group_config = model.Model()
 
-    def test_init_with_missing_source_specfile(self):
-        metadata = flexmock(config=flexmock(content=flexmock(source=distgit.Missing),
-                                            distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(branch="_irrelevant_"),
-                            name="_irrelevant_",
-                            logger="_irrelevant_")
-
-        try:
-            distgit.RPMDistGitRepo(metadata, autoclone=False)
-            self.fail("Should have raised a ValueError")
-        except ValueError as e:
-            expected = "Must specify spec file name for RPMs."
-            actual = str(e)
-            self.assertEqual(expected, actual)
-
-    def test_pkg_find_in_spec(self):
-        """ Test RPMDistGitRepo._find_in_spec """
-        self.assertEqual("", self.rpm_dg._find_in_spec("spec", "(?mx) nothing", "thing"))
-        self.assertIn("No thing found", self.stream.getvalue())
-        self.assertEqual("SOMEthing", self.rpm_dg._find_in_spec("no\nSOMEthing", "(?imx) ^ (something)", "thing"))
+    @patch("aiofiles.open")
+    @patch("doozerlib.distgit.exectools.cmd_assert_async", return_value=("foo-1.2.3-1", ""))
+    @patch("glob.glob", return_value=["/path/to/distgit/foo.spec"])
+    def test_resolve_specfile_async(self, mocked_glob: Mock, mocked_cmd_assert_async: Mock, mocked_open: Mock):
+        self.rpm_dg.distgit_dir = "/path/to/distgit"
+        mocked_file = mocked_open.return_value.__aenter__.return_value
+        mocked_file.__aiter__.return_value = iter(["hello", "%global commit abcdef012345", "world!"])
+        actual = asyncio.get_event_loop().run_until_complete(self.rpm_dg.resolve_specfile_async())
+        expected = (Path("/path/to/distgit/foo.spec"), ["foo", "1.2.3", "1"], "abcdef012345")
+        self.assertEqual(actual, expected)
+        mocked_open.assert_called_once_with(Path("/path/to/distgit/foo.spec"), "r")
+        mocked_glob.assert_called_once_with(self.rpm_dg.distgit_dir + "/*.spec")
+        mocked_cmd_assert_async.assert_called_once_with(["rpmspec", "-q", "--qf", "%{name}-%{version}-%{release}", "--srpm", "--undefine", "dist", "--", Path("/path/to/distgit/foo.spec")], strip=True)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, unicode_literals
+from pathlib import Path
 import click
 import copy
 import os
@@ -194,15 +195,16 @@ def is_commit_in_public_upstream(revision: str, public_upstream_branch: str, sou
     raise IOError(f"Couldn't determine if the commit {revision} is in the public upstream source repo. `git merge-base` exited with {rc}, stdout={out}, stderr={err}")
 
 
-def is_in_directory(path, directory):
+def is_in_directory(path: os.PathLike, directory: os.PathLike):
     """check whether a path is in another directory
-
-    FIXME: Use os.path.commonpath when migrated to Python 3
     """
-    path = os.path.realpath(path)
-    directory = os.path.realpath(directory)
-    relative = os.path.relpath(os.path.dirname(path), directory)
-    return relative != os.pardir and not relative.startswith(os.pardir + os.sep)
+    a = Path(path).parent.resolve()
+    b = Path(directory).resolve()
+    try:
+        a.relative_to(b)
+        return True
+    except ValueError:
+        return False
 
 
 def mkdirs(path):
