@@ -632,7 +632,7 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
                 self.logger.info('covscan emit already exists -- skipping this step')
 
             def run_docker_cov(cmd):
-                return exectools.cmd_assert(f'docker run --hostname=covscan --rm -v {str(cov_path)}:/cov:z {str(dg_path)}:/covscan-src:z {run_tag} {cmd}')
+                return exectools.cmd_assert(f'docker run --hostname=covscan --rm -v {str(cov_path)}:/cov:z -v {str(dg_path)}:/covscan-src:z {run_tag} {cmd}')
 
             summary_path = cov_path.joinpath('output', 'summary.txt')
             if not summary_path.exists() or 'Time taken by analysis' not in summary_path.read_text(encoding='utf-8'):
