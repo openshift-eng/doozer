@@ -405,7 +405,7 @@ class ImageMetadata(Metadata):
         dg_archive_path.mkdir(parents=True, exist_ok=True)  # /<archive-dir>/<dg-key>
 
         builders = self.config['from'].builder
-        if builders is Missing:
+        if not builders:
             self.logger.info('No builder images -- does not appear to be container first. Skipping.')
             return
 
@@ -452,45 +452,24 @@ class ImageMetadata(Metadata):
             dg_path = pathlib.Path(Dir.getcwd())
             cov_path = dg_path.joinpath('cov')
 
+            cov_path.mkdir(exist_ok=True)
+            emit_path = cov_path.joinpath('emit')
+
             dockerfile_path = dg_path.joinpath('Dockerfile')
             if not dockerfile_path.exists():
                 self.logger.error('Dockerfile does not exist in distgit; not rebased yet?')
                 return
 
-            dfp = DockerfileParser(str(dockerfile_path))
-            covscan_builder_df_path = dg_path.joinpath('Dockerfile.covscan.builder')
-
-            with covscan_builder_df_path.open(mode='w+') as df_out:
-                first_parent = dfp.parent_images[0]
-                ns, repo_tag = first_parent.split(
-                    '/')  # e.g. openshift/golang-builder:latest => [openshift, golang-builder:latest]
-                if '@' in repo_tag:
-                    repo, tag = repo_tag.split(
-                        '@')  # e.g. golang-builder@sha256:12345 =>  golang-builder & tag=sha256:12345
-                    tag = '@' + tag
-                else:
-                    if ':' in repo_tag:
-                        repo, tag = repo_tag.split(':')  # e.g. golang-builder:latest =>  golang-builder & tag=latest
-                    else:
-                        repo = repo_tag
-                        tag = 'latest'
-                    tag = ':' + tag
-
-                first_parent_url = f'registry-proxy.engineering.redhat.com/rh-osbs/{ns}-{repo}{tag}'
-
-                # build a local image name we can use.
-                # We will build a local scanner image based on the target distgit's first parent.
-                # It will have coverity tools installed.
-                m = hashlib.md5()
-                m.update(first_parent.encode('utf-8'))
-                local_builder_tag = f'{repo}-{m.hexdigest()}'
-
-                vol_mount_arg = ''
-                make_image_repo_files = ''
-
-                if local_repo_rhel_7:
-                    for idx, lr in enumerate(local_repo_rhel_7):
-                        make_image_repo_files += f"""
+            # Each stage of the dockerfile we are going to build needs to install coverity tools to build
+            # and scan code. Create the Dockerfile lines capable of doing that. If repos were specified
+            # on the host via command line parameters, use them. Otherwise, wget the repo files. In this
+            # second embodiment, each stage will have to build yum information and download rpms; this
+            # will be quite slow.
+            vol_mount_arg = ''
+            make_image_repo_files = ''
+            if local_repo_rhel_7:
+                for idx, lr in enumerate(local_repo_rhel_7):
+                    make_image_repo_files += f"""
 # Create a repo able to pull from the local filesystem and prioritize it for speed.
 RUN if cat /etc/redhat-release | grep "release 7"; then echo '[covscan_local_{idx}]' > /etc/yum.repos.d/covscan_local_{idx}.repo && \
     echo 'baseurl=file:///covscan_local_{idx}_rhel_7' >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
@@ -500,13 +479,13 @@ RUN if cat /etc/redhat-release | grep "release 7"; then echo '[covscan_local_{id
     echo enabled_metadata=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
     echo priority=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo; fi
     """
-                        vol_mount_arg += f' -mount {lr}:/covscan_local_{idx}_rhel_7'
-                else:
-                    make_image_repo_files = 'RUN if cat /etc/redhat-release | grep "release 7"; then wget --no-check-certificate https://cov01.lab.eng.brq.redhat.com/coverity/install/covscan/covscan-rhel-7.repo -O /etc/yum.repos.d/covscan.repo; fi\n'
+                    vol_mount_arg += f' -mount {lr}:/covscan_local_{idx}_rhel_7'
+            else:
+                make_image_repo_files = 'RUN if cat /etc/redhat-release | grep "release 7"; then curl -k https://cov01.lab.eng.brq.redhat.com/coverity/install/covscan/covscan-rhel-7.repo --output /etc/yum.repos.d/covscan.repo; fi\n'
 
-                if local_repo_rhel_8:
-                    for idx, lr in enumerate(local_repo_rhel_8):
-                        make_image_repo_files += f"""
+            if local_repo_rhel_8:
+                for idx, lr in enumerate(local_repo_rhel_8):
+                    make_image_repo_files += f"""
 # Create a repo able to pull from the local filesystem and prioritize it for speed.
 RUN if cat /etc/redhat-release | grep "release 8"; then echo '[covscan_local_{idx}]' > /etc/yum.repos.d/covscan_local_{idx}.repo && \
     echo 'baseurl=file:///covscan_local_{idx}_rhel_8' >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
@@ -516,177 +495,130 @@ RUN if cat /etc/redhat-release | grep "release 8"; then echo '[covscan_local_{id
     echo enabled_metadata=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
     echo priority=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo; fi
     """
-                        vol_mount_arg += f' -mount {lr}:/covscan_local_{idx}_rhel_8'
-                else:
-                    make_image_repo_files = 'RUN if cat /etc/redhat-release | grep "release 8"; then wget --no-check-certificate https://cov01.lab.eng.brq.redhat.com/coverity/install/covscan/covscan-rhel-8.repo -O /etc/yum.repos.d/covscan.repo; fi\n'
+                    vol_mount_arg += f' -mount {lr}:/covscan_local_{idx}_rhel_8'
+            else:
+                make_image_repo_files = 'RUN if cat /etc/redhat-release | grep "release 8"; then curl -k https://cov01.lab.eng.brq.redhat.com/coverity/install/covscan/covscan-rhel-8.repo --output /etc/yum.repos.d/covscan.repo; fi\n'
 
-                df_out.write(f'''FROM {first_parent_url}
-LABEL DOOZER_COVSCAN_PARENT_IMAGE=true
-LABEL DOOZER_COVSCAN_FIRST_PARENT={local_builder_tag}
-LABEL DOOZER_COVSCAN_GROUP={self.runtime.group_config.name}
+            dfp = DockerfileParser(str(dockerfile_path))
+            covscan_builder_df_path = dg_path.joinpath('Dockerfile.covscan')
 
+            with covscan_builder_df_path.open(mode='w+') as df_out:
+                df_line = 0
+                for entry in dfp.structure:
+                    df_line += 1
+                    content = entry['content']
+                    instruction = entry['instruction'].upper()
+                    if instruction.upper() == 'FROM':
+                        image_name = content.strip()[5:].strip()  # Remove 'FROM '
+
+                        # We need to figure out where buildvm can pull this image from
+                        if 'registry.redhat' in image_name:
+                            # Looks to be non-brew; use it directly
+                            image_url = image_name
+                        else:
+                            ns, repo_tag = image_name.split(
+                                '/')  # e.g. openshift/golang-builder:latest => [openshift, golang-builder:latest]
+                            if '@' in repo_tag:
+                                repo, tag = repo_tag.split(
+                                    '@')  # e.g. golang-builder@sha256:12345 =>  golang-builder & tag=sha256:12345
+                                tag = '@' + tag
+                            else:
+                                if ':' in repo_tag:
+                                    repo, tag = repo_tag.split(
+                                        ':')  # e.g. golang-builder:latest =>  golang-builder & tag=latest
+                                else:
+                                    repo = repo_tag
+                                    tag = 'latest'
+                                tag = ':' + tag
+
+                            image_url = f'registry-proxy.engineering.redhat.com/rh-osbs/{ns}-{repo}{tag}'
+
+                        df_out.write(f'FROM {image_url}\n')
+                        # Label these images so we can find a delete them later
+                        df_out.write(f'LABEL DOOZER_COVSCAN_GROUP={self.runtime.group_config.name}')
+
+                        # For each new stage, we also need to install the coverity tools
+                        df_out.write(f'''
+# Ensure that the build process can access the same RPMs that the build can during a brew build
+RUN curl {self.cgit_url(".oit/" + repo_type + ".repo")} --output /etc/yum.repos.d/oit.repo
 {make_image_repo_files}
 
-RUN yum install -y wget
-
-RUN wget {self.cgit_url(".oit/" + repo_type + ".repo")} -O /etc/yum.repos.d/oit.repo
 RUN yum install -y python36
 
 # Enable epel for csmock
-RUN if cat /etc/redhat-release | grep "release 7"; then wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && yum -y install epel-release-latest-7.noarch.rpm; fi
-RUN if cat /etc/redhat-release | grep "release 8"; then wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && yum -y install epel-release-latest-8.noarch.rpm; fi
+RUN if cat /etc/redhat-release | grep "release 7"; then curl https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm --output epel7.rpm && yum -y install epel7.rpm; fi
+RUN if cat /etc/redhat-release | grep "release 8"; then curl https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm --output epel8.rpm && yum -y install epel8.rpm; fi
 
 
 # Certs necessary to install from covscan repos
-RUN wget https://password.corp.redhat.com/RH-IT-Root-CA.crt -O /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --no-check-certificate
-RUN wget https://engineering.redhat.com/Eng-CA.crt -O /etc/pki/ca-trust/source/anchors/Eng-CA.crt --no-check-certificate
+RUN curl -k https://password.corp.redhat.com/RH-IT-Root-CA.crt --output /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt
+RUN curl -k https://engineering.redhat.com/Eng-CA.crt --output /etc/pki/ca-trust/source/anchors/Eng-CA.crt
 RUN update-ca-trust
 RUN update-ca-trust enable
 
 RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
-    ''')
 
-            rc, out, err = exectools.cmd_gather(f'docker image inspect {local_builder_tag}')
-            if rc != 0:
-                rc, _, _ = exectools.cmd_gather(f'imagebuilder {vol_mount_arg} -t {local_builder_tag} -f {str(covscan_builder_df_path)} {str(dg_path)}')
-                if rc != 0:
-                    self.logger.error(f'Unable to create scanner image based on builder image: {first_parent_url}')
-                    # TODO: log this as a record and make sure the pipeline warns artist.
-                    # until covscan can be installed on rhel-8, this is expected for some images.
-                    return
+''')
+                        df_out.write('ENV PATH=/opt/coverity/bin:${PATH}\n')  # Ensure coverity is in the path
+                        continue
 
-            # We should now have an image tagged local_builder_tag based on the original image's builder image
-            # but also with covscan tools installed.
+                    if instruction == 'RUN':
+                        # For RUN commands, we need to execute the command under the watchful eye of coverity
+                        # tools. Create a batch file that will wrap the command
+                        command_to_run = content.strip()[4:]  # Remove 'RUN '
+                        temp_script_name = f'_gen_{self.image_name_short}_line_{df_line}.sh'
+                        with open(dg_path.joinpath(temp_script_name), mode='w+', encoding='utf-8') as sh:
+                            sh.write(f'''
+#!/bin/sh
+set -o xtrace
+set -euo pipefail
+{command_to_run}
+''')
+                        df_out.write(f'''
+ADD {temp_script_name} .
+RUN chmod +x {temp_script_name}
+# Finally, run the script while coverity is watching
+RUN cov-build --dir=/cov ./{temp_script_name} || echo "Error compiling in {temp_script_name}."
+''')
+                    else:  # e.g. COPY, ENV, CMD, WORKDIR...
+                        # Just pass it straight through to the covscan Dockerfile
+                        df_out.write(f'{content}\n')
 
-            covscan_df_path = dg_path.joinpath('Dockerfile.covscan')
-
-            runs = ['#!/bin/bash', 'set -o xtrace']
-            setup = []
-            first_from = False
-            for entry in dfp.structure:
-                content = entry['content']
-                instruction = entry['instruction'].upper()
-                if instruction.upper() == 'FROM':
-                    if first_from:
-                        break
-                    first_from = True
-
-                if instruction == 'COPY':
-                    setup.append(content)
-
-                if instruction == 'ENV':
-                    setup.append(content)
-
-                if instruction == 'RUN':
-                    runs.append(content.strip()[4:])
-
-                if instruction == 'WORKDIR':
-                    setup.append(content)  # Pass into setup so things like ADD work as expected
-                    path = content.strip()[7:]
-                    runs.append('mkdir -p ' + path)  # Also pass into RUN so they have the correct working dir
-                    runs.append('cd ' + path)
-
-            run_file = '\n'.join(runs)
-            self.logger.info(f'Constructed run file:\n{run_file}')
-
-            build_script_name = 'doozer_covscan_runit.sh'
-            with dg_path.joinpath(build_script_name).open(mode='w+') as runit:
-                runit.write(run_file)
-
-            with covscan_df_path.open(mode='w+') as df_out:
-                df_out.write(f'FROM {local_builder_tag}\n')
-                df_out.write(f'LABEL DOOZER_COVSCAN_GROUP={self.runtime.group_config.name}\n')
-                df_out.write(f'ADD {build_script_name} /\n')
-                df_out.write(f'RUN chmod +x /{build_script_name}\n')
-                df_out.write('\n'.join(setup) + '\n')
-                df_out.write('ENV PATH=/opt/coverity/bin:${PATH}\n')
-
-            run_tag = f'{local_builder_tag}.{self.image_name_short}'
-            rc, out, err = exectools.cmd_gather(f'docker image inspect {run_tag}')
-            if rc != 0:
-                exectools.cmd_assert(f'imagebuilder -t {run_tag} -f {str(covscan_df_path)} {str(dg_path)}')
-
-            cov_path.mkdir(exist_ok=True)
-            emit_path = cov_path.joinpath('emit')
-
-            if not emit_path.exists():
+                # We will have monitored compilation processes, but we need to scan for non-compiled code
+                # like python / nodejs.
                 # cov-capture will search for files like .js, typescript, python in the source directory;
                 # cov-analyze will then search for issues within those non-compiled files.
                 # https://community.synopsys.com/s/question/0D52H000054zcvZSAQ/i-would-like-to-know-the-coverity-static-analysis-process-for-node-js-could-you-please-provide-me-the-sample-steps-to-run-coverity-for-node-js
-                rc, out, err = exectools.cmd_gather(f'docker run --hostname=covscan --rm -v {str(cov_path)}:/cov:z -v {str(dg_path)}:/covscan-src:z {run_tag} cov-capture --dir /cov --source-dir /covscan-src')
-                if rc != 0:
-                    self.logger.error('Error running source detection')
+                df_out.write(f'''
+RUN cov-capture --dir /cov --source-dir /covscan-src || echo "Error running source detection"
+# If output/summary contains "Time taken by analysis", we've already done the analysis.
+# cov-analyze can take hours with 100% CPU utilization.
+RUN timeout 3h cov-analyze  --dir=/cov "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits
+RUN cov-format-errors --json-output-v2 /dev/stdout --dir=/cov > /cov/{all_js}
+RUN cshtml /cov/{all_js} > /cov/{all_html}
 
-                rc, out, err = exectools.cmd_gather(f'docker run --hostname=covscan --rm -v {str(cov_path)}:/cov:z {run_tag} cov-build --dir=/cov /{build_script_name}')
-                if rc != 0:
-                    self.logger.error('Did not achieve full compilation')
+# Allow calling user to manage these files after we exit
+RUN chown -R {os.getuid()}:{os.getgid()} /cov
 
-                builg_log_path = cov_path.joinpath('build-log.txt')
-                build_log = builg_log_path.read_text(encoding='utf-8')
-                if '[WARNING] No files were emitted' in build_log:
-                    self.logger.error(f'Build did not emit anything. Check out the build-log.txt: {builg_log_path}')
-                    # TODO: log this as a record and make sure the pipeline warns artist
-                    return
+''')
 
-            else:
-                self.logger.info('covscan emit already exists -- skipping this step')
-
-            def run_docker_cov(cmd):
-                return exectools.cmd_assert(f'docker run --hostname=covscan --rm -v {str(cov_path)}:/cov:z -v {str(dg_path)}:/covscan-src:z {run_tag} {cmd}')
-
+            run_tag = self.image_name_short
             summary_path = cov_path.joinpath('output', 'summary.txt')
             if not summary_path.exists() or 'Time taken by analysis' not in summary_path.read_text(encoding='utf-8'):
-                # This can take an extremely long time and use virtually all CPU
-                run_docker_cov('cov-analyze  --dir=/cov "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits')
+                print(f'WORD HAVE RUN:    imagebuilder {vol_mount_arg} -mount {str(cov_path)}:/cov -mount {str(dg_path)}:/covscan-src -t {run_tag} -f {str(covscan_builder_df_path)} {str(dg_path)}')
+                exit(1)
+                rc, stdout, stderr = exectools.cmd_gather(f'imagebuilder {vol_mount_arg} -mount {str(cov_path)}:/cov -mount {str(dg_path)}:/covscan-src -t {run_tag} -f {str(covscan_builder_df_path)} {str(dg_path)}')
+                self.logger.info(f'''Output from covscan build for {self.distgit_key}
+stdout: {stdout}
+stderr: {stderr}
+
+''')
+                if rc != 0:
+                    self.logger.error(f'Error running covscan build for {self.distgit_key} ({str(covscan_builder_df_path)})')
+                    # TODO: log this as a record and make sure the pipeline warns artist
+                    return
             else:
                 self.logger.info('covscan analysis already exists -- skipping this step')
-
-            all_results_js, _ = run_docker_cov('cov-format-errors --json-output-v2 /dev/stdout --dir=/cov')
-            all_results_js_path = cov_path.joinpath(all_js)
-            all_results_js_path.write_text(all_results_js, encoding='utf-8')
-
-            all_results_html = "<html>Error generating HTML report.</html>"
-            try:
-                # Rarely, cshtml just outputs empty html and rc==1; just ignore it.
-                all_results_html, _ = run_docker_cov(f'cshtml /cov/{all_js}')
-            except:
-                self.logger.warning(f'Error generating HTML report for {str(archive_all_results_js_path)}')
-                pass
-
-            all_results_html_path = cov_path.joinpath(all_html)
-            all_results_html_path.write_text(all_results_html, encoding='utf-8')
-
-            run_docker_cov(f'chown -R {os.getuid()}:{os.getgid()} /cov')  # Otherwise, root will own these files
-
-            # Write out the files to the archive directory as well
-            archive_all_results_js_path.write_text(all_results_js, encoding='utf-8')
-            archive_all_results_html_path.write_text(all_results_html, encoding='utf-8')
-
-            # Now on to computing diffs
-
-            # Search backwards through commit history; try to find a hash for this distgit that has been scanned before
-            diff_results_js = all_results_js  # Unless we find an old has, diff results matches all results
-            commit_log, _ = exectools.cmd_assert("git --no-pager log --pretty='%H' -1000")
-            for old_commit in commit_log.split()[1:]:
-                old_all_results_js_path = dg_archive_path.joinpath(old_commit, all_js)
-                old_are_results_waived_path = dg_archive_path.joinpath(old_commit, waived_flag)
-                # Only compute diff from commit if results were actually waived
-                # This file should be created by the Jenkins / scanning pipeline.
-                if old_are_results_waived_path.exists():
-                    diff_results_js, _ = exectools.cmd_assert(f'csdiff {str(archive_all_results_js_path)} {str(old_all_results_js_path)}')
-                    break
-
-            archive_diff_results_js_path.write_text(diff_results_js, encoding='utf-8')
-
-            diff_results_html = "<html>Error generating HTML report.</html>"
-            try:
-                # Rarely, cshtml just outputs empty html and rc==1; just ignore it.
-                diff_results_html, _ = exectools.cmd_assert(f'cshtml {str(archive_diff_results_js_path)}')
-            except:
-                self.logger.warning(f'Error generating HTML report for {str(archive_diff_results_js_path)}')
-                pass
-
-            archive_diff_results_html_path.write_text(diff_results_html, encoding='utf-8')
 
             write_record()
 
