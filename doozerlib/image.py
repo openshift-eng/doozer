@@ -568,24 +568,64 @@ stderr: {stderr}
             covscan_df = dg_path.joinpath('Dockerfile.covscan')
 
             with covscan_df.open(mode='w+') as df_out:
+
+                def append_analysis(number):
+                    # We will have monitored compilation processes, but we need to scan for non-compiled code
+                    # like python / nodejs.
+                    # cov-capture will search for files like .js, typescript, python in the source directory;
+                    # cov-analyze will then search for issues within those non-compiled files.
+                    # https://community.synopsys.com/s/question/0D52H000054zcvZSAQ/i-would-like-to-know-the-coverity-static-analysis-process-for-node-js-could-you-please-provide-me-the-sample-steps-to-run-coverity-for-node-js
+                    df_out.write(f'''
+RUN cov-manage-emit --dir=/cov/{number} reset-host-name ; timeout 3h cov-analyze  --dir=/cov/{number} "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits
+RUN cov-manage-emit --dir=/cov/{number} reset-host-name ; cov-format-errors --json-output-v2 /dev/stdout --dir=/cov/{number} > /cov/{number}/{all_js}
+RUN cshtml /cov/{number}/{all_js} > /cov/{number}/{all_html}
+
+# Allow calling user to manage these files after we exit
+RUN chown -R {os.getuid()}:{os.getgid()} /cov/{number}
+''')
+
                 df_line = 0
+                from_count = 0
                 for entry in dfp.structure:
                     df_line += 1
                     content = entry['content']
                     instruction = entry['instruction'].upper()
-                    if instruction.upper() == 'FROM':
+
+                    if instruction == 'USER':
+                        # Stay as root
+                        continue
+
+                    if instruction == 'FROM':
+                        from_count += 1
+
+                        if from_count > 1:
+                            # We are about to transition stages, do the analysis first.
+                            append_analysis(from_count-1)
+
                         image_name_components = content.split()  # [ 'FROM', image-name, (possible 'AS', ...) ]
                         image_name = image_name_components[1]
                         parent_tag = compute_parent_tag(image_name)
                         image_name_components[1] = parent_tag
                         df_out.write(' '.join(image_name_components) + '\n')
                         # Label these images so we can find a delete them later
-                        df_out.write(f'LABEL DOOZER_COVSCAN_GROUP={self.runtime.group_config.name}')
+                        df_out.write(f'LABEL DOOZER_COVSCAN_GROUP={self.runtime.group_config.name}\n')
+                        df_out.write('USER 0\n')  # Be root to allow setting hostname
+
+                        # Each stage will have its own cov output directory
+                        df_out.write(f'''
+RUN mkdir /cov/{from_count}
+''')
 
                         # For each new stage, we also need to make sure we have the appropriate repos enabled for this image
                         df_out.write(f'''
 # Ensure that the build process can access the same RPMs that the build can during a brew build
 RUN curl {self.cgit_url(".oit/" + repo_type + ".repo")} --output /etc/yum.repos.d/oit.repo
+''')
+                        if from_count == 1:
+                            # For the first stage, make sure we run a scan for python, nodejs, and other
+                            # non-compiled code.
+                            df_out.write(f'''
+RUN cov-capture --dir /cov/1 --source-dir /covscan-src || echo "Error running source detection"
 ''')
                         continue
 
@@ -599,35 +639,20 @@ RUN curl {self.cgit_url(".oit/" + repo_type + ".repo")} --output /etc/yum.repos.
 #!/bin/sh
 set -o xtrace
 set -euo pipefail
+echo $(hostname)
 {command_to_run}
 ''')
                         df_out.write(f'''
 ADD {temp_script_name} .
 RUN chmod +x {temp_script_name}
 # Finally, run the script while coverity is watching
-RUN cov-build --dir=/cov ./{temp_script_name} || echo "Error compiling in {temp_script_name}."
+RUN cov-manage-emit --dir=/cov/{from_count} reset-host-name ; cov-build --dir=/cov/{from_count} ./{temp_script_name} || echo "Error compiling in {temp_script_name}."
 ''')
                     else:  # e.g. COPY, ENV, CMD, WORKDIR...
                         # Just pass it straight through to the covscan Dockerfile
                         df_out.write(f'{content}\n')
 
-                # We will have monitored compilation processes, but we need to scan for non-compiled code
-                # like python / nodejs.
-                # cov-capture will search for files like .js, typescript, python in the source directory;
-                # cov-analyze will then search for issues within those non-compiled files.
-                # https://community.synopsys.com/s/question/0D52H000054zcvZSAQ/i-would-like-to-know-the-coverity-static-analysis-process-for-node-js-could-you-please-provide-me-the-sample-steps-to-run-coverity-for-node-js
-                df_out.write(f'''
-RUN cov-capture --dir /cov --source-dir /covscan-src || echo "Error running source detection"
-# If output/summary contains "Time taken by analysis", we've already done the analysis.
-# cov-analyze can take hours with 100% CPU utilization.
-RUN timeout 3h cov-analyze  --dir=/cov "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits
-RUN cov-format-errors --json-output-v2 /dev/stdout --dir=/cov > /cov/{all_js}
-RUN cshtml /cov/{all_js} > /cov/{all_html}
-
-# Allow calling user to manage these files after we exit
-RUN chown -R {os.getuid()}:{os.getgid()} /cov
-
-''')
+                append_analysis(from_count)
 
             run_tag = self.image_name_short
             summary_path = cov_path.joinpath('output', 'summary.txt')
