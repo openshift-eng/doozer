@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
+import typing
 
 standard_library.install_aliases()
 from doozerlib import Runtime, Dir, cli as cli_package
@@ -17,6 +18,7 @@ from doozerlib.cli.images_health import images_health
 from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
 from doozerlib.cli.scan_sources import config_scan_source_changes
 from doozerlib.cli.rpms_build import rpms_build
+from doozerlib import coverity
 
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
@@ -388,49 +390,71 @@ def images_update_dockerfile(runtime, version, release, repo_type, message, push
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
-@click.option('--preserve-scanner-images', default=False, is_flag=True,
-              help='Reuse any previous builders')
+@click.option('--preserve-builder-images', default=False, is_flag=True,
+              help='Reuse any previous builder images')
+@click.option('--force-analysis', default=False, is_flag=True,
+              help='Even if an existing analysis is present for a given hash, re-run')
 @pass_runtime
-def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8, repo_type, preserve_scanner_images):
+def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8, repo_type,
+                   preserve_builder_images, force_analysis):
     """
     Runs a coverity scan against the specified images.
 
     \b
     Workflow:
     1. Doozer is invoked against a set of images.
-    2. Each image's builder image is isolated from the distgit Dockerfile.
-    3. That parent image is used as a base layer for a new scanner image. The scanner image is
-       the image's builder image + coverity packages (see below on how to cache coverity repos locally
-       to make the construction of this coverity image . If two images use the same builder,
-       they will share this image during the same doozer run.
-    4. Doozer isolates the Dockerfile instructions between its builder stage and the next FROM.
-    5. These instructions are used to create a new Dockerfile. One that executes the isolated RUN instructions
-       under the watchful eye of the coverity tools. In order words, this Dockerfile will run the build
-       instructions from the first stage of the distgit Dockerfile, but with coverity monitoring the build
-       and creating data files that can be used for analysis later. This data is written to a volume mounted on
-       the host filesystem so that it can be used by subsequent containers.
-    6. After a previous image runs the build, the host volume has coverity data accumulated from the build process.
-    7. Using the scanner image again (since it has the coverity tools installed), the 'cov-analyze' command
-       is run against this data. This is an hours long process for a large codebase and consumes all CPU
-       on a system for that period. Data from this analysis is also written to the host volume.
-    8. The scanner image is run against the analysis data (by mounting the host volume) again, this time
-       converting the analysis to json (all_results.js).
-    9. The scanner image is run again to transform the json into html (all_results.html).
-    10. These files are copied out to the --result-archive directory under a directory named after the
-       current distgit commit hash.
-    11. Doozer then searches the result archive for any preceding commits that have been computed for this
+
+    2. Each dockerfile in disgit is analyzed, instruction by instruction.
+
+    3. Two or more Dockerfiles will be generated for each image:
+       - A Dockerfile for each parent image specified in a FROM instruction. These will generate
+         parent image derivatives. These derivatives are FROM the parent, but layer on coverity
+         scanning tools. When you specify --local-repo-rhel-7 / --local-repo-rhel-8, these
+         repos are mounted into the image and are used as the source for installing coverity tools.
+         See the section below for information on creating these repos.
+         If two stages are FROM the exact same image, they will use the same derivative image
+         without having to rebuild it. To save time during development, you can run with
+         --preserve-builder-images to keep these images around between executions.
+       - A Dockerfile like the one in distgit, but with:
+         1. Parent images replaced by parent image derivatives.
+         2. RUN commands wrapped into scripts that will be executed under coverity's build
+            monitoring tools.
+         3. The execution of coverity tools that will capture information about the source code
+            as well as run a coverity analysis against information emitted by the coverity tools.
+        Each stage in the Dockerfile is treated as an independent coverity scan/build/analyze.
+        This is because we may be moving between RHEL versions / libcs / etc between stages,
+        and I believe a coverity analysis run in the same stage that emitted the output is
+        fundamentally less risky.
+        The build of this Dockerfile is performed by podman and volumes are mounted in which
+        will be used for the coverity output of each stage. Specifically,
+        <workdir>/<distgits>/<image>/<cov> is mounted into /cov within the build.
+        Each stage will output its coverity information to /cov/<stage_number> (1 based).
+        e.g. /cov/1  would contain coverity information for the first FROM in the distgit
+        Dockerfile, /cov/2 for the second FROM, and so on.
+        The desired output of each stage's analysis is /cov/<stage_number>/all_results.js.
+
+    6. Once all_results.js exists for each stage, we want to deposit them in the results archive. In
+       addition to all_results.js, we want to translate the results into HTML for easy consumption.
+
+    7. To help prodsec focus on new problems, we also try to compute diff_results.js for each stage.
+       To do this, doozer searches the result archive for any preceding commits that have been computed for this
        distgit's commit history. If one is found, and a 'waived.flag' file exists in the directory, then
        a tool called 'csdiff' is used to compare the difference between the current run and the most
        recently waived commit's 'all_results.js'.
+
     12. The computed difference is written to the current run's archive as 'diff_results.js' and transformed
        into html (diff_results.html). If no previous commit was waived, all_results.js/html and
        diff_results.js/html will match.
+
     13. Non-empty diff_results will be written into the doozer record. This record should be parsed by the
         pipeline.
+
     14. The pipeline (not doozer) should mirror the results out to a file server (e.g. rcm-guest)
         and then slack/email owners about the difference. The pipeline should wait until results are waived.
+
     15. If the results are waived, the pipeline should write 'waived.flag' to the appropriate result
         archive directory.
+
     16. Rinse and repeat for the next commit. Note that if doozer finds results computed already for a
         given commit hash on in the results archive, it will not recompute them with coverity.
 
@@ -468,22 +492,35 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
     local_repo_rhel_8 = [absolutize(repo) for repo in local_repo_rhel_8]
 
     runtime.initialize()
-    metas = runtime.image_metas()
 
-    if not preserve_scanner_images:
-        # Delete where DOOZER_COVSCAN_GROUP={self.runtime.group_config.name}. These are
-        # images created earlier for this group. No simultaneous runs for
-        # the same group are allowed.
-        rc, out, err = exectools.cmd_gather(f'docker image ls -a -q --filter label=DOOZER_COVSCAN_GROUP={runtime.group_config.name}')
+    def delete_images(key, value):
+        """
+        Deletes images with a particular label value
+        """
+        rc, image_list, stderr = exectools.cmd_gather(f'sudo podman images -q --filter label={key}={value}', strip=True)
+        if not image_list:
+            runtime.logger.info(f'No images found with {key}={value} label exist: {stderr}')
+            return
+        targets = " ".join(image_list.split())
+        _, _ = exectools.cmd_assert(f'sudo podman rmi {targets}')
 
-        if rc == 0 and out:
-            targets = " ".join(out.strip().split())
-            rc, out, err = exectools.cmd_gather(f'docker rmi {targets}')
-            if rc != 0:
-                runtime.logger.warning(f'Unable to delete images: {targets}:\n{err}')
+    # Clean up any old runner images to keep image storage under control.
+    delete_images('DOOZER_COVSCAN_RUNNER', runtime.group_config.name)
 
-    for meta in metas:
-        meta.covscan(result_archive=result_archive, repo_type=repo_type, local_repo_rhel_7=local_repo_rhel_7, local_repo_rhel_8=local_repo_rhel_8)
+    if not preserve_builder_images:
+        delete_images('DOOZER_COVSCAN_PARENT', runtime.group_config.name)
+
+    for image in runtime.image_metas():
+        with Dir(image.distgit_repo().distgit_dir):
+            dg_commit_hash, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
+            cc = coverity.CoverityContext(image, dg_commit_hash, result_archive, repo_type=repo_type,
+                                          local_repo_rhel_7=local_repo_rhel_7, local_repo_rhel_8=local_repo_rhel_8,
+                                          force_analysis=force_analysis)
+
+            image.covscan(cc)
+
+    # Clean up runner images
+    delete_images('DOOZER_COVSCAN_RUNNER', runtime.group_config.name)
 
 
 @cli.command("images:rebase", short_help="Refresh a group's distgit content from source content.")
