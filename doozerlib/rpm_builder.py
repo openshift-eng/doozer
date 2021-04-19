@@ -302,14 +302,14 @@ class RPMBuilder:
             if line.startswith("%description"):
                 lines[i] = f"{lines[i].strip()}\n{maintainer_string}\n"
                 described = True
-            elif line.startswith("%global os_git_vars "):
+            elif "%global os_git_vars " in line:
                 lines[
                     i
                 ] = f"%global os_git_vars OS_GIT_VERSION={major}.{minor}.{patch}-{rpm.release}-{commit_sha[0:7]} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit_sha} OS_GIT_TREE_STATE=clean"
                 for k, v in rpm.extra_os_git_vars.items():
                     lines[i] += f" {k}={v}"
                 lines[i] += "\n"
-            elif line.startswith("%global commit"):
+            elif "%global commit" in line:
                 lines[i] = re.sub(
                     r"commit\s+\w+", "commit {}".format(commit_sha), lines[i]
                 )
