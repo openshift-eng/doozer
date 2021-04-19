@@ -600,7 +600,9 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
                 df_out.write(f'RUN chmod +x /{build_script_name}\n')
                 df_out.write('\n'.join(setup) + '\n')
                 df_out.write('ENV PATH=/opt/coverity/bin:${PATH}\n')
-                df_out.write('ENTRYPOINT /bin/sh\n')
+                # Make sure entrypoint is /bin/sh -c
+                # https://stackoverflow.com/questions/37634483/default-docker-entrypoint/37636548#37636548
+                df_out.write('ENTRYPOINT []\n')
 
             run_tag = f'{local_builder_tag}.{self.image_name_short}'
             rc, out, err = exectools.cmd_gather(f'docker image inspect {run_tag}')
