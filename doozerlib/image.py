@@ -2,7 +2,6 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import hashlib
 import json
-import typing
 import random
 from typing import Any, Dict, Optional
 
@@ -390,14 +389,16 @@ class ImageMetadata(Metadata):
 
         return self, False, None
 
-    def covscan(self, cc: coverity.CoverityContext):
+    def covscan(self, cc: coverity.CoverityContext) -> bool:
         self.logger.info('Setting up for coverity scan')
         dgr = self.distgit_repo()
         with Dir(dgr.distgit_dir):
             if coverity.run_covscan(cc):
                 cc.mark_results_done()
+                return True
             else:
                 self.logger.error('Error computing coverity results for this image')
+                return False
 
     def calculate_config_digest(self, group_config, streams):
         image_config: Dict[str, Any] = self.config.primitive()  # primitive() should create a shallow clone for the underlying dict

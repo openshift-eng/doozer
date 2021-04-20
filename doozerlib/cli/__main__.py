@@ -394,9 +394,11 @@ def images_update_dockerfile(runtime, version, release, repo_type, message, push
               help='Reuse any previous builder images')
 @click.option('--force-analysis', default=False, is_flag=True,
               help='Even if an existing analysis is present for a given hash, re-run')
+@click.option('--ignore-waived', default=False, is_flag=True,
+              help='Ignore any previously detected waived results (all=diff)')
 @pass_runtime
 def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8, repo_type,
-                   preserve_builder_images, force_analysis):
+                   preserve_builder_images, force_analysis, ignore_waived):
     """
     Runs a coverity scan against the specified images.
 
@@ -502,7 +504,9 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
             runtime.logger.info(f'No images found with {key}={value} label exist: {stderr}')
             return
         targets = " ".join(image_list.split())
-        _, _ = exectools.cmd_assert(f'sudo podman rmi {targets}')
+        rc, _, _ = exectools.cmd_gather(f'sudo podman rmi {targets}')
+        if rc != 0:
+            runtime.logger.warning(f'Unable to remove all images with {key}={value}')
 
     # Clean up any old runner images to keep image storage under control.
     delete_images('DOOZER_COVSCAN_RUNNER', runtime.group_config.name)
@@ -510,17 +514,25 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
     if not preserve_builder_images:
         delete_images('DOOZER_COVSCAN_PARENT', runtime.group_config.name)
 
+    successes = []
+    failures = []
     for image in runtime.image_metas():
         with Dir(image.distgit_repo().distgit_dir):
+            image.distgit_repo().pull_sources()
             dg_commit_hash, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
             cc = coverity.CoverityContext(image, dg_commit_hash, result_archive, repo_type=repo_type,
                                           local_repo_rhel_7=local_repo_rhel_7, local_repo_rhel_8=local_repo_rhel_8,
-                                          force_analysis=force_analysis)
+                                          force_analysis=force_analysis, ignore_waived=ignore_waived)
 
-            image.covscan(cc)
+            if image.covscan(cc):
+                successes.append(image.distgit_key)
+            else:
+                failures.append(image.distgit_key)
 
     # Clean up runner images
     delete_images('DOOZER_COVSCAN_RUNNER', runtime.group_config.name)
+
+    print(yaml.safe_dump({'success': successes, 'failure': failures}))
 
 
 @cli.command("images:rebase", short_help="Refresh a group's distgit content from source content.")

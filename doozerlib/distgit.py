@@ -91,6 +91,7 @@ def map_image_name(name, image_map):
 
 
 class DistGitRepo(object):
+
     def __init__(self, metadata, autoclone=True):
         self.metadata = metadata
         self.config = metadata.config
@@ -126,6 +127,13 @@ class DistGitRepo(object):
         # Initialize our distgit directory, if necessary
         if autoclone:
             self.clone(self.runtime.distgits_dir, self.branch)
+
+    def pull_sources(self):
+        """
+        Pull any distgit sources (use only after after clone)
+        """
+        with Dir(self.distgit_dir):
+            exectools.cmd_assert('rhpkg sources')
 
     def clone(self, distgits_root_dir, distgit_branch):
         with Dir(distgits_root_dir):
@@ -349,7 +357,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     def __init__(self, metadata, autoclone=True,
                  source_modifier_factory=SourceModifierFactory()):
-        super(ImageDistGitRepo, self).__init__(metadata, autoclone)
+        super(ImageDistGitRepo, self).__init__(metadata, autoclone=autoclone)
         self.build_lock = Lock()
         self.build_lock.acquire()
         self.rebase_event = Event()

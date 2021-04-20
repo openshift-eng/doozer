@@ -19,7 +19,8 @@ COVSCAN_WAIVED_FILENAME = 'waived.flag'
 class CoverityContext(object):
 
     def __init__(self, image, dg_commit_hash, result_archive, repo_type='unsigned',
-                 local_repo_rhel_7=[], local_repo_rhel_8=[], force_analysis=False):
+                 local_repo_rhel_7=[], local_repo_rhel_8=[], force_analysis=False,
+                 ignore_waived=False):
         self.image = image
         self.dg_commit_hash = dg_commit_hash
         self.result_archive_path = pathlib.Path(result_archive)
@@ -34,6 +35,7 @@ class CoverityContext(object):
         self.logger = image.logger
         self.runtime = image.runtime
         self.force_analysis = force_analysis
+        self.ignore_waived = ignore_waived
 
         # Podman is going to create a significant amount of container image data
         # Make sure there is plenty of space. Override TMPDIR, because podman
@@ -52,6 +54,9 @@ class CoverityContext(object):
 
     def find_nearest_waived_cov_root_path(self) -> pathlib.Path:
         # Search backwards through commit history; try to find a has for this distgit that has been scanned before
+        if self.ignore_waived:
+            return None
+
         with Dir(self.dg_path):
             commit_log, _ = exectools.cmd_assert("git --no-pager log --pretty='%H' -1000")
             for old_commit in commit_log.split()[1:]:
@@ -261,7 +266,7 @@ def run_covscan(cc: CoverityContext) -> bool:
             # Even if it is complete, write a record for Jenkins so that results can be sent to prodsec.
             for i in range(len(dfp.parent_images)):
                 records_results(cc, stage_number=i+1, waived_cov_path_root=None, write_only=True)
-            return
+            return True
 
         def compute_parent_tag(parent_image_name):
             parent_sig = hashlib.md5(parent_image_name.encode("utf-8")).hexdigest()
@@ -293,8 +298,8 @@ def run_covscan(cc: CoverityContext) -> bool:
                     # in this workspace AND summary.txt exist (i.e. at least one item in this stage emitted results).
                     df_out.write(f'''
 RUN if [[ ! -f "{container_stage_cov_dir}/{COVSCAN_ALL_JS_FILENAME}" && -f "{container_stage_cov_dir}/output/summary.txt" ]]; then \\
-        cov-manage-emit --dir={container_stage_cov_dir} reset-host-name ; timeout 3h cov-analyze  --dir={container_stage_cov_dir} "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits ; \\
-        cov-manage-emit --dir={container_stage_cov_dir} reset-host-name ; cov-format-errors --json-output-v2 /dev/stdout --dir={container_stage_cov_dir} > {container_stage_cov_dir}/{COVSCAN_ALL_JS_FILENAME} ; \\
+        if [[ -d "{container_stage_cov_dir}/emit" ]]; then cov-manage-emit --dir={container_stage_cov_dir} reset-host-name; fi ; timeout 3h cov-analyze  --dir={container_stage_cov_dir} "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits 2>&1 ; \\
+        if [[ -d "{container_stage_cov_dir}/emit" ]]; then cov-manage-emit --dir={container_stage_cov_dir} reset-host-name; fi ; cov-format-errors --json-output-v2 /dev/stdout --dir={container_stage_cov_dir} > {container_stage_cov_dir}/{COVSCAN_ALL_JS_FILENAME} ; \\
     fi
 
 # Allow calling user to manage these files after we exit
@@ -338,13 +343,13 @@ RUN mkdir -p {cc.container_stage_cov_path(stage_number)}
                     # For each new stage, we also need to make sure we have the appropriate repos enabled for this image
                     df_out.write(f'''
 # Ensure that the build process can access the same RPMs that the build can during a brew build
-RUN curl {cc.image.cgit_url(".oit/" + cc.repo_type + ".repo")} --output /etc/yum.repos.d/oit.repo
+RUN curl {cc.image.cgit_url(".oit/" + cc.repo_type + ".repo")} --output /etc/yum.repos.d/oit.repo 2>&1
 ''')
                     if stage_number == 1:
                         # For the first stage, make sure we run a scan for python, nodejs, and other
                         # non-compiled code.
                         df_out.write(f'''
-RUN cov-capture --dir {cc.container_stage_cov_path(stage_number)} --source-dir /covscan-src || echo "Error running source detection"
+RUN cov-capture --dir {cc.container_stage_cov_path(stage_number)} --source-dir /covscan-src 2>&1 || echo "Error running source detection"
 ''')
                     continue
 
@@ -371,7 +376,8 @@ ADD {temp_script_name} .
 RUN chmod +x {temp_script_name}
 # Finally, run the script while coverity is watching. If there is already a summary file, assume we have already run
 # the build in this working directory.
-RUN cov-manage-emit --dir={container_stage_cov_dir} reset-host-name ; cov-build --dir={container_stage_cov_dir} ./{temp_script_name}
+# Route stderr to stdout so everything is in one stream; otherwise, it is hard to tell which command failed.
+RUN if [[ -d "{container_stage_cov_dir}/emit" ]]; then cov-manage-emit --dir={container_stage_cov_dir} reset-host-name; fi ; cov-build --dir={container_stage_cov_dir} ./{temp_script_name} 2>&1
 ''')
                 else:  # e.g. COPY, ENV, WORKDIR...
                     # Just pass it straight through to the covscan Dockerfile
@@ -425,6 +431,7 @@ def records_results(cc: CoverityContext, stage_number, waived_cov_path_root=None
                                     diff_results_js_path=str(dest_diff_js_path),
                                     diff_results_html_path=str(dest_diff_results_html_path),
                                     diff_count=str(diff_count),
+                                    stage_number=str(stage_number),
                                     waive_path=str(host_stage_waived_flag_path),
                                     waived=str(host_stage_waived_flag_path.exists()).lower(),
                                     owners=owners,
@@ -488,4 +495,4 @@ def records_results(cc: CoverityContext, stage_number, waived_cov_path_root=None
             pass
         html_out_path.write_text(html, encoding='utf-8')
 
-    write_covscan_record(cc, stage_number=stage_number)
+    write_record()
