@@ -294,15 +294,40 @@ def run_covscan(cc: CoverityContext) -> bool:
 
                     container_stage_cov_dir = str(cc.container_stage_cov_path(stage_number))
 
+                    analysis_script_name = f'_gen_{cc.image.image_name_short}_stage_{stage_number}_analysis.sh'
+                    with open(dg_path.joinpath(analysis_script_name), mode='w+', encoding='utf-8') as sh:
+                        sh.write(f'''
+#!/bin/sh
+set -o xtrace
+set -euo pipefail
+
+if [[ "{stage_number}" == "1" ]]; then
+    # hostname changes between steps in the Dockerfile; reset to current before running coverity tools.
+    cov-manage-emit --dir={container_stage_cov_dir} reset-host-name;
+    echo "Running un-compiled source search as hostname: $(hostname)"
+    cov-capture --dir {container_stage_cov_dir} --source-dir /covscan-src || echo "Error running source detection"
+fi
+
+echo "Running analysis phase as hostname: $(hostname)"
+if [[ -d "{container_stage_cov_dir}/emit" ]]; then
+    # hostname changes between steps in the Dockerfile; reset to current before running coverity tools.
+    cov-manage-emit --dir={container_stage_cov_dir} reset-host-name;
+    timeout 3h cov-analyze  --dir={container_stage_cov_dir} "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits
+    cov-format-errors --json-output-v2 /dev/stdout --dir={container_stage_cov_dir} > {container_stage_cov_dir}/{COVSCAN_ALL_JS_FILENAME}
+fi
+''')
+                    df_out.write(f'''
+ADD {analysis_script_name} /
+RUN chmod +x /{analysis_script_name}
+# Finally, run the analysis step script.
+# Route stderr to stdout so everything is in one stream; otherwise, it is hard to correlate a command with its stderr.
+RUN /{analysis_script_name} 2>&1
+''')
+
                     # Before running cov-analyze, make sure that all_js doesn't exist (i.e. we haven't already run it
                     # in this workspace AND summary.txt exist (i.e. at least one item in this stage emitted results).
                     df_out.write(f'''
-RUN if [[ ! -f "{container_stage_cov_dir}/{COVSCAN_ALL_JS_FILENAME}" && -f "{container_stage_cov_dir}/output/summary.txt" ]]; then \\
-        if [[ -d "{container_stage_cov_dir}/emit" ]]; then cov-manage-emit --dir={container_stage_cov_dir} reset-host-name; fi ; timeout 3h cov-analyze  --dir={container_stage_cov_dir} "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits 2>&1 ; \\
-        if [[ -d "{container_stage_cov_dir}/emit" ]]; then cov-manage-emit --dir={container_stage_cov_dir} reset-host-name; fi ; cov-format-errors --json-output-v2 /dev/stdout --dir={container_stage_cov_dir} > {container_stage_cov_dir}/{COVSCAN_ALL_JS_FILENAME} ; \\
-    fi
-
-# Allow calling user to manage these files after we exit
+# Dockerfile steps run as root; chang permissions back to doozer user before leaving stage
 RUN chown -R {os.getuid()}:{os.getgid()} {container_stage_cov_dir}
 ''')
 
@@ -338,18 +363,14 @@ RUN chown -R {os.getuid()}:{os.getgid()} {container_stage_cov_dir}
                     # Each stage will have its own cov output directory
                     df_out.write(f'''
 RUN mkdir -p {cc.container_stage_cov_path(stage_number)}
+# If we are reusing a workspace, coverity cannot pick up where it left off; clear anything already here.
+RUN rm -rf {cc.container_stage_cov_path(stage_number)}/*
 ''')
 
                     # For each new stage, we also need to make sure we have the appropriate repos enabled for this image
                     df_out.write(f'''
 # Ensure that the build process can access the same RPMs that the build can during a brew build
 RUN curl {cc.image.cgit_url(".oit/" + cc.repo_type + ".repo")} --output /etc/yum.repos.d/oit.repo 2>&1
-''')
-                    if stage_number == 1:
-                        # For the first stage, make sure we run a scan for python, nodejs, and other
-                        # non-compiled code.
-                        df_out.write(f'''
-RUN cov-capture --dir {cc.container_stage_cov_path(stage_number)} --source-dir /covscan-src 2>&1 || echo "Error running source detection"
 ''')
                     continue
 
@@ -363,12 +384,13 @@ RUN cov-capture --dir {cc.container_stage_cov_path(stage_number)} --source-dir /
                     # For RUN commands, we need to execute the command under the watchful eye of coverity
                     # tools. Create a batch file that will wrap the command
                     command_to_run = content.strip()[4:]  # Remove 'RUN '
-                    temp_script_name = f'_gen_{cc.image.image_name_short}_line_{df_line}.sh'
+                    temp_script_name = f'_gen_{cc.image.image_name_short}_stage_{stage_number}_line_{df_line}.sh'
                     with open(dg_path.joinpath(temp_script_name), mode='w+', encoding='utf-8') as sh:
                         sh.write(f'''
 #!/bin/sh
 set -o xtrace
 set -euo pipefail
+echo "Running build as hostname: $(hostname)"
 {command_to_run}
 ''')
                     df_out.write(f'''
@@ -376,8 +398,9 @@ ADD {temp_script_name} .
 RUN chmod +x {temp_script_name}
 # Finally, run the script while coverity is watching. If there is already a summary file, assume we have already run
 # the build in this working directory.
+# The hostname changes with each run, so reset-host-name before cov-build.
 # Route stderr to stdout so everything is in one stream; otherwise, it is hard to tell which command failed.
-RUN if [[ -d "{container_stage_cov_dir}/emit" ]]; then cov-manage-emit --dir={container_stage_cov_dir} reset-host-name; fi ; cov-build --dir={container_stage_cov_dir} ./{temp_script_name} 2>&1
+RUN cov-manage-emit --dir={container_stage_cov_dir} reset-host-name; timeout 3h cov-build --dir={container_stage_cov_dir} ./{temp_script_name} 2>&1
 ''')
                 else:  # e.g. COPY, ENV, WORKDIR...
                     # Just pass it straight through to the covscan Dockerfile
