@@ -223,7 +223,7 @@ def timer(out_method, msg):
         yield
     finally:
         time_elapsed = datetime.now() - start_time
-        entry = f'Time elapsed (hh:mm:ss.ms) {time_elapsed} in {caller.filename}:{caller.lineno} from {caller_caller.filename}:{caller_caller.lineno}:{caller_caller.code_context[0].strip() if caller_caller.code_context else ""} : {msg}'
+        entry = f'Time elapsed (hh:mm:ss.ms) {time_elapsed} in {os.path.basename(caller.filename)}:{caller.lineno} from {os.path.basename(caller_caller.filename)}:{caller_caller.lineno}:{caller_caller.code_context[0].strip() if caller_caller.code_context else ""} : {msg}'
         out_method(entry)
 
 
