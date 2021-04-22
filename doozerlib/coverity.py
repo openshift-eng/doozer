@@ -301,6 +301,11 @@ def run_covscan(cc: CoverityContext) -> bool:
 set -o xtrace
 set -euo pipefail
 
+if [[ -f "{container_stage_cov_dir}/all_results.js" ]]; then
+    echo "Results have already been analyzed for this this stage -- found all_results.js; skipping analysis"
+    exit 0
+fi
+
 if [[ "{stage_number}" == "1" ]]; then
     # hostname changes between steps in the Dockerfile; reset to current before running coverity tools.
     cov-manage-emit --dir={container_stage_cov_dir} reset-host-name;
@@ -308,12 +313,14 @@ if [[ "{stage_number}" == "1" ]]; then
     cov-capture --dir {container_stage_cov_dir} --source-dir /covscan-src || echo "Error running source detection"
 fi
 
-echo "Running analysis phase as hostname: $(hostname)"
-if [[ -d "{container_stage_cov_dir}/emit" ]]; then
+if ls {container_stage_cov_dir}/emit/*/config; then
+    echo "Running analysis phase as hostname: $(hostname)"
     # hostname changes between steps in the Dockerfile; reset to current before running coverity tools.
     cov-manage-emit --dir={container_stage_cov_dir} reset-host-name;
     timeout 3h cov-analyze  --dir={container_stage_cov_dir} "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits
     cov-format-errors --json-output-v2 /dev/stdout --dir={container_stage_cov_dir} > {container_stage_cov_dir}/{COVSCAN_ALL_JS_FILENAME}
+else
+    echo "No units have been emitted for analysis by this stage; skipping analysis"
 fi
 ''')
                     df_out.write(f'''
@@ -363,8 +370,8 @@ RUN chown -R {os.getuid()}:{os.getgid()} {container_stage_cov_dir}
                     # Each stage will have its own cov output directory
                     df_out.write(f'''
 RUN mkdir -p {cc.container_stage_cov_path(stage_number)}
-# If we are reusing a workspace, coverity cannot pick up where it left off; clear anything already here.
-RUN rm -rf {cc.container_stage_cov_path(stage_number)}/*
+# If we are reusing a workspace, coverity cannot pick up where it left off; clear anything already emitted
+RUN rm -rf {cc.container_stage_cov_path(stage_number)}/emit
 ''')
 
                     # For each new stage, we also need to make sure we have the appropriate repos enabled for this image
