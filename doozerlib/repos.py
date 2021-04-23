@@ -140,6 +140,10 @@ class Repo(object):
         for k in sorted(self._data.conf.keys()):
             v = self._data.conf[k]
 
+            if k == 'ci_alignment':
+                # Special keyword that does not translate to yum conf content.
+                continue
+
             line = '{} = {}\n'
             if k == 'baseurl':
                 line = line.format(k, self.baseurl(repotype, arch))
@@ -258,11 +262,11 @@ class Repos(object):
                 enabled = True
 
             if arch:  # Generating a single arch?
-                # Just use the configured name for the. This behavior needs to be preserved to
+                # Just use the configured name for the set. This behavior needs to be preserved to
                 # prevent changing mirrored repos by reposync.
                 result += r.conf_section(repo_type, enabled=enabled, arch=arch, section_name=r.name)
             else:
-                # When generating a repo file for builds, we need all arches in the same repo file.
+                # When generating a repo file for multi-arch builds, we need all arches in the same repo file.
                 for iarch in r.arches:
                     section_name = '{}-{}'.format(r.name, iarch)
                     result += r.conf_section(repo_type, enabled=enabled, arch=iarch, section_name=section_name)
