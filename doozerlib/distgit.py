@@ -133,6 +133,10 @@ class DistGitRepo(object):
         Pull any distgit sources (use only after after clone)
         """
         with Dir(self.distgit_dir):
+            sources_file: pathlib.Path = self.dg_path.joinpath('sources')
+            if not sources_file.exists():
+                self.logger.debug('No sources file exists; skipping rhpkg sources')
+                return
             exectools.cmd_assert('rhpkg sources')
 
     def clone(self, distgits_root_dir, distgit_branch):
