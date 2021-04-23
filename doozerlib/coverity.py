@@ -42,7 +42,7 @@ class CoverityContext(object):
         # uses this environment variable.
         self.podman_tmpdir = self.tmp_path.joinpath('podman')
         self.podman_tmpdir.mkdir(exist_ok=True)
-        self.podman_cmd = f'sudo podman '
+        self.podman_cmd = 'sudo podman '
         self.podman_env = {
             'TMPDIR': str(self.podman_tmpdir)
         }
@@ -200,6 +200,68 @@ def _covscan_prepare_parent(cc: CoverityContext, parent_image_name, parent_tag) 
 
         repo_injection_lines, mount_args = cc.parent_repo_injection_info()
 
+        rhel_repo_gen_sh = '_rhel_repo_gen.sh'
+        with dg_path.joinpath(rhel_repo_gen_sh).open(mode='w') as f:
+            f.write('''
+#!/bin/sh
+set -o xtrace
+
+if cat /etc/redhat-release | grep "release 8"; then
+    cp /tmp/oit.repo /etc/yum.repos.d/oit.repo
+
+    # For an el8 layer, make sure baseos & appstream are
+    # available for tools like python to install.
+    cat <<EOF > /etc/yum.repos.d/el8.repo
+[rhel-8-appstream-rpms-x86_64]
+baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/appstream/os/
+enabled = 1
+name = rhel-8-appstream-rpms-x86_64
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
+[rhel-8-baseos-rpms-x86_64]
+baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/baseos/os/
+enabled = 1
+name = rhel-8-baseos-rpms-x86_64
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+EOF
+
+    # Enable epel for csmock
+    curl https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm --output epel8.rpm
+    yum -y install epel8.rpm
+else
+    # For rhel-7, just enable the basic rhel repos so that we
+    # can install python and other dependencies.
+    cat <<EOF > /etc/yum.repos.d/el7.repo
+[rhel-server-rpms-x86_64]
+baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel/server/7/7Server/x86_64/os/
+enabled = 1
+name = rhel-server-rpms-x86_64
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
+[rhel-server-optional-rpms-x86_64]
+baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel/server/7/7Server/x86_64/optional/os/
+enabled = 0
+name = rhel-server-optional-rpms-x86_64
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
+[rhel-server-extras-rpms-x86_64]
+baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel/server/7/7Server/x86_64/extras/os/
+enabled = 0
+name = rhel-server-extras-rpms-x86_64
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+EOF
+
+    # Enable epel for csmock
+    curl https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm --output epel7.rpm
+    yum -y install epel7.rpm
+fi
+''')
+
         with df_parent_path.open(mode='w+', encoding='utf-8') as df_parent_out:
             parent_image_url = parent_image_name
             if 'redhat.registry' not in parent_image_name:
@@ -210,17 +272,19 @@ FROM {parent_image_url}
 LABEL DOOZER_COVSCAN_GROUP_PARENT={cc.runtime.group_config.name}
 USER 0
 
-# Ensure that the build has a source for RHEL rpms
-RUN curl {cc.image.cgit_url(f".oit/{cc.repo_type}.repo")} --output /etc/yum.repos.d/oit.repo
+# Add typical build repos to the image, but don't add to /etc/yum.repos.d
+# until we know whether we are on el7 or el8. As of 4.8, repos are only
+# appropriate for el8, so this repo file should only be installed in el8.
+ADD .oit/{cc.repo_type}.repo /tmp/oit.repo
 
 # Install covscan repos
 {repo_injection_lines}
 
-RUN yum install -y python36
+# Act on oit.repo and enable rhel repos
+ADD {rhel_repo_gen_sh} .
+RUN chmod +x {rhel_repo_gen_sh} && ./{rhel_repo_gen_sh}
 
-# Enable epel for csmock
-RUN if cat /etc/redhat-release | grep "release 7"; then curl https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm --output epel7.rpm && yum -y install epel7.rpm; fi
-RUN if cat /etc/redhat-release | grep "release 8"; then curl https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm --output epel8.rpm && yum -y install epel8.rpm; fi
+RUN yum install -y python36
 
 # Certs necessary to install from covscan repos
 RUN curl -k https://password.corp.redhat.com/RH-IT-Root-CA.crt --output /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt
@@ -265,7 +329,7 @@ def run_covscan(cc: CoverityContext) -> bool:
             cc.logger.info(f'Scan results already exist for {cc.dg_commit_hash}; skipping scan')
             # Even if it is complete, write a record for Jenkins so that results can be sent to prodsec.
             for i in range(len(dfp.parent_images)):
-                records_results(cc, stage_number=i+1, waived_cov_path_root=None, write_only=True)
+                records_results(cc, stage_number=i + 1, waived_cov_path_root=None, write_only=True)
             return True
 
         def compute_parent_tag(parent_image_name):
