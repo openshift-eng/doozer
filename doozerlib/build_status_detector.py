@@ -21,22 +21,28 @@ class BuildStatusDetector:
         self.archive_lists: Dict[int, List[Dict]] = {}  # a dict for caching archive lists. key is build id, value is a list of archives associated with that build.
 
     def find_embargoed_builds(self, builds: List[Dict]) -> Set[int]:
-        """ find embargoes in given list of koji builds
+        """ find embargoed builds in given list of koji builds
         :param builds: a list of koji build dicts returned by the koji api
         :return: a set of build IDs that have embargoed fixes
         """
-        # first, exclude all shipped builds
+        # first, exclude all shipped builds from suspicion of embargo - by definition no longer secret
         self.logger and self.logger.info("Filtering out shipped builds...")
-        shipped = self.find_shipped_builds([b["id"] for b in builds])
-        suspects = [b for b in builds if b["id"] not in shipped]
+        shipped_ids = self.find_shipped_builds({b["id"] for b in builds})
+        suspects = [b for b in builds if b["id"] not in shipped_ids]
 
-        # second, if a build's release field includes .p1, it is embargoed
-        embargoed = {b["id"] for b in suspects if ".p1" in b["release"]}
+        # next, consider remaining builds embargoed if the release field includes .p1
+        embargoed_ids = {b["id"] for b in suspects if ".p1" in b["release"]}
 
-        # finally, look at the rpms in .p0 images in case they include unshipped .p1 rpms
-        suspect_build_ids = {b["id"] for b in suspects if b["id"] not in embargoed}  # non .p1 build IDs
+        # finally, look at the remaining images in case they include embargoed rpms
+        remaining_ids = {b["id"] for b in suspects if b["id"] not in embargoed_ids}
+        embargoed_ids.update(self.find_with_embargoed_rpms(remaining_ids))
 
-        # look up any build IDs not already in self.archive_lists cache
+        return embargoed_ids
+
+    def populate_archive_lists(self, suspect_build_ids: Set[Union[int, str]]):
+        """ populate self.archive_lists with any build IDs not already cached
+        :param suspect_build_ids: a list of koji build ids
+        """
         build_ids = list(suspect_build_ids - self.archive_lists.keys())
         if build_ids:
             self.logger and self.logger.info(f"Fetching image archives for {len(build_ids)} builds...")
@@ -44,7 +50,13 @@ class BuildStatusDetector:
             for build_id, archive_list in zip(build_ids, archive_lists):
                 self.archive_lists[build_id] = archive_list  # save to cache
 
-        # look for embargoed RPMs in the image archives (one per arch for every image)
+    def find_with_embargoed_rpms(self, suspect_build_ids: Set[Union[int, str]]) -> Set[Union[int, str]]:
+        """ look for embargoed RPMs in the image archives (one per arch for every image)
+        :param suspect_build_ids: a list of koji build ids
+        """
+        self.populate_archive_lists(suspect_build_ids)
+
+        embargoed_ids = set()
         for suspect in suspect_build_ids:
             for archive in self.archive_lists[suspect]:
                 rpms = archive["rpms"]
@@ -53,11 +65,11 @@ class BuildStatusDetector:
                 embargoed_rpms = [rpm for rpm in suspected_rpms if rpm["build_id"] not in shipped]
                 if embargoed_rpms:
                     image_build_id = archive["build_id"]
-                    embargoed.add(image_build_id)
+                    embargoed_ids.add(image_build_id)
 
-        return embargoed
+        return embargoed_ids
 
-    def find_shipped_builds(self, build_ids: Set[Union[int, str]]):
+    def find_shipped_builds(self, build_ids: Set[Union[int, str]]) -> Set[Union[int, str]]:
         """ find shipped builds in the given builds
         :param build_ids: a list of build IDs
         :return: a set of shipped build IDs
