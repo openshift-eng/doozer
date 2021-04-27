@@ -118,52 +118,6 @@ def rpms_clone_sources(runtime, output_yml):
         runtime.export_sources(output_yml)
 
 
-@cli.command("rpms:build", help="Build rpms in the group or given by --rpms.")
-@click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
-              help="Version string to populate in specfile.", required=True)
-@click.option("--release", metavar='RELEASE', default=None,
-              help="Release label to populate in specfile.", required=True)
-@click.option("--embargoed", default=False, is_flag=True, help="Add .p1 to the release string for all rpms, which indicates those rpms have embargoed fixes")
-@click.option('--scratch', default=False, is_flag=True, help='Perform a scratch build.')
-@click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
-@pass_runtime
-def rpms_build(runtime, version, release, embargoed, scratch, dry_run):
-    """
-    Attempts to build rpms for all of the defined rpms
-    in a group. If an rpm has already been built, it will be treated as
-    a successful operation.
-    """
-
-    if version.startswith('v'):
-        version = version[1:]
-
-    runtime.initialize(mode='rpms', clone_distgits=False)
-
-    if runtime.group_config.public_upstreams and (release is None or not release.endswith(".p?")):
-        raise click.BadParameter("You must explicitly specify a `release` ending with `.p?` when there is a public upstream mapping in ocp-build-data.")
-
-    runtime.assert_mutation_is_permitted()
-
-    items = runtime.rpm_metas()
-    if not items:
-        runtime.logger.info("No RPMs found. Check the arguments.")
-        exit(0)
-
-    if embargoed:
-        for rpm in items:
-            rpm.private_fix = True
-
-    results = runtime.parallel_exec(
-        lambda rpm, terminate_event: rpm.build_rpm(
-            version, release, terminate_event, scratch, local=runtime.local, dry_run=dry_run),
-        items)
-    results = results.get()
-    failed = [name for name, r in results if not r]
-    if failed:
-        runtime.logger.error("\n".join(["Build/push failures:"] + sorted(failed)))
-        exit(1)
-
-
 @cli.command("images:list", help="List of distgits being selected.")
 @pass_runtime
 def images_list(runtime):

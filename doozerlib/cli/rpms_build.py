@@ -14,7 +14,7 @@ from doozerlib.runtime import Runtime
 
 
 # This command reimplements `rpms:build` without tito. Rename it to `rpms:build` when getting to prod.
-@cli.command("beta:rpms:rebase-and-build", help="Build rpms in the group or given by --rpms.")
+@cli.command("rpms:rebase-and-build", help="Rebase and build rpms in the group or given by --rpms.")
 @click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
               help="Version string to populate in specfile.", required=True)
 @click.option("--release", metavar='RELEASE', default=None,
@@ -27,8 +27,7 @@ from doozerlib.runtime import Runtime
 async def rpms_rebase_and_build(runtime: Runtime, version: str, release: str, embargoed: bool, scratch: bool, dry_run: bool):
     """
     Attempts to rebase and build rpms for all of the defined rpms
-    in a group. If an rpm has already been built, it will be treated as
-    a successful operation.
+    in a group.
     """
     exit_code = await _rpms_rebase_and_build(runtime, version=version, release=release, embargoed=embargoed, scratch=scratch, dry_run=dry_run)
     exit(exit_code)
@@ -72,7 +71,7 @@ async def _rpms_rebase_and_build(runtime: Runtime, version: str, release: str, e
     return 0
 
 
-@cli.command("beta:rpms:rebase", help="Build rpms in the group or given by --rpms.")
+@cli.command("rpms:rebase", help="Rebase rpms in the group or given by --rpms.")
 @click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
               help="Version string to populate in specfile.", required=True)
 @click.option("--release", metavar='RELEASE', default=None,
@@ -81,7 +80,7 @@ async def _rpms_rebase_and_build(runtime: Runtime, version: str, release: str, e
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
 @click_coroutine
-async def rpms_build(runtime: Runtime, version: str, release: str, embargoed: bool, dry_run: bool):
+async def rpms_rebase(runtime: Runtime, version: str, release: str, embargoed: bool, dry_run: bool):
     """
     Attempts to rebase rpms for all of the defined rpms in a group.
 
@@ -161,7 +160,7 @@ async def _rebase_rpm(runtime: Runtime, builder: RPMBuilder, rpm: RPMMetadata, v
 
 
 # This command reimplements `rpms:build` without tito. Rename it to `rpms:build` when getting to prod.
-@cli.command("beta:rpms:build", help="Build rpms in the group or given by --rpms.")
+@cli.command("rpms:build", help="Build rpms in the group or given by --rpms.")
 @click.option('--scratch', default=False, is_flag=True, help='Perform a scratch build.')
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
@@ -169,8 +168,7 @@ async def _rebase_rpm(runtime: Runtime, builder: RPMBuilder, rpm: RPMMetadata, v
 async def rpms_build(runtime: Runtime, scratch: bool, dry_run: bool):
     """
     Attempts to build rpms for all of the defined rpms
-    in a group. If an rpm has already been built, it will be treated as
-    a successful operation.
+    in a group.
     """
     exit_code = await _rpms_build(runtime, scratch=scratch, dry_run=dry_run)
     exit(exit_code)
