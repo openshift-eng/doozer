@@ -515,8 +515,10 @@ def records_results(cc: CoverityContext, stage_number, waived_cov_path_root=None
 
     def write_record():
         owners = ",".join(cc.image.config.owners or [])
+        all_json = json.loads(dest_all_js_path.read_text(encoding='utf-8'))
         diff_json = json.loads(dest_diff_js_path.read_text(encoding='utf-8'))
         diff_count = len(diff_json.get('issues', []))
+        all_count = len(all_json.get('issues', []))
         host_stage_waived_flag_path = cc.get_stage_results_waive_path(stage_number)
         cc.image.runtime.add_record('covscan',
                                     distgit=cc.image.qualified_name,
@@ -527,6 +529,7 @@ def records_results(cc: CoverityContext, stage_number, waived_cov_path_root=None
                                     diff_results_js_path=str(dest_diff_js_path),
                                     diff_results_html_path=str(dest_diff_results_html_path),
                                     diff_count=str(diff_count),
+                                    all_count=str(all_count),
                                     stage_number=str(stage_number),
                                     waive_path=str(host_stage_waived_flag_path),
                                     waived=str(host_stage_waived_flag_path.exists()).lower(),
