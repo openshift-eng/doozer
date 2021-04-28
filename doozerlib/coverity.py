@@ -372,9 +372,8 @@ fi
 
 if [[ "{stage_number}" == "1" ]]; then
     # hostname changes between steps in the Dockerfile; reset to current before running coverity tools.
-    if ls {container_stage_cov_dir}/emit/*/config; then
-        cov-manage-emit --dir={container_stage_cov_dir} reset-host-name
-    fi
+    # use || true because it is possible nothing has been emitted before this step
+    cov-manage-emit --dir={container_stage_cov_dir} reset-host-name || true
     echo "Running un-compiled source search as hostname: $(hostname)"
     cov-capture --dir {container_stage_cov_dir} --source-dir /covscan-src || echo "Error running source detection"
 fi
@@ -382,8 +381,22 @@ fi
 if ls {container_stage_cov_dir}/emit/*/config; then
     echo "Running analysis phase as hostname: $(hostname)"
     # hostname changes between steps in the Dockerfile; reset to current before running coverity tools.
-    cov-manage-emit --dir={container_stage_cov_dir} reset-host-name
-    timeout 3h cov-analyze  --dir={container_stage_cov_dir} "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits
+    cov-manage-emit --dir={container_stage_cov_dir} reset-host-name || true
+    if timeout 3h cov-analyze  --dir={container_stage_cov_dir} "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits > /tmp/analysis.txt 2>&1 ; then
+        echo "Analysis completed successfully"
+        cat /tmp/analysis.txt
+    else
+        # In some cases, no translation units were emitted and analyze will exit with an error; ignore that error
+        # if it is because nothing was emitted.
+        cat /tmp/analysis.txt
+        if cat /tmp/analysis.txt | grep "contains no translation units"; then
+            echo "Nothing was emitted; ignoring analyze failure.
+            exit 0
+        else
+            echo "Analysis failed for unknown reason!"
+            exit 1
+        fi
+    fi
     cov-format-errors --json-output-v2 /dev/stdout --dir={container_stage_cov_dir} > {container_stage_cov_dir}/{COVSCAN_ALL_JS_FILENAME}
 else
     echo "No units have been emitted for analysis by this stage; skipping analysis"
