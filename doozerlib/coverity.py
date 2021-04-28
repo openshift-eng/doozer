@@ -102,11 +102,11 @@ class CoverityContext(object):
             path = path.joinpath(filename)
         return path
 
-    def host_stage_waived_flag_path(self, stage_number):
+    def get_stage_results_waive_path(self, stage_number):
         """
-        The flag that indicates archived results have been waived
+        The flag that indicates archived results have been waived for a given stage
         """
-        return self.host_stage_cov_path(stage_number=stage_number, filename=COVSCAN_WAIVED_FILENAME)
+        return self.get_stage_results_path(stage_number=stage_number).joinpath(COVSCAN_WAIVED_FILENAME)
 
     def get_results_done_flag_path(self):
         """
@@ -372,7 +372,9 @@ fi
 
 if [[ "{stage_number}" == "1" ]]; then
     # hostname changes between steps in the Dockerfile; reset to current before running coverity tools.
-    cov-manage-emit --dir={container_stage_cov_dir} reset-host-name;
+    if ls {container_stage_cov_dir}/emit/*/config; then
+        cov-manage-emit --dir={container_stage_cov_dir} reset-host-name
+    fi
     echo "Running un-compiled source search as hostname: $(hostname)"
     cov-capture --dir {container_stage_cov_dir} --source-dir /covscan-src || echo "Error running source detection"
 fi
@@ -380,7 +382,7 @@ fi
 if ls {container_stage_cov_dir}/emit/*/config; then
     echo "Running analysis phase as hostname: $(hostname)"
     # hostname changes between steps in the Dockerfile; reset to current before running coverity tools.
-    cov-manage-emit --dir={container_stage_cov_dir} reset-host-name;
+    cov-manage-emit --dir={container_stage_cov_dir} reset-host-name
     timeout 3h cov-analyze  --dir={container_stage_cov_dir} "--wait-for-license" "-co" "ASSERT_SIDE_EFFECT:macro_name_lacks:^assert_(return|se)\\$" "-co" "BAD_FREE:allow_first_field:true" "--include-java" "--fb-max-mem=4096" "--all" "--security" "--concurrency" --allow-unmerged-emits
     cov-format-errors --json-output-v2 /dev/stdout --dir={container_stage_cov_dir} > {container_stage_cov_dir}/{COVSCAN_ALL_JS_FILENAME}
 else
@@ -515,7 +517,7 @@ def records_results(cc: CoverityContext, stage_number, waived_cov_path_root=None
         owners = ",".join(cc.image.config.owners or [])
         diff_json = json.loads(dest_diff_js_path.read_text(encoding='utf-8'))
         diff_count = len(diff_json.get('issues', []))
-        host_stage_waived_flag_path = cc.host_stage_waived_flag_path(stage_number)
+        host_stage_waived_flag_path = cc.get_stage_results_waive_path(stage_number)
         cc.image.runtime.add_record('covscan',
                                     distgit=cc.image.qualified_name,
                                     distgit_key=cc.image.distgit_key,
