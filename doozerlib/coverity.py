@@ -363,7 +363,7 @@ def run_covscan(cc: CoverityContext) -> bool:
                         sh.write(f'''
 #!/bin/sh
 set -o xtrace
-set -euo pipefail
+set -eo pipefail
 
 if [[ -f "{container_stage_cov_dir}/all_results.js" ]]; then
     echo "Results have already been analyzed for this this stage -- found all_results.js; skipping analysis"
