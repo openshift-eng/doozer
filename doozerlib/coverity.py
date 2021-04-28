@@ -390,7 +390,7 @@ if ls {container_stage_cov_dir}/emit/*/config; then
         # if it is because nothing was emitted.
         cat /tmp/analysis.txt
         if cat /tmp/analysis.txt | grep "contains no translation units"; then
-            echo "Nothing was emitted; ignoring analyze failure.
+            echo "Nothing was emitted; ignoring analyze failure."
             exit 0
         else
             echo "Analysis failed for unknown reason!"
