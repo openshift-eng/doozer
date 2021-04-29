@@ -375,7 +375,7 @@ if [[ "{stage_number}" == "1" ]]; then
     # use || true because it is possible nothing has been emitted before this step
     cov-manage-emit --dir={container_stage_cov_dir} reset-host-name || true
     echo "Running un-compiled source search as hostname: $(hostname)"
-    cov-capture --dir {container_stage_cov_dir} --source-dir /covscan-src || echo "Error running source detection"
+    timeout 3h cov-capture --dir {container_stage_cov_dir} --source-dir /covscan-src || echo "Error running source detection"
 fi
 
 if ls {container_stage_cov_dir}/emit/*/config; then
@@ -475,7 +475,7 @@ RUN curl {cc.image.cgit_url(".oit/" + cc.repo_type + ".repo")} --output /etc/yum
                         sh.write(f'''
 #!/bin/sh
 set -o xtrace
-set -euo pipefail
+set -eo pipefail
 echo "Running build as hostname: $(hostname)"
 {command_to_run}
 ''')
