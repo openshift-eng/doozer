@@ -136,6 +136,7 @@ class RPMMetadata(Metadata):
         # expect most scripts to apply across multiple groups.
         metadata_scripts_path = self.runtime.data_dir + "/modifications"
         path = os.pathsep.join([os.environ['PATH'], metadata_scripts_path])
+        new_specfile_data = specfile_data
 
         for modification in self.config.content.source.modifications:
             if self.source_modifier_factory.supports(modification.action):
@@ -145,7 +146,7 @@ class RPMMetadata(Metadata):
                 context = {
                     "component_name": self.name,
                     "kind": "spec",
-                    "content": specfile_data,
+                    "content": new_specfile_data,
                     "set_env": {"PATH": path},
                 }
                 modifier.act(context=context, ceiling_dir=cwd or Dir.getcwd())
@@ -153,7 +154,7 @@ class RPMMetadata(Metadata):
             else:
                 raise IOError("%s: Don't know how to perform modification action: %s" % (self.distgit_key, modification.action))
 
-        if new_specfile_data is not None and new_specfile_data != specfile_data:
+        if new_specfile_data != specfile_data:
             with io.open(specfile or self.specfile, 'w', encoding='utf-8') as df:
                 df.write(new_specfile_data)
 
