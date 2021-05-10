@@ -2076,6 +2076,7 @@ class ImageDistGitRepo(DistGitRepo):
         # expect most scripts to apply across multiple groups.
         metadata_scripts_path = self.runtime.data_dir + "/modifications"
         path = os.pathsep.join([os.environ['PATH'], metadata_scripts_path])
+        new_dockerfile_data = dockerfile_data
 
         for modification in self.config.content.source.modifications:
             if self.source_modifier_factory.supports(modification.action):
@@ -2085,7 +2086,7 @@ class ImageDistGitRepo(DistGitRepo):
                 context = {
                     "component_name": self.metadata.distgit_key,
                     "kind": "Dockerfile",
-                    "content": dockerfile_data,
+                    "content": new_dockerfile_data,
                     "set_env": {"PATH": path},
                     "distgit_path": self.dg_path,
                 }
@@ -2093,7 +2094,7 @@ class ImageDistGitRepo(DistGitRepo):
                 new_dockerfile_data = context.get("result")
             else:
                 raise IOError("Don't know how to perform modification action: %s" % modification.action)
-        if new_dockerfile_data is not None and new_dockerfile_data != dockerfile_data:
+        if new_dockerfile_data != dockerfile_data:
             with df_path.open('w', encoding="utf-8") as df:
                 df.write(new_dockerfile_data)
 
