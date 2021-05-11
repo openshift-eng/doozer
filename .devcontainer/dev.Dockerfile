@@ -1,4 +1,4 @@
-FROM fedora:33
+FROM fedora:34
 
 # Trust the Red Hat IT Root CA and set up rcm-tools repo
 RUN curl -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --fail -L \
