@@ -294,7 +294,10 @@ class PayloadGenerator:
             else:
                 # The tag that will be used in the imagestreams
                 payload_name = image.config.get("payload_name")
-                tag_name = payload_name or image.image_name_short[4:] if image.image_name_short.startswith("ose-") else image.image_name_short
+                if payload_name:
+                    tag_name = payload_name
+                else:
+                    tag_name = image.image_name_short[4:] if image.image_name_short.startswith("ose-") else image.image_name_short  # it _should_ but... to be safe
                 for archive in record.archives:
                     arch = archive["arch"]
                     pullspecs = archive["extra"]["docker"]["repositories"]
@@ -320,14 +323,16 @@ class PayloadGenerator:
                         yellow_print(f"Omitting embargoed image {pullspecs[-1]}")
                     else:
                         mirroring_list = mirroring.setdefault((arch, False), {})
-                        if tag_name not in mirroring_list or payload_name:  # arch-specific image with explicit payload_name serves as an override (https://issues.redhat.com/browse/ART-2823)
+                        if tag_name not in mirroring_list or payload_name:
+                            # if multiple images in arch have the same tag, only explicit payload_name overwrites (https://issues.redhat.com/browse/ART-2823
                             self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the public mirroring list with imagestream tag {tag_name}...")
                             mirroring_list[tag_name] = mirroring_value
 
                     if self.runtime.group_config.public_upstreams:
                         # when public_upstreams are configured, both embargoed and non-embargoed images should be included in the ocp[-arch]-priv imagestreams
                         mirroring_list = mirroring.setdefault((arch, True), {})
-                        if tag_name not in mirroring_list or payload_name:  # arch-specific image with explicit payload_name serves as an override (https://issues.redhat.com/browse/ART-2823)
+                        if tag_name not in mirroring_list or payload_name:
+                            # if multiple images in arch have the same tag, only explicit payload_name overwrites (https://issues.redhat.com/browse/ART-2823
                             self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the private mirroring list with imagestream tag {tag_name}...")
                             mirroring_list[tag_name] = mirroring_value
 
