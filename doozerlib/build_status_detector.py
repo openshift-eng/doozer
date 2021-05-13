@@ -1,6 +1,6 @@
 from logging import Logger
 from multiprocessing import Lock
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Iterable
 
 from koji import ClientSession
 
@@ -20,7 +20,7 @@ class BuildStatusDetector:
         self.shipping_statuses: Dict[int, bool] = {}  # a dict for caching build shipping statues. key is build id, value is True if shipped.
         self.archive_lists: Dict[int, List[Dict]] = {}  # a dict for caching archive lists. key is build id, value is a list of archives associated with that build.
 
-    def find_embargoed_builds(self, builds: List[Dict], candidate_tags: List[str]) -> Set[int]:
+    def find_embargoed_builds(self, builds: List[Dict], candidate_tags: Iterable[str]) -> Set[int]:
         """ find embargoed builds in given list of koji builds
         :param builds: a list of koji build dicts returned by the koji api
         :param candidate_tags: a list of candidate tags for the images being examined
@@ -58,7 +58,7 @@ class BuildStatusDetector:
         result = set(filter(lambda build_id: self.shipping_statuses[build_id], build_ids))
         return result
 
-    def find_with_embargoed_rpms(self, suspect_build_ids: Set[int], candidate_tags: List[str]) -> Set[int]:
+    def find_with_embargoed_rpms(self, suspect_build_ids: Set[int], candidate_tags: Iterable[str]) -> Set[int]:
         """ look for embargoed RPMs in the image archives (one per arch for every image)
         :param suspect_build_ids: a list of koji build ids
         :param candidate_tags: a list of candidate tags for the images being examined
