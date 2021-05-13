@@ -154,7 +154,7 @@ class RPMMetadata(Metadata):
             else:
                 raise IOError("%s: Don't know how to perform modification action: %s" % (self.distgit_key, modification.action))
 
-        if new_specfile_data != specfile_data:
+        if new_specfile_data is not None and new_specfile_data != specfile_data:
             with io.open(specfile or self.specfile, 'w', encoding='utf-8') as df:
                 df.write(new_specfile_data)
 

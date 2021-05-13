@@ -2094,7 +2094,7 @@ class ImageDistGitRepo(DistGitRepo):
                 new_dockerfile_data = context.get("result")
             else:
                 raise IOError("Don't know how to perform modification action: %s" % modification.action)
-        if new_dockerfile_data != dockerfile_data:
+        if new_dockerfile_data is not None and new_dockerfile_data != dockerfile_data:
             with df_path.open('w', encoding="utf-8") as df:
                 df.write(new_dockerfile_data)
 
