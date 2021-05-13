@@ -1,17 +1,12 @@
 import io
-import sys
-from logging import Logger
-from typing import Dict, List, Optional, Set
-
-import click
-import koji
-import yaml
 import json
 
-from doozerlib import brew, state, exectools, rhcos, build_status_detector
+import click
+import yaml
+
+from doozerlib import brew, build_status_detector, exectools, rhcos, state
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
-from doozerlib.image import ImageMetadata
 from doozerlib.util import red_print, yellow_print
 
 
@@ -109,8 +104,8 @@ read and propagate/expose this annotation in its display of the release image.
 
     if images_missing_builds:
         yellow_print("No builds found for:")
-        for img in sorted(images_missing_builds):
-            click.echo("   {}".format(img))
+        for img in sorted(images_missing_builds, key=lambda img: img.image_name_short):
+            click.echo("   {}".format(img.image_name_short))
 
     if mismatched_siblings:
         yellow_print("Images skipped due to siblings mismatch:")
@@ -297,6 +292,12 @@ class PayloadGenerator:
             if image.distgit_key in mismatched_siblings:
                 error = "Siblings built from different commits"
             else:
+                # The tag that will be used in the imagestreams
+                payload_name = image.config.get("payload_name")
+                if payload_name:
+                    tag_name = payload_name
+                else:
+                    tag_name = image.image_name_short[4:] if image.image_name_short.startswith("ose-") else image.image_name_short  # it _should_ but... to be safe
                 for archive in record.archives:
                     arch = archive["arch"]
                     pullspecs = archive["extra"]["docker"]["repositories"]
@@ -305,9 +306,6 @@ class PayloadGenerator:
                         red_print(error)
                         state.record_image_fail(self.state, image, error, self.runtime.logger)
                         continue
-                    # The tag that will be used in the imagestreams
-                    tag_name = image.image_name_short
-                    tag_name = tag_name[4:] if tag_name.startswith("ose-") else tag_name  # it _should_ but... to be safe
                     digest = archive["extra"]['docker']['digests']['application/vnd.docker.distribution.manifest.v2+json']
                     if not digest.startswith("sha256:"):  # It should start with sha256: for now. Let's raise an error if this changes.
                         raise ValueError(f"Received unrecognized digest {digest} for image {pullspecs[-1]}")
@@ -324,13 +322,19 @@ class PayloadGenerator:
                     if record.private:  # exclude embargoed images from the ocp[-arch] imagestreams
                         yellow_print(f"Omitting embargoed image {pullspecs[-1]}")
                     else:
-                        self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the public mirroring list with imagestream tag {tag_name}...")
-                        mirroring.setdefault((arch, False), {})[tag_name] = mirroring_value
+                        mirroring_list = mirroring.setdefault((arch, False), {})
+                        if tag_name not in mirroring_list or payload_name:
+                            # if multiple images in arch have the same tag, only explicit payload_name overwrites (https://issues.redhat.com/browse/ART-2823
+                            self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the public mirroring list with imagestream tag {tag_name}...")
+                            mirroring_list[tag_name] = mirroring_value
 
                     if self.runtime.group_config.public_upstreams:
                         # when public_upstreams are configured, both embargoed and non-embargoed images should be included in the ocp[-arch]-priv imagestreams
-                        self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the private mirroring list with imagestream tag {tag_name}...")
-                        mirroring.setdefault((arch, True), {})[tag_name] = mirroring_value
+                        mirroring_list = mirroring.setdefault((arch, True), {})
+                        if tag_name not in mirroring_list or payload_name:
+                            # if multiple images in arch have the same tag, only explicit payload_name overwrites (https://issues.redhat.com/browse/ART-2823
+                            self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the private mirroring list with imagestream tag {tag_name}...")
+                            mirroring_list[tag_name] = mirroring_value
 
             # per build, record in the state whether we can successfully mirror it
             if error:
@@ -430,7 +434,7 @@ class PayloadGenerator:
             inconsistencies[5:] = ["(...and more)"]
         return {"release.openshift.io/inconsistency": json.dumps(inconsistencies)}
 
-    def _extra_dummy_tags(self, arch, private, source_for_name, x86_source_for_name, target):
+    def _extra_dummy_tags(self, arch, private, source_for_name, x86_source_for_name, target, stand_in_tag="pod"):
         """
         For non-x86 arches, not all images are built (e.g. kuryr), but they may
         be mentioned in CVO image references. Thus, make sure there is a tag for
@@ -439,24 +443,24 @@ class PayloadGenerator:
         :return: a list of tag specs for the payload images not built in this arch.
         """
         tag_list = []
-        if 'cli' in source_for_name:  # `cli` serves as the dummy image for the replacement
+        if stand_in_tag in source_for_name:  # stand_in_tag image serves as the dummy image for the replacement
             extra_tags = x86_source_for_name.keys() - source_for_name.keys()
             for tag_name in extra_tags:
-                yellow_print('Unable to find tag {} for arch {} ; substituting cli image'.format(tag_name, arch))
+                yellow_print('Unable to find tag {} for arch {} ; substituting {} image'.format(tag_name, arch, stand_in_tag))
                 tag_list.append({
                     'name': tag_name,
                     'from': {
                         'kind': 'DockerImage',
-                        'name': self._build_dest_name(source_for_name['cli'], target.orgrepo)
+                        'name': self._build_dest_name(source_for_name[stand_in_tag], target.orgrepo)
                     }
                 })
         elif self.runtime.group_config.public_upstreams and not private:
-            # If cli is embargoed, it is expected that cli is missing in any non *-priv imagestreams.
-            self.runtime.logger.warning(f"Unable to find cli tag from {arch} imagestream. Is `cli` image embargoed or out of sync with siblings?")
+            # If stand_in_tag is embargoed, it is expected that stand_in_tag is missing in any non *-priv imagestreams.
+            self.runtime.logger.warning(f"Unable to find {stand_in_tag} tag from {arch} imagestream. Is {stand_in_tag} image embargoed or out of sync with siblings?")
         else:
-            # if CVE embargoes supporting is disabled or the "cli" image is also
+            # if CVE embargoes supporting is disabled or the stand_in_tag image is also
             # missing in *-priv namespaces, an error will be raised.
-            raise DoozerFatalError(f"A dummy image is required for arch {arch}, but `cli` image is not available to stand in")
+            raise DoozerFatalError(f"A dummy image is required for arch {arch}, but {stand_in_tag} image is not available to stand in")
 
         return tag_list
 
