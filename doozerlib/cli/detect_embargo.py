@@ -137,7 +137,7 @@ def detect_embargoes_in_nvrs(runtime: Runtime, nvrs: List[str]):
             raise DoozerFatalError(f"Unable to get {nvrs[i]} from Brew.")
     runtime.logger.info(f"Detecting embargoes for {len(nvrs)} builds...")
     detector = bs_detector.BuildStatusDetector(brew_session, runtime.logger)
-    embargoed_build_ids = detector.find_embargoed_builds(builds)
+    embargoed_build_ids = detector.find_embargoed_builds(builds, runtime.get_candidate_brew_tags())
     embargoed_builds = [b for b in builds if b["id"] in embargoed_build_ids]
     return embargoed_builds
 
@@ -166,7 +166,7 @@ def detect_embargoes_in_tags(runtime: Runtime, kind: str, included_tags: List[st
     # Builds may have duplicate entries if we query from multiple tags. Don't worry, BuildStatusDetector is smart.
     runtime.logger.info(f"Detecting embargoes for {len(included_builds)} builds...")
     detector = bs_detector.BuildStatusDetector(brew_session, runtime.logger)
-    embargoed_build_ids = detector.find_embargoed_builds(included_builds)
+    embargoed_build_ids = detector.find_embargoed_builds(included_builds, runtime.get_candidate_brew_tags())
     embargoed_builds = [b for b in included_builds if b["id"] in embargoed_build_ids]
     return embargoed_builds
 

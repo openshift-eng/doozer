@@ -36,10 +36,44 @@ class TestBuildStatusDetector(TestCase):
 
         with patch("doozerlib.brew.get_builds_tags", return_value=tags), \
              patch("doozerlib.brew.list_image_rpms", return_value=rpm_lists), \
-             patch("doozerlib.build_status_detector.BuildStatusDetector.find_shipped_builds", side_effect=lambda builds: {b for b in builds if b in shipped_builds}):
+             patch("doozerlib.build_status_detector.BuildStatusDetector.find_shipped_builds",
+                   side_effect=lambda builds: {b for b in builds if b in shipped_builds}):
             detector = BuildStatusDetector(MagicMock(), MagicMock())
             detector.archive_lists = archive_lists
-            actual = detector.find_embargoed_builds(builds)
+            actual = detector.find_embargoed_builds(builds, [])
+            self.assertEqual(actual, expected)
+
+    def test_find_with_embargoed_rpms(self):
+        # this is tested indirectly via find_embargoed_builds, but test the embargoed tags too
+        image_builds = [
+            {"id": 1, "release": "1.p0"},
+            {"id": 2, "release": "2.p0"},
+            {"id": 3, "release": "3.p0"},
+            {"id": 4, "release": "4.p0"},
+        ]
+        rpm_lists = [
+            [{"id": 0, "build_id": 101, "release": "101.p1"}],  # embargoed per source
+            [{"id": 1, "build_id": 201, "release": "201.p0"}],  # never embargoed
+            [{"id": 2, "build_id": 301, "release": "301.el8"}],  # in embargoed tag, but now shipped
+            [{"id": 3, "build_id": 401, "release": "401.el8"}],  # still embargoed by tag
+        ]
+        archive_lists = {
+            1: [{"build_id": 1, "id": 11, "rpms": rpm_lists[0]}],
+            2: [{"build_id": 2, "id": 21, "rpms": rpm_lists[1]}],
+            3: [{"build_id": 3, "id": 31, "rpms": rpm_lists[2]}],
+            4: [{"build_id": 4, "id": 41, "rpms": rpm_lists[3]}],
+        }
+        shipped_rpm_builds = {301}
+        embargoed_tag_builds = {301, 401}
+        expected = {1, 4}
+
+        with patch("doozerlib.build_status_detector.BuildStatusDetector.rpms_in_embargoed_tag",
+                   return_value=embargoed_tag_builds), \
+             patch("doozerlib.build_status_detector.BuildStatusDetector.find_shipped_builds",
+                   side_effect=lambda builds: {b for b in builds if b in shipped_rpm_builds}):
+            detector = BuildStatusDetector(MagicMock(), MagicMock())
+            detector.archive_lists = archive_lists
+            actual = detector.find_with_embargoed_rpms(set(b["id"] for b in image_builds), ["test-candidate"])
             self.assertEqual(actual, expected)
 
     def test_find_shipped_builds(self):
@@ -102,3 +136,15 @@ class TestBuildStatusDetector(TestCase):
             session.getLatestBuilds.assert_called_once_with("tag-candidate", event=None, type="rpm")
             find_shipped_builds.assert_called_once_with([1, 2, 3])
             list_build_rpms.assert_called_once_with([1, 3], session)
+
+    def test_rpms_in_embargoed_tag(self):
+        session = MagicMock()
+        detector = BuildStatusDetector(session, MagicMock())
+        session.listTagged.return_value = [{"id": 42}]
+
+        expected = {42}
+        actual = detector.rpms_in_embargoed_tag("foo-candidate")
+        self.assertEqual(actual, expected)
+        actual = detector.rpms_in_embargoed_tag("foo-candidate")  # second time should be cached
+        self.assertEqual(actual, expected)
+        session.listTagged.assert_called_once_with("foo-embargoed", event=None, type="rpm")

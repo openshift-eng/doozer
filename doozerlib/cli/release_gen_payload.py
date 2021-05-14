@@ -131,8 +131,10 @@ class PayloadGenerator:
         payload_images, invalid_name_items = self._get_payload_images(images)
         release_payload_images, non_release_items = self._get_payload_and_non_release_images(payload_images)
         self.state['payload_images'] = len(release_payload_images)
+
         latest_builds, images_missing_builds = self._get_latest_builds(release_payload_images)
-        self._designate_privacy(latest_builds)
+        self._designate_privacy(latest_builds, images)
+
         mismatched_siblings = self._find_mismatched_siblings(latest_builds)
 
         return latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items
@@ -197,7 +199,7 @@ class PayloadGenerator:
         self.state["builds_found"] = len(latest_builds)
         return latest_builds, missing_images
 
-    def _designate_privacy(self, latest_builds):
+    def _designate_privacy(self, latest_builds, images):
         """
         For a list of build records, determine if they have private contents. If
         so, then set "private" to True for that build record. This is done for a
@@ -213,7 +215,10 @@ class PayloadGenerator:
             self.bs_detector.archive_lists[r.build["id"]] = r.archives
 
         # determine if each image build is embargoed (or otherwise "private")
-        embargoed_build_ids = self.bs_detector.find_embargoed_builds([r.build for r in latest_builds])
+        embargoed_build_ids = self.bs_detector.find_embargoed_builds(
+            [r.build for r in latest_builds],
+            {image.candidate_brew_tag() for image in images}
+        )
         for r in latest_builds:
             if r.build["id"] in embargoed_build_ids:
                 r.private = True

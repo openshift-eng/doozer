@@ -1351,6 +1351,15 @@ class Runtime(object):
     def get_default_candidate_brew_tag(self):
         return self.branch + '-candidate' if self.branch else None
 
+    def get_candidate_brew_tags(self):
+        """Return a set of known candidate tags relevant to this group"""
+        tag = self.get_default_candidate_brew_tag()
+        # assumptions here:
+        # releases with default rhel-7 tag also have rhel 8.
+        # releases with default rhel-8 tag do not also care about rhel-7.
+        # adjust as needed (and just imagine rhel 9)!
+        return {tag, tag.replace('-rhel-7', '-rhel-8')} if tag else set()
+
     def get_minor_version(self):
         # only applicable if appropriate vars are defined in group config
         return '.'.join(str(self.group_config.vars[v]) for v in ('MAJOR', 'MINOR'))

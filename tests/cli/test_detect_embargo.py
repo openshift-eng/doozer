@@ -23,6 +23,9 @@ class TestDetectEmbargoCli(TestCase):
 
     def test_detect_embargoes_in_tags(self):
         included_tags = ["a-candidate", "b-candidate"]
+        candidate_tags = set(included_tags)
+        runtime = MagicMock()
+        runtime.get_candidate_brew_tags.return_value = candidate_tags
         included_builds = [
             [{"id": 11, "nvr": "foo11-1.2.3-1.p0"}, {"id": 12, "nvr": "foo12-1.2.3-1.p1"}, {"id": 13, "nvr": "foo13-1.2.3-1.p1"}],
             [{"id": 21, "nvr": "foo21-1.2.3-1.p0"}, {"id": 22, "nvr": "foo22-1.2.3-1.p1"}, {"id": 23, "nvr": "foo23-1.2.3-1.p1"}],
@@ -38,8 +41,8 @@ class TestDetectEmbargoCli(TestCase):
         with patch("doozerlib.brew.get_latest_builds", return_value=included_builds), \
              patch("doozerlib.brew.get_tagged_builds", return_value=excluded_builds), \
              patch("doozerlib.build_status_detector.BuildStatusDetector.find_embargoed_builds", return_value=[13, 23]) as find_embargoed_builds:
-            actual = detect_embargo.detect_embargoes_in_tags(MagicMock(), "all", included_tags, excluded_tags, event_id)
-            find_embargoed_builds.assert_called_once_with(builds_to_detect)
+            actual = detect_embargo.detect_embargoes_in_tags(runtime, "all", included_tags, excluded_tags, event_id)
+            find_embargoed_builds.assert_called_once_with(builds_to_detect, candidate_tags)
         self.assertEqual(actual, expected)
 
     def test_detect_embargoes_in_pullspecs(self):
