@@ -12,6 +12,7 @@ import io
 from functools import wraps
 from dockerfile_parse import DockerfileParser
 from doozerlib import brew, exectools, logutil, pushd, util
+from doozerlib.util import go_arch_for_brew_arch
 
 logger = logutil.getLogger(__name__)
 
@@ -510,7 +511,7 @@ class OperatorMetadataBuilder(object):
         cmd = 'skopeo inspect --raw docker://{}/{}'.format(registry, image)
         out, err = exectools.cmd_assert(cmd, retries=3)
 
-        arch = 'amd64' if arch == 'x86_64' else arch  # x86_64 is called amd64 in skopeo
+        arch = go_arch_for_brew_arch(arch)  # skopeo uses go arch names
 
         def select_arch(manifests):
             return manifests['platform']['architecture'] == arch
