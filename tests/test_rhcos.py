@@ -29,6 +29,7 @@ class TestRhcos(unittest.TestCase):
     def test_release_url(self):
         self.assertIn("4.6-s390x", rhcos.rhcos_release_url("4.6", "s390x"))
         self.assertNotIn("x86_64", rhcos.rhcos_release_url("4.6", "x86_64"))
+        self.assertIn("4.9-aarch64", rhcos.rhcos_release_url("4.9", "aarch64"))
 
     @patch('urllib.request.urlopen')
     def test_build_id(self, mock_urlopen):

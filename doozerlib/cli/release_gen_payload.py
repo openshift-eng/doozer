@@ -7,7 +7,7 @@ import yaml
 from doozerlib import brew, build_status_detector, exectools, rhcos, state
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
-from doozerlib.util import red_print, yellow_print
+from doozerlib.util import red_print, yellow_print, go_suffix_for_arch
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
@@ -581,7 +581,7 @@ def default_is_base_namespace():
 
 
 def is_name_and_space(base_name, base_namespace, arch, private):
-    arch_suffix = "" if arch == 'x86_64' else f"-{arch}"
+    arch_suffix = go_suffix_for_arch(arch)
     priv_suffix = "-priv" if private else ""
     name = f"{base_name}{arch_suffix}{priv_suffix}"
     namespace = f"{base_namespace}{arch_suffix}{priv_suffix}"

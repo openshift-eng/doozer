@@ -56,6 +56,32 @@ class TestUtil(unittest.TestCase):
         self.assertRaises(IOError, util.extract_version_fields, 'v1.2', 3)
         self.assertRaises(IOError, util.extract_version_fields, '1.2', 3)
 
+    def test_go_arch_suffixes(self):
+        expectations = {
+            "x86_64": "",
+            "amd64": "",
+            "aarch64": "-arm64",
+            "arm64": "-arm64"
+        }
+        for arch, suffix in expectations.items():
+            self.assertEqual(util.go_suffix_for_arch(arch), suffix)
+
+    def test_brew_arch_suffixes(self):
+        expectations = {
+            "x86_64": "",
+            "amd64": "",
+            "aarch64": "-aarch64",
+            "arm64": "-aarch64"
+        }
+        for arch, suffix in expectations.items():
+            self.assertEqual(util.brew_suffix_for_arch(arch), suffix)
+
+    def test_bogus_arch_xlate(self):
+        with self.assertRaises(Exception):
+            util.go_arch_for_brew_arch("bogus")
+        with self.assertRaises(Exception):
+            util.brew_arch_for_go_arch("bogus")
+
 
 if __name__ == "__main__":
     unittest.main()

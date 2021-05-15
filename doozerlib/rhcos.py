@@ -2,6 +2,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import json
 from tenacity import retry, stop_after_attempt, wait_fixed
 from urllib import request
+from doozerlib.util import brew_suffix_for_arch
 
 RHCOS_BASE_URL = "https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases"
 
@@ -15,9 +16,8 @@ def rhcos_release_url(version, arch="x86_64", private=False):
     @param private  boolean, true for private stream, false for public (currently, no effect)
     @return e.g. "https://releases-rhcos-art...com/storage/releases/rhcos-4.6-s390x"
     """
-    arch_suffix = "" if arch in ["x86_64", "amd64"] else f"-{arch}"
     # TODO: create private rhcos builds and do something with "private" here
-    return f"{RHCOS_BASE_URL}/rhcos-{version}{arch_suffix}"
+    return f"{RHCOS_BASE_URL}/rhcos-{version}{brew_suffix_for_arch(arch)}"
 
 
 # this is hard to test with retries, so wrap testable method

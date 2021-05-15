@@ -22,7 +22,8 @@ from doozerlib import coverity
 
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
-from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get, analyze_debug_timing, get_cincinnati_channels, extract_version_fields, get_docker_config_json
+from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
+from doozerlib.util import analyze_debug_timing, get_cincinnati_channels, extract_version_fields, get_docker_config_json, go_arch_for_brew_arch
 from doozerlib import operator_metadata
 from doozerlib import brew
 import click
@@ -869,7 +870,7 @@ def print_build_metrics(runtime):
 @click.option("--threads", default=1, metavar="NUM_THREADS",
               help="Number of concurrent builds to execute. Only valid for --local builds.")
 @click.option("--filter-by-os", default=None, metavar="ARCH",
-              help="Specify an exact arch to push (e.g. 'amd64').")
+              help="Specify an exact arch to push (golang name e.g. 'amd64').")
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
 @pass_runtime
 def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scratch, threads, filter_by_os, dry_run):
@@ -1001,7 +1002,7 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
 @click.option("--to", default=[], metavar="REGISTRY", multiple=True,
               help="Registry to push to when image build completes.  [multiple]")
 @click.option("--filter-by-os", default=None, metavar="ARCH",
-              help="Specify an exact arch to push (e.g. 'amd64').")
+              help="Specify an exact arch to push (golang name e.g. 'amd64').")
 @click.option('--dry-run', default=False, is_flag=True, help='Only print tag/push operations which would have occurred.')
 @pass_runtime
 def images_push(runtime, tag, version_release, to_defaults, late_only, to, filter_by_os, dry_run):
@@ -1719,8 +1720,7 @@ def config_gencsv(runtime, keys, as_type, output):
               help="Suggestions URL, load from {major}-{minor}-{arch}.yaml")
 def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate, suggestions_url):
     major, minor = extract_version_fields(version, at_least=2)[:2]
-    if arch == 'x86_64':
-        arch = 'amd64'  # Cincinnati is go code, and uses a different arch name than brew
+    arch = go_arch_for_brew_arch(arch)  # Cincinnati is go code, and uses a different arch name than brew
 
     # Refer to https://docs.google.com/document/d/16eGVikCYARd6nUUtAIHFRKXa7R_rU5Exc9jUPcQoG8A/edit
     # for information on channels & edges
