@@ -136,7 +136,7 @@ async def _rebase_rpm(runtime: Runtime, builder: RPMBuilder, rpm: RPMMetadata, v
         "release": release,
         "message": "Unknown failure",
         "status": -1,
-        # Status defaults to failure until explicitly set by succcess. This handles raised exceptions.
+        # Status defaults to failure until explicitly set by success. This handles raised exceptions.
     }
     try:
         await builder.rebase(rpm, version, release)
@@ -206,7 +206,7 @@ async def _build_rpm(runtime: Runtime, builder: RPMBuilder, rpm: RPMMetadata):
         "message": "Unknown failure",
         "targets": rpm.targets,
         "status": -1,
-        # Status defaults to failure until explicitly set by succcess. This handles raised exceptions.
+        # Status defaults to failure until explicitly set by success. This handles raised exceptions.
     }
     task_ids = []
     task_urls = []

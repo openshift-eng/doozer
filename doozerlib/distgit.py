@@ -1472,6 +1472,9 @@ class ImageDistGitRepo(DistGitRepo):
 
             # If the release is specified as "+", this means the user wants to bump the release.
             if release == "+":
+                if self.runtime.assembly:
+                    raise ValueError('"+" is not supported for the release value when assemblies are enabled')
+
                 # increment the release that was in the Dockerfile
                 if prev_release:
                     self.logger.info("Bumping release field in Dockerfile")
@@ -1514,8 +1517,14 @@ class ImageDistGitRepo(DistGitRepo):
                     release = release[:-3]  # strip .p?
                     release += pval
 
+                if self.runtime.assembly:
+                    release += f'.assembly.{self.runtime.assembly}'
+
                 dfp.labels['release'] = release
             else:
+                if self.runtime.assembly:
+                    raise ValueError('Release value must be specified when assemblies are enabled')
+
                 if self.runtime.group_config.public_upstreams:
                     raise ValueError("We are not able to let OSBS choose a release value for an image with a public upstream.")
                 if "release" in dfp.labels:

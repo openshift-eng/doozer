@@ -75,6 +75,10 @@ class RPMBuilder:
 
         # include commit hash in release field
         release += ".git." + rpm.pre_init_sha[:7]
+
+        if self._runtime.assembly:
+            release += f'.assembly.{self._runtime.assembly}'
+
         rpm.set_nvr(version, release)
 
         # generate new specfile
