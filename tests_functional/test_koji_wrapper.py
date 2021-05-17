@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 
 import unittest
-from . import DoozerRunnerTestCase
 
-import koji
-import logging
-
-from doozerlib import image, exectools, model
+from tests_functional import DoozerRunnerTestCase
 from doozerlib import brew
 
 

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
 import unittest
-from dockerfile_parse import DockerfileParser
-from . import DoozerRunnerTestCase
 
-from doozerlib import image, exectools, model
+from dockerfile_parse import DockerfileParser
+from tests_functional import DoozerRunnerTestCase
 
 
 class TestBasicRebase(DoozerRunnerTestCase):
@@ -19,6 +18,12 @@ class TestBasicRebase(DoozerRunnerTestCase):
         super().tearDown()
 
     def test_standard_labels_envs_and_parents(self):
+        self._run_assertions()
+
+    def test_standard_labels_envs_and_parents_with_assemblies(self):
+        self._run_assertions(assemblies=True)
+
+    def _run_assertions(self, assemblies=False):
         """
         Asserts standard labels are updated
         - version
@@ -34,7 +39,7 @@ class TestBasicRebase(DoozerRunnerTestCase):
         upstream_commit_oeb_short = upstream_commit_oeb[:7]
         upstream_commit_ced = '0f7594616f7ea72e28f065ef2c172fa3d852abcf'
         upstream_commit_ced_short = upstream_commit_ced[:7]
-        _, _ = self.run_doozer(
+        doozer_args = [
             '--group', f'openshift-4.6@{target_ocp_build_data_commitish}',
             '-i', 'openshift-enterprise-base',
             '-i', 'cluster-etcd-operator',
@@ -45,7 +50,15 @@ class TestBasicRebase(DoozerRunnerTestCase):
             '--version', target_version,
             '--release', '999.p?',
             '-m', 'test message'
-        )
+        ]
+
+        if assemblies:
+            assembly_args = ['--assembly', 'tester', '--enable-assemblies']
+            assembly_args.extend(doozer_args)
+            doozer_args = assembly_args
+            target_release += '.assembly.tester'
+
+        _, _ = self.run_doozer(*doozer_args)
 
         oeb_dfp = DockerfileParser(str(self.distgit_image_path('openshift-enterprise-base').joinpath('Dockerfile')))
         ced_dfp = DockerfileParser(str(self.distgit_image_path('cluster-etcd-operator').joinpath('Dockerfile')))

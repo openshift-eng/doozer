@@ -147,6 +147,7 @@ class Runtime(object):
         self.session_pool = {}
         self.session_pool_available = {}
         self.brew_event = None
+        self.assembly = 'test'
 
         self.stream: List[str] = []  # Click option. A list of image stream overrides from the command line.
         self.stream_overrides: Dict[str, str] = {}  # Dict of stream name -> pullspec from command line.
@@ -398,6 +399,14 @@ class Runtime(object):
 
         self.group_dir = self.gitdata.data_dir
         self.group_config = self.get_group_config()
+
+        if self.group_config.assembles.enabled or self.enable_assemblies:
+            if re.match(r'^[a-zA-Z0-9._]+$', self.assembly) is None:
+                raise ValueError('Assembly names may only consistent of alphanumerics, ., and _. ')
+        else:
+            # If assemblies are not enabled for the group,
+            # ignore this argument throughout doozer.
+            self.assembly = None
 
         # register the sources
         # For each "--source alias path" on the command line, register its existence with

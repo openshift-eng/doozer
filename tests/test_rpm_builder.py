@@ -15,10 +15,11 @@ class TestRPMBuilder(unittest.TestCase):
     def setUp(self) -> None:
         pass
 
-    def _make_runtime(self):
+    def _make_runtime(self, assembly=None):
         runtime = mock.MagicMock()
         runtime.group_config.public_upstreams = [{"private": "https://github.com/openshift-priv", "puiblic": "https://github.com/openshift"}]
         runtime.brew_logs_dir = "/path/to/brew-logs"
+        runtime.assembly = assembly
         return runtime
 
     def _make_rpm_meta(self, runtime, source_sha, distgit_sha):

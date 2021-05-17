@@ -2,9 +2,8 @@
 
 import unittest
 import yaml
-from . import DoozerRunnerTestCase
 
-from doozerlib import image, exectools, model
+from tests_functional import DoozerRunnerTestCase
 
 
 class TestScanSources(DoozerRunnerTestCase):

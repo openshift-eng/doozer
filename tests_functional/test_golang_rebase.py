@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
 import unittest
-from dockerfile_parse import DockerfileParser
-from . import DoozerRunnerTestCase
 
-from doozerlib import image, exectools, model
+from dockerfile_parse import DockerfileParser
+from tests_functional import DoozerRunnerTestCase
 
 
 class TestGoLangRebase(DoozerRunnerTestCase):
