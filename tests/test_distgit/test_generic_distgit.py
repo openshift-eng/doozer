@@ -1,10 +1,11 @@
 from __future__ import absolute_import, print_function, unicode_literals
+
 import errno
 import os
 import unittest
-from datetime import datetime, timedelta
 
 import flexmock
+import mock
 
 from doozerlib import distgit, model
 
@@ -58,6 +59,13 @@ class TestGenericDistGit(TestDistgit):
                             config=MockConfig(),
                             logger=logger,
                             name="_irrelevant_")
+
+        expected_cmd = ['git', '-C', 'my-root-dir/my-namespace/my-distgit-key', 'rev-parse', 'HEAD']
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_assert")
+            .with_args(expected_cmd, strip=True)
+            .and_return("abcdefg", "")
+            .once())
 
         distgit.DistGitRepo(metadata, autoclone=False).clone("my-root-dir", "my-branch")
 
@@ -118,6 +126,13 @@ class TestGenericDistGit(TestDistgit):
             .with_args(expected_cmd)
             .once())
 
+        expected_cmd = ['git', '-C', 'my-root-dir/my-namespace/my-distgit-key', 'rev-parse', 'HEAD']
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_assert")
+            .with_args(expected_cmd, strip=True)
+            .and_return("abcdefg", "")
+            .once())
+
         metadata = flexmock(config=MockConfig(content="_irrelevant_"),
                             runtime=flexmock(local=True,
                                              command="images:rebase",
@@ -152,6 +167,13 @@ class TestGenericDistGit(TestDistgit):
             .with_args(expected_cmd, retries=3, set_env=object)
             .once()
             .and_return(None))
+
+        expected_cmd = ['git', '-C', 'my-root-dir/my-namespace/my-distgit-key', 'rev-parse', 'HEAD']
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_assert")
+            .with_args(expected_cmd, strip=True)
+            .and_return("abcdefg", "")
+            .once())
 
         expected_warning = ("Warning: images:rebase was skipped and "
                             "therefore your local build will be sourced "
@@ -199,6 +221,13 @@ class TestGenericDistGit(TestDistgit):
             .with_args(expected_cmd, retries=3, set_env=object)
             .once()
             .and_return(None))
+
+        expected_cmd = ['git', '-C', 'my-root-dir/my-namespace/my-distgit-key', 'rev-parse', 'HEAD']
+        (flexmock(distgit.exectools)
+            .should_receive("cmd_assert")
+            .with_args(expected_cmd, strip=True)
+            .and_return("abcdefg", "")
+            .once())
 
         metadata = flexmock(config=MockConfig(content="_irrelevant_"),
                             runtime=flexmock(local=False,
@@ -610,6 +639,29 @@ class TestGenericDistGit(TestDistgit):
 
         self.assertEqual(1, len(d.runtime.missing_pkgs))
         self.assertIn("distgit_key image is missing package haproxy", d.runtime.missing_pkgs)
+
+    @mock.patch("requests.head")
+    def test_cgit_file_available(self, mocked_head):
+        meta = MockMetadata(MockRuntime(self.logger))
+        cgit_url = "http://distgit.example.com/cgit/containers/foo/plain/some_path/some_file.txt?h=some-branch&id=abcdefg"
+        meta.cgit_url = lambda *args, **kwargs: cgit_url
+        dg = distgit.ImageDistGitRepo(meta, autoclone=False)
+        dg.sha = "abcdefg"
+
+        mocked_head.return_value.status_code = 404
+        existence, url = dg.cgit_file_available("some_path/some_file.txt")
+        self.assertEqual(url, cgit_url)
+        self.assertFalse(existence)
+
+        mocked_head.return_value.status_code = 200
+        existence, url = dg.cgit_file_available("some_path/some_file.txt")
+        self.assertEqual(url, cgit_url)
+        self.assertTrue(existence)
+
+        mocked_head.return_value.status_code = 500
+        mocked_head.return_value.raise_for_status.side_effect = IOError
+        with self.assertRaises(IOError):
+            dg.cgit_file_available("some_path/some_file.txt")
 
 
 if __name__ == "__main__":

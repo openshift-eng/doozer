@@ -6,6 +6,7 @@ import errno
 import glob
 import hashlib
 import io
+import logging
 import os
 import pathlib
 import re
@@ -14,12 +15,14 @@ import time
 import traceback
 from datetime import date
 from multiprocessing import Event, Lock
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import aiofiles
 import bashlex
+import requests
 import yaml
 from dockerfile_parse import DockerfileParser
+from tenacity import retry, retry_if_not_result, wait_fixed, stop_after_attempt, before_sleep_log
 
 from doozerlib import constants, state, util
 from doozerlib.dblib import Record
@@ -103,6 +106,7 @@ class DistGitRepo(object):
         self.push_status = False
 
         self.branch = self.runtime.branch
+        self.sha = None
 
         self.source_sha = None
         self.source_full_sha = None
@@ -224,6 +228,7 @@ class DistGitRepo(object):
                     if distgit_commitish:
                         with Dir(self.distgit_dir):
                             exectools.cmd_assert(f'git checkout {distgit_commitish}')
+        self.sha, _ = exectools.cmd_assert(["git", "-C", self.distgit_dir, "rev-parse", "HEAD"], strip=True)
 
     def merge_branch(self, target, allow_overwrite=False):
         self.logger.info('Switching to branch: {}'.format(target))
@@ -296,7 +301,30 @@ class DistGitRepo(object):
             exectools.cmd_assert(["git", "commit", "--allow-empty", "-m", commit_message])
             rc, sha, err = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
             assertion.success(rc, "Failure fetching commit SHA for {}".format(self.distgit_dir))
-        return sha.strip()
+        self.sha = sha.strip()
+        return self.sha
+
+    def cgit_file_available(self, filename: str = ".oit/signed.repo") -> Tuple[bool, str]:
+        """ Check if the specified file associated with the commit hash pushed to distgit is available on cgit
+        :return: (existence, url)
+        """
+        assert self.sha is not None
+        self.logger.debug("Checking if distgit commit %s is available on cgit...", self.sha)
+        url = self.metadata.cgit_url(filename, commit_hash=self.sha, branch=self.branch)
+        response = requests.head(url)
+        if response.status_code == 404:
+            self.logger.debug("Distgit commit %s is not available on cgit", self.sha)
+            return False, url
+        response.raise_for_status()
+        self.logger.debug("Distgit commit %s is available on cgit", self.sha)
+        return True, url
+
+    @retry(retry=retry_if_not_result(lambda r: r), wait=wait_fixed(10), stop=stop_after_attempt(60), before_sleep=before_sleep_log(logger, logging.WARNING))
+    def wait_on_cgit_file(self, filename: str = ".oit/signed.repo"):
+        """ Poll cgit for the specified file associated with the commit hash pushed to distgit
+        """
+        existence, _ = self.cgit_file_available(filename)
+        return existence
 
     def push(self):
         with Dir(self.distgit_dir):
@@ -1080,8 +1108,12 @@ class ImageDistGitRepo(DistGitRepo):
             cmd_list.append(signing_intent)
         else:
             if repo_type:
+                repo_file = f".oit/{repo_type}.repo"
+                existence, repo_url = self.cgit_file_available(repo_file)
+                if not existence:
+                    raise FileNotFoundError(f"Repo file {repo_file} is not available on cgit")
                 repo_list = list(repo_list)  # In case we get a tuple
-                repo_list.append(self.metadata.cgit_url(".oit/" + repo_type + ".repo"))
+                repo_list.append(repo_url)
 
             if repo_list:
                 # rhpkg supports --repo-url [URL [URL ...]]
