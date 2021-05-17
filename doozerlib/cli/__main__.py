@@ -307,6 +307,7 @@ def images_update_dockerfile(runtime, version, release, repo_type, message, push
                 (meta, success) = dgr.push()
                 if success is not True:
                     state.record_image_fail(lstate, meta, success)
+                dgr.wait_on_cgit_file()
         except Exception as ex:
             msg = str(ex)
             state.record_image_fail(lstate, image_meta, msg, runtime.logger)
@@ -568,6 +569,7 @@ def images_rebase(runtime, version, release, embargoed, repo_type, message, push
                 (meta, success) = dgr.push()
                 if success is not True:
                     state.record_image_fail(lstate, meta, success)
+                dgr.wait_on_cgit_file()
 
         except Exception as ex:
             # Only the message will recorded in the state. Make sure we print out a stacktrace in the logs.

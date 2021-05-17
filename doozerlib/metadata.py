@@ -141,11 +141,26 @@ class Metadata(object):
         else:
             return list(self.runtime.get_global_arches())
 
-    def cgit_url(self, filename):
-        rev = self.branch()
-        ret = "/".join((self.runtime.group_config.urls.cgit, self.qualified_name, "plain", filename))
-        if rev is not None:
-            ret = "{}?h={}".format(ret, rev)
+    def cgit_url(self, filename: str, commit_hash: Optional[str] = None, branch: Optional[str] = None) -> str:
+        """ Construct a cgit URL to a given file associated with the commit hash pushed to distgit
+        :param filename: a relative path
+        :param commit_hash: commit hash; None implies the current HEAD
+        :param branch: branch name; None implies the branch specified in ocp-build-data
+        :return: a cgit URL
+        """
+        cgit_url_base = self.runtime.group_config.urls.cgit
+        if not cgit_url_base:
+            raise ValueError("urls.cgit is not set in group config")
+        ret = f"{cgit_url_base}/{urllib.parse.quote(self.qualified_name)}/plain/{urllib.parse.quote(filename)}"
+        params = {}
+        if branch is None:
+            branch = self.branch()
+        if branch:
+            params["h"] = branch
+        if commit_hash:
+            params["id"] = commit_hash
+        if params:
+            ret += "?" + urllib.parse.urlencode(params)
         return ret
 
     def fetch_cgit_file(self, filename):
