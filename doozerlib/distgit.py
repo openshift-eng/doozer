@@ -1111,7 +1111,7 @@ class ImageDistGitRepo(DistGitRepo):
                 repo_file = f".oit/{repo_type}.repo"
                 existence, repo_url = self.cgit_file_available(repo_file)
                 if not existence:
-                    raise FileNotFoundError(f"Repo file {repo_file} is not available on cgit")
+                    raise FileNotFoundError(f"Repo file {repo_file} is not available on cgit; cgit cache may not be reflecting distgit in a timely manner.")
                 repo_list = list(repo_list)  # In case we get a tuple
                 repo_list.append(repo_url)
 
