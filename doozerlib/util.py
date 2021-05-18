@@ -354,6 +354,25 @@ def get_docker_config_json(config_dir):
         raise FileNotFoundError("Can not find the registry config file in {}".format(config_dir))
 
 
+def isolate_pflag_in_release(release: str):
+    """
+    Given a release field, determines whether is contains
+    .p0/.p1 information. If it does, it returns the value
+    'p0' or 'p1'. If it is not found, None is returned.
+    """
+    if release.endswith('.p1') or release.endswith('.p0'):
+        return release[-2:]
+
+    # p? is not always at the end of the release field if
+    # assemblies are being used.
+    for pflag in ['p0', 'p1']:
+        idx = release.find(f'.{pflag}.')
+        if idx > -1:
+            return pflag
+
+    return None
+
+
 # https://code.activestate.com/recipes/577504/
 def total_size(o, handlers={}, verbose=False):
     """ Returns the approximate memory footprint an object and all of its contents.

@@ -401,8 +401,8 @@ class Runtime(object):
         self.group_config = self.get_group_config()
 
         if self.group_config.assembles.enabled or self.enable_assemblies:
-            if re.match(r'^[a-zA-Z0-9._]+$', self.assembly) is None:
-                raise ValueError('Assembly names may only consistent of alphanumerics, ., and _. ')
+            if re.fullmatch(r'[\w.]+', self.assembly) is None or self.assembly[0] == '.' or self.assembly[-1] == '.':
+                raise ValueError('Assembly names may only consist of alphanumerics, ., and _, but not start or end with a dot (.).')
         else:
             # If assemblies are not enabled for the group,
             # ignore this argument throughout doozer.

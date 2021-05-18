@@ -87,6 +87,40 @@ class TestRPMBuilder(unittest.TestCase):
         dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].")
         dg.push_async.assert_called_once()
 
+    @mock.patch("doozerlib.rpm_builder.Path.mkdir")
+    @mock.patch("shutil.copy")
+    @mock.patch("aiofiles.os.remove")
+    @mock.patch("aiofiles.open")
+    @mock.patch("doozerlib.rpm_builder.exectools.cmd_assert_async")
+    def test_rebase_with_assembly(self, mocked_cmd_assert_async: mock.Mock, mocked_open: mock.Mock, mocked_os_remove: mock.Mock,
+                                  mocked_copy: mock.Mock, mocked_mkdir: mock.Mock):
+        source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"
+        distgit_sha = "4cd7f576ad005aadd3c25ea56c7986bc6a7e7340"
+        runtime = self._make_runtime(assembly='tester')
+        rpm = self._make_rpm_meta(runtime, source_sha, distgit_sha)
+        dg = rpm.distgit_repo()
+        mocked_cmd_assert_async.side_effect = \
+            lambda cmd, **kwargs: {"spectool": ("Source0: 1.tar.gz\nSource1: a.diff\nPatch0: b/c.diff\n", "")} \
+            .get(cmd[0], ("fake_stdout", "fake_stderr"))
+
+        builder = RPMBuilder(runtime, scratch=False, dry_run=False)
+        builder._populate_specfile_async = mock.AsyncMock(return_value=["fake spec content"])
+
+        actual = asyncio.get_event_loop().run_until_complete(builder.rebase(rpm, "1.2.3", "202104070000.test.p?"))
+
+        self.assertEqual(actual, distgit_sha)
+        self.assertEqual(rpm.release, "202104070000.test.p0.git." + source_sha[:7] + '.assembly.tester')
+        mocked_open.assert_called_once_with(dg.dg_path / "foo.spec", "w")
+        mocked_open.return_value.__aenter__.return_value.writelines.assert_called_once_with(["fake spec content"])
+        mocked_cmd_assert_async.assert_any_call(["tar", "-czf", dg.dg_path / f"{rpm.config.name}-{rpm.version}-{rpm.release}.tar.gz", "--exclude=.git", fr"--transform=s,^\./,{rpm.config.name}-{rpm.version}/,", "."], cwd=rpm.source_path)
+        mocked_cmd_assert_async.assert_any_call(["rhpkg", "new-sources", f"{rpm.config.name}-{rpm.version}-{rpm.release}.tar.gz"], cwd=dg.dg_path, retries=3)
+        mocked_cmd_assert_async.assert_called_with(["spectool", "--", dg.dg_path / "foo.spec"], cwd=dg.dg_path)
+        mocked_copy.assert_any_call(Path(rpm.source_path) / "a.diff", dg.dg_path / "a.diff", follow_symlinks=False)
+        mocked_copy.assert_any_call(Path(rpm.source_path) / "b/c.diff", dg.dg_path / "b/c.diff", follow_symlinks=False)
+        rpm._run_modifications.assert_called_once_with(dg.dg_path / "foo.spec", dg.dg_path)
+        dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].")
+        dg.push_async.assert_called_once()
+
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_gather_async")
     def test_build_success(self, mocked_cmd_gather_async: mock.Mock):
         source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"

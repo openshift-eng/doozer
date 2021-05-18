@@ -277,7 +277,7 @@ class ImageMetadata(Metadata):
                 for package_details in self.config.scan_sources.extra_packages:
                     extra_package_name = package_details.name
                     extra_package_brew_tag = package_details.tag
-                    # Example output: https://gist.github.com/jupierce/3bbc8be7265348a8f549d401664c9972
+                    # Example of queryHistory: https://gist.github.com/jupierce/943b845c07defe784522fd9fd76f4ab0
                     extra_latest_tagging_infos = koji_api.queryHistory(table='tag_listing', tag=extra_package_brew_tag, package=extra_package_name, active=True)['tag_listing']
 
                     if extra_latest_tagging_infos:
