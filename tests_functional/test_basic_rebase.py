@@ -40,6 +40,7 @@ class TestBasicRebase(DoozerRunnerTestCase):
         upstream_commit_ced = '0f7594616f7ea72e28f065ef2c172fa3d852abcf'
         upstream_commit_ced_short = upstream_commit_ced[:7]
         doozer_args = [
+            '--assembly', 'tester',  # This should only have an effect if assemblies=True
             '--group', f'openshift-4.6@{target_ocp_build_data_commitish}',
             '-i', 'openshift-enterprise-base',
             '-i', 'cluster-etcd-operator',
@@ -53,9 +54,7 @@ class TestBasicRebase(DoozerRunnerTestCase):
         ]
 
         if assemblies:
-            assembly_args = ['--assembly', 'tester', '--enable-assemblies']
-            assembly_args.extend(doozer_args)
-            doozer_args = assembly_args
+            doozer_args.insert(0, '--enable-assemblies')
             target_release += '.assembly.tester'
 
         _, _ = self.run_doozer(*doozer_args)

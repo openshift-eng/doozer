@@ -1430,7 +1430,7 @@ class ImageDistGitRepo(DistGitRepo):
                                 self.logger.info('[{}] parent image {} not included. Looking up FROM tag.'.format(self.config.name, base))
                                 base_meta = self.runtime.late_resolve_image(base)
                                 _, v, r = base_meta.get_latest_build_info()
-                                if r.endswith(".p1"):  # latest parent is embargoed
+                                if util.isolate_pflag_in_release(r) == 'p1':  # latest parent is embargoed
                                     self.private_fix = True  # this image should also be embargoed
                                 mapped_images.append("{}:{}-{}".format(base_meta.config.name, v, r))
                             # Otherwise, the user is not expecting the FROM field to be updated in this Dockerfile.
@@ -1478,7 +1478,8 @@ class ImageDistGitRepo(DistGitRepo):
                 # increment the release that was in the Dockerfile
                 if prev_release:
                     self.logger.info("Bumping release field in Dockerfile")
-                    if self.runtime.group_config.public_upstreams and (prev_release.endswith(".p0") or prev_release.endswith(".p1")):
+                    if self.runtime.group_config.public_upstreams and util.isolate_pflag_in_release(prev_release) in ('p0', 'p1'):
+                        # We can assume .pX is a suffix because assemblies are asserted disabled earlier.
                         prev_release = prev_release[:-3]  # strip .p0/1
                     # If release has multiple fields (e.g. 0.173.0.0), increment final field
                     if "." in prev_release:
@@ -2119,9 +2120,9 @@ class ImageDistGitRepo(DistGitRepo):
             # extract previous release to enable incrementing it
             prev_release = dfp.labels.get("release")
             if prev_release:
-                if prev_release.endswith(".p1"):
+                if util.isolate_pflag_in_release(prev_release) == 'p1':
                     private_fix = True
-                elif prev_release.endswith(".p0"):
+                elif util.isolate_pflag_in_release(prev_release) == 'p0':
                     private_fix = False
             version = dfp.labels["version"]
             return version, prev_release, private_fix

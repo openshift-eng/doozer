@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Set, Iterable
 
 from koji import ClientSession
 
-from doozerlib import brew
+from doozerlib import brew, util
 
 
 class BuildStatusDetector:
@@ -32,7 +32,7 @@ class BuildStatusDetector:
         suspects = [b for b in builds if b["id"] not in shipped_ids]
 
         # next, consider remaining builds embargoed if the release field includes .p1
-        embargoed_ids = {b["id"] for b in suspects if ".p1" in b["release"]}
+        embargoed_ids = {b["id"] for b in suspects if util.isolate_pflag_in_release(b["release"]) == "p1"}
 
         # finally, look at the remaining images in case they include embargoed rpms
         remaining_ids = {b["id"] for b in suspects if b["id"] not in embargoed_ids}
@@ -76,7 +76,7 @@ class BuildStatusDetector:
                 rpms = archive["rpms"]
                 suspected_rpms = [
                     rpm for rpm in rpms
-                    if ".p1" in rpm["release"]  # there should be a better way to check the release field...
+                    if util.isolate_pflag_in_release(rpm["release"]) == "p1"
                     or rpm["build_id"] in embargoed_rpm_ids
                 ]
                 shipped = self.find_shipped_builds([rpm["build_id"] for rpm in suspected_rpms])
