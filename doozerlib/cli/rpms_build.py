@@ -78,9 +78,11 @@ async def _rpms_rebase_and_build(runtime: Runtime, version: str, release: str, e
               help="Release label to populate in specfile.", required=True)
 @click.option("--embargoed", default=False, is_flag=True, help="Add .p1 to the release string for all rpms, which indicates those rpms have embargoed fixes")
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
+@click.option('--push/--no-push', default=False, is_flag=True,
+              help='Push changes back to config repo. --no-push is default')
 @pass_runtime
 @click_coroutine
-async def rpms_rebase(runtime: Runtime, version: str, release: str, embargoed: bool, dry_run: bool):
+async def rpms_rebase(runtime: Runtime, version: str, release: str, embargoed: bool, push: bool, dry_run: bool):
     """
     Attempts to rebase rpms for all of the defined rpms in a group.
 
@@ -90,11 +92,11 @@ async def rpms_rebase(runtime: Runtime, version: str, release: str, embargoed: b
     This operation will also set the version and release in the file according to the
     command line arguments provided.
     """
-    exit_code = await _rpms_rebase(runtime, version=version, release=release, embargoed=embargoed, dry_run=dry_run)
+    exit_code = await _rpms_rebase(runtime, version=version, release=release, embargoed=embargoed, push=push, dry_run=dry_run)
     exit(exit_code)
 
 
-async def _rpms_rebase(runtime: Runtime, version: str, release: str, embargoed: bool, dry_run: bool):
+async def _rpms_rebase(runtime: Runtime, version: str, release: str, embargoed: bool, push: bool, dry_run: bool):
     if version.startswith('v'):
         version = version[1:]
 
@@ -115,7 +117,7 @@ async def _rpms_rebase(runtime: Runtime, version: str, release: str, embargoed: 
         for rpm in rpms:
             rpm.private_fix = True
 
-    builder = RPMBuilder(runtime, dry_run=dry_run)
+    builder = RPMBuilder(runtime, push=push, dry_run=dry_run)
     tasks = [asyncio.ensure_future(_rebase_rpm(runtime, builder, rpm, version, release)) for rpm in rpms]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)

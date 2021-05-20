@@ -428,6 +428,13 @@ class ImageMetadata(Metadata):
         digest = hashlib.sha256(json.dumps(message, sort_keys=True, default=default).encode("utf-8")).hexdigest()
         return "sha256:" + digest
 
+    def default_brew_target(self):
+        if self.runtime.hotfix:
+            target = f"{self.branch()}-containers-hotfix"
+        else:
+            target = f"{self.branch()}-containers-candidate"
+        return target
+
 
 def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, package_build, newest_image_event_ts, oldest_image_event_ts):
     """

@@ -400,9 +400,13 @@ class Runtime(object):
         self.group_dir = self.gitdata.data_dir
         self.group_config = self.get_group_config()
 
+        self.hotfix = False  # True indicates builds should be tagged with associated hotfix tag for the artifacts branch
+
         if self.group_config.assemblies.enabled or self.enable_assemblies:
             if re.fullmatch(r'[\w.]+', self.assembly) is None or self.assembly[0] == '.' or self.assembly[-1] == '.':
                 raise ValueError('Assembly names may only consist of alphanumerics, ., and _, but not start or end with a dot (.).')
+            # FIXME: Hardcoding !=stream in code until we come up with a way to construct meaningful metadata for this convention in group.yml or releases.yml.
+            self.hotfix = self.assembly != "stream"
         else:
             # If assemblies are not enabled for the group,
             # ignore this argument throughout doozer.

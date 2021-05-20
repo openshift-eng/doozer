@@ -5,7 +5,7 @@ import re
 import shutil
 import threading
 import traceback
-from typing import Optional
+from typing import List, Optional
 
 import rpm
 
@@ -58,19 +58,6 @@ class RPMMetadata(Metadata):
 
         # If populated, extra variables that will added as os_git_vars
         self.extra_os_git_vars = {}
-
-        # List of Brew targets.
-        # The first target is the primary target, against which tito will direct build.
-        # Others are secondary targets. We will use Brew API to build against secondary targets with the same distgit commit as the primary target.
-        self.targets = self.config.get('targets', [])
-        if not self.targets:
-            # If not specified, load from group config
-            profile_name = runtime.profile or runtime.group_config.default_rpm_build_profile
-            if profile_name:
-                self.targets = runtime.group_config.build_profiles.rpm[profile_name].targets.primitive()
-        if not self.targets:
-            # If group config doesn't define the targets either, the target name will be derived from the distgit branch name
-            self.targets = [self.branch() + "-candidate"]
 
         self.source_path = None
         self.source_head = None
@@ -254,3 +241,10 @@ class RPMMetadata(Metadata):
 
     def candidate_brew_tags(self):
         return self.targets.copy()
+
+    def default_brew_target(self):
+        if self.runtime.hotfix:
+            target = f"{self.branch()}-hotfix"
+        else:
+            target = f"{self.branch()}-candidate"
+        return target
