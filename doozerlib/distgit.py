@@ -858,6 +858,10 @@ class ImageDistGitRepo(DistGitRepo):
                 if 'member' in builder:
                     self._set_wait_for(builder['member'], terminate_event)
 
+            if self.runtime.assembly and not release.endswith(f".assembly.{self.runtime.assembly}"):
+                # Assemblies should follow its naming convention
+                raise ValueError(f"Image {self.name} is not rebased with assembly '{self.runtime.assembly}'.")
+
             # Allow an image to wait on an arbitrary image in the group. This is presently
             # just a workaround for: https://projects.engineering.redhat.com/browse/OSBS-5592
             if self.config.wait_for is not Missing:
@@ -887,12 +891,13 @@ class ImageDistGitRepo(DistGitRepo):
                     if terminate_event.wait(timeout=5 * 60):
                         raise KeyboardInterrupt()
 
-                if len(profile["targets"]) > 1:
+                if len(self.metadata.targets) > 1:
                     # FIXME: Currently we don't really support building images against multiple targets,
                     # or we would overwrite the image tag when pushing to the registry.
                     # `targets` is defined as an array just because we want to keep consistency with RPM build.
                     raise DoozerFatalError("Building images against multiple targets is not currently supported.")
-                target = '' if not profile["targets"] else profile["targets"][0]
+                target = self.metadata.targets[0]
+
                 exectools.retry(
                     retries=retries, wait_f=wait,
                     task_f=lambda: self._build_container(

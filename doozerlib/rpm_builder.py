@@ -23,14 +23,16 @@ class RPMBuilder:
     """
 
     def __init__(
-        self, runtime: Runtime, *, scratch: bool = False, dry_run: bool = False
+        self, runtime: Runtime, *, push: bool = True, scratch: bool = False, dry_run: bool = False
     ) -> None:
         """ Create a RPMBuilder instance.
         :param runtime: Doozer runtime
+        :param scratch: Whether to push commits and upload sources to distgit
         :param scratch: Whether to create a scratch build
         :param dry_run: Don't build anything but just exercise the code
         """
         self._runtime = runtime
+        self._push = push
         self._scratch = scratch
         self._dry_run = dry_run
 
@@ -107,14 +109,17 @@ class RPMBuilder:
         logger.info(
             "Done creating tarball source. Uploading to distgit lookaside cache..."
         )
-        if not self._dry_run:
-            await exectools.cmd_assert_async(
-                ["rhpkg", "new-sources", tarball_name], cwd=dg.dg_path, retries=3
-            )
-        else:
-            async with aiofiles.open(dg.dg_path / "sources", "w") as f:
-                f.write("SHA512 ({}) = {}\n".format(tarball_name, "0" * 128))
-            logger.warning("DRY RUN - Would have uploaded %s", tarball_name)
+
+        if self._push:
+            if not self._dry_run:
+                await exectools.cmd_assert_async(
+                    ["rhpkg", "new-sources", tarball_name], cwd=dg.dg_path, retries=3
+                )
+            else:
+                async with aiofiles.open(dg.dg_path / "sources", "w") as f:
+                    f.write("SHA512 ({}) = {}\n".format(tarball_name, "0" * 128))
+                if self._push:
+                    logger.warning("DRY RUN - Would have uploaded %s", tarball_name)
 
         # copy Source1, Source2,... and Patch0, Patch1,...
         logger.info("Determining additional sources and patches...")
@@ -160,11 +165,12 @@ class RPMBuilder:
                                                 f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}]."
                                                 )
 
-        # push
-        if not self._dry_run:
-            await dg.push_async()
-        else:
-            logger.warning("Would have pushed %s", dg.name)
+        if self._push:
+            # push
+            if not self._dry_run:
+                await dg.push_async()
+            else:
+                logger.warning("Would have pushed %s", dg.name)
         return commit_hash
 
     async def build(self, rpm: RPMMetadata, retries: int = 3):
@@ -177,6 +183,9 @@ class RPMBuilder:
         if rpm.specfile is None:
             rpm.specfile, nvr, rpm.pre_init_sha = await dg.resolve_specfile_async()
             rpm.set_nvr(nvr[1], nvr[2])
+        if self._runtime.assembly and not rpm.release.endswith(f".assembly.{self._runtime.assembly}"):
+            # Assemblies should follow its naming convention
+            raise ValueError(f"RPM {rpm.name} is not rebased with assembly '{self._runtime.assembly}'.")
         if rpm.private_fix is None:
             rpm.private_fix = ".p1" in rpm.release
         if rpm.private_fix:

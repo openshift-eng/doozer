@@ -44,6 +44,7 @@ class TestRPMBuilder(unittest.TestCase):
         rpm.pre_init_sha = source_sha
         rpm.source_path = "/path/to/sources/foo"
         rpm.specfile = rpm.source_path + "/foo.spec"
+        rpm.targets = ["rhaos-4.4-rhel-8-candidate", "rhaos-4.4-rhel-7-candidate"]
         dg = distgit.RPMDistGitRepo(rpm, autoclone=False)
         dg.distgit_dir = "/path/to/distgits/rpms/foo"
         dg.dg_path = Path(dg.distgit_dir)

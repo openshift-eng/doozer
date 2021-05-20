@@ -159,7 +159,7 @@ class TestImageMetadata(unittest.TestCase):
             'data': image_model,
             'filename': 'my-distgit.yaml',
         })
-        rt = MockRuntime(self.logger)
+        rt = mock.MagicMock()
         imeta = image.ImageMetadata(rt, data_obj)
         self.assertEqual(imeta.get_brew_image_name_short(), 'openshift-test')
 

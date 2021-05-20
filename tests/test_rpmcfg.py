@@ -38,6 +38,7 @@ targets:
         )
         koji_session.multicall.return_value.__enter__.return_value.getBuildTarget.side_effect = lambda target: MagicMock(result={"build_tag_name": target.replace("-candidate", "-build")})
         metadata = RPMMetadata(runtime, data_obj, clone_source=False)
+        metadata.targets = ["rhaos-4.7-rhel-7-candidate", "rhaos-4.7-rhel-8-candidate"]
 
         runtime.group_config.check_golang_versions = "exact"
         with mock.patch("doozerlib.rpmcfg.brew.get_latest_builds") as get_latest_builds:

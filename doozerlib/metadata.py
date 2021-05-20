@@ -95,6 +95,26 @@ class Metadata(object):
 
         self._distgit_repo = None
 
+        # List of Brew targets.
+        # The first target is the primary target, against which tito will direct build.
+        # Others are secondary targets. We will use Brew API to build against secondary targets with the same distgit commit as the primary target.
+        self.targets = self.determine_targets()
+
+    def determine_targets(self) -> List[str]:
+        """ Determine Brew targets for building this component
+        """
+        key = 'targets' if not self.runtime.hotfix else "hotfix_targets"
+        targets = self.config.get(key)
+        if not targets:
+            # If not specified in rpm meta, load from group config
+            profile_name = self.runtime.profile or self.runtime.group_config.get(f"default_{self.meta_type}_build_profile")
+            if profile_name:
+                targets = self.runtime.group_config.build_profiles.primitive()[self.meta_type][profile_name].get(key)
+        if not targets:
+            # If group config doesn't define the targets either, the target name will be derived from the distgit branch name
+            targets = [self.default_brew_target()]
+        return targets
+
     def save(self):
         self.data_obj.data = self.config.primitive()
         self.data_obj.save()
@@ -121,6 +141,12 @@ class Metadata(object):
 
     def candidate_brew_tag(self):
         return '{}-candidate'.format(self.branch())
+
+    def hotfix_brew_tag(self):
+        return f'{self.branch()}-hotfix'
+
+    def default_brew_target(self):
+        return NotImplementedError()
 
     def candidate_brew_tags(self):
         return [self.candidate_brew_tag()]
