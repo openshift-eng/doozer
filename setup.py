@@ -24,7 +24,7 @@ setup(
     long_description=open('README.md').read(),
     url="https://github.com/openshift/doozer",
     license="Apache License, Version 2.0",
-    packages=find_packages(exclude=["tests", "tests.*", "functional_tests", "functional_tests.*"]),
+    packages=find_packages(exclude=["tests", "tests.*", "functional_tests", "functional_tests.*", "tests_functional", "tests_functional.*"]),
     include_package_data=True,
     entry_points={
         'console_scripts': [
@@ -41,6 +41,7 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "Environment :: Console",
         "Operating System :: POSIX",
         "License :: OSI Approved :: Apache Software License",
