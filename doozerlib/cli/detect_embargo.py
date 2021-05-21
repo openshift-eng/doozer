@@ -157,7 +157,7 @@ def detect_embargoes_in_tags(runtime: Runtime, kind: str, included_tags: List[st
     runtime.logger.info(f"Found {len(included_builds)} builds from Brew tags {included_tags}.")
     if included_builds and excluded_tags:  # if we have tags to exclude, get all builds with excluded_tags then exclude them
         runtime.logger.info(f"Fetching builds from Brew tags {excluded_tags}...")
-        excluded_build_lists = brew.get_tagged_builds(excluded_tags, build_type, event_id, brew_session)
+        excluded_build_lists = brew.get_tagged_builds([(tag, None) for tag in excluded_tags], build_type, event_id, brew_session)
         excluded_build_ids = {b["id"] for builds in excluded_build_lists if builds for b in builds}
         builds = [b for b in included_builds if b["id"] not in excluded_build_ids]
         runtime.logger.info(f"Excluded {len(included_builds) - len(builds)} builds that are also tagged into {excluded_tags}.")

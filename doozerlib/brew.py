@@ -4,21 +4,19 @@ Utility functions for general interactions with Brew and Builds
 from __future__ import absolute_import, print_function, unicode_literals
 
 # stdlib
-import time
-import threading
-import subprocess
-from multiprocessing import Lock
-import traceback
-import requests
 import json
-from typing import List, Tuple, Dict, Optional
-
-from . import logutil
+import threading
+import time
+import traceback
+from multiprocessing import Lock
+from typing import Dict, Iterable, List, Optional, Tuple
 
 # 3rd party
 import koji
 import koji_cli.lib
+import requests
 
+from . import logutil
 from .model import Missing
 from .util import red_print, total_size
 
@@ -189,8 +187,11 @@ def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], build_type: O
     return [task.result if task else None for task in tasks]
 
 
-def get_tagged_builds(tags: List[str], build_type: Optional[str], event: Optional[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
-    """ Get tagged builds for multiple Brew tags
+def get_tagged_builds(tag_component_tuples: Iterable[Tuple[str, Optional[str]]], build_type: Optional[str], event: Optional[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
+    """ Get tagged builds as of the given event
+
+    In each list for a component, builds are ordered from newest tagged to oldest tagged:
+    https://pagure.io/koji/blob/3fed02c8adb93cde614af9f61abd12bbccdd6682/f/hub/kojihub.py#_1392
 
     :param tag_component_tuples: List of (tag, component_name) tuples
     :param build_type: if given, only retrieve specified build type (rpm, image)
@@ -200,8 +201,11 @@ def get_tagged_builds(tags: List[str], build_type: Optional[str], event: Optiona
     """
     tasks = []
     with session.multicall(strict=True) as m:
-        for tag in tags:
-            tasks.append(m.listTagged(tag, event=event, type=build_type))
+        for tag, component_name in tag_component_tuples:
+            if not tag:
+                tasks.append(None)
+                continue
+            tasks.append(m.listTagged(tag, event=event, package=component_name, type=build_type))
     return [task.result if task else None for task in tasks]
 
 

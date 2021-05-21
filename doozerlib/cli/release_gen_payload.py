@@ -1,13 +1,17 @@
 import io
 import json
+from typing import List, Optional, Tuple
 
 import click
 import yaml
+from koji import ClientSession
 
 from doozerlib import brew, build_status_detector, exectools, rhcos, state
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
-from doozerlib.util import red_print, yellow_print, go_suffix_for_arch
+from doozerlib.image import ImageMetadata
+from doozerlib.runtime import Runtime
+from doozerlib.util import go_suffix_for_arch, red_print, yellow_print
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
@@ -113,9 +117,23 @@ read and propagate/expose this annotation in its display of the release image.
             click.echo("   {}".format(img))
 
 
-class PayloadGenerator:
+class SyncTarget(object):
+    def __init__(self, orgrepo=None, istream_name=None, istream_namespace=None):
+        self.orgrepo = orgrepo
+        self.istream_name = istream_name
+        self.istream_namespace = istream_namespace
 
-    def __init__(self, runtime, brew_session, brew_event, base_target):
+
+class BuildRecord(object):
+    def __init__(self, image=None, build=None, archives=None, private=False):
+        self.image = image
+        self.build = build
+        self.archives = archives
+        self.private = private
+
+
+class PayloadGenerator:
+    def __init__(self, runtime: Runtime, brew_session: ClientSession, brew_event: Optional[int], base_target: SyncTarget):
         self.runtime = runtime
         self.brew_session = brew_session
         self.brew_event = brew_event
@@ -133,6 +151,7 @@ class PayloadGenerator:
         self.state['payload_images'] = len(release_payload_images)
 
         latest_builds, images_missing_builds = self._get_latest_builds(release_payload_images)
+        self.runtime.logger.info("Determining if image builds have embargoed contents...")
         self._designate_privacy(latest_builds, images)
 
         mismatched_siblings = self._find_mismatched_siblings(latest_builds)
@@ -170,16 +189,32 @@ class PayloadGenerator:
 
         return payload_images, invalid_name_items
 
-    def _get_latest_builds(self, payload_images):
+    def _get_latest_builds(self, payload_images: List[ImageMetadata]) -> Tuple[List[BuildRecord], List[ImageMetadata]]:
         """
-        find latest brew build (at event, if given) of each payload image.
+        Find latest brew build (at event, if given) of each payload image.
+
+        If assemblies are disabled, it will return the latest tagged brew build with the candidate brew tag.
+        If assemblies are enabled, it will return the latest tagged brew build in the given assembly. If no such build, it will fall back to the latest build in "stream" assembly.
+
         :param payload_images: a list of image metadata for payload images
         :return: list of build records, list of images missing builds
         """
         tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in payload_images]
-        brew_latest_builds = brew.get_latest_builds(tag_component_tuples, "image", self.brew_event, self.brew_session)
-        # there's zero or one "latest" build in each list; flatten the data structure.
-        brew_latest_builds = [builds[0] if builds else {} for builds in brew_latest_builds]
+        lists_of_brew_builds = brew.get_tagged_builds(tag_component_tuples, "image", self.brew_event, self.brew_session)
+        brew_latest_builds = []
+        for builds in lists_of_brew_builds:  # builds are ordered from newest tagged to oldest tagged
+            chosen_build = None
+            if not builds:  # no builds for this component have ever been tagged
+                pass
+            elif not self.runtime.assembly:  # if assembly is not enabled, choose the true latest tagged
+                chosen_build = builds[0]
+            else:  # assembly is enabled
+                # find the newest build containing ".assembly.<assembly-name>" in its RELEASE field
+                chosen_build = next((build for build in builds if build["release"].endswith(f".assembly.{self.runtime.assembly}")), None)
+                if not chosen_build and self.runtime.assembly != "stream":
+                    # If no such build, fall back to the newest build containing ".assembly.stream"
+                    chosen_build = next((build for build in builds if build["release"].endswith(".assembly.stream")), None)
+            brew_latest_builds.append(chosen_build)
 
         # look up the archives for each image (to get the RPMs that went into them)
         brew_build_ids = [b["id"] if b else 0 for b in brew_latest_builds]
@@ -553,23 +588,6 @@ class PayloadGenerator:
                         mismatched_siblings.add(image.distgit_key)
                         red_print(f"{nvr}\t{image.distgit_key}\t{repo}\t{commit}")
         return mismatched_siblings
-
-
-class BuildRecord(object):
-
-    def __init__(self, image=None, build=None, archives=None, private=False):
-        self.image = image
-        self.build = build
-        self.archives = archives
-        self.private = private
-
-
-class SyncTarget(object):
-
-    def __init__(self, orgrepo=None, istream_name=None, istream_namespace=None):
-        self.orgrepo = orgrepo
-        self.istream_name = istream_name
-        self.istream_namespace = istream_namespace
 
 
 def default_is_base_name(version):
