@@ -425,6 +425,9 @@ class KojiWrapper(koji.ClientSession):
         """
         self.___brew_event = None if not brew_event else int(brew_event)
         super(KojiWrapper, self).__init__(*koji_session_args)
+        self.___before_timestamp = None
+        if brew_event:
+            self.___before_timestamp = self.getEvent(self.___brew_event)['ts']
 
     @classmethod
     def clear_global_cache(cls):
@@ -477,6 +480,10 @@ class KojiWrapper(koji.ClientSession):
                     # Only set the kwarg if the caller didn't
                     kwargs = kwargs or {}
                     kwargs['beforeEvent'] = brew_event + 1
+            elif method_name == 'listBuilds':
+                if 'completeBefore' not in kwargs and 'createdBefore' not in kwargs:
+                    kwargs = kwargs or {}
+                    kwargs['completeBefore'] = self.___before_timestamp
             elif method_name in KojiWrapper.methods_with_event:
                 if 'event' not in kwargs:
                     # Only set the kwarg if the caller didn't
