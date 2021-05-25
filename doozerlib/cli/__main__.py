@@ -1201,6 +1201,8 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
     {bz_product} - The BZ product, if known
     {bz_component} - The BZ component, if known
     {bz_subcomponent} - The BZ subcomponent, if known
+    {upstream} - The upstream repository for the image
+    {upstream_public} - The public upstream repository (if different) for the image
     {lf} - Line feed
 
     If pattern contains no braces, it will be wrapped with them automatically. For example:
@@ -1267,6 +1269,14 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         s = s.replace("{image_name}", image.image_name)
         s = s.replace("{image_name_short}", image.image_name_short)
         s = s.replace("{component}", image.get_component_name())
+
+        source_url = image.config.content.source.git.url
+        s = s.replace("{upstream}", source_url or 'None')
+        if source_url:
+            public_url = runtime.get_public_upstream(source_url)[0]
+        else:
+            public_url = None
+        s = s.replace("{upstream_public}", public_url or 'None')
 
         if '{bz_' in s:
             mi = image.get_maintainer_info()

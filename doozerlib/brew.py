@@ -312,7 +312,8 @@ def has_tag_changed_since_build(runtime, koji_client, build, tag, inherit=True) 
             # Example result of full queryHistory: https://gist.github.com/jupierce/943b845c07defe784522fd9fd76f4ab0
             tag_listing = koji_client.queryHistory(table='tag_listing',
                                                    tag=found_in_tag_name, build=last_tagged_build['build_id'])['tag_listing']
-            latest_tag_change_event = tag_listing[0]  # Order is by increasing age, so 0 is the most recent time this build was tagged
+            tag_listing.sort(key=lambda event: event['create_event'])
+            latest_tag_change_event = tag_listing[-1]
 
         with cache_lock:
             latest_tag_change_events[tag] = latest_tag_change_event
