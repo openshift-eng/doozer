@@ -187,7 +187,7 @@ def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], build_type: O
     return [task.result if task else None for task in tasks]
 
 
-def get_tagged_builds(tag_component_tuples: Iterable[Tuple[str, Optional[str]]], build_type: Optional[str], event: Optional[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
+def get_tagged_builds(tag_component_tuples: Iterable[Tuple[str, Optional[str]]], build_type: Optional[str], event: Optional[int], session: koji.ClientSession, inherit: bool = False) -> List[Optional[List[Dict]]]:
     """ Get tagged builds as of the given event
 
     In each list for a component, builds are ordered from newest tagged to oldest tagged:
@@ -197,6 +197,7 @@ def get_tagged_builds(tag_component_tuples: Iterable[Tuple[str, Optional[str]]],
     :param build_type: if given, only retrieve specified build type (rpm, image)
     :param event: Brew event ID, or None for now.
     :param session: instance of Brew session
+    :param inherit: True to include builds inherited from parent tags
     :return: a list of lists of Koji/Brew build dicts
     """
     tasks = []
@@ -205,7 +206,7 @@ def get_tagged_builds(tag_component_tuples: Iterable[Tuple[str, Optional[str]]],
             if not tag:
                 tasks.append(None)
                 continue
-            tasks.append(m.listTagged(tag, event=event, package=component_name, type=build_type))
+            tasks.append(m.listTagged(tag, event=event, package=component_name, type=build_type, inherit=inherit))
     return [task.result if task else None for task in tasks]
 
 

@@ -200,7 +200,7 @@ class PayloadGenerator:
         :return: list of build records, list of images missing builds
         """
         tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in payload_images]
-        lists_of_brew_builds = brew.get_tagged_builds(tag_component_tuples, "image", self.brew_event, self.brew_session)
+        lists_of_brew_builds = brew.get_tagged_builds(tag_component_tuples, "image", event=self.brew_event, session=self.brew_session, inherit=True)
         brew_latest_builds = []
         for builds in lists_of_brew_builds:  # builds are ordered from newest tagged to oldest tagged
             chosen_build = None
