@@ -214,6 +214,9 @@ class PayloadGenerator:
                 if not chosen_build and self.runtime.assembly != "stream":
                     # If no such build, fall back to the newest build containing ".assembly.stream"
                     chosen_build = next((build for build in builds if build["release"].endswith(".assembly.stream")), None)
+                if not chosen_build:
+                    # If none of the builds have .assembly.stream in the RELEASE field, fall back to the latest build without .assembly in the RELEASE field
+                    chosen_build = next((build for build in builds if ".assembly." not in build["release"]), None)
             brew_latest_builds.append(chosen_build)
 
         # look up the archives for each image (to get the RPMs that went into them)

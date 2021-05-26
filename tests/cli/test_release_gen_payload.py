@@ -133,7 +133,7 @@ class TestPayloadGenerator(TestCase):
 
         # assembly == "hotfix_a"
         runtime.assembly = "hotfix_a"
-        expected = [12, 21]
+        expected = [12, 21, 33]
         latest, _ = generator._get_latest_builds(image_metas)
         actual = [record.build["id"] for record in latest]
         self.assertEqual(actual, expected)
@@ -147,7 +147,7 @@ class TestPayloadGenerator(TestCase):
 
         # assembly == "hotfix_c"
         runtime.assembly = "hotfix_c"
-        expected = [13, 21]
+        expected = [13, 21, 33]
         latest, _ = generator._get_latest_builds(image_metas)
         actual = [record.build["id"] for record in latest]
         self.assertEqual(actual, expected)
