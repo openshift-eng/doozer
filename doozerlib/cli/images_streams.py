@@ -779,7 +779,8 @@ Fork build_root (in .ci-operator.yaml): {fork_ci_build_root_coordinate}
             yellow_print(f'Upstream dockerfile does not match desired state in {public_repo_url}/blob/{public_branch}/{dockerfile_name}')
 
             first_commit_line = f"Updating {image_meta.name} images to be consistent with ART"
-            reconcile_info = f"Reconciling with {convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}"
+            reconcile_url = f'{convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}'
+            reconcile_info = f"Reconciling with {reconcile_url}"
 
             diff_text = None
             # Three possible states at this point:
@@ -863,7 +864,43 @@ open_prs: {open_prs}
 
             # At this point, we have a fork branch in the proper state
             pr_body = f"""{first_commit_line}
-{reconcile_info}
+__TLDR__:
+Component owners, please ensure that this PR merges as it impacts the fidelity
+of your CI signal. Patch-manager / leads, this PR is a no-op from a product
+perspective -- feel free to manually apply any labels (e.g. bugzilla/valid-bug) to help the
+PR merge as long as tests are passing.
+
+__Detail__:
+This repository is out of sync with the downstream product builds for this component.
+One or more images differ from those being used by ART to create product builds. This
+should be addressed to ensure that the component's CI testing is accurately
+reflecting what customers will experience.
+
+The information within the following ART component metadata is driving this alignment
+request: [{os.path.basename(image_meta.config_filename)}]({reconcile_url}).
+
+The vast majority of these PRs are opened because a different Golang version is being
+used to build the downstream component. ART compiles most components with the version
+of Golang being used by the control plane for a given OpenShift release. Exceptions
+to this convention (i.e. you believe your component must be compiled with a Golang
+version independent from the control plane) must be granted by the OpenShift
+architecture team and communicated to the ART team.
+
+__Roles & Responsibilities__:
+- Component owners are responsible for ensuring these alignment PRs merge with passing
+  tests OR that necessary metadata changes are reported to the ART team: `@release-artists`
+  in `#aos-art` on Slack. If necessary, the changes required by this pull request can be
+  introduced with a separate PR opened by the component team. Once the repository is aligned,
+  this PR will be closed automatically.
+- Component owners are responsible for removing conflicting directives from their
+  [ci-operator config in openshift/release](https://github.com/openshift/release/tree/master/ci-operator/config).
+  When aligning through ART reconciliation PRs, you do not need to specify `from:` or
+  any image overrides in your ci-operator configuration ([example stanzas which could be removed](https://github.com/openshift/release/blob/6d4796cf7daa84295a783326f2be98e00f921bb6/ci-operator/config/openshift/cluster-authentication-operator/openshift-cluster-authentication-operator-master.yaml#L42-L46)).
+  Merging ART alignment PRs is sufficient and no overrides should be required.
+- Patch-manager or those with sufficient privileges within this repository may add
+  any required labels to ensure the PR merges once tests are passing. Downstream builds
+  are *already* being built with these changes. Merging this PR only improves the fidelity
+  of our CI.
 """
             if desired_ci_build_root_coordinate:
                 pr_body += """
