@@ -1922,7 +1922,7 @@ installonly_limit=3
                 continue
 
             color_print('Syncing repo {}'.format(repo.name), 'blue')
-            cmd = f'reposync -c {yc_file.name} -p {output} --delete --arch {arch} -r {repo.name} -e {metadata_dir}'
+            cmd = f'reposync --download-metadata -c {yc_file.name} -p {output} --delete --arch {arch} -r {repo.name} -e {metadata_dir}'
             if repo.is_reposync_latest_only():
                 cmd += ' -n'
 
