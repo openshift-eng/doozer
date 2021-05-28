@@ -6,13 +6,22 @@ from doozerlib import util
 
 class TestUtil(unittest.TestCase):
 
+    def test_isolate_assembly_in_release(self):
+        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1'), None)
+        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly'), None)
+        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.x'), 'x')
+        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.xyz'), 'xyz')
+        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.xyz.el7'), 'xyz')
+
     def test_isolate_pflag(self):
         self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p1'), 'p1')
+        self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p1.el7'), 'p1')
         self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p0'), 'p0')
         self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p2'), None)
         self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p1.assembly.p'), 'p1')
         self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p0.assembly.test'), 'p0')
         self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p2.assembly.stream'), None)
+        self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p0.assembly.test.el7'), 'p0')
 
     def test_convert_remote_git_to_https(self):
         # git@ to https
