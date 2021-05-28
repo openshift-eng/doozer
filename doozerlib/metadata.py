@@ -218,7 +218,6 @@ class Metadata(object):
             if not package_info:
                 raise IOError(f'No brew package is defined for {package_name}')
             package_id = package_info['id']  # we could just contrain package name using pattern glob, but providing package ID # should be a much more efficient DB query.
-            self.candidate_brew_tags()
             # listBuilds returns all builds for the package; We need to limit the query to the builds
             # relevant for our major/minor.
             pattern_prefix = f'{package_name}-v{self.branch_major_minor()}.'
@@ -239,7 +238,7 @@ class Metadata(object):
                 builds = latestBuildList(f'*.assembly.{assembly}')
                 if not builds:
                     if assembly != 'stream':
-                        builds = latestBuildList(f'*.assembly.stream')
+                        builds = latestBuildList('*.assembly.stream')
                     if not builds:
                         # Fall back to true latest
                         builds = latestBuildList('*')

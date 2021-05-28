@@ -357,21 +357,31 @@ def get_docker_config_json(config_dir):
         raise FileNotFoundError("Can not find the registry config file in {}".format(config_dir))
 
 
-def isolate_pflag_in_release(release: str):
+def isolate_pflag_in_release(release: str) -> str:
     """
     Given a release field, determines whether is contains
     .p0/.p1 information. If it does, it returns the value
     'p0' or 'p1'. If it is not found, None is returned.
     """
-    if release.endswith('.p1') or release.endswith('.p0'):
-        return release[-2:]
+    match = re.match(r'.*\.(p[?01])(?:\.+|$)', release)
 
-    # p? is not always at the end of the release field if
-    # assemblies are being used.
-    for pflag in ['p0', 'p1']:
-        idx = release.find(f'.{pflag}.')
-        if idx > -1:
-            return pflag
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def isolate_assembly_in_release(release: str) -> str:
+    """
+    Given a release field, determines whether is contains
+    an assembly name. If it does, it returns the assembly
+    name. If it is not found, None is returned.
+    """
+    # Because RPM releases will have .el? as their suffix, we cannot
+    # assume that endswith(.assembly.<name>).
+    match = re.match(r'.*\.assembly\.([^.]+)(?:\.+|$)', release)
+    if match:
+        return match.group(1)
 
     return None
 

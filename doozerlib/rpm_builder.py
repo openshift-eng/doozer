@@ -15,7 +15,7 @@ from doozerlib.distgit import RPMDistGitRepo
 from doozerlib.model import Missing
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.runtime import Runtime
-from doozerlib.util import is_in_directory
+from doozerlib.util import is_in_directory, isolate_assembly_in_release
 
 
 class RPMBuilder:
@@ -187,7 +187,7 @@ class RPMBuilder:
         if rpm.specfile is None:
             rpm.specfile, nvr, rpm.pre_init_sha = await dg.resolve_specfile_async()
             rpm.set_nvr(nvr[1], nvr[2])
-        if self._runtime.assembly and not rpm.release.endswith(f".assembly.{self._runtime.assembly}"):
+        if self._runtime.assembly and isolate_assembly_in_release(rpm.release) != self._runtime.assembly:
             # Assemblies should follow its naming convention
             raise ValueError(f"RPM {rpm.name} is not rebased with assembly '{self._runtime.assembly}'.")
         if rpm.private_fix is None:

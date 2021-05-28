@@ -858,7 +858,7 @@ class ImageDistGitRepo(DistGitRepo):
                 if 'member' in builder:
                     self._set_wait_for(builder['member'], terminate_event)
 
-            if self.runtime.assembly and not release.endswith(f".assembly.{self.runtime.assembly}"):
+            if self.runtime.assembly and util.isolate_assembly_in_release(release) != self.runtime.assembly:
                 # Assemblies should follow its naming convention
                 raise ValueError(f"Image {self.name} is not rebased with assembly '{self.runtime.assembly}'.")
 
