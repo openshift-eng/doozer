@@ -68,7 +68,7 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
         runtime.logger.info(f'scan-sources coordinate: emulated_brew_event: {runtime.brew_event}')
 
         # First, scan for any upstream source code changes. If found, these are guaranteed rebuilds.
-        for meta, change_info in runtime.scan_distgit_sources():
+        for meta, change_info in runtime.scan_for_upstream_changes():
             needs_rebuild, reason = change_info
             dgk = meta.distgit_key
             if not (meta.enabled or meta.mode == "disabled" and runtime.load_disabled):

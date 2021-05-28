@@ -1405,7 +1405,10 @@ class ImageDistGitRepo(DistGitRepo):
 
             if not self.runtime.local:
                 with dg_path.joinpath('additional-tags').open('w', encoding="utf-8") as at:
-                    at.write("%s\n" % uuid_tag)  # The uuid which we ensure we get the right
+                    # Include the UUID in the tags. This will allow other images being rebased
+                    # to have a known tag to refer to this image if they depend on it - even
+                    # before it is built.
+                    at.write("%s\n" % uuid_tag)
                     if len(vsplit) > 1:
                         at.write("%s.%s\n" % (vsplit[0], vsplit[1]))  # e.g. "v3.7.0" -> "v3.7"
                     if self.metadata.config.additional_tags is not Missing:

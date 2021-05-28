@@ -131,10 +131,17 @@ class Metadata(object):
             self._distgit_repo = DISTGIT_TYPES[self.meta_type](self, autoclone=autoclone)
         return self._distgit_repo
 
-    def branch(self):
+    def branch(self) -> str:
         if self.config.distgit.branch is not Missing:
             return self.config.distgit.branch
         return self.runtime.branch
+
+    def branch_major_minor(self) -> str:
+        """
+        :return: Extracts and returns '{major}.{minor}' from the distgit branch.
+        """
+        split = self.branch().split('-')  # e.g. ['rhaos', '4.8', 'rhel', '8']
+        return split[1]
 
     def build_root_tag(self):
         return '{}-build'.format(self.branch())
@@ -196,20 +203,56 @@ class Metadata(object):
             check_f=lambda req: req.code == 200)
         return req.read()
 
-    def get_latest_build(self, default=-1):
+    def get_latest_build(self, default=-1, assembly=None):
         """
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
-        :return: Returns the most recent build object from koji.
-                 Example https://gist.github.com/jupierce/e6bfd98a3777ae5d56e0f7e92e5db0c9
+        :param assembly: A non-default assembly name to search relative to. If not specified, runtime.assembly
+                         will be used. If runtime.assembly is also None, the search will return true latest.
+                         If the assembly parameter is set to '', this search will also return true latest.
+        :return: Returns the most recent build object from koji for this package & assembly.
+                 Example https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
         """
-        component_name = self.get_component_name()
+        package_name = self.get_component_name()
         with self.runtime.pooled_koji_client_session() as koji_api:
-            builds = koji_api.getLatestBuilds(self.candidate_brew_tag(), package=component_name)
+            package_info = koji_api.getPackage(package_name)  # e.g. {'id': 66873, 'name': 'atomic-openshift-descheduler-container'}
+            if not package_info:
+                raise IOError(f'No brew package is defined for {package_name}')
+            package_id = package_info['id']  # we could just contrain package name using pattern glob, but providing package ID # should be a much more efficient DB query.
+            self.candidate_brew_tags()
+            # listBuilds returns all builds for the package; We need to limit the query to the builds
+            # relevant for our major/minor.
+            pattern_prefix = f'{package_name}-v{self.branch_major_minor()}.'
+
+            if assembly is None:
+                assembly = self.runtime.assembly
+
+            def latestBuildList(pattern_suffix):
+                return koji_api.listBuilds(packageID=package_id,
+                                           pattern=f'{pattern_prefix}{pattern_suffix}',
+                                           queryOpts={'limit': 1, 'order': '-creation_event_id'})
+
+            if not assembly:
+                # if assembly is '' (by parameter) or still None after runtime.assembly,
+                # we are returning true latest.
+                builds = latestBuildList('*')
+            else:
+                builds = latestBuildList(f'*.assembly.{assembly}')
+                if not builds:
+                    if assembly != 'stream':
+                        builds = latestBuildList(f'*.assembly.stream')
+                    if not builds:
+                        # Fall back to true latest
+                        builds = latestBuildList('*')
+                        if builds and '.assembly.' in builds[0]['release']:
+                            # True latest belongs to another assembly. In this case, just return
+                            # that they are no builds for this assembly.
+                            builds = []
+
             if not builds:
                 if default != -1:
-                    self.logger.warning("No builds detected for using tag: %s" % (self.candidate_brew_tag()))
+                    self.logger.warning("No builds detected for using prefix: '%s' and assembly: %s" % (pattern_prefix, assembly))
                     return default
-                raise IOError("No builds detected for %s using tag: %s" % (self.qualified_name, self.candidate_brew_tag()))
+                raise IOError("No builds detected for %s using prefix: '%s' and assembly: %s" % (self.qualified_name, pattern_prefix, assembly))
             return builds[0]
 
     def get_latest_build_info(self, default=-1):
@@ -229,7 +272,9 @@ class Metadata(object):
         """
         :param default: If the component name cannot be determined,
         :return: Returns the component name of the image. This is the name in the nvr
-        that brew assigns to this image's build.
+        that brew assigns to component build. Component name is synonymous with package name.
+        For RPMs, spec files declare the package name. For images, it is always based on
+        the distgit repo name + '-container'.
         """
         raise IOError('Subclass must implement')
 

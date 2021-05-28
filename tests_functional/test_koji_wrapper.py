@@ -72,8 +72,8 @@ class TestKojiWrapper(DoozerRunnerTestCase):
     def test_koji_wrapper_event_constraint(self):
         brew.KojiWrapper.clear_global_cache()
 
-        lock_on_event = 34966523
-        test_tag = 'rhaos-4.7-rhel-8-candidate'
+        lock_on_event = 37152928
+        test_tag = 'rhaos-4.5-rhel-8-candidate'
 
         # Get a non brew-event locked wrapper
         k = brew.KojiWrapper(['https://brewhub.engineering.redhat.com/brewhub'], brew_event=lock_on_event)
@@ -88,18 +88,18 @@ class TestKojiWrapper(DoozerRunnerTestCase):
         # However, if you tell the wrapper you are aware of the lock, you may perform the call
         k.getLastEvent(brew.KojiWrapperOpts(brew_event_aware=True))
 
-        results = k.listTagged(test_tag, brew.KojiWrapperOpts(caching=True), package='openshift')  # This should be transparently locked in brew time by the wrapper
-        self.assertEqual(results[0]['task_id'], 31840691)  # since we are locked in the time. this task_id is locked in time
+        results = k.listTagged(test_tag, brew.KojiWrapperOpts(caching=True, logger=self.logger), package='openshift')  # This should be transparently locked in brew time by the wrapper
+        self.assertEqual(results[0]['task_id'], 34774198)  # since we are locked in the time. this task_id is locked in time
         call_meta: brew.KojiWrapperMetaReturn = k.listTagged(test_tag, brew.KojiWrapperOpts(caching=True, return_metadata=True), package='openshift')  # Test to ensure caching is working with a brew event constraint.
         self.assertTrue(call_meta.cache_hit)
-        self.assertEqual(call_meta.result[0]['task_id'], 31840691)
+        self.assertEqual(call_meta.result[0]['task_id'], 34774198)
 
         # Now perform the same query, with caching on, without constraining the brew event.
         # The cache for constrained query vs an unconstrained query share different namespaces
         # and thus we expect a different result.
         unlocked_k = brew.KojiWrapper(['https://brewhub.engineering.redhat.com/brewhub'])
         unlocked_results = unlocked_k.listTagged(test_tag, brew.KojiWrapperOpts(caching=True), package='openshift')
-        self.assertNotEqual(unlocked_results[0]['task_id'], 31840691)  # This was an unlocked query and we know the latest task has moved on
+        self.assertNotEqual(unlocked_results[0]['task_id'], 34774198)  # This was an unlocked query and we know the latest task has moved on
 
 
 if __name__ == "__main__":

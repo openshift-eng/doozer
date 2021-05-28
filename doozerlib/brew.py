@@ -419,6 +419,7 @@ class KojiWrapper(koji.ClientSession):
         'getBuild',
         'listArchives',
         'listRPMs',
+        'getPackage',
     ])
 
     def __init__(self, koji_session_args, brew_event=None):

@@ -99,7 +99,7 @@ class ImageMetadata(Metadata):
         """
         :param default: Not used. Here to stay consistent with similar rpmcfg.get_component_name
         :return: Returns the component name of the image. This is the name in the nvr
-        that brew assigns to this image's build.
+        that brew assigns to this image's build. Component name is synonymous with package name.
         """
         # By default, the bugzilla component is the name of the distgit,
         # but this can be overridden in the config yaml.
