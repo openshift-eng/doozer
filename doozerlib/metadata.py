@@ -1,19 +1,23 @@
 from typing import Dict, Optional, List, Tuple
 import urllib.parse
 import yaml
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from dockerfile_parse import DockerfileParser
 import pathlib
 import json
 import traceback
 
+from xml.etree import ElementTree
+
 from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
 from . import exectools
 from . import logutil
-from . import brew
+
 
 from .model import Model, Missing
+
+CgitAtomFeedEntry = namedtuple('CgitAtomFeedEntry', 'title updated id content')
 
 #
 # These are used as labels to index selection of a subclass.
@@ -174,7 +178,58 @@ class Metadata(object):
         else:
             return list(self.runtime.get_global_arches())
 
-    def cgit_url(self, filename: str, commit_hash: Optional[str] = None, branch: Optional[str] = None) -> str:
+    def cgit_atom_feed(self, commit_hash: Optional[str] = None, branch: Optional[str] = None) -> List[CgitAtomFeedEntry]:
+        """
+        :param commit_hash: Specify to receive an entry for the specific commit (branch ignored if specified).
+                            Returns a feed with a single entry.
+        :param branch: branch name; None implies the branch specified in ocp-build-data (XOR commit_hash).
+                            Returns a feed with several of the most recent entries.
+
+        Returns a representation of the cgit atom feed. This information includes
+        feed example: https://gist.github.com/jupierce/ab006c0fc83050b714f6de2ec30f1072 . This
+        feed provides timestamp and commit information without having to clone distgits.
+
+        Example urls..
+        http://pkgs.devel.redhat.com/cgit/containers/cluster-etcd-operator/atom/?h=rhaos-4.8-rhel-8
+        or
+        http://pkgs.devel.redhat.com/cgit/containers/cluster-etcd-operator/atom/?id=35ecfa4436139442edc19585c1c81ebfaca18550
+        """
+        cgit_url_base = self.runtime.group_config.urls.cgit
+        if not cgit_url_base:
+            raise ValueError("urls.cgit is not set in group config")
+        url = f"{cgit_url_base}/{urllib.parse.quote(self.qualified_name)}/atom/"
+        params = {}
+        if commit_hash:
+            params["id"] = commit_hash
+        else:
+            if branch is None:
+                branch = self.branch()
+            if not commit_hash and branch:
+                params["h"] = branch
+        if params:
+            url += "?" + urllib.parse.urlencode(params)
+
+        req = exectools.retry(
+            3, lambda: urllib.request.urlopen(url),
+            check_f=lambda req: req.code == 200)
+
+        content = req.read()
+        et = ElementTree.fromstring(content)
+
+        entry_list = list()
+        # {*} ignores namespace awfulness in XML
+        for et_entry in et.findall('{*}entry'):
+            entry = CgitAtomFeedEntry(
+                title=et_entry.find('{*}title').text,
+                updated=et_entry.find('{*}updated').text,
+                id=et_entry.find('{*}id').text,
+                content=et_entry.find('{*}content[@type="text"]').text
+            )
+            entry_list.append(entry)
+
+        return entry_list
+
+    def cgit_file_url(self, filename: str, commit_hash: Optional[str] = None, branch: Optional[str] = None) -> str:
         """ Construct a cgit URL to a given file associated with the commit hash pushed to distgit
         :param filename: a relative path
         :param commit_hash: commit hash; None implies the current HEAD
@@ -197,7 +252,7 @@ class Metadata(object):
         return ret
 
     def fetch_cgit_file(self, filename):
-        url = self.cgit_url(filename)
+        url = self.cgit_file_url(filename)
         req = exectools.retry(
             3, lambda: urllib.request.urlopen(url),
             check_f=lambda req: req.code == 200)
@@ -295,15 +350,10 @@ class Metadata(object):
         # all candidate Brew tags configured for this component. e.g. [rhaos-4.7-rhel-8-candidate, rhaos-4.7-rhel-7-candidate]
         candidate_tags = self.candidate_brew_tags()
         with self.runtime.pooled_koji_client_session() as koji_api:
-            # latest builds of this component in all candidate Brew tags (e.g. [rhaos-4.7-rhel-8-candidate, rhaos-4.7-rhel-7-candidate])
-            build_lists = brew.get_latest_builds([(tag, component_name) for tag in candidate_tags], None, None, koji_api)
-            latest_builds = [builds[0] if builds else None for builds in build_lists]
-            tags_without_builds = {tag for tag, _ in filter(lambda tag_build: tag_build[1] is None, zip(candidate_tags, latest_builds))}
-            if tags_without_builds:
-                return True, f'Component {component_name} has never been built against {tags_without_builds}'
+            latest_build = self.get_latest_build(default=None)
+            if not latest_build:
+                return True, f'Component {component_name} has no latest build for assembly: {self.runtime.assembly}'
 
-            # latest_build is the eldest among those latest builds for different targets
-            latest_build = min(latest_builds, key=lambda build: build['creation_event_id'])
             latest_build_creation_event_id = latest_build['creation_event_id']
             # getEvent returns something like {'id': 31825801, 'ts': 1591039601.2667}
             latest_build_creation_ts_seconds = int(koji_api.getEvent(latest_build_creation_event_id)['ts'])
