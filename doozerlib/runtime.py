@@ -24,7 +24,7 @@ import signal
 import io
 import pathlib
 import koji
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 import time
 
 from doozerlib import gitdata
@@ -36,6 +36,7 @@ from .pushd import Dir
 
 from .image import ImageMetadata
 from .rpmcfg import RPMMetadata
+from .metadata import Metadata
 from doozerlib import state
 from .model import Model, Missing
 from multiprocessing import Lock, RLock, Semaphore
@@ -1399,7 +1400,13 @@ class Runtime(object):
         ]
         return {n: (v, r) for n, v, r in builds}
 
-    def scan_distgit_sources(self):
+    def scan_for_upstream_changes(self) -> List[Tuple[Metadata, Tuple[bool, str]]]:
+        """
+        Determines if the current upstream source commit hash has a downstream
+        build associated with it.
+        :return: Returns a list of tuples. Each tuple contains an rpm or image metadata
+        and a change tuple (changed: bool, message: str).
+        """
         return self.parallel_exec(
             lambda meta, _: (meta, meta.needs_rebuild()),
             self.image_metas() + self.rpm_metas(),
