@@ -12,5 +12,5 @@ class TestMetadata(TestCase):
         runtime = MagicMock()
         runtime.group_config.urls.cgit = "http://distgit.example.com/cgit"
         meta = Metadata("image", runtime, data_obj)
-        url = meta.cgit_url("some_path/some_file.txt", "abcdefg", "some-branch")
+        url = meta.cgit_file_url("some_path/some_file.txt", "abcdefg", "some-branch")
         self.assertEqual(url, "http://distgit.example.com/cgit/containers/foo/plain/some_path/some_file.txt?h=some-branch&id=abcdefg")

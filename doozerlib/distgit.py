@@ -310,7 +310,7 @@ class DistGitRepo(object):
         """
         assert self.sha is not None
         self.logger.debug("Checking if distgit commit %s is available on cgit...", self.sha)
-        url = self.metadata.cgit_url(filename, commit_hash=self.sha, branch=self.branch)
+        url = self.metadata.cgit_file_url(filename, commit_hash=self.sha, branch=self.branch)
         response = requests.head(url)
         if response.status_code == 404:
             self.logger.debug("Distgit commit %s is not available on cgit", self.sha)
