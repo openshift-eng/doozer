@@ -1681,8 +1681,6 @@ class ImageDistGitRepo(DistGitRepo):
         return str(csvs[0]), image_refs
 
     def _update_csv(self, version, release):
-        # AMH - most of this method really shouldn't be in Doozer itself
-        # But right now there's no better way to handle it
         csv_config = self.metadata.config.get('update-csv', None)
         if not csv_config:
             return
@@ -1701,7 +1699,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             try:
                 if name == self.metadata.image_name_short:  # ref is current image
-                    nvr = '{}:{}-{}'.format(name, version, release)
+                    image_tag = '{}:{}-{}'.format(name, version, release)
                 else:
                     distgit = self.runtime.image_distgit_by_name(name)
                     # if upstream is referring to an image we don't actually build, give up.
@@ -1709,16 +1707,17 @@ class ImageDistGitRepo(DistGitRepo):
                         raise DoozerFatalError('Unable to find {} in image-references data for {}'.format(name, self.metadata.distgit_key))
                     meta = self.runtime.image_map.get(distgit, None)
                     if meta:  # image is currently be processed
-                        nvr = '{}:{}-{}'.format(meta.image_name_short, version, release)
+                        uuid_tag = "%s.%s" % (version, self.runtime.uuid)  # applied by additional-tags
+                        image_tag = '{}:{}'.format(meta.image_name_short, uuid_tag)
                     else:
                         meta = self.runtime.late_resolve_image(distgit)
                         _, v, r = meta.get_latest_build_info()
-                        nvr = '{}:{}-{}'.format(meta.image_name_short, v, r)
+                        image_tag = '{}:{}-{}'.format(meta.image_name_short, v, r)
 
                 namespace = self.runtime.group_config.get('csv_namespace', None)
                 if not namespace:
                     raise DoozerFatalError('csv_namespace is required in group.yaml when any image defines update-csv')
-                replace = '{}/{}/{}'.format(registry, namespace, nvr)
+                replace = '{}/{}/{}'.format(registry, namespace, image_tag)
 
                 with io.open(csv_file, 'r+', encoding="utf-8") as f:
                     content = f.read()

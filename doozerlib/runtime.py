@@ -767,7 +767,7 @@ class Runtime(object):
                     self.image_order.append(i)
 
     def image_distgit_by_name(self, name):
-        """Returns image meta but full name, short name, or distgit"""
+        """Returns image meta by full name, short name, or distgit"""
         return self.image_name_map.get(name, None)
 
     def rpm_metas(self):
