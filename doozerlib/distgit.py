@@ -1735,14 +1735,12 @@ class ImageDistGitRepo(DistGitRepo):
 
         x, y, z = version.split('.')[0:3]
 
-        timestamp = re.match(r'\d{10}', release.split('.')[0])[0]
-
         replace_args = {
             'MAJOR': x,
             'MINOR': y,
             'SUBMINOR': z,
             'RELEASE': release,
-            'FULL_VER': '{}-{}'.format(version, timestamp)
+            'FULL_VER': '{}-{}'.format(version, release.split('.')[0])
         }
 
         manifests_base = os.path.join(self.distgit_dir, csv_config['manifests-dir'])
