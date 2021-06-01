@@ -1740,7 +1740,7 @@ class ImageDistGitRepo(DistGitRepo):
             'MINOR': y,
             'SUBMINOR': z,
             'RELEASE': release,
-            'FULL_VER': '{}-{}'.format(version, release)
+            'FULL_VER': '{}-{}'.format(version, release.split('.')[0])
         }
 
         manifests_base = os.path.join(self.distgit_dir, csv_config['manifests-dir'])
