@@ -90,6 +90,10 @@ class RPMBuilder:
         dg_specfile_path = dg.dg_path / Path(rpm.specfile).name
         async with aiofiles.open(dg_specfile_path, "w") as f:
             await f.writelines(specfile)
+
+        if rpm.get_package_name_from_spec() != rpm.get_package_name():
+            raise IOError(f'RPM package name in .spec file ({rpm.get_package_name_from_spec()}) does not match doozer metadata name {rpm.get_package_name()}')
+
         rpm.specfile = str(dg_specfile_path)
 
         # create tarball source as Source0
