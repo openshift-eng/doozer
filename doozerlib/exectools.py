@@ -76,7 +76,7 @@ def urlopen_assert(url_or_req, httpcode=200, retries=3):
 
 
 def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None,
-               set_env=None, strip=False, log_stdout: bool = False, log_stderr: bool = True):
+               set_env=None, strip=False, log_stdout: bool = False, log_stderr: bool = True) -> Tuple[str, str]:
     """
     Run a command, logging (using exec_cmd) and raise an exception if the
     return code of the command indicates failure.
@@ -123,7 +123,7 @@ cmd_counter_lock = threading.Lock()
 cmd_counter = 0  # Increments atomically to help search logs for command start/stop
 
 
-def cmd_gather(cmd, set_env=None, realtime=False, strip=False, log_stdout=False, log_stderr=True):
+def cmd_gather(cmd, set_env=None, realtime=False, strip=False, log_stdout=False, log_stderr=True) -> Tuple[int, str, str]:
     """
     Runs a command and returns rc,stdout,stderr as a tuple.
 

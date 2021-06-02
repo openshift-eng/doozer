@@ -36,7 +36,7 @@ from .pushd import Dir
 
 from .image import ImageMetadata
 from .rpmcfg import RPMMetadata
-from .metadata import Metadata
+from .metadata import Metadata, RebuildHint
 from doozerlib import state
 from .model import Model, Missing
 from multiprocessing import Lock, RLock, Semaphore
@@ -1400,7 +1400,7 @@ class Runtime(object):
         ]
         return {n: (v, r) for n, v, r in builds}
 
-    def scan_for_upstream_changes(self) -> List[Tuple[Metadata, Tuple[bool, str]]]:
+    def scan_for_upstream_changes(self) -> List[Tuple[Metadata, RebuildHint]]:
         """
         Determines if the current upstream source commit hash has a downstream
         build associated with it.

@@ -6,8 +6,7 @@ import yaml
 from doozerlib import brew, exectools, rhcos
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.cli import release_gen_payload as rgp
-from doozerlib.exceptions import DoozerFatalError
-
+from doozerlib.metadata import RebuildHint
 
 @cli.command("config:scan-sources", short_help="Determine if any rpms / images need to be rebuilt.")
 @click.option("--ci-kubeconfig", metavar='KC_PATH', required=False,
@@ -47,29 +46,30 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
     changing_rpm_packages = set()
     assessment_reason = dict()  # maps metadata qualified_key => message describing change
 
-    def add_assessment_reason(meta, changing, reason):
+    def add_assessment_reason(meta, rebuild_hint: RebuildHint):
         # qualify by whether this is a True or False for change so that we can store both in the map.
-        key = f'{meta.qualified_key}+{changing}'
+        key = f'{meta.qualified_key}+{rebuild_hint.rebuild}'
         # If the key is already there, don't replace the message as it is likely more interesting
         # than subsequent reasons (e.g. changing because of ancestry)
         if key not in assessment_reason:
-            assessment_reason[key] = reason
+            assessment_reason[key] = rebuild_hint.reason
 
     def add_image_meta_change(meta, msg):
         nonlocal changing_image_metas
         changing_image_metas.add(meta)
-        add_assessment_reason(meta, True, msg)
+        add_assessment_reason(meta, RebuildHint(True, msg))
         for descendant_meta in meta.get_descendants():
             changing_image_metas.add(descendant_meta)
-            add_assessment_reason(descendant_meta, True, f'Ancestor {meta.distgit_key} is changing')
+            add_assessment_reason(descendant_meta, RebuildHint(True, f'Ancestor {meta.distgit_key} is changing'))
 
     with runtime.shared_koji_client_session() as koji_api:
         runtime.logger.info(f'scan-sources coordinate: brew_event: {koji_api.getLastEvent(brew.KojiWrapperOpts(brew_event_aware=True))}')
         runtime.logger.info(f'scan-sources coordinate: emulated_brew_event: {runtime.brew_event}')
 
         # First, scan for any upstream source code changes. If found, these are guaranteed rebuilds.
-        for meta, change_info in runtime.scan_for_upstream_changes():
-            needs_rebuild, reason = change_info
+        for meta, rebuild_hint in runtime.scan_for_upstream_changes():
+            needs_rebuild = rebuild_hint.rebuild
+            reason = rebuild_hint.reason
             dgk = meta.distgit_key
             if not (meta.enabled or meta.mode == "disabled" and runtime.load_disabled):
                 # An enabled image's dependents are always loaded. Ignore disabled configs unless explicitly indicated
@@ -94,7 +94,7 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                         needs_rebuild = True
 
                 if reason:
-                    add_assessment_reason(meta, needs_rebuild, reason=reason)
+                    add_assessment_reason(meta, RebuildHint(needs_rebuild, reason=reason))
 
                 if needs_rebuild:
                     changing_rpm_metas.add(meta)

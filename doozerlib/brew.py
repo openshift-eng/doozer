@@ -8,6 +8,7 @@ import json
 import threading
 import time
 import traceback
+from enum import Enum
 from multiprocessing import Lock
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -31,6 +32,23 @@ logger = logutil.getLogger(__name__)
 watch_task_info = {}
 # Protects threaded access to watch_task_info
 watch_task_lock = Lock()
+
+
+class TaskStates(Enum):
+    FREE = 0
+    OPEN = 1
+    CLOSED = 2
+    CANCELED = 3
+    ASSIGNED = 4
+    FAILED = 5
+
+
+class BuildStates(Enum):
+    BUILDING = 0
+    COMPLETE = 1
+    DELETED = 2
+    FAILED = 3
+    CANCELED = 4
 
 
 def get_watch_task_info_copy():
