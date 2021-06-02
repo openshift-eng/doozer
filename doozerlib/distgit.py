@@ -1409,6 +1409,8 @@ class ImageDistGitRepo(DistGitRepo):
                     # to have a known tag to refer to this image if they depend on it - even
                     # before it is built.
                     at.write("%s\n" % uuid_tag)
+                    if self.runtime.assembly:
+                        at.write("assembly.%s\n" % self.runtime.assembly)
                     if len(vsplit) > 1:
                         at.write("%s.%s\n" % (vsplit[0], vsplit[1]))  # e.g. "v3.7.0" -> "v3.7"
                     if self.metadata.config.additional_tags is not Missing:

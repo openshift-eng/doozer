@@ -1,23 +1,31 @@
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, NamedTuple
 import urllib.parse
 import yaml
 from collections import OrderedDict, namedtuple
-from dockerfile_parse import DockerfileParser
 import pathlib
 import json
 import traceback
+import datetime
+from enum import Enum
 
 from xml.etree import ElementTree
+from typing import NamedTuple
 
 from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
 from . import exectools
 from . import logutil
+from .brew import BuildStates
 
 
 from .model import Model, Missing
 
-CgitAtomFeedEntry = namedtuple('CgitAtomFeedEntry', 'title updated id content')
+
+class CgitAtomFeedEntry(NamedTuple):
+    title: str
+    updated: datetime.datetime
+    id: str
+    content: str
 
 #
 # These are used as labels to index selection of a subclass.
@@ -34,6 +42,27 @@ CONFIG_MODES = [
 ]
 
 CONFIG_MODE_DEFAULT = CONFIG_MODES[0]
+
+
+class RebuildHintCode(Enum):
+    NO_COMPONENT = (True, 0)
+    NO_LATEST_BUILD = (True, 1)
+    DISTGIT_ONLY_COMMIT_OLDER = (False, 2)
+    DISTGIT_ONLY_COMMIT_NEWER = (True, 3)
+    DELAYING_NEXT_ATTEMPT = (False, 4)
+    LAST_BUILD_FAILED = (True, 5)
+    NEW_UPSTREAM_COMMIT = (True, 6)
+    UPSTREAM_COMMIT_MISMATCH = (True, 7)
+    BUILD_IS_UP_TO_DATE = (False, 8)
+
+
+class RebuildHint(NamedTuple):
+    code: RebuildHintCode
+    reason: str
+
+    @property
+    def rebuild(self):
+        return self.code.value[0]
 
 
 class Metadata(object):
@@ -221,7 +250,7 @@ class Metadata(object):
         for et_entry in et.findall('{*}entry'):
             entry = CgitAtomFeedEntry(
                 title=et_entry.find('{*}title').text,
-                updated=et_entry.find('{*}updated').text,
+                updated=datetime.datetime.fromisoformat(et_entry.find('{*}updated').text),
                 id=et_entry.find('{*}id').text,
                 content=et_entry.find('{*}content[@type="text"]').text
             )
@@ -258,16 +287,23 @@ class Metadata(object):
             check_f=lambda req: req.code == 200)
         return req.read()
 
-    def get_latest_build(self, default=-1, assembly=None):
+    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE):
         """
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
         :param assembly: A non-default assembly name to search relative to. If not specified, runtime.assembly
                          will be used. If runtime.assembly is also None, the search will return true latest.
                          If the assembly parameter is set to '', this search will also return true latest.
+        :param extra_pattern: An extra glob pattern that must be matched in the middle of the
+                         build's release field. Pattern must match release timestamp and components
+                         like p? and git commit (up to, but not including ".assembly.<name>" release
+                         component). e.g. "*.git.<commit>.*   or '*.p1.*'
+        :param build_state: 0=BUILDING, 1=COMPLETE, 2=DELETED, 3=FAILED, 4=CANCELED
         :return: Returns the most recent build object from koji for this package & assembly.
                  Example https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
         """
         package_name = self.get_component_name()
+        builds = []
+
         with self.runtime.pooled_koji_client_session() as koji_api:
             package_info = koji_api.getPackage(package_name)  # e.g. {'id': 66873, 'name': 'atomic-openshift-descheduler-container'}
             if not package_info:
@@ -280,44 +316,52 @@ class Metadata(object):
             if assembly is None:
                 assembly = self.runtime.assembly
 
-            def latestBuildList(pattern_suffix):
-                return koji_api.listBuilds(packageID=package_id,
-                                           pattern=f'{pattern_prefix}{pattern_suffix}',
-                                           queryOpts={'limit': 1, 'order': '-creation_event_id'})
+            def latest_build_list(pattern_suffix):
+                # We need '*' after pattern_suffix for RPMs, which have an extra .el7/.el8 on their
+                # release field, normally.
+                builds = koji_api.listBuilds(packageID=package_id,
+                                             state=None if build_state is None else build_state.value,
+                                             pattern=f'{pattern_prefix}{extra_pattern}{pattern_suffix}*',
+                                             queryOpts={'limit': 1, 'order': '-creation_event_id'})
+                # Ensure the suffix ends the string OR at least terminated by a '.' .
+                # This latter check ensures that 'assembly.how' doesn't not match a build from
+                # "assembly.howdy'.
+                return [b for b in builds if b['nvr'].endswith(pattern_suffix) or f'{pattern_suffix}.' in b['nvr']]
 
             if not assembly:
                 # if assembly is '' (by parameter) or still None after runtime.assembly,
                 # we are returning true latest.
-                builds = latestBuildList('*')
+                builds = latest_build_list('')
             else:
-                builds = latestBuildList(f'*.assembly.{assembly}')
+                builds = latest_build_list(f'.assembly.{assembly}')
                 if not builds:
                     if assembly != 'stream':
-                        builds = latestBuildList('*.assembly.stream')
+                        builds = latest_build_list('.assembly.stream')
                     if not builds:
                         # Fall back to true latest
-                        builds = latestBuildList('*')
+                        builds = latest_build_list('')
                         if builds and '.assembly.' in builds[0]['release']:
                             # True latest belongs to another assembly. In this case, just return
                             # that they are no builds for this assembly.
                             builds = []
 
-            if not builds:
-                if default != -1:
-                    self.logger.warning("No builds detected for using prefix: '%s' and assembly: %s" % (pattern_prefix, assembly))
-                    return default
-                raise IOError("No builds detected for %s using prefix: '%s' and assembly: %s" % (self.qualified_name, pattern_prefix, assembly))
-            return builds[0]
+        if not builds:
+            if default != -1:
+                self.logger.warning("No builds detected for using prefix: '%s' and assembly: %s" % (pattern_prefix, assembly))
+                return default
+            raise IOError("No builds detected for %s using prefix: '%s' and assembly: %s" % (self.qualified_name, pattern_prefix, assembly))
+        return builds[0]
 
-    def get_latest_build_info(self, default=-1):
+    def get_latest_build_info(self, default=-1, **kwargs):
         """
         Queries brew to determine the most recently built release of the component
         associated with this image. This method does not rely on the "release"
-        label needing to be present in the Dockerfile.
+        label needing to be present in the Dockerfile. kwargs will be passed on
+        to get_latest_build.
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
         :return: A tuple: (component name, version, release); e.g. ("registry-console-docker", "v3.6.173.0.75", "1")
         """
-        build = self.get_latest_build(default=default)
+        build = self.get_latest_build(default=default, **kwargs)
         if default != -1 and build == default:
             return default
         return build['name'], build['version'], build['release']
@@ -332,93 +376,123 @@ class Metadata(object):
         """
         raise IOError('Subclass must implement')
 
-    def needs_rebuild(self) -> Tuple[bool, str]:
+    def needs_rebuild(self) -> RebuildHint:
         """
-        Check whether the commit that we recorded in the distgit content (according to cgit)
-        matches the commit of the source (according to git ls-remote) and has been built
-        (according to brew).
-        Returns: (<bool>, message). If True, message describing the details is returned. If False,
-                None is returned.
+        Checks whether the current upstream commit has a corresponding successful downstream build.
+        Take care to not unnecessarily trigger a clone of the distgit
+        or upstream source as it will dramatically increase the time needed for scan-sources.
+        Returns: (rebuild:<bool>, message: description of why).
         """
+        now = datetime.datetime.utcnow()
+
         component_name = self.get_component_name(default='')
         if not component_name:
             # This can happen for RPMs if they have never been rebased into
             # distgit.
-            return True, 'Could not find component name; assuming never built'
+            return RebuildHint(code=RebuildHintCode.NO_COMPONENT,
+                               reason='Could not determine component name; assuming it has never been built')
 
-        # latest_build_creation_event_id = latest_build['creation_event_id']
-        # all candidate Brew tags configured for this component. e.g. [rhaos-4.7-rhel-8-candidate, rhaos-4.7-rhel-7-candidate]
-        candidate_tags = self.candidate_brew_tags()
-        with self.runtime.pooled_koji_client_session() as koji_api:
-            latest_build = self.get_latest_build(default=None)
-            if not latest_build:
-                return True, f'Component {component_name} has no latest build for assembly: {self.runtime.assembly}'
+        latest_build = self.get_latest_build(default=None)
+        if not latest_build:
+            return RebuildHint(code=RebuildHintCode.NO_LATEST_BUILD,
+                               reason=f'Component {component_name} has no latest build for assembly: {self.runtime.assembly}')
 
-            latest_build_creation_event_id = latest_build['creation_event_id']
-            # getEvent returns something like {'id': 31825801, 'ts': 1591039601.2667}
-            latest_build_creation_ts_seconds = int(koji_api.getEvent(latest_build_creation_event_id)['ts'])
-            # Log scan-sources coordinates throughout to simplify setting up scan-sources
-            # function tests to reproduce real-life scenarios.
-            self.logger.debug(f'scan-sources coordinate: latest_build: {latest_build}')
-            self.logger.debug(f'scan-sources coordinate: latest_build_creation_ts_seconds: {latest_build_creation_ts_seconds}')
+        latest_build_creation = datetime.datetime.fromisoformat(latest_build['creation_time'])
 
-        dgr = self.distgit_repo()
-        with Dir(dgr.distgit_dir):
-            dg_commit, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
-            self.logger.debug(f'scan-sources coordinate: dg_commit: {dg_commit}')
-            ts, _ = exectools.cmd_assert('git show -s --format=%ct HEAD', strip=True)
-            distgit_head_commit_ts_seconds = int(ts)
-            self.logger.debug(f'scan-sources coordinate: distgit_head_commit_ts_seconds: {distgit_head_commit_ts_seconds}')
+        # Log scan-sources coordinates throughout to simplify setting up scan-sources
+        # function tests to reproduce real-life scenarios.
+        self.logger.debug(f'scan-sources coordinate: latest_build: {latest_build}')
+        self.logger.debug(f'scan-sources coordinate: latest_build_creation_datetime: {latest_build_creation}')
 
-        one_hour = (1 * 60 * 60)  # in milliseconds
+        # If downstream has been locked to a commitish, only check the atom feed at that moment.
+        distgit_commitish = self.runtime.downstream_commitish_overrides.get(self.distgit_key, None)
+        atom_entries = self.cgit_atom_feed(commit_hash=distgit_commitish, branch=self.branch())
+        if not atom_entries:
+            raise IOError(f'No atom feed entries exist for {component_name} in {self.branch()}. Does branch exist?')
 
+        dgr = self.distgit_repo(autoclone=False)  # For scan-sources speed, we need to avoid cloning
         if not dgr.has_source():
-            if distgit_head_commit_ts_seconds > latest_build_creation_ts_seconds:
-                # Two options:
-                # 1. A user has made a commit to this dist-git only branch and there has been no build attempt
-                # 2. We've already tried a build and the build failed.
-                # To balance these two options, if the diff > 1 hour, request a build.
-                if (distgit_head_commit_ts_seconds - latest_build_creation_ts_seconds) > one_hour:
-                    return True, 'Distgit only repo commit is at least one hour older than most recent build'
-            return False, 'Distgit only repo commit is older than most recent build'
+            # This is a distgit only artifact (no upstream source)
 
-        # We have source.
-        with Dir(dgr.source_path()):
-            upstream_commit_hash, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
-            self.logger.debug(f'scan-sources coordinate: upstream_commit_hash: {upstream_commit_hash}')
+            latest_entry = atom_entries[0]  # Most recent commit's information
+            dg_commit = latest_entry.id
+            self.logger.debug(f'scan-sources coordinate: dg_commit: {dg_commit}')
+            dg_commit_dt = latest_entry.updated
+            self.logger.debug(f'scan-sources coordinate: distgit_head_commit_datetime: {dg_commit_dt}')
 
-        dgr_path = pathlib.Path(dgr.distgit_dir)
-        if self.namespace == 'containers' or self.namespace == 'apbs':
-            dockerfile_path = dgr_path.joinpath('Dockerfile')
-            if not dockerfile_path.is_file():
-                return True, 'Distgit dockerfile not found -- appears that no rebase has ever been performed'
-            dfp = DockerfileParser(str(dockerfile_path))
-            last_distgit_rebase_upstream_hash = dfp.envs.get('SOURCE_GIT_COMMIT', None)
-            self.logger.debug(f'scan-sources coordinate: last_distgit_rebase_upstream_hash: {last_distgit_rebase_upstream_hash}')
-            if last_distgit_rebase_upstream_hash != upstream_commit_hash:
-                return True, f'Distgit contains SOURCE_GIT_COMMIT hash {last_distgit_rebase_upstream_hash} different from upstream HEAD {upstream_commit_hash}'
-        elif self.namespace == 'rpms':
-            specs = list(dgr_path.glob('*.spec'))
-            if not specs:
-                return True, 'Distgit .spec file not found -- appears that no rebase has ever been performed'
-            with specs[0].open(mode='r', encoding='utf-8') as spec_handle:
-                spec_content = spec_handle.read()
-                if upstream_commit_hash not in spec_content:
-                    return True, f'Distgit spec file does not contain upstream hash {upstream_commit_hash}'
+            if latest_build_creation > dg_commit_dt:
+                return RebuildHint(code=RebuildHintCode.DISTGIT_ONLY_COMMIT_OLDER,
+                                   reason='Distgit only repo commit is older than most recent build')
+
+            # Two possible states here:
+            # 1. A user has made a commit to this dist-git only branch and there has been no build attempt
+            # 2. We've already tried a build and the build failed.
+
+            # Check whether a build attempt for this assembly has failed.
+            last_failed_build = self.get_latest_build(default=None,
+                                                      build_state=BuildStates.FAILED)  # How recent was the last failed build?
+            if not last_failed_build:
+                return RebuildHint(code=RebuildHintCode.DISTGIT_ONLY_COMMIT_NEWER,
+                                   reason='Distgit only commit is newer than last successful build')
+
+            last_failed_build_creation = datetime.datetime.fromisoformat(last_failed_build['creation_time'])
+            if last_failed_build_creation + datetime.timedelta(hours=6) > now:
+                return RebuildHint(code=RebuildHintCode.DELAYING_NEXT_ATTEMPT,
+                                   reason='Waiting at least 6 hours after last failed build')
+
+            return RebuildHint(code=RebuildHintCode.LAST_BUILD_FAILED,
+                               reason='Last build failed > 6 hours ago; making another attempt')
+
+        # Otherwise, we have source. In the case of git source, check the upstream with ls-remote.
+        # In the case of alias (only legacy stuff afaik), check the cloned repo directory.
+
+        if "git" in self.config.content.source:
+            out, _ = exectools.cmd_assert(["git", "ls-remote", self.config.content.source.git.url, self.branch()], strip=True)
+            # Example output "296ac244f3e7fd2d937316639892f90f158718b0	refs/heads/openshift-4.8"
+            upstream_commit_hash = out.split()[0]
         else:
-            raise IOError(f'Unknown namespace type: {self.namespace}')
+            # If it is not git, we will need to punt to the rest of doozer to get the upstream source for us.
+            with Dir(dgr.source_path()):
+                upstream_commit_hash, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
 
-        if distgit_head_commit_ts_seconds > latest_build_creation_ts_seconds:
-            # Distgit is ahead of the latest build.
-            # We've likely made an attempt to rebase and the subsequent build failed.
-            # Try again if we are at least 6 hours out from the build to avoid
-            # pestering image owners will repeated build failures.
-            if distgit_head_commit_ts_seconds - latest_build_creation_ts_seconds > (6 * one_hour):
-                return True, 'It has been 6 hours since last failed build attempt'
-            return False, f'Distgit commit ts {distgit_head_commit_ts_seconds} ahead of last successful build ts {latest_build_creation_ts_seconds}, but holding off for at least 6 hours before rebuild'
-        else:
-            # The latest build is newer than the latest distgit commit. No change required.
-            return False, 'Latest build is newer than latest upstream/distgit commit -- no build required'
+        self.logger.debug(f'scan-sources coordinate: upstream_commit_hash: {upstream_commit_hash}')
+        git_component = f'.git.{upstream_commit_hash[:7]}'
+
+        # Scan for any build in this assembly which also includes the git commit.
+        upstream_commit_build = self.get_latest_build(default=None,
+                                                      extra_pattern=f'*{git_component}*')  # Latest build for this commit.
+
+        if not upstream_commit_build:
+            # There is no build for this upstream commit. Two options to assess:
+            # 1. This is a new commit and needs to be built
+            # 2. Previous attempts at building this commit have failed
+
+            # Check whether a build attempt with this commit has failed before.
+            failed_commit_build = self.get_latest_build(default=None,
+                                                        extra_pattern=f'*{git_component}*',
+                                                        build_state=BuildStates.FAILED)  # Have we tried before and failed?
+
+            # If not, this is a net-new upstream commit. Build it.
+            if not failed_commit_build:
+                return RebuildHint(code=RebuildHintCode.NEW_UPSTREAM_COMMIT,
+                                   reason='A new upstream commit exists and needs to be built')
+
+            # Otherwise, there was a failed attempt at this upstream commit on record.
+            # Make sure provide at least 6 hours between such attempts
+            last_attempt_time = datetime.datetime.fromisoformat(failed_commit_build['creation_time'])
+            if last_attempt_time + datetime.timedelta(hours=6) < now:
+                return RebuildHint(code=RebuildHintCode.LAST_BUILD_FAILED,
+                                   reason='It has been 6 hours since last failed build attempt')
+
+            return RebuildHint(code=RebuildHintCode.DELAYING_NEXT_ATTEMPT,
+                               reason=f'Last build of upstream commit {upstream_commit_hash} failed, but holding off for at least 6 hours before next attempt')
+
+        if latest_build['nvr'] != upstream_commit_build['nvr']:
+            return RebuildHint(code=RebuildHintCode.UPSTREAM_COMMIT_MISMATCH,
+                               reason=f'Latest build {latest_build["nvr"]} does not match upstream commit build {upstream_commit_build["nvr"]}; commit reverted?')
+
+        return RebuildHint(code=RebuildHintCode.BUILD_IS_UP_TO_DATE,
+                           reason=f'Build already exists for current upstream commit {upstream_commit_hash}: {latest_build}')
 
     def get_maintainer_info(self):
         """
