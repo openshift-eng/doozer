@@ -91,7 +91,7 @@ def update_advisory_builds(config, errata_proxy, advisory_id, nvres, nvr_product
                             )
 
         if res.status_code not in (201, 200):
-            logger.error(f'Error attaching builds to advisory')
+            logger.error('Error attaching builds to advisory')
             logger.error(f'Request: {add_builds_payload}')
             logger.error(f'Response {res.status_code}: {res.content}')
             raise IOError(f'Unable to add nvrs to advisory {advisory_id}: {to_add}')
@@ -640,7 +640,7 @@ def from_tags(config, brew_tag, embargoed_brew_tag, embargoed_nvr, signing_advis
     possible_signing_needed = signed_desired(config)
 
     if possible_signing_needed:
-        logger.info(f'At least one architecture requires signed nvres')
+        logger.info('At least one architecture requires signed nvres')
 
         # Each set must be attached separately because you cannot attach two nvres of the same
         # package to an errata at the same time.
@@ -746,7 +746,7 @@ def from_images(config, images, replace, brew_tag, signing_advisory_id, poll_for
     if signed_desired(config):
         # Let's see if the any of the --replace NVRs need to be signed before
         # building the plashet.
-        logger.info(f'At least one architecture requires signed nvres')
+        logger.info('At least one architecture requires signed nvres')
 
         if signing_advisory_id:
             for product_version, nvr_list in sign_using.items():
@@ -757,7 +757,7 @@ def from_images(config, images, replace, brew_tag, signing_advisory_id, poll_for
                 update_advisory_builds(config, errata_proxy, signing_advisory_id, nvr_list,
                                        product_version)
         else:
-            logger.warning(f'No signing advisory specified; will poll for any unsigned NVRs')
+            logger.warning('No signing advisory specified; will poll for any unsigned NVRs')
 
         # Whether we've attached to advisory or no, wait until signing require is met
         # or throw exception on timeout.
