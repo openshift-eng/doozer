@@ -18,6 +18,7 @@ from doozerlib.cli.images_health import images_health
 from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
 from doozerlib.cli.scan_sources import config_scan_source_changes
 from doozerlib.cli.rpms_build import rpms_build
+from doozerlib.cli.plashet import config_plashet
 from doozerlib import coverity
 
 from doozerlib.exceptions import DoozerFatalError

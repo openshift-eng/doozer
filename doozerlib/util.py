@@ -1,12 +1,12 @@
 from __future__ import absolute_import, print_function, unicode_literals
 from pathlib import Path
+import pathlib
 import click
 import copy
 import os
 import yaml
 import re
 from os.path import abspath
-from typing import Dict
 from datetime import datetime
 from contextlib import contextmanager
 from inspect import getframeinfo, stack
@@ -207,11 +207,13 @@ def is_in_directory(path: os.PathLike, directory: os.PathLike):
         return False
 
 
-def mkdirs(path):
-    """ Make sure a directory exists. Similar to shell command `mkdir -p`.
-    :param path: Str path or pathlib.Path
+def mkdirs(path, mode=0o755):
     """
-    os.makedirs(str(path), exist_ok=True)
+    Make sure a directory exists. Similar to shell command `mkdir -p`.
+    :param path: Str path
+    :param mode: create directories with mode
+    """
+    pathlib.Path(str(path)).mkdir(mode=mode, parents=True, exist_ok=True)
 
 
 @contextmanager
