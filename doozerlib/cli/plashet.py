@@ -1,5 +1,6 @@
 
 import glob
+import itertools
 import logging
 import os
 import ssl
@@ -15,9 +16,9 @@ import yaml
 from kobo.rpmlib import compare_nvr, parse_nvr
 from requests_kerberos import HTTPKerberosAuth
 
-from doozerlib.runtime import Runtime
 from doozerlib.cli import cli
-from doozerlib.util import mkdirs
+from doozerlib.runtime import Runtime
+from doozerlib.util import find_latest_builds, mkdirs
 
 ERRATA_URL = "http://errata-xmlrpc.devel.redhat.com/errata/errata_service"
 ERRATA_API_URL = "https://errata.engineering.redhat.com/api/v1/"
@@ -528,7 +529,7 @@ def from_tags(config, brew_tag, embargoed_brew_tag, embargoed_nvr, signing_advis
     for tag, product_version in brew_tag:
 
         released_package_nvre_obj = {}  # maps released package names to the most recently released package nvr object (e.g { 'name': ...,  }
-        if tag.endswith('-candidate'):
+        if tag.endswith(('-candidate', '-hotfix')):
             """
             So here's the thing. If you ship a version of a package 1.16.6 via errata tool,
             it will prevent you from shipping an older version of that package (e.g. 1.16.2) or even
@@ -539,15 +540,22 @@ def from_tags(config, brew_tag, embargoed_brew_tag, embargoed_nvr, signing_advis
             Without this filtering, the error from errata tool looks like:
             b'{"error":"Unable to add build \'cri-o-1.16.6-2.rhaos4.3.git4936f44.el7\' which is older than cri-o-1.16.6-16.dev.rhaos4.3.git4936f44.el7"}'
             """
-            released_tag = tag[:tag.index('-candidate')]
+            released_tag = tag[:tag.rfind('-')]
             for build in koji_proxy.listTagged(released_tag, latest=True, inherit=True, event=event, type='rpm'):
                 package_name = build['package_name']
                 released_package_nvre_obj[package_name] = parse_nvr(to_nvre(build))
 
-        for build in koji_proxy.listTagged(tag, latest=True, inherit=inherit, event=event, type='rpm'):
+        if not runtime.assembly:
+            # Assemblies are disabled. We just need the latest tagged builds in the brew tag
+            latest_builds = koji_proxy.listTagged(tag, latest=True, inherit=inherit, event=event, type='rpm')
+        else:
+            # Assemblies are enabled. We need all tagged builds in the brew tag then find the latest ones for the runtime assembly.
+            tagged_builds = koji_proxy.listTagged(tag, latest=False, inherit=inherit, event=event, type='rpm')
+            latest_builds = find_latest_builds(tagged_builds, runtime.assembly)
+
+        for build in latest_builds:
             package_name = build['package_name']
             nvre = to_nvre(build)
-            nvre_obj = parse_nvr(nvre)
 
             released_nvre_obj = None  # if the package has shipped before, the parsed nvr of the most recently shipped
             if package_name in released_package_nvre_obj:
@@ -577,19 +585,25 @@ def from_tags(config, brew_tag, embargoed_brew_tag, embargoed_nvr, signing_advis
                 if not include_embargoed:
                     # We are being asked to build a plashet without embargoed RPMs. We need to find a stand-in.
                     # Search through the tag's package history to find the last build that was NOT embargoed.
-                    unembargoed_nvre = None
-                    for build in koji_proxy.listTagged(tag, package=package_name, inherit=True, event=event, type='rpm'):
-                        test_nvre = to_nvre(build)
-                        if is_embargoed(test_nvre):
-                            continue
-                        unembargoed_nvre = test_nvre
-                        break
+                    tag_history = koji_proxy.listTagged(tag, package=package_name, inherit=inherit, event=event, type='rpm')
 
-                    if unembargoed_nvre is None:
+                    # Skip any builds latter tagged than nvre.
+                    tag_history = itertools.dropwhile(lambda build: to_nvre(build) != nvre, tag_history)
+                    # Also skip the current latest build.
+                    next(tag_history)
+                    # Filter out any historical embargoed builds.
+                    tag_history = itertools.filterfalse(lambda build: is_embargoed(to_nvre(build)), tag_history)
+                    # Find the latest build in historical builds for the runtime assembly.
+                    unembargoed_latest = next(find_latest_builds(tag_history, runtime.assembly), None)
+                    if unembargoed_latest is None:
                         raise IOError(f'Unable to build unembargoed plashet. Lastest build of {package_name} ({nvre}) is embargoed but unable to find unembargoed version in history')
+
+                    unembargoed_nvre = to_nvre(unembargoed_latest)
                     plashet_concerns.append(f'Swapping embargoed nvr {nvre} for unembargoed nvr {unembargoed_nvre}.')
                     logger.info(plashet_concerns[-1])
                     nvre = unembargoed_nvre
+
+            nvre_obj = parse_nvr(nvre)
 
             if released_nvre_obj:
                 if compare_nvr(nvre_obj, released_nvre_obj) < 0:  # if the current nvr is less than the released NVR
@@ -608,30 +622,26 @@ def from_tags(config, brew_tag, embargoed_brew_tag, embargoed_nvr, signing_advis
                 # newest -> oldest tagging event for this tag/package combination.
 
                 tag_history = koji_proxy.listTagged(tag, package=package_name, inherit=True, event=event, type='rpm')
-                tracking = False  # There may have been embargo shenanigans above; so we can't assume [0] is our target nvr
-                for htag in tag_history:
-                    history_nvre = to_nvre(htag)
-                    if history_nvre == nvre:
-                        # We've found the target NVR in the list. Everything that follows can be considered for history.
-                        tracking = True
-                        continue
-                    if not tracking:
-                        # Haven't found our target NVR yet; so we can't consider this entry for history.
-                        continue
+
+                # Skip any builds latter tagged than nvre.
+                tag_history = itertools.dropwhile(lambda build: to_nvre(build) != nvre, tag_history)
+                # Also skip the current latest build.
+                next(tag_history)
+                # Find the latest build for the runtime assembly in remaining tag_history
+                history_latest = next(find_latest_builds(tag_history, runtime.assembly), None)
+                if history_latest:
+                    history_nvre = to_nvre(history_latest)
                     history_nvre_obj = parse_nvr(history_nvre)
                     if compare_nvr(history_nvre_obj, nvre_obj) > 0:
                         # Is our historical nvr > target for inclusion in plashet? If it is, a user of the plashet would
                         # pull in the historical nvr with a yum install. We can't allow that. Just give up -- this is
                         # not in line with the use case of history.
                         plashet_concerns.append(f'Unable to include previous for {package_name} because history {history_nvre} is newer than latest tagged {nvre}')
-                        break
                     if include_embargoed is False and is_embargoed(history_nvre):
                         # smh.. history is still under embargo. What you are guys doing?!
                         plashet_concerns.append(f'Unable to include previous for {package_name} because history {history_nvre} is under embargo')
-                        break
                     historical_nvres.add(history_nvre)
                     nvr_product_version[strip_epoch(history_nvre)] = product_version
-                    break
 
     if config.include_package and len(config.include_package) != len(desired_nvres):
         raise IOError(f'Did not find all command line included packages {config.include_package}; only found {desired_nvres}')
