@@ -1,24 +1,24 @@
 
-import click
-import xmlrpc.client as xmlrpclib
-import os
-import pathlib
 import glob
-from kobo.rpmlib import parse_nvr, compare_nvr
-import koji
 import logging
-import requests
+import os
 import ssl
-import time
-import wrapt
 import sys
-import yaml
-
-from requests_kerberos import HTTPKerberosAuth
+import time
+import xmlrpc.client as xmlrpclib
 from types import SimpleNamespace
 from typing import Dict, List
 
-BREW_URL = "https://brewhub.engineering.redhat.com/brewhub"
+import click
+import requests
+import yaml
+from kobo.rpmlib import compare_nvr, parse_nvr
+from requests_kerberos import HTTPKerberosAuth
+
+from doozerlib.runtime import Runtime
+from doozerlib.cli import cli
+from doozerlib.util import mkdirs
+
 ERRATA_URL = "http://errata-xmlrpc.devel.redhat.com/errata/errata_service"
 ERRATA_API_URL = "https://errata.engineering.redhat.com/api/v1/"
 
@@ -28,15 +28,6 @@ logger: logging.Logger = None
 # added to this list. It will be captured in plashet.yml for easy
 # reference.
 plashet_concerns = []
-
-
-def mkdirs(path, mode=0o755):
-    """
-    Make sure a directory exists. Similar to shell command `mkdir -p`.
-    :param path: Str path
-    :param mode: create directories with mode
-    """
-    pathlib.Path(str(path)).mkdir(mode=mode, parents=True, exist_ok=True)
 
 
 def update_advisory_builds(config, errata_proxy, advisory_id, nvres, nvr_product_version):
@@ -175,7 +166,7 @@ def _assemble_repo(config, nvres: List[str]):
 
                 if not matched_count:
                     logger.warning("Unable to find any {arch} rpms for {nvre} in {p} ; this may be ok if the package doesn't support the arch and it is not required for that arch".format(
-                                       arch=arch_name, nvre=nvre, p=get_brewroot_arch_base_path(config, nvre, signed)))
+                        arch=arch_name, nvre=nvre, p=get_brewroot_arch_base_path(config, nvre, signed)))
 
         if os.system('cd {repo_dir} && createrepo_c -i rpm_list .'.format(repo_dir=dest_arch_path)) != 0:
             raise IOError('Error creating repo at: {repo_dir}'.format(repo_dir=dest_arch_path))
@@ -196,7 +187,8 @@ def assemble_repo(config, nvres, event_info=None, extra_data: Dict = None):
     :return: n/a
     An exception will be thrown if no RPMs can be found matching an nvr.
     """
-    koji_proxy = KojiWrapper(koji.ClientSession(config.brew_url, opts={'krbservice': 'brewhub', 'serverca': '/etc/pki/brew/legacy.crt'}))
+    runtime: Runtime = config.runtime
+    koji_proxy = runtime.build_retrying_koji_client()
     koji_proxy.gssapi_login()
 
     with open(os.path.join(config.dest_dir, 'plashet.yml'), mode='w+', encoding='utf-8') as y:
@@ -256,10 +248,10 @@ def get_brewroot_arch_base_path(config, nvre, signed):
     package_release = parsed_nvr["release"]
 
     unsigned_arch_base_path = '{brew_packages}/{package_name}/{package_version}/{package_release}'.format(
-            brew_packages=config.packages_path,
-            package_name=package_name,
-            package_version=package_version,
-            package_release=package_release,
+        brew_packages=config.packages_path,
+        package_name=package_name,
+        package_version=package_version,
+        package_release=package_release,
     )
 
     if not os.path.isdir(unsigned_arch_base_path):
@@ -391,7 +383,7 @@ def setup_logging(dest_dir: str):
     logger.info('Invocation: ' + ' '.join(sys.argv))
 
 
-@click.group()
+@click.group("config:plashet", short_help="Creates a directory containing one or more arch specific yum repositories by using local symlinks.")
 @click.pass_context
 @click.option('--base-dir', default=os.getcwd(),
               help='Parent directory for repo directory. Defaults to current working directory.')
@@ -404,12 +396,11 @@ def setup_logging(dest_dir: str):
               help='For each arch to include in the plashet. Each arch will be a repo beneath the plashet dir.')
 @click.option('--errata-xmlrpc-url', default=ERRATA_URL, help='The errata xmlrpmc url')
 @click.option('--brew-root', metavar='PATH', default='/mnt/redhat/brewroot', help='Filesystem location of brew root')
-@click.option('--brew-url', metavar='URL', default=BREW_URL, help='Override default brew API url')
 @click.option('-x', '--exclude-package', metavar='NAME',
               multiple=True, default=[], help='Exclude one or more package names')
 @click.option('-i', '--include-package', metavar='NAME',
               multiple=True, default=[], help='Only include specified packages')
-def cli(ctx, base_dir, brew_root, name, signing_key_id, **kwargs):
+def config_plashet(ctx, base_dir, brew_root, name, signing_key_id, **kwargs):
     """
     Creates a directory containing one or more arch specific yum repositories by using local
     symlinks to a brewroot filesystem location. This avoids network transfer time.
@@ -453,11 +444,15 @@ def cli(ctx, base_dir, brew_root, name, signing_key_id, **kwargs):
     mkdirs(base_dir_path)
 
     dest_dir = os.path.join(base_dir_path, name)
+
     if os.path.exists(dest_dir):
         print('Destination {} already exists; name must be unique'.format(dest_dir))
         exit(1)
 
     setup_logging(dest_dir)
+
+    runtime: Runtime = ctx.obj
+    runtime.initialize(clone_distgits=False)
 
     ctx.obj = SimpleNamespace(base_dir=base_dir,
                               brew_root=brew_root,
@@ -467,30 +462,11 @@ def cli(ctx, base_dir, brew_root, name, signing_key_id, **kwargs):
                               base_dir_path=base_dir_path,
                               dest_dir=dest_dir,
                               signing_key_id=signing_key_id if signing_key_id else 'fd431d51',
+                              runtime=runtime,
                               **kwargs)
 
 
-class KojiWrapper(wrapt.ObjectProxy):
-    """
-    We've seen the koji client occasionally get
-    Connection Reset by Peer errors.. "requests.exceptions.ConnectionError: ('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))"
-    Under the theory that these operations just need to be retried,
-    this wrapper will automatically retry all invocations of koji APIs.
-    """
-
-    def __call__(self, *args, **kwargs):
-        retries = 4
-        while retries > 0:
-            try:
-                return self.__wrapped__(*args, **kwargs)
-            except requests.exceptions.ConnectionError as ce:
-                time.sleep(5)
-                retries -= 1
-                if retries == 0:
-                    raise ce
-
-
-@cli.command('from-tags', short_help='Collects a set of RPMs from specified brew tags -- signing if necessary.')
+@config_plashet.command('from-tags', short_help='Collects a set of RPMs from specified brew tags -- signing if necessary.')
 @click.pass_obj
 @click.option('-t', '--brew-tag', multiple=True, required=True, nargs=2, help='One or more brew tags whose RPMs should be included in the repo; format is: <tag> <product_version>')
 @click.option('-e', '--embargoed-brew-tag', multiple=True, required=False, help='If specified, any nvr found in these tags will be considered embargoed (unless they have already shipped)')
@@ -523,8 +499,8 @@ def from_tags(config, brew_tag, embargoed_brew_tag, embargoed_nvr, signing_advis
     \b
     --brew-tag <tag> <product_version> example: --brew-tag rhaos-4.5-rhel-8-candidate OSE-4.5-RHEL-8 --brew-tag .. ..
     """
-
-    koji_proxy = KojiWrapper(koji.ClientSession(config.brew_url, opts={'krbservice': 'brewhub', 'serverca': '/etc/pki/brew/legacy.crt'}))
+    runtime: Runtime = config.runtime
+    koji_proxy = runtime.build_retrying_koji_client()
     koji_proxy.gssapi_login()
     errata_proxy = xmlrpclib.ServerProxy(config.errata_xmlrpc_url)
 
@@ -715,7 +691,7 @@ def from_tags(config, brew_tag, embargoed_brew_tag, embargoed_nvr, signing_advis
     assemble_repo(config, all_nvres, event_info, extra_data=extra_data)
 
 
-@cli.command('from-images', short_help='Collects a set of RPMs attached to specified advisories.')
+@config_plashet.command('from-images', short_help='Collects a set of RPMs attached to specified advisories.')
 @click.pass_obj
 @click.option('--image', 'images', metavar='IMAGE_NVR', multiple=True, required=True, help='Image NVRs which contain RPMs to include in the plashet [multiple].')
 @click.option('--replace', multiple=True, metavar='RPM_PACKAGE_NVR', required=False, help='Include or override the package NVR used in the image(s) with this package version.')
@@ -738,14 +714,15 @@ def from_images(config, images, replace, brew_tag, signing_advisory_id, poll_for
     the signing advisory will be used.
     """
 
-    koji_proxy = KojiWrapper(koji.ClientSession(config.brew_url, opts={'krbservice': 'brewhub', 'serverca': '/etc/pki/brew/legacy.crt'}))
+    runtime: Runtime = config.runtime
+    koji_proxy = runtime.build_retrying_koji_client()
     koji_proxy.gssapi_login()
     errata_proxy = xmlrpclib.ServerProxy(config.errata_xmlrpc_url)
 
     package_nvrs: Dict[str, str] = dict()  # maps package name to nvr
 
     replaced = set()
-    sign_using: Dict[str,List[str]] = {}  # Maps production version to the nvrs it should be used to sign
+    sign_using: Dict[str, List[str]] = {}  # Maps production version to the nvrs it should be used to sign
     for nvr in replace:
         package_build = koji_proxy.getBuild(nvr)
         if not package_build:
@@ -823,7 +800,7 @@ def from_images(config, images, replace, brew_tag, signing_advisory_id, poll_for
     assemble_repo(config, nvrs)
 
 
-@cli.command('from-advisories', short_help='Collects a set of RPMs attached to specified advisories.')
+@config_plashet.command('from-advisories', short_help='Collects a set of RPMs attached to specified advisories.')
 @click.pass_obj
 @click.option('-a', '--advisory-id', multiple=True, required=True, help='Advisories to check')
 @click.option('--poll-for', default=0, type=click.INT, help='Allow up to this number of minutes for signing')
@@ -856,5 +833,4 @@ def from_advisories(config, advisory_id, module_builds, poll_for):
     assemble_repo(config, nvrs)
 
 
-if __name__ == '__main__':
-    cli()
+cli.add_command(config_plashet)
