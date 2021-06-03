@@ -429,7 +429,7 @@ class KojiWrapper(koji.ClientSession):
         'newRepo',
     ])
 
-    # Methods which cannot be constrained, but are considered safe to allow even wthen brew-event is set.
+    # Methods which cannot be constrained, but are considered safe to allow even when brew-event is set.
     # Why? If you know the parameters, those parameters should have already been constrained by another
     # koji API call.
     safe_methods = set([
@@ -438,6 +438,7 @@ class KojiWrapper(koji.ClientSession):
         'listArchives',
         'listRPMs',
         'getPackage',
+        'listTags',
     ])
 
     def __init__(self, koji_session_args, brew_event=None):
