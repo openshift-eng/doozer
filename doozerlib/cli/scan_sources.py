@@ -6,7 +6,8 @@ import yaml
 from doozerlib import brew, exectools, rhcos
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.cli import release_gen_payload as rgp
-from doozerlib.metadata import RebuildHint
+from doozerlib.metadata import RebuildHint, RebuildHintCode
+
 
 @cli.command("config:scan-sources", short_help="Determine if any rpms / images need to be rebuilt.")
 @click.option("--ci-kubeconfig", metavar='KC_PATH', required=False,
@@ -36,7 +37,7 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
     \b
     It will report machine-os-content updates available per imagestream.
     """
-    runtime.initialize(mode='both', clone_distgits=True)
+    runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
 
     all_rpm_metas = set(runtime.rpm_metas())
     all_image_metas = set(runtime.image_metas())
@@ -54,13 +55,13 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
         if key not in assessment_reason:
             assessment_reason[key] = rebuild_hint.reason
 
-    def add_image_meta_change(meta, msg):
+    def add_image_meta_change(meta, rebuild_hint: RebuildHint):
         nonlocal changing_image_metas
         changing_image_metas.add(meta)
-        add_assessment_reason(meta, RebuildHint(True, msg))
+        add_assessment_reason(meta, rebuild_hint)
         for descendant_meta in meta.get_descendants():
             changing_image_metas.add(descendant_meta)
-            add_assessment_reason(descendant_meta, RebuildHint(True, f'Ancestor {meta.distgit_key} is changing'))
+            add_assessment_reason(descendant_meta, RebuildHint(RebuildHintCode.ANCESTOR_CHANGING, f'Ancestor {meta.distgit_key} is changing'))
 
     with runtime.shared_koji_client_session() as koji_api:
         runtime.logger.info(f'scan-sources coordinate: brew_event: {koji_api.getLastEvent(brew.KojiWrapperOpts(brew_event_aware=True))}')
@@ -68,16 +69,15 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
 
         # First, scan for any upstream source code changes. If found, these are guaranteed rebuilds.
         for meta, rebuild_hint in runtime.scan_for_upstream_changes():
-            needs_rebuild = rebuild_hint.rebuild
-            reason = rebuild_hint.reason
+
             dgk = meta.distgit_key
             if not (meta.enabled or meta.mode == "disabled" and runtime.load_disabled):
                 # An enabled image's dependents are always loaded. Ignore disabled configs unless explicitly indicated
                 continue
 
             if meta.meta_type == 'rpm':
-                package_name = meta.get_package_name(default=None)
-                if needs_rebuild is False and package_name:  # If no change has been detected, check buildroots to see if it has changed
+                package_name = meta.get_package_name()
+                if not rebuild_hint.rebuild:  # If no change has been detected, check buildroots to see if it has changed
 
                     # A package may contain multiple RPMs; find the oldest one in the latest package build.
                     eldest_rpm_build = None
@@ -89,39 +89,29 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                     build_root_change = brew.has_tag_changed_since_build(runtime, koji_api, eldest_rpm_build, meta.build_root_tag(), inherit=True)
 
                     if build_root_change:
-                        reason = 'Oldest package rpm build was before buildroot change'
+                        rebuild_hint = RebuildHint(RebuildHintCode.BUILD_ROOT_CHANGING, 'Oldest package rpm build was before buildroot change')
                         runtime.logger.info(f'{dgk} ({eldest_rpm_build}) in {package_name} is older than more recent buildroot change: {build_root_change}')
-                        needs_rebuild = True
 
-                if reason:
-                    add_assessment_reason(meta, RebuildHint(needs_rebuild, reason=reason))
-
-                if needs_rebuild:
+                if rebuild_hint.rebuild:
+                    add_assessment_reason(meta, rebuild_hint)
                     changing_rpm_metas.add(meta)
-                    if package_name:
-                        changing_rpm_packages.add(package_name)
-                    else:
-                        runtime.logger.warning(f"Appears that {dgk} has never been built before; can't determine package name")
+                    changing_rpm_packages.add(package_name)
+
             elif meta.meta_type == 'image':
-                if not needs_rebuild:  # If no change has been detected, check configurations like image meta, repos, and streams to see if they have changed
+                if not rebuild_hint.rebuild:
+                    # If no upstream change has been detected, check configurations
+                    # like image meta, repos, and streams to see if they have changed
                     # We detect config changes by comparing their digest changes.
                     # The config digest of the previous build is stored at .oit/config_digest on distgit repo.
-                    dgr = meta.distgit_repo()
-                    path = Path(dgr.distgit_dir).joinpath(".oit", "config_digest")
-                    if not path.exists():  # alway request a buiild if config_digest hasn't been stored
-                        runtime.logger.info('%s config_digest does not exist; request a build', dgk)
-                        needs_rebuild = True
-                        reason = '.oit/config_digest does not exist'
-                    else:
-                        with path.open('r') as f:
-                            prev_digest = f.read()
+                    try:
+                        prev_digest = meta.fetch_cgit_file('.oit/config_digest').decode('utf-8')
                         current_digest = meta.calculate_config_digest(runtime.group_config, runtime.streams)
                         if current_digest.strip() != prev_digest.strip():
                             runtime.logger.info('%s config_digest %s is differing from %s', dgk, prev_digest, current_digest)
-                            needs_rebuild = True
-                            reason = 'Config changed'
-                if needs_rebuild:
-                    add_image_meta_change(meta, reason)
+                            add_image_meta_change(meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Config changed'))
+                    except exectools.RetryException:
+                        runtime.logger.info('%s config_digest cannot be retrieved; request a build', dgk)
+                        add_image_meta_change(meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Unable to retrieve config_digest'))
             else:
                 raise IOError(f'Unsupported meta type: {meta.meta_type}')
 
@@ -145,9 +135,9 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
     )
 
     for change_result in change_results.get():
-        meta, changing, msg = change_result
-        if changing:
-            add_image_meta_change(meta, msg)
+        meta, rebuild_hint = change_result
+        if rebuild_hint.rebuild:
+            add_image_meta_change(meta, rebuild_hint)
 
     # does_image_need_change() checks whether its non-member builder images have changed
     # but cannot determine whether member builder images have changed until anticipated
@@ -166,7 +156,7 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
             for builder in image_meta.config['from'].builder:
                 if builder.member and builder.member in changing_image_dgks:
                     runtime.logger.info(f'{dgk} will be rebuilt due to change in builder member ')
-                    add_image_meta_change(image_meta, f'Builder group member has changed: {builder.member}')
+                    add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.BUILDER_CHANGING, f'Builder group member has changed: {builder.member}'))
 
         if len(changing_image_metas) == len(changing_image_dgks):
             # The for loop didn't find anything new, we can break

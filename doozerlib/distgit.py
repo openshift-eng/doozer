@@ -144,6 +144,9 @@ class DistGitRepo(object):
             exectools.cmd_assert('rhpkg sources')
 
     def clone(self, distgits_root_dir, distgit_branch):
+        if self.metadata.prevent_cloning:
+            raise IOError(f'Attempt to clone downstream {self.metadata.distgit_key} after cloning disabled; a regression has been introduced.')
+
         with Dir(distgits_root_dir):
 
             namespace_dir = os.path.join(distgits_root_dir, self.metadata.namespace)

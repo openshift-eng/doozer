@@ -10,6 +10,7 @@ from enum import Enum
 
 from xml.etree import ElementTree
 from typing import NamedTuple
+import dateutil.parser
 
 from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
@@ -26,6 +27,7 @@ class CgitAtomFeedEntry(NamedTuple):
     updated: datetime.datetime
     id: str
     content: str
+
 
 #
 # These are used as labels to index selection of a subclass.
@@ -54,6 +56,12 @@ class RebuildHintCode(Enum):
     NEW_UPSTREAM_COMMIT = (True, 6)
     UPSTREAM_COMMIT_MISMATCH = (True, 7)
     BUILD_IS_UP_TO_DATE = (False, 8)
+    ANCESTOR_CHANGING = (True, 9)
+    CONFIG_CHANGE = (True, 10)
+    BUILDER_CHANGING = (True, 11)
+    BUILD_ROOT_CHANGING = (True, 12)
+    PACKAGE_CHANGE = (True, 13)
+    ARCHES_CHANGE = (True, 14)
 
 
 class RebuildHint(NamedTuple):
@@ -67,12 +75,13 @@ class RebuildHint(NamedTuple):
 
 class Metadata(object):
 
-    def __init__(self, meta_type, runtime, data_obj: Dict, commitish: Optional[str] = None):
+    def __init__(self, meta_type, runtime, data_obj: Dict, commitish: Optional[str] = None, prevent_cloning: Optional[bool] = False):
         """
-        :param: meta_type - a string. Index to the sub-class <'rpm'|'image'>.
-        :param: runtime - a Runtime object.
-        :param: name - a filename to load as metadata
-        :param: commitish: If not None, build from the specified upstream commit-ish instead of the branch tip.
+        :param meta_type - a string. Index to the sub-class <'rpm'|'image'>.
+        :param runtime - a Runtime object.
+        :param data_obj - a dictionary for the metadata configuration
+        :param commitish: If not None, build from the specified upstream commit-ish instead of the branch tip.
+        :param prevent_cloning: Throw an exception if upstream/downstream cloning operations are attempted.
         """
         self.meta_type = meta_type
         self.runtime = runtime
@@ -80,6 +89,11 @@ class Metadata(object):
         self.config_filename = data_obj.filename
         self.full_config_path = data_obj.path
         self.commitish = commitish
+
+        # For efficiency, we want to prevent some verbs from introducing changes that
+        # trigger distgit or upstream cloning. Setting this flag to True will cause
+        # an exception if it is attempted.
+        self.prevent_cloning = prevent_cloning
 
         # URL and branch of public upstream source are set later by Runtime.resolve_source()
         self.public_upstream_url = None
@@ -246,13 +260,12 @@ class Metadata(object):
         et = ElementTree.fromstring(content)
 
         entry_list = list()
-        # {*} ignores namespace awfulness in XML
-        for et_entry in et.findall('{*}entry'):
+        for et_entry in et.findall('{http://www.w3.org/2005/Atom}entry'):
             entry = CgitAtomFeedEntry(
-                title=et_entry.find('{*}title').text,
-                updated=datetime.datetime.fromisoformat(et_entry.find('{*}updated').text),
-                id=et_entry.find('{*}id').text,
-                content=et_entry.find('{*}content[@type="text"]').text
+                title=et_entry.find('{http://www.w3.org/2005/Atom}title').text,
+                updated=dateutil.parser.parse(et_entry.find('{http://www.w3.org/2005/Atom}updated').text),
+                id=et_entry.find('{http://www.w3.org/2005/Atom}id').text,
+                content=et_entry.find('{http://www.w3.org/2005/Atom}content[@type="text"]').text
             )
             entry_list.append(entry)
 
@@ -308,10 +321,17 @@ class Metadata(object):
             package_info = koji_api.getPackage(package_name)  # e.g. {'id': 66873, 'name': 'atomic-openshift-descheduler-container'}
             if not package_info:
                 raise IOError(f'No brew package is defined for {package_name}')
-            package_id = package_info['id']  # we could just contrain package name using pattern glob, but providing package ID # should be a much more efficient DB query.
+            package_id = package_info['id']  # we could just constrain package name using pattern glob, but providing package ID # should be a much more efficient DB query.
             # listBuilds returns all builds for the package; We need to limit the query to the builds
             # relevant for our major/minor.
-            pattern_prefix = f'{package_name}-v{self.branch_major_minor()}.'
+
+            # RPMs do not have a 'v' in front of their version; images do.
+            if self.meta_type == 'image':
+                ver_prefix = 'v'  # openshift-enterprise-console-container-v4.7.0-202106032231.p0.git.d9f4379
+            else:
+                ver_prefix = ''  # openshift-clients-4.7.0-202106032231.p0.git.e29b355.el8
+
+            pattern_prefix = f'{package_name}-{ver_prefix}{self.branch_major_minor()}.'
 
             if assembly is None:
                 assembly = self.runtime.assembly
@@ -323,10 +343,24 @@ class Metadata(object):
                                              state=None if build_state is None else build_state.value,
                                              pattern=f'{pattern_prefix}{extra_pattern}{pattern_suffix}*',
                                              queryOpts={'limit': 1, 'order': '-creation_event_id'})
+
                 # Ensure the suffix ends the string OR at least terminated by a '.' .
                 # This latter check ensures that 'assembly.how' doesn't not match a build from
                 # "assembly.howdy'.
-                return [b for b in builds if b['nvr'].endswith(pattern_suffix) or f'{pattern_suffix}.' in b['nvr']]
+                refined = [b for b in builds if b['nvr'].endswith(pattern_suffix) or f'{pattern_suffix}.' in b['nvr']]
+
+                if refined:
+                    # A final sanity check to see if the build is tagged with something we
+                    # respect. There is a chance that a human may untag a build. There
+                    # is no standard practice at present in which they should (they should just trigger
+                    # a rebuild). If we find the latest build is not tagged appropriately, blow up
+                    # and let a human figure out what happened.
+                    check_nvr = refined[0]['nvr']
+                    tags = koji_api.listTags(build=check_nvr, pattern=f'{self.branch()}*')
+                    if not tags:
+                        raise IOError(f'Expected to find tag starting with {self.branch()} on latest build {check_nvr}; something has changed tags in an unexpected way')
+
+                return refined
 
             if not assembly:
                 # if assembly is '' (by parameter) or still None after runtime.assembly,
@@ -350,6 +384,7 @@ class Metadata(object):
                 self.logger.warning("No builds detected for using prefix: '%s' and assembly: %s" % (pattern_prefix, assembly))
                 return default
             raise IOError("No builds detected for %s using prefix: '%s' and assembly: %s" % (self.qualified_name, pattern_prefix, assembly))
+
         return builds[0]
 
     def get_latest_build_info(self, default=-1, **kwargs):
@@ -397,7 +432,7 @@ class Metadata(object):
             return RebuildHint(code=RebuildHintCode.NO_LATEST_BUILD,
                                reason=f'Component {component_name} has no latest build for assembly: {self.runtime.assembly}')
 
-        latest_build_creation = datetime.datetime.fromisoformat(latest_build['creation_time'])
+        latest_build_creation = dateutil.parser.parse(latest_build['creation_time'])
 
         # Log scan-sources coordinates throughout to simplify setting up scan-sources
         # function tests to reproduce real-life scenarios.
@@ -435,7 +470,7 @@ class Metadata(object):
                 return RebuildHint(code=RebuildHintCode.DISTGIT_ONLY_COMMIT_NEWER,
                                    reason='Distgit only commit is newer than last successful build')
 
-            last_failed_build_creation = datetime.datetime.fromisoformat(last_failed_build['creation_time'])
+            last_failed_build_creation = dateutil.parser.parse(last_failed_build['creation_time'])
             if last_failed_build_creation + datetime.timedelta(hours=6) > now:
                 return RebuildHint(code=RebuildHintCode.DELAYING_NEXT_ATTEMPT,
                                    reason='Waiting at least 6 hours after last failed build')
@@ -447,7 +482,15 @@ class Metadata(object):
         # In the case of alias (only legacy stuff afaik), check the cloned repo directory.
 
         if "git" in self.config.content.source:
-            out, _ = exectools.cmd_assert(["git", "ls-remote", self.config.content.source.git.url, self.branch()], strip=True)
+            remote_branch = self.runtime.detect_remote_source_branch(self.config.content.source.git)[0]
+            out, _ = exectools.cmd_assert(["git", "ls-remote", self.config.content.source.git.url, remote_branch], strip=True)
+            # Example output "296ac244f3e7fd2d937316639892f90f158718b0	refs/heads/openshift-4.8"
+            upstream_commit_hash = out.split()[0]
+        elif self.config.content.source.alias and self.runtime.group_config.sources and self.config.content.source.alias in self.runtime.group_config.sources:
+            # This is a new style alias with url information in group config
+            source_details = self.runtime.group_config.sources[self.config.content.source.alias]
+            remote_branch = self.runtime.detect_remote_source_branch(source_details)[0]
+            out, _ = exectools.cmd_assert(["git", "ls-remote", source_details.url, remote_branch], strip=True)
             # Example output "296ac244f3e7fd2d937316639892f90f158718b0	refs/heads/openshift-4.8"
             upstream_commit_hash = out.split()[0]
         else:
@@ -479,7 +522,7 @@ class Metadata(object):
 
             # Otherwise, there was a failed attempt at this upstream commit on record.
             # Make sure provide at least 6 hours between such attempts
-            last_attempt_time = datetime.datetime.fromisoformat(failed_commit_build['creation_time'])
+            last_attempt_time = dateutil.parser.parse(failed_commit_build['creation_time'])
             if last_attempt_time + datetime.timedelta(hours=6) < now:
                 return RebuildHint(code=RebuildHintCode.LAST_BUILD_FAILED,
                                    reason='It has been 6 hours since last failed build attempt')

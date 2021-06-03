@@ -3,12 +3,11 @@ from unittest import TestCase
 import re
 import datetime
 
-from mock import MagicMock, Mock
+from mock import MagicMock, Mock, patch
 
 from doozerlib.metadata import Metadata, CgitAtomFeedEntry, RebuildHintCode
 from doozerlib.brew import BuildStates
-from doozerlib.model import Model, Missing
-from doozerlib import exectools
+from doozerlib.model import Model
 
 
 class TestMetadata(TestCase):
@@ -17,6 +16,7 @@ class TestMetadata(TestCase):
         data_obj = MagicMock(key="foo", filename="foo.yml", data={"name": "foo"})
         runtime = MagicMock()
         runtime.group_config.urls.cgit = "http://distgit.example.com/cgit"
+        runtime.logger = Mock()
 
         koji_mock = Mock()
         koji_mock.__enter__ = Mock()
@@ -31,6 +31,7 @@ class TestMetadata(TestCase):
 
         runtime.assembly = 'hotfix_a'
         meta = Metadata("image", runtime, data_obj)
+        meta.logger = Mock()
 
         meta.get_component_name = Mock(return_value='foo-container')
         meta.branch_major_minor = Mock(return_value='4.7')
@@ -268,7 +269,8 @@ class TestMetadata(TestCase):
         ]
         self.assertEqual(meta.needs_rebuild().code, RebuildHintCode.NO_LATEST_BUILD)
 
-    def test_needs_rebuild_with_upstream(self):
+    @patch("doozerlib.metadata.exectools.cmd_assert", return_value=("296ac244f3e7fd2d937316639892f90f158718b0", ""))  # emulate response to ls-remote of openshift/release
+    def test_needs_rebuild_with_upstream(self, mock_cmd_assert):
         runtime = self.runtime
         meta = self.meta
         koji_mock = self.koji_mock
@@ -289,7 +291,6 @@ class TestMetadata(TestCase):
                 }
             }
         })
-        exectools.cmd_assert = Mock(return_value=(ls_remote_commit, ''))  # emulate response to ls-remote of openshift/release
 
         # If listBuilds returns nothing, we want to trigger a rebuild
         builds = []

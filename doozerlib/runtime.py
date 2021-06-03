@@ -291,7 +291,8 @@ class Runtime(object):
 
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
-                   no_group=False, clone_source=None, disabled=None):
+                   no_group=False, clone_source=None, disabled=None,
+                   prevent_cloning: bool = False):
 
         if self.initialized:
             return
@@ -553,7 +554,7 @@ class Runtime(object):
 
             if mode in ['images', 'both']:
                 for i in image_data.values():
-                    metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key), clone_source=clone_source)
+                    metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
                     self.image_map[metadata.distgit_key] = metadata
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
@@ -574,7 +575,7 @@ class Runtime(object):
                     if clone_source is None:
                         # Historically, clone_source defaulted to True for rpms.
                         clone_source = True
-                    metadata = RPMMetadata(self, r, self.upstream_commitish_overrides.get(r.key), clone_source=clone_source)
+                    metadata = RPMMetadata(self, r, self.upstream_commitish_overrides.get(r.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
                     self.rpm_map[metadata.distgit_key] = metadata
                 if not self.rpm_map:
                     self.logger.warning("No rpm metadata directories found for given options within: {}".format(self.group_dir))
@@ -1147,6 +1148,9 @@ class Runtime(object):
                         exectools.cmd_assert('git fetch --all', retries=3)
                         exectools.cmd_assert('git reset --hard @{upstream}', retries=3)
                 return source_dir
+
+            if meta.prevent_cloning:
+                raise IOError(f'Attempt to clone upstream {meta.distgit_key} after cloning disabled; a regression has been introduced.')
 
             url = source_details["url"]
             clone_branch, _ = self.detect_remote_source_branch(source_details)
