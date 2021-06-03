@@ -11,7 +11,7 @@ from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.image import ImageMetadata
 from doozerlib.runtime import Runtime
-from doozerlib.util import go_suffix_for_arch, red_print, yellow_print
+from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yellow_print
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
@@ -201,23 +201,7 @@ class PayloadGenerator:
         """
         tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in payload_images]
         lists_of_brew_builds = brew.get_tagged_builds(tag_component_tuples, "image", event=self.brew_event, session=self.brew_session, inherit=True)
-        brew_latest_builds = []
-        for builds in lists_of_brew_builds:  # builds are ordered from newest tagged to oldest tagged
-            chosen_build = None
-            if not builds:  # no builds for this component have ever been tagged
-                pass
-            elif not self.runtime.assembly:  # if assembly is not enabled, choose the true latest tagged
-                chosen_build = builds[0]
-            else:  # assembly is enabled
-                # find the newest build containing ".assembly.<assembly-name>" in its RELEASE field
-                chosen_build = next((build for build in builds if build["release"].endswith(f".assembly.{self.runtime.assembly}")), None)
-                if not chosen_build and self.runtime.assembly != "stream":
-                    # If no such build, fall back to the newest build containing ".assembly.stream"
-                    chosen_build = next((build for build in builds if build["release"].endswith(".assembly.stream")), None)
-                if not chosen_build:
-                    # If none of the builds have .assembly.stream in the RELEASE field, fall back to the latest build without .assembly in the RELEASE field
-                    chosen_build = next((build for build in builds if ".assembly." not in build["release"]), None)
-            brew_latest_builds.append(chosen_build)
+        brew_latest_builds = [find_latest_build(builds, self.runtime.assembly) for builds in lists_of_brew_builds]
 
         # look up the archives for each image (to get the RPMs that went into them)
         brew_build_ids = [b["id"] if b else 0 for b in brew_latest_builds]

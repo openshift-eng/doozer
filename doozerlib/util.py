@@ -1,25 +1,26 @@
-from __future__ import absolute_import, print_function, unicode_literals
-from pathlib import Path
-import pathlib
-import click
 import copy
 import os
-import yaml
+import pathlib
 import re
-from os.path import abspath
-from datetime import datetime
-from contextlib import contextmanager
-from inspect import getframeinfo, stack
-
-from sys import getsizeof, stderr
-from itertools import chain
 from collections import deque
+from contextlib import contextmanager
+from datetime import datetime
+from inspect import getframeinfo, stack
+from itertools import chain
+from os.path import abspath
+from pathlib import Path
+from sys import getsizeof, stderr
+from typing import Dict, Iterable, List, Optional
+
+import click
+import yaml
+
 try:
     from reprlib import repr
 except ImportError:
     pass
 
-from doozerlib import exectools, constants
+from doozerlib import constants, exectools
 
 
 def stringify(val):
@@ -451,3 +452,42 @@ def go_suffix_for_arch(arch: str) -> str:
 def brew_suffix_for_arch(arch: str) -> str:
     arch = brew_arch_for_go_arch(arch)  # translate either incoming arch style
     return brew_arch_suffixes[brew_arches.index(arch)]
+
+
+def find_latest_build(builds: List[Dict], assembly: Optional[str]) -> Optional[Dict]:
+    """ Find the latest build specific to the assembly in a list of builds belonging to the same component and brew tag
+    :param brew_builds: a list of build dicts sorted by tagging event in descending order
+    :param assembly: the name of assembly; None if assemblies support is disabled
+    :return: a brew build dict or None
+    """
+    chosen_build = None
+    if not assembly:  # if assembly is not enabled, choose the true latest tagged
+        chosen_build = builds[0] if builds else None
+    else:  # assembly is enabled
+        # find the newest build containing ".assembly.<assembly-name>" in its RELEASE field
+        chosen_build = next((build for build in builds if f".assembly.{assembly}." in f'{build["release"]}.'), None)
+        if not chosen_build and assembly != "stream":
+            # If no such build, fall back to the newest build containing ".assembly.stream"
+            chosen_build = next((build for build in builds if ".assembly.stream." in f'{build["release"]}.'), None)
+        if not chosen_build:
+            # If none of the builds have .assembly.stream in the RELEASE field, fall back to the latest build without .assembly in the RELEASE field
+            chosen_build = next((build for build in builds if ".assembly." not in f'{build["release"]}.'), None)
+    return chosen_build
+
+
+def find_latest_builds(brew_builds: Iterable[Dict], assembly: Optional[str]) -> Iterable[Dict]:
+    """ Find latest builds specific to the assembly in a list of brew builds.
+    :param brew_builds: a list of build dicts sorted by tagging event in descending order
+    :param assembly: the name of assembly; None if assemblies support is disabled
+    :return: an iterator of latest brew build dicts
+    """
+    # group builds by tag and component name
+    grouped_builds = {}  # key is (tag, component_name), value is a list of Brew build dicts
+    for build in brew_builds:
+        key = (build["tag_name"], build["name"])
+        grouped_builds.setdefault(key, []).append(build)
+
+    for builds in grouped_builds.values():  # builds are ordered from newest tagged to oldest tagged
+        chosen_build = find_latest_build(builds, assembly)
+        if chosen_build:
+            yield chosen_build
