@@ -39,6 +39,7 @@ class TestRPMBuilder(unittest.TestCase):
 
         rpm = rpmcfg.RPMMetadata(runtime, data_obj, clone_source=False)
         rpm.clone_source = mock.MagicMock(return_value=source_sha)
+        rpm.get_package_name_from_spec = mock.Mock(return_value='foo')
         rpm.logger = mock.MagicMock(spec=logging.Logger)
         rpm.private_fix = False
         rpm.pre_init_sha = source_sha
