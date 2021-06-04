@@ -264,7 +264,9 @@ class Runtime(object):
         # into the YAML content. If `vars` found, the format will be
         # preformed and the YAML model will reloaded from that result
         tmp_config = Model(self.gitdata.load_data(key='group').data)
-        replace_vars = tmp_config.vars
+        replace_vars = tmp_config.vars or Model()
+        if self.assembly:
+            replace_vars['runtime_assembly'] = self.assembly
         if replace_vars is not Missing:
             try:
                 group_yml = yaml.safe_dump(tmp_config.primitive(), default_flow_style=False)
@@ -516,6 +518,8 @@ class Runtime(object):
             replace_vars = {}
             if self.group_config.vars:
                 replace_vars = self.group_config.vars.primitive()
+            if self.assembly:
+                replace_vars['runtime_assembly'] = self.assembly
 
             # pre-load the image data to get the names for all images
             # eventually we can use this to allow loading images by
@@ -909,6 +913,8 @@ class Runtime(object):
         replace_vars = {}
         if self.group_config.vars:
             replace_vars = self.group_config.vars.primitive()
+        if self.assembly:
+            replace_vars['runtime_assembly'] = self.assembly
         data_obj = self.gitdata.load_data(path='images', key=distgit_name, replace_vars=replace_vars)
         if not data_obj:
             raise DoozerFatalError('Unable to resolve image metadata for {}'.format(distgit_name))
