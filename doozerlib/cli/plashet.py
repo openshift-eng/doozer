@@ -415,7 +415,7 @@ def config_plashet(ctx, base_dir, brew_root, name, signing_key_id, **kwargs):
 
     \b
     Example invocations:
-    $ ./plashet.py
+    $ doozer .... config:plashet
         --base-dir /some/base/dir --name my_plashet
         --repo-subdir os
         --arch x86_64 signed  --arch s390x unsigned
