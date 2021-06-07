@@ -6,6 +6,7 @@ import pathlib
 import json
 import traceback
 import datetime
+import re
 from enum import Enum
 
 from xml.etree import ElementTree
@@ -300,7 +301,7 @@ class Metadata(object):
             check_f=lambda req: req.code == 200)
         return req.read()
 
-    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE):
+    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None):
         """
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
         :param assembly: A non-default assembly name to search relative to. If not specified, runtime.assembly
@@ -311,6 +312,10 @@ class Metadata(object):
                          like p? and git commit (up to, but not including ".assembly.<name>" release
                          component). e.g. "*.git.<commit>.*   or '*.p1.*'
         :param build_state: 0=BUILDING, 1=COMPLETE, 2=DELETED, 3=FAILED, 4=CANCELED
+        :param el_target: In the case of an RPM, which can build for multiple targets, you can specify
+                            '7' for el7, '8' for el8, etc. You can also pass in a brew target that
+                            contains '....-rhel-?..' and the number will be extraced. If you want the true
+                            latest, leave as None.
         :return: Returns the most recent build object from koji for this package & assembly.
                  Example https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
         """
@@ -325,11 +330,20 @@ class Metadata(object):
             # listBuilds returns all builds for the package; We need to limit the query to the builds
             # relevant for our major/minor.
 
-            # RPMs do not have a 'v' in front of their version; images do.
+            rpm_suffix = ''  # By default, find the latest RPM build - regardless of el7, el8, ...
+
             if self.meta_type == 'image':
                 ver_prefix = 'v'  # openshift-enterprise-console-container-v4.7.0-202106032231.p0.git.d9f4379
             else:
+                # RPMs do not have a 'v' in front of their version; images do.
                 ver_prefix = ''  # openshift-clients-4.7.0-202106032231.p0.git.e29b355.el8
+                if el_target:
+                    el_target = f'-rhel-{el_target}'  # Whether the incoming value is an int, decimal str, or a target, normalize for regex
+                    target_match = re.match(r'.*-rhel-(\d+)(?:-|$)', str(el_target))  # tolerate incoming int with str()
+                    if target_match:
+                        rpm_suffix = f'.el{target_match.group(1)}'
+                    else:
+                        raise IOError(f'Unable to determine rhel version from specified el_target: {el_target}')
 
             pattern_prefix = f'{package_name}-{ver_prefix}{self.branch_major_minor()}.'
 
@@ -337,11 +351,12 @@ class Metadata(object):
                 assembly = self.runtime.assembly
 
             def latest_build_list(pattern_suffix):
-                # We need '*' after pattern_suffix for RPMs, which have an extra .el7/.el8 on their
-                # release field, normally.
+                # Include * after pattern_suffix to tolerate:
+                # 1. Matching an unspecified RPM suffix (e.g. .el7).
+                # 2. Other release components that might be introduced later.
                 builds = koji_api.listBuilds(packageID=package_id,
                                              state=None if build_state is None else build_state.value,
-                                             pattern=f'{pattern_prefix}{extra_pattern}{pattern_suffix}*',
+                                             pattern=f'{pattern_prefix}{extra_pattern}{pattern_suffix}*{rpm_suffix}',
                                              queryOpts={'limit': 1, 'order': '-creation_event_id'})
 
                 # Ensure the suffix ends the string OR at least terminated by a '.' .
@@ -356,9 +371,14 @@ class Metadata(object):
                     # a rebuild). If we find the latest build is not tagged appropriately, blow up
                     # and let a human figure out what happened.
                     check_nvr = refined[0]['nvr']
-                    tags = koji_api.listTags(build=check_nvr, pattern=f'{self.branch()}*')
-                    if not tags:
-                        raise IOError(f'Expected to find tag starting with {self.branch()} on latest build {check_nvr}; something has changed tags in an unexpected way')
+                    tags = {tag['name'] for tag in koji_api.listTags(build=check_nvr)}
+                    self.default_brew_target()
+                    acceptable_tags = set()
+                    acceptable_tags.update(self.config.targets or [])  # Permit standard targets if defined in meta
+                    acceptable_tags.update(self.config.hotfix_targets or [])  # Permit hotfix_targets if defined in meta
+                    acceptable_tags.update(self.candidate_brew_tags())  # Use determined tags (if nothing defined in meta)
+                    if not tags & acceptable_tags:
+                        raise IOError(f'Expected to find at least one of [{acceptable_tags}] on latest build {check_nvr} but found [{tags}]; something has changed tags in an unexpected way')
 
                 return refined
 
@@ -411,23 +431,36 @@ class Metadata(object):
         """
         raise IOError('Subclass must implement')
 
-    def needs_rebuild(self) -> RebuildHint:
+    def needs_rebuild(self):
+        if self.config.targets:
+            # If this meta has multiple build targets, check currency of each
+            for target in self.config.targets:
+                hint = self._target_needs_rebuild(el_target=target)
+                if hint.rebuild or hint.code == RebuildHintCode.DELAYING_NEXT_ATTEMPT:
+                    # No need to look for more
+                    return hint
+            return hint
+        else:
+            return self._target_needs_rebuild(el_target=None)
+
+    def _target_needs_rebuild(self, el_target=None) -> RebuildHint:
         """
         Checks whether the current upstream commit has a corresponding successful downstream build.
         Take care to not unnecessarily trigger a clone of the distgit
         or upstream source as it will dramatically increase the time needed for scan-sources.
-        Returns: (rebuild:<bool>, message: description of why).
+        :param el_target: A brew build target or literal '7', '8', or rhel to perform the search for.
+        :return: Returns (rebuild:<bool>, message: description of why).
         """
         now = datetime.datetime.utcnow()
 
         component_name = self.get_component_name(default='')
         if not component_name:
-            # This can happen for RPMs if they have never been rebased into
-            # distgit.
+            # This can happen for RPMs if they have never been rebased into distgit.
             return RebuildHint(code=RebuildHintCode.NO_COMPONENT,
                                reason='Could not determine component name; assuming it has never been built')
 
-        latest_build = self.get_latest_build(default=None)
+        latest_build = self.get_latest_build(default=None, el_target=el_target)
+
         if not latest_build:
             return RebuildHint(code=RebuildHintCode.NO_LATEST_BUILD,
                                reason=f'Component {component_name} has no latest build for assembly: {self.runtime.assembly}')
@@ -465,7 +498,8 @@ class Metadata(object):
 
             # Check whether a build attempt for this assembly has failed.
             last_failed_build = self.get_latest_build(default=None,
-                                                      build_state=BuildStates.FAILED)  # How recent was the last failed build?
+                                                      build_state=BuildStates.FAILED,
+                                                      el_target=el_target)  # How recent was the last failed build?
             if not last_failed_build:
                 return RebuildHint(code=RebuildHintCode.DISTGIT_ONLY_COMMIT_NEWER,
                                    reason='Distgit only commit is newer than last successful build')
@@ -503,7 +537,8 @@ class Metadata(object):
 
         # Scan for any build in this assembly which also includes the git commit.
         upstream_commit_build = self.get_latest_build(default=None,
-                                                      extra_pattern=f'*{git_component}*')  # Latest build for this commit.
+                                                      extra_pattern=f'*{git_component}*',
+                                                      el_target=el_target)  # Latest build for this commit.
 
         if not upstream_commit_build:
             # There is no build for this upstream commit. Two options to assess:
@@ -513,7 +548,8 @@ class Metadata(object):
             # Check whether a build attempt with this commit has failed before.
             failed_commit_build = self.get_latest_build(default=None,
                                                         extra_pattern=f'*{git_component}*',
-                                                        build_state=BuildStates.FAILED)  # Have we tried before and failed?
+                                                        build_state=BuildStates.FAILED,
+                                                        el_target=el_target)  # Have we tried before and failed?
 
             # If not, this is a net-new upstream commit. Build it.
             if not failed_commit_build:

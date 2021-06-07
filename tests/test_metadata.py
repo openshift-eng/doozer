@@ -28,16 +28,17 @@ class TestMetadata(TestCase):
 
         self.package_id = 5
         koji_mock.getPackage = Mock(return_value={'name': 'foo-container', 'id': self.package_id})
+        koji_mock.listTags = Mock(return_value=[{'name': 'rhaos-4.7-rhel-8-candidate'}])
 
         runtime.assembly = 'hotfix_a'
-        meta = Metadata("image", runtime, data_obj)
-        meta.logger = Mock()
-
-        meta.get_component_name = Mock(return_value='foo-container')
-        meta.branch_major_minor = Mock(return_value='4.7')
+        image_meta = Metadata("image", runtime, data_obj)
+        image_meta.logger = Mock()
+        image_meta.get_component_name = Mock(return_value='foo-container')
+        image_meta.branch_major_minor = Mock(return_value='4.7')
+        image_meta.candidate_brew_tags = Mock(return_value=['rhaos-4.7-rhel-8-candidate', 'rhaos-4.7-rhel-7-candidate'])
 
         self.runtime = runtime
-        self.meta = meta
+        self.meta = image_meta
         self.koji_mock = koji_mock
 
     def test_cgit_url(self):
@@ -51,7 +52,8 @@ class TestMetadata(TestCase):
     def build_record(self, creation_dt: datetime.datetime, assembly, name='foo-container',
                      version='4.7.0', p='p0', epoch=None, git_commit='4c0ed6d',
                      release_prefix=None, release_suffix='',
-                     build_state: BuildStates = BuildStates.COMPLETE):
+                     build_state: BuildStates = BuildStates.COMPLETE,
+                     is_rpm: bool = False):
         """
         :return: Returns an artificial brew build record.
         """
@@ -69,13 +71,15 @@ class TestMetadata(TestCase):
         if assembly is not None:
             release += f'.assembly.{assembly}{release_suffix}'
 
+        ver_prefix = '' if is_rpm else 'v'
+
         return {
             'name': name,
             'package_name': name,
             'version': version,
             'release': release,
             'epoch': epoch,
-            'nvr': f'{name}-v{version}-{release}',
+            'nvr': f'{name}-{ver_prefix}{version}-{release}',
             'build_id': creation_dt.timestamp(),
             'creation_event_id': creation_dt.timestamp(),
             'creation_ts': creation_dt.timestamp(),
@@ -130,7 +134,7 @@ class TestMetadata(TestCase):
         ]
         self.assertIsNone(meta.get_latest_build(default=None))
 
-        # If there is a build from the 'stream' assembly, it shold be
+        # If there is a build from the 'stream' assembly, it should be
         # returned.
         builds = [
             self.build_record(now, assembly='not_ours'),
@@ -205,6 +209,46 @@ class TestMetadata(TestCase):
         ]
         self.assertEqual(meta.get_latest_build(default=None, extra_pattern='*.git.1234567.*'), builds[1])
 
+    def test_get_latest_build_multi_target(self):
+        meta = self.meta
+        koji_mock = self.koji_mock
+        now = datetime.datetime.utcnow()
+
+        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
+            return self._list_builds(builds, packageID=packageID, state=state, pattern=pattern, queryOpts=queryOpts)
+
+        koji_mock.listBuilds.side_effect = list_builds
+
+        # If listBuilds returns nothing, no build should be returned
+        builds = []
+        self.assertIsNone(meta.get_latest_build(default=None))
+
+        meta.meta_type = 'rpm'
+
+        # Make sure basic RPM search works (no 'v' prefix for version)
+        builds = [
+            self.build_record(now, assembly='not_ours', is_rpm=True),
+            self.build_record(now, assembly='stream', is_rpm=True)
+        ]
+        self.assertEqual(meta.get_latest_build(default=None), builds[1])
+
+        builds = [
+            self.build_record(now, assembly='not_ours', is_rpm=True),
+            self.build_record(now, assembly='stream', is_rpm=True, release_suffix='.el8')
+        ]
+        self.assertEqual(meta.get_latest_build(default=None), builds[1])  # No target should find el7 or el8
+        self.assertIsNone(meta.get_latest_build(default=None, el_target='7'))
+        self.assertEqual(meta.get_latest_build(default=None, el_target='8'), builds[1])
+
+        builds = [
+            self.build_record(now, assembly='not_ours', is_rpm=True),
+            self.build_record(now, assembly='stream', is_rpm=True, release_suffix='.el7'),
+            self.build_record(now - datetime.timedelta(hours=1), assembly='stream', is_rpm=True, release_suffix='.el8')
+        ]
+        self.assertEqual(meta.get_latest_build(default=None), builds[1])  # Latest is el7 by one hour
+        self.assertEqual(meta.get_latest_build(default=None, el_target='7'), builds[1])
+        self.assertEqual(meta.get_latest_build(default=None, el_target='8'), builds[2])
+
     def test_needs_rebuild_disgit_only(self):
         runtime = self.runtime
         meta = self.meta
@@ -268,6 +312,78 @@ class TestMetadata(TestCase):
             self.build_record(now, assembly='not_ours', git_commit=None)
         ]
         self.assertEqual(meta.needs_rebuild().code, RebuildHintCode.NO_LATEST_BUILD)
+
+    def test_needs_rebuild_disgit_only_multi_target(self):
+        runtime = self.runtime
+        meta = self.meta
+        koji_mock = self.koji_mock
+        now = datetime.datetime.utcnow()
+        then = now - datetime.timedelta(hours=5)
+
+        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
+            return self._list_builds(builds, packageID=packageID, state=state, pattern=pattern, queryOpts=queryOpts)
+
+        runtime.downstream_commitish_overrides = {}
+        koji_mock.listBuilds.side_effect = list_builds
+        meta.has_source = Mock(return_value=False)  # Emulate a distgit-only repo
+        meta.config.targets = meta.candidate_brew_tags()
+
+        # If listBuilds returns nothing, we want to trigger a rebuild
+        builds = []
+        self.assertEqual(meta.needs_rebuild().code, RebuildHintCode.NO_LATEST_BUILD)
+
+        meta.meta_type = 'rpm'
+        meta.cgit_atom_feed = Mock()
+
+        # Even if there is a el7 build, we won't find el8 and this results in no latest build
+        meta.cgit_atom_feed.return_value = [
+            CgitAtomFeedEntry(title='', content='', updated=now, id='1234567')
+        ]
+        builds = [
+            self.build_record(then, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el7')
+        ]
+        self.assertEqual(meta.needs_rebuild().code, RebuildHintCode.NO_LATEST_BUILD)
+
+        # Now establish a build for each target, but don't satisfy currency condition yet.
+        builds = [
+            self.build_record(then, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el7'),
+            self.build_record(then, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el8')
+        ]
+        self.assertEqual(meta.needs_rebuild().code, RebuildHintCode.DISTGIT_ONLY_COMMIT_NEWER)
+
+        builds = [
+            self.build_record(then, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el7', build_state=BuildStates.FAILED),
+            self.build_record(then, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el8')
+        ]
+        self.assertEqual(meta.needs_rebuild().code, RebuildHintCode.DISTGIT_ONLY_COMMIT_NEWER)
+
+        # Now let's have the builds start satisfying currency
+        meta.cgit_atom_feed.return_value = [
+            CgitAtomFeedEntry(title='', content='', updated=then, id='1234567')
+        ]
+
+        # If both builds are newer, no rebuild is necessary
+        builds = [
+            self.build_record(now, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el7'),
+            self.build_record(now, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el8')
+        ]
+        self.assertEqual(meta.needs_rebuild().code, RebuildHintCode.DISTGIT_ONLY_COMMIT_OLDER)
+
+        # If a build is newer, but el7 failed
+        builds = [
+            self.build_record(now, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el7', build_state=BuildStates.FAILED),
+            self.build_record(then - datetime.timedelta(hours=7), assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el7'),
+            self.build_record(now, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el8')
+        ]
+        self.assertEqual(meta.needs_rebuild().code, RebuildHintCode.DELAYING_NEXT_ATTEMPT)
+
+        # If a build is newer, but el8 failed
+        builds = [
+            self.build_record(now, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el8', build_state=BuildStates.FAILED),
+            self.build_record(then - datetime.timedelta(hours=7), assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el8'),
+            self.build_record(now, assembly=runtime.assembly, git_commit=None, is_rpm=True, release_suffix='.el7')
+        ]
+        self.assertEqual(meta.needs_rebuild().code, RebuildHintCode.DELAYING_NEXT_ATTEMPT)
 
     @patch("doozerlib.metadata.exectools.cmd_assert", return_value=("296ac244f3e7fd2d937316639892f90f158718b0", ""))  # emulate response to ls-remote of openshift/release
     def test_needs_rebuild_with_upstream(self, mock_cmd_assert):

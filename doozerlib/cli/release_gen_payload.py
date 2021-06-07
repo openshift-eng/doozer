@@ -11,11 +11,7 @@ from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.image import ImageMetadata
 from doozerlib.runtime import Runtime
-<<<<<<< HEAD
 from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yellow_print
-=======
-from doozerlib.util import go_suffix_for_arch, red_print, yellow_print, isolate_assembly_in_release
->>>>>>> e7135b6 (Do not assume release endswith .assembly.<name>)
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
