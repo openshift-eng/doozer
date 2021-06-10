@@ -372,13 +372,12 @@ class Metadata(object):
                     # and let a human figure out what happened.
                     check_nvr = refined[0]['nvr']
                     tags = {tag['name'] for tag in koji_api.listTags(build=check_nvr)}
-                    self.default_brew_target()
-                    acceptable_tags = set()
-                    acceptable_tags.update(self.config.targets or [])  # Permit standard targets if defined in meta
-                    acceptable_tags.update(self.config.hotfix_targets or [])  # Permit hotfix_targets if defined in meta
-                    acceptable_tags.update(self.candidate_brew_tags())  # Use determined tags (if nothing defined in meta)
-                    if not tags & acceptable_tags:
-                        raise IOError(f'Expected to find at least one of [{acceptable_tags}] on latest build {check_nvr} but found [{tags}]; something has changed tags in an unexpected way')
+                    # RPMS have multiple targets, so our self.branch() isn't perfect.
+                    # We should permit rhel-8/rhel-7/etc.
+                    tag_prefix = self.branch().rsplit('-', 1)[0] + '-'   # String off the rhel version.
+                    accepted_tags = [name for name in tags if name.startswith(tag_prefix)]
+                    if not accepted_tags:
+                        raise IOError(f'Expected to find at least one tag starting with {self.branch()} on latest build {check_nvr} but found [{tags}]; something has changed tags in an unexpected way')
 
                 return refined
 
