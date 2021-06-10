@@ -16,6 +16,7 @@ class TestMetadata(TestCase):
         data_obj = MagicMock(key="foo", filename="foo.yml", data={"name": "foo"})
         runtime = MagicMock()
         runtime.group_config.urls.cgit = "http://distgit.example.com/cgit"
+        runtime.group_config.scan_freshness.threshold_hours = 6
         runtime.logger = Mock()
 
         koji_mock = Mock()
@@ -35,6 +36,7 @@ class TestMetadata(TestCase):
         image_meta.logger = Mock()
         image_meta.get_component_name = Mock(return_value='foo-container')
         image_meta.branch_major_minor = Mock(return_value='4.7')
+        image_meta.branch = Mock(return_value='rhaos-4.7-rhel-8')
         image_meta.candidate_brew_tags = Mock(return_value=['rhaos-4.7-rhel-8-candidate', 'rhaos-4.7-rhel-7-candidate'])
 
         self.runtime = runtime
