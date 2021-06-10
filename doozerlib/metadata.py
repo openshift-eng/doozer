@@ -319,13 +319,13 @@ class Metadata(object):
         :return: Returns the most recent build object from koji for this package & assembly.
                  Example https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
         """
-        package_name = self.get_component_name()
+        component_name = self.get_component_name()
         builds = []
 
         with self.runtime.pooled_koji_client_session() as koji_api:
-            package_info = koji_api.getPackage(package_name)  # e.g. {'id': 66873, 'name': 'atomic-openshift-descheduler-container'}
+            package_info = koji_api.getPackage(component_name)  # e.g. {'id': 66873, 'name': 'atomic-openshift-descheduler-container'}
             if not package_info:
-                raise IOError(f'No brew package is defined for {package_name}')
+                raise IOError(f'No brew package is defined for {component_name}')
             package_id = package_info['id']  # we could just constrain package name using pattern glob, but providing package ID # should be a much more efficient DB query.
             # listBuilds returns all builds for the package; We need to limit the query to the builds
             # relevant for our major/minor.
@@ -345,7 +345,7 @@ class Metadata(object):
                     else:
                         raise IOError(f'Unable to determine rhel version from specified el_target: {el_target}')
 
-            pattern_prefix = f'{package_name}-{ver_prefix}{self.branch_major_minor()}.'
+            pattern_prefix = f'{component_name}-{ver_prefix}{self.branch_major_minor()}.'
 
             if assembly is None:
                 assembly = self.runtime.assembly
@@ -425,7 +425,7 @@ class Metadata(object):
         :param default: If the component name cannot be determined,
         :return: Returns the component name of the image. This is the name in the nvr
         that brew assigns to component build. Component name is synonymous with package name.
-        For RPMs, spec files declare the package name. For images, it is always based on
+        For RPMs, spec files declare the package name. For images, it is usually based on
         the distgit repo name + '-container'.
         """
         raise IOError('Subclass must implement')
