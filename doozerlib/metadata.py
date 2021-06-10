@@ -452,6 +452,9 @@ class Metadata(object):
         """
         now = datetime.datetime.utcnow()
 
+        # If a build fails, how long will we wait before trying again
+        rebuild_interval = self.runtime.group_config.scan_freshness.threshold_hours or 6
+
         component_name = self.get_component_name(default='')
         if not component_name:
             # This can happen for RPMs if they have never been rebased into distgit.
@@ -504,12 +507,12 @@ class Metadata(object):
                                    reason='Distgit only commit is newer than last successful build')
 
             last_failed_build_creation = dateutil.parser.parse(last_failed_build['creation_time'])
-            if last_failed_build_creation + datetime.timedelta(hours=6) > now:
+            if last_failed_build_creation + datetime.timedelta(hours=rebuild_interval) > now:
                 return RebuildHint(code=RebuildHintCode.DELAYING_NEXT_ATTEMPT,
-                                   reason='Waiting at least 6 hours after last failed build')
+                                   reason=f'Waiting at least {rebuild_interval} hours after last failed build')
 
             return RebuildHint(code=RebuildHintCode.LAST_BUILD_FAILED,
-                               reason='Last build failed > 6 hours ago; making another attempt')
+                               reason=f'Last build failed > {rebuild_interval} hours ago; making another attempt')
 
         # Otherwise, we have source. In the case of git source, check the upstream with ls-remote.
         # In the case of alias (only legacy stuff afaik), check the cloned repo directory.
@@ -556,14 +559,14 @@ class Metadata(object):
                                    reason='A new upstream commit exists and needs to be built')
 
             # Otherwise, there was a failed attempt at this upstream commit on record.
-            # Make sure provide at least 6 hours between such attempts
+            # Make sure provide at least rebuild_interval hours between such attempts
             last_attempt_time = dateutil.parser.parse(failed_commit_build['creation_time'])
-            if last_attempt_time + datetime.timedelta(hours=6) < now:
+            if last_attempt_time + datetime.timedelta(hours=rebuild_interval) < now:
                 return RebuildHint(code=RebuildHintCode.LAST_BUILD_FAILED,
-                                   reason='It has been 6 hours since last failed build attempt')
+                                   reason=f'It has been {rebuild_interval} hours since last failed build attempt')
 
             return RebuildHint(code=RebuildHintCode.DELAYING_NEXT_ATTEMPT,
-                               reason=f'Last build of upstream commit {upstream_commit_hash} failed, but holding off for at least 6 hours before next attempt')
+                               reason=f'Last build of upstream commit {upstream_commit_hash} failed, but holding off for at least {rebuild_interval} hours before next attempt')
 
         if latest_build['nvr'] != upstream_commit_build['nvr']:
             return RebuildHint(code=RebuildHintCode.UPSTREAM_COMMIT_MISMATCH,
