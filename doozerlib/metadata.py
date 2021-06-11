@@ -450,7 +450,7 @@ class Metadata(object):
         :param el_target: A brew build target or literal '7', '8', or rhel to perform the search for.
         :return: Returns (rebuild:<bool>, message: description of why).
         """
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
 
         # If a build fails, how long will we wait before trying again
         rebuild_interval = self.runtime.group_config.scan_freshness.threshold_hours or 6
