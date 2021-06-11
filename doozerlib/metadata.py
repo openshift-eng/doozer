@@ -364,7 +364,7 @@ class Metadata(object):
                 # "assembly.howdy'.
                 refined = [b for b in builds if b['nvr'].endswith(pattern_suffix) or f'{pattern_suffix}.' in b['nvr']]
 
-                if refined:
+                if refined and build_state == BuildStates.COMPLETE:
                     # A final sanity check to see if the build is tagged with something we
                     # respect. There is a chance that a human may untag a build. There
                     # is no standard practice at present in which they should (they should just trigger
