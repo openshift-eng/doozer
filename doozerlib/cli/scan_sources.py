@@ -108,10 +108,14 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                         current_digest = meta.calculate_config_digest(runtime.group_config, runtime.streams)
                         if current_digest.strip() != prev_digest.strip():
                             runtime.logger.info('%s config_digest %s is differing from %s', dgk, prev_digest, current_digest)
-                            add_image_meta_change(meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Config changed'))
+                            rebuild_hint = RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Metadata configucation change')
                     except exectools.RetryException:
                         runtime.logger.info('%s config_digest cannot be retrieved; request a build', dgk)
-                        add_image_meta_change(meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Unable to retrieve config_digest'))
+                        rebuild_hint = RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Unable to retrieve config_digest')
+
+                if rebuild_hint.rebuild:
+                    add_image_meta_change(meta, rebuild_hint)
+
             else:
                 raise IOError(f'Unsupported meta type: {meta.meta_type}')
 
