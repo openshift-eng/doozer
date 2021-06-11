@@ -23,7 +23,6 @@ import urllib.parse
 import signal
 import io
 import pathlib
-import koji
 from typing import Optional, List, Dict, Tuple
 import time
 
@@ -45,6 +44,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 from doozerlib import util
 from doozerlib import brew
+from doozerlib.assembly import group_for_assembly
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -259,6 +259,12 @@ class Runtime(object):
                 self.named_semaphores[p] = new_semaphore
                 return new_semaphore
 
+    def get_releases_config(self):
+        load = self.gitdata.load_data(key='releases')
+        if not load:
+            return Model()
+        return Model(load.data)
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
@@ -276,7 +282,7 @@ class Runtime(object):
             except KeyError as e:
                 raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
 
-        return tmp_config
+        return group_for_assembly(self.get_releases_config(), self.assembly, tmp_config)
 
     def init_state(self):
         self.state = dict(state.TEMPLATE_BASE_STATE)

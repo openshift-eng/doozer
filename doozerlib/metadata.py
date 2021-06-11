@@ -6,6 +6,7 @@ import pathlib
 import json
 import traceback
 import datetime
+import time
 import re
 from enum import Enum
 
@@ -19,8 +20,8 @@ from . import exectools
 from . import logutil
 from .brew import BuildStates
 
-
 from .model import Model, Missing
+from doozerlib.assembly import metadata_config_for_assembly
 
 
 class CgitAtomFeedEntry(NamedTuple):
@@ -111,29 +112,17 @@ class Metadata(object):
 
         self.runtime.logger.debug("Loading metadata from {}".format(self.full_config_path))
 
-        self.config = Model(data_obj.data)
+        self.raw_config = Model(data_obj.data)  # Config straight from ocp-build-data
+        assert (self.raw_config.name is not Missing)
+
+        self.config = metadata_config_for_assembly(runtime.get_releases_config(), runtime.assembly, meta_type, self.distgit_key, self.raw_config)
+        self.namespace, self._component_name = Metadata.extract_component_info(meta_type, self.name, self.config)
 
         self.mode = self.config.get('mode', CONFIG_MODE_DEFAULT).lower()
         if self.mode not in CONFIG_MODES:
             raise ValueError('Invalid mode for {}'.format(self.config_filename))
 
         self.enabled = (self.mode == CONFIG_MODE_DEFAULT)
-
-        # Basic config validation. All images currently required to have a name in the metadata.
-        # This is required because from.member uses these data to populate FROM in images.
-        # It would be possible to query this data from the distgit Dockerflie label, but
-        # not implementing this until we actually need it.
-        assert (self.config.name is not Missing)
-
-        # Choose default namespace for config data
-        if meta_type == "image":
-            self.namespace = "containers"
-        else:
-            self.namespace = "rpms"
-
-        # Allow config data to override
-        if self.config.distgit.namespace is not Missing:
-            self.namespace = self.config.distgit.namespace
 
         self.qualified_name = "%s/%s" % (self.namespace, self.name)
         self.qualified_key = "%s/%s" % (self.namespace, self.distgit_key)
@@ -145,7 +134,8 @@ class Metadata(object):
 
         # List of Brew targets.
         # The first target is the primary target, against which tito will direct build.
-        # Others are secondary targets. We will use Brew API to build against secondary targets with the same distgit commit as the primary target.
+        # Others are secondary targets. We will use Brew API to build against secondary
+        # targets with the same distgit commit as the primary target.
         self.targets = self.determine_targets()
 
     def determine_targets(self) -> List[str]:
@@ -371,7 +361,14 @@ class Metadata(object):
                     # a rebuild). If we find the latest build is not tagged appropriately, blow up
                     # and let a human figure out what happened.
                     check_nvr = refined[0]['nvr']
-                    tags = {tag['name'] for tag in koji_api.listTags(build=check_nvr)}
+                    for i in range(2):
+                        tags = {tag['name'] for tag in koji_api.listTags(build=check_nvr)}
+                        if tags:
+                            break
+                        # Observed that a complete build needs some time before it gets tagged. Give it some
+                        # time if not immediately available.
+                        time.sleep(60)
+
                     # RPMS have multiple targets, so our self.branch() isn't perfect.
                     # We should permit rhel-8/rhel-7/etc.
                     tag_prefix = self.branch().rsplit('-', 1)[0] + '-'   # String off the rhel version.
@@ -420,15 +417,56 @@ class Metadata(object):
             return default
         return build['name'], build['version'], build['release']
 
-    def get_component_name(self, default=-1) -> str:
+    @classmethod
+    def extract_component_info(cls, meta_type: str, meta_name: str, config_model: Model) -> Tuple[str, str]:
         """
-        :param default: If the component name cannot be determined,
-        :return: Returns the component name of the image. This is the name in the nvr
+        Determine the component information for either RPM or Image metadata
+        configs.
+        :param meta_type: 'rpm' or 'image'
+        :param meta_name: The name of the component's distgit
+        :param config_model: The configuration for the metadata.
+        :return: Return (namespace, component_name)
+        """
+
+        # Choose default namespace for config data
+        if meta_type == "image":
+            namespace = "containers"
+        else:
+            namespace = "rpms"
+
+        # Allow config data to override namespace
+        if config_model.distgit.namespace is not Missing:
+            namespace = config_model.distgit.namespace
+
+        if namespace == "rpms":
+            # For RPMS, component names must match package name and be in metadata config
+            return namespace, config_model.name
+
+        # For RPMs, by default, the component is the name of the distgit,
+        # but this can be overridden in the config yaml.
+        component_name = meta_name
+
+        # For apbs, component name seems to have -apb appended.
+        # ex. http://dist-git.host.prod.eng.bos.redhat.com/cgit/apbs/openshift-enterprise-mediawiki/tree/Dockerfile?h=rhaos-3.7-rhel-7
+        if namespace == "apbs":
+            component_name = "%s-apb" % component_name
+
+        if namespace == "containers":
+            component_name = "%s-container" % component_name
+
+        if config_model.distgit.component is not Missing:
+            component_name = config_model.distgit.component
+
+        return namespace, component_name
+
+    def get_component_name(self) -> str:
+        """
+        :return: Returns the component name of the metadata. This is the name in the nvr
         that brew assigns to component build. Component name is synonymous with package name.
         For RPMs, spec files declare the package name. For images, it is usually based on
         the distgit repo name + '-container'.
         """
-        raise IOError('Subclass must implement')
+        return self._component_name
 
     def needs_rebuild(self):
         if self.config.targets:
@@ -455,11 +493,7 @@ class Metadata(object):
         # If a build fails, how long will we wait before trying again
         rebuild_interval = self.runtime.group_config.scan_freshness.threshold_hours or 6
 
-        component_name = self.get_component_name(default='')
-        if not component_name:
-            # This can happen for RPMs if they have never been rebased into distgit.
-            return RebuildHint(code=RebuildHintCode.NO_COMPONENT,
-                               reason='Could not determine component name; assuming it has never been built')
+        component_name = self.get_component_name()
 
         latest_build = self.get_latest_build(default=None, el_target=el_target)
 

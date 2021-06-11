@@ -95,29 +95,6 @@ class ImageMetadata(Metadata):
     def for_release(self):
         return self.config.get('for_release', True)
 
-    def get_component_name(self, default=-1):
-        """
-        :param default: Not used. Here to stay consistent with similar rpmcfg.get_component_name
-        :return: Returns the component name of the image. This is the name in the nvr
-        that brew assigns to this image's build. Component name is synonymous with package name.
-        """
-        # By default, the bugzilla component is the name of the distgit,
-        # but this can be overridden in the config yaml.
-        component_name = self.name
-
-        # For apbs, component name seems to have -apb appended.
-        # ex. http://dist-git.host.prod.eng.bos.redhat.com/cgit/apbs/openshift-enterprise-mediawiki/tree/Dockerfile?h=rhaos-3.7-rhel-7
-        if self.namespace == "apbs":
-            component_name = "%s-apb" % component_name
-
-        if self.namespace == "containers":
-            component_name = "%s-container" % component_name
-
-        if self.config.distgit.component is not Missing:
-            component_name = self.config.distgit.component
-
-        return component_name
-
     def get_brew_image_name_short(self):
         # Get image name in the Brew pullspec. e.g. openshift3/ose-ansible --> openshift3-ose-ansible
         return self.image_name.replace("/", "-")
