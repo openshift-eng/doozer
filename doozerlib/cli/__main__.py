@@ -43,7 +43,7 @@ import io
 import json
 import functools
 import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 import re
 import semver
 import urllib
@@ -244,10 +244,12 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
+@click.option("--force-yum-updates", is_flag=True, default=False,
+              help="Inject \"yum update -y\" in each stage. This ensures the component image will be able to override RPMs it is inheriting from its parent image using RPMs in the rebuild plashet.")
 @option_commit_message
 @option_push
 @pass_runtime
-def images_update_dockerfile(runtime, version, release, repo_type, message, push):
+def images_update_dockerfile(runtime: Runtime, version: Optional[str], release: Optional[str], repo_type: str, force_yum_updates: bool, message: str, push: bool):
     """
     Updates the Dockerfile in each distgit repository with the latest metadata and
     the version/release information specified. This does not update the Dockerfile
@@ -300,7 +302,7 @@ def images_update_dockerfile(runtime, version, release, repo_type, message, push
             dgr = image_meta.distgit_repo()
             _, prev_release, prev_private_fix = dgr.extract_version_release_private_fix()
             dgr.private_fix = bool(prev_private_fix)  # preserve the .p? field when updating the release
-            (real_version, real_release) = dgr.update_distgit_dir(version, release, prev_release)
+            (real_version, real_release) = dgr.update_distgit_dir(version, release, prev_release, force_yum_updates)
             dgr.commit(message)
             dgr.tag(real_version, real_release)
             state.record_image_success(lstate, image_meta)
@@ -500,10 +502,12 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
+@click.option("--force-yum-updates", is_flag=True, default=False,
+              help="Inject \"yum update -y\" in each stage. This ensures the component image will be able to override RPMs it is inheriting from its parent image using RPMs in the rebuild plashet.")
 @option_commit_message
 @option_push
 @pass_runtime
-def images_rebase(runtime, version, release, embargoed, repo_type, message, push):
+def images_rebase(runtime: Runtime, version: Optional[str], release: Optional[str], embargoed: bool, repo_type: str, force_yum_updates: bool, message: str, push: bool):
     """
     Many of the Dockerfiles stored in distgit are based off of content managed in GitHub.
     For example, openshift-enterprise-node should always closely reflect the changes
@@ -555,7 +559,7 @@ def images_rebase(runtime, version, release, embargoed, repo_type, message, push
             dgr = image_meta.distgit_repo()
             if embargoed:
                 dgr.private_fix = True
-            (real_version, real_release) = dgr.rebase_dir(version, release, terminate_event)
+            (real_version, real_release) = dgr.rebase_dir(version, release, terminate_event, force_yum_updates)
             sha = dgr.commit(message, log_diff=True)
             dgr.tag(real_version, real_release)
             runtime.add_record(
