@@ -468,6 +468,7 @@ class Metadata(object):
                                reason=f'Component {component_name} has no latest build for assembly: {self.runtime.assembly}')
 
         latest_build_creation = dateutil.parser.parse(latest_build['creation_time'])
+        latest_build_creation = latest_build_creation.replace(tzinfo=datetime.timezone.utc)  # If time lacks timezone info, interpret as UTC
 
         # Log scan-sources coordinates throughout to simplify setting up scan-sources
         # function tests to reproduce real-life scenarios.
@@ -507,6 +508,7 @@ class Metadata(object):
                                    reason='Distgit only commit is newer than last successful build')
 
             last_failed_build_creation = dateutil.parser.parse(last_failed_build['creation_time'])
+            last_failed_build_creation = last_failed_build_creation.replace(tzinfo=datetime.timezone.utc)  # If time lacks timezone info, interpret as UTC
             if last_failed_build_creation + datetime.timedelta(hours=rebuild_interval) > now:
                 return RebuildHint(code=RebuildHintCode.DELAYING_NEXT_ATTEMPT,
                                    reason=f'Waiting at least {rebuild_interval} hours after last failed build')
@@ -561,6 +563,8 @@ class Metadata(object):
             # Otherwise, there was a failed attempt at this upstream commit on record.
             # Make sure provide at least rebuild_interval hours between such attempts
             last_attempt_time = dateutil.parser.parse(failed_commit_build['creation_time'])
+            last_attempt_time = last_attempt_time.replace(tzinfo=datetime.timezone.utc)  # If time lacks timezone info, interpret as UTC
+
             if last_attempt_time + datetime.timedelta(hours=rebuild_interval) < now:
                 return RebuildHint(code=RebuildHintCode.LAST_BUILD_FAILED,
                                    reason=f'It has been {rebuild_interval} hours since last failed build attempt')
