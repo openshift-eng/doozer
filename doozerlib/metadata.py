@@ -364,7 +364,7 @@ class Metadata(object):
                 # "assembly.howdy'.
                 refined = [b for b in builds if b['nvr'].endswith(pattern_suffix) or f'{pattern_suffix}.' in b['nvr']]
 
-                if refined:
+                if refined and build_state == BuildStates.COMPLETE:
                     # A final sanity check to see if the build is tagged with something we
                     # respect. There is a chance that a human may untag a build. There
                     # is no standard practice at present in which they should (they should just trigger
@@ -450,7 +450,7 @@ class Metadata(object):
         :param el_target: A brew build target or literal '7', '8', or rhel to perform the search for.
         :return: Returns (rebuild:<bool>, message: description of why).
         """
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
 
         # If a build fails, how long will we wait before trying again
         rebuild_interval = self.runtime.group_config.scan_freshness.threshold_hours or 6
