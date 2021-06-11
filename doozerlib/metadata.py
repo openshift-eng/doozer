@@ -400,7 +400,7 @@ class Metadata(object):
 
         if not builds:
             if default != -1:
-                self.logger.warning("No builds detected for using prefix: '%s' and assembly: %s" % (pattern_prefix, assembly))
+                self.logger.info("No builds detected for using prefix: '%s', extra_pattern: '%s', assembly: '%s', build_state: '%s', el_target: '%s'" % (pattern_prefix, extra_pattern, assembly, build_state.name, el_target))
                 return default
             raise IOError("No builds detected for %s using prefix: '%s' and assembly: %s" % (self.qualified_name, pattern_prefix, assembly))
 
