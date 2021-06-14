@@ -2,7 +2,7 @@ import yaml
 
 from unittest import TestCase
 
-from doozerlib.assembly import merger, group_for_assembly, metadata_config_for_assembly
+from doozerlib.assembly import merger, assembly_group_config, assembly_metadata_config, assembly_basis_event
 from doozerlib.model import Model, Missing
 
 
@@ -34,6 +34,8 @@ releases:
 
   ART_2:
     assembly:
+      basis:
+        brew_event: 5
       members:
         rpms:
         - distgit_key: openshift-kuryr
@@ -148,7 +150,11 @@ releases:
             {'r': [1, 2]}
         )
 
-    def test_group_for_assembly(self):
+    def test_assembly_basis_event(self):
+        self.assertEqual(assembly_basis_event(self.releases_config, 'ART_1'), None)
+        self.assertEqual(assembly_basis_event(self.releases_config, 'ART_6'), 5)
+
+    def test_assembly_group_config(self):
 
         group_config = Model(dict_to_model={
             'arches': [
@@ -160,33 +166,33 @@ releases:
             }
         })
 
-        config = group_for_assembly(self.releases_config, 'ART_1', group_config)
+        config = assembly_group_config(self.releases_config, 'ART_1', group_config)
         self.assertEqual(len(config.arches), 3)
 
-        config = group_for_assembly(self.releases_config, 'ART_2', group_config)
+        config = assembly_group_config(self.releases_config, 'ART_2', group_config)
         self.assertEqual(len(config.arches), 2)
 
         # 3 inherits from 2 an only overrides advisory value
-        config = group_for_assembly(self.releases_config, 'ART_3', group_config)
+        config = assembly_group_config(self.releases_config, 'ART_3', group_config)
         self.assertEqual(len(config.arches), 2)
         self.assertEqual(config.advisories.image, 31)
         self.assertEqual(config.advisories.extras, 1)  # Extras never override, so should be from group_config
 
         # 4 inherits from 3, but sets "advsories!"
-        config = group_for_assembly(self.releases_config, 'ART_4', group_config)
+        config = assembly_group_config(self.releases_config, 'ART_4', group_config)
         self.assertEqual(len(config.arches), 2)
         self.assertEqual(config.advisories.image, 41)
         self.assertEqual(config.advisories.extras, Missing)
 
         # 5 inherits from 4, but sets "advsories!" (overriding 4's !) and "arches!"
-        config = group_for_assembly(self.releases_config, 'ART_5', group_config)
+        config = assembly_group_config(self.releases_config, 'ART_5', group_config)
         self.assertEqual(len(config.arches), 1)
         self.assertEqual(config.advisories.image, 51)
 
-        config = group_for_assembly(self.releases_config, 'not_defined', group_config)
+        config = assembly_group_config(self.releases_config, 'not_defined', group_config)
         self.assertEqual(len(config.arches), 1)
 
-    def test_metadata_config_for_assembly(self):
+    def test_asembly_metadata_config(self):
 
         meta_config = Model(dict_to_model={
             'owners': ['kuryr-team@redhat.com'],
@@ -204,7 +210,7 @@ releases:
             'name': 'openshift-kuryr'
         })
 
-        config = metadata_config_for_assembly(self.releases_config, 'ART_1', 'rpm', 'openshift-kuryr', meta_config)
+        config = assembly_metadata_config(self.releases_config, 'ART_1', 'rpm', 'openshift-kuryr', meta_config)
         # Ensure no loss
         self.assertEqual(config.name, 'openshift-kuryr')
         self.assertEqual(len(config.owners), 1)
@@ -213,7 +219,7 @@ releases:
         self.assertEqual(config.content.source.git.url, 'git@github.com:jupierce/kuryr-kubernetes.git')
         self.assertEqual(config.content.source.git.branch.target, '1_hash')
 
-        config = metadata_config_for_assembly(self.releases_config, 'ART_5', 'rpm', 'openshift-kuryr', meta_config)
+        config = assembly_metadata_config(self.releases_config, 'ART_5', 'rpm', 'openshift-kuryr', meta_config)
         # Ensure no loss
         self.assertEqual(config.name, 'openshift-kuryr')
         self.assertEqual(len(config.owners), 1)
@@ -222,7 +228,7 @@ releases:
         self.assertEqual(config.content.source.git.url, 'git@github.com:jupierce/kuryr-kubernetes.git')
         self.assertEqual(config.content.source.git.branch.target, '2_hash')
 
-        config = metadata_config_for_assembly(self.releases_config, 'ART_6', 'rpm', 'openshift-kuryr', meta_config)
+        config = assembly_metadata_config(self.releases_config, 'ART_6', 'rpm', 'openshift-kuryr', meta_config)
         # Ensure no loss
         self.assertEqual(config.name, 'openshift-kuryr')
         self.assertEqual(len(config.owners), 1)

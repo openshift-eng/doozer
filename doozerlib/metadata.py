@@ -21,7 +21,7 @@ from . import logutil
 from .brew import BuildStates
 
 from .model import Model, Missing
-from doozerlib.assembly import metadata_config_for_assembly
+from doozerlib.assembly import assembly_metadata_config, assembly_basis_event
 
 
 class CgitAtomFeedEntry(NamedTuple):
@@ -115,7 +115,7 @@ class Metadata(object):
         self.raw_config = Model(data_obj.data)  # Config straight from ocp-build-data
         assert (self.raw_config.name is not Missing)
 
-        self.config = metadata_config_for_assembly(runtime.get_releases_config(), runtime.assembly, meta_type, self.distgit_key, self.raw_config)
+        self.config = assembly_metadata_config(runtime.get_releases_config(), runtime.assembly, meta_type, self.distgit_key, self.raw_config)
         self.namespace, self._component_name = Metadata.extract_component_info(meta_type, self.name, self.config)
 
         self.mode = self.config.get('mode', CONFIG_MODE_DEFAULT).lower()
@@ -378,11 +378,31 @@ class Metadata(object):
 
                 return refined
 
+            if self.config['is']:
+                # The image metadata (or, more likely, the currently assembly) has the image
+                # pinned. Return only the pinned NVR. When a child image is being rebased,
+                # it uses get_latest_build to find the parent NVR to use (if it is not
+                # included in the "-i" doozer argument). We need it to find the pinned NVR
+                # to place in its Dockerfile.
+                # Pinning also informs gen-payload when attempting to assemble a release.
+                # strict means raise an exception if not found.
+                return koji_api.getBuild(self.config['is'], strict=True)
+
             if not assembly:
                 # if assembly is '' (by parameter) or still None after runtime.assembly,
                 # we are returning true latest.
                 builds = latest_build_list('')
             else:
+                basis_event = assembly_basis_event(self.runtime.get_releases_config(), assembly=assembly)
+                if basis_event:
+                    self.logger.warning(f'Constraining image search to stream assembly due to assembly basis event {basis_event}')
+                    # If an assembly has a basis event, its latest images can only be sourced from
+                    # "is:" or the stream assembly. We've already checked for "is" above.
+                    assembly = 'stream'
+
+                # Assemblies without a basis will return assembly qualified builds for their
+                # latest images. This includes "stream" and "test", but could also include
+                # an assembly that is customer specific  with its own branch.
                 builds = latest_build_list(f'.assembly.{assembly}')
                 if not builds:
                     if assembly != 'stream':
