@@ -25,8 +25,10 @@ from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yel
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
 @click.option("--event-id", metavar='NUM', required=False, type=int,
               help="A Brew event ID. If specified, the latest images as of the given Brew event will be chosen for mirroring intead of now.")
+@click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
+              help="Architecture (brew nomenclature) to exclude from payload generation")
 @pass_runtime
-def release_gen_payload(runtime, is_name, is_namespace, organization, repository, event_id):
+def release_gen_payload(runtime, is_name, is_namespace, organization, repository, event_id, exclude_arch):
     """Generates two sets of input files for `oc` commands to mirror
 content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
@@ -92,7 +94,7 @@ read and propagate/expose this annotation in its display of the release image.
         istream_namespace=is_namespace if is_namespace else default_is_base_namespace()
     )
 
-    gen = PayloadGenerator(runtime, brew_session, event_id, base_target)
+    gen = PayloadGenerator(runtime, brew_session, event_id, base_target, exclude_arch)
     latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items = gen.load_latest_builds()
     gen.write_mirror_destinations(latest_builds, mismatched_siblings)
 
@@ -133,11 +135,12 @@ class BuildRecord(object):
 
 
 class PayloadGenerator:
-    def __init__(self, runtime: Runtime, brew_session: ClientSession, brew_event: Optional[int], base_target: SyncTarget):
+    def __init__(self, runtime: Runtime, brew_session: ClientSession, brew_event: Optional[int], base_target: SyncTarget, exclude_arches: Optional[List[str]] = None):
         self.runtime = runtime
         self.brew_session = brew_session
         self.brew_event = brew_event
         self.base_target = base_target
+        self.exclude_arches = exclude_arches or []
         self.state = runtime.state[runtime.command] = dict(state.TEMPLATE_IMAGE)
         self.bs_detector = build_status_detector.BuildStatusDetector(brew_session, runtime.logger)
 
@@ -327,6 +330,8 @@ class PayloadGenerator:
                     tag_name = image.image_name_short[4:] if image.image_name_short.startswith("ose-") else image.image_name_short  # it _should_ but... to be safe
                 for archive in record.archives:
                     arch = archive["arch"]
+                    if arch in self.exclude_arches:
+                        continue
                     pullspecs = archive["extra"]["docker"]["repositories"]
                     if not pullspecs or ":" not in pullspecs[-1]:  # in case of no pullspecs or invalid format
                         error = f"Unable to find pullspecs for: {image.image_name_short}"
