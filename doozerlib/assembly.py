@@ -50,7 +50,18 @@ def merger(a, b):
                     c[k] = a[k]
         return c
 
-    raise IOError(f'Unexpected value type: {type(a)}: {a}')
+    raise TypeError(f'Unexpected value type: {type(a)}: {a}')
+
+
+def _check_recursion(releases_config: Model, assembly: str):
+    found = []
+    next_assembly = assembly
+    while next_assembly and isinstance(releases_config, Model):
+        if next_assembly in found:
+            raise ValueError(f'Infinite recursion in {assembly} detected; {next_assembly} detected twice in chain')
+        found.append(next_assembly)
+        target_assembly = releases_config.releases[next_assembly].assembly
+        next_assembly = target_assembly.basis.assembly
 
 
 def assembly_group_config(releases_config: Model, assembly: str, group_config: Model) -> Model:
@@ -60,14 +71,16 @@ def assembly_group_config(releases_config: Model, assembly: str, group_config: M
     :param releases_config: A Model for releases.yaml.
     :param assembly: The name of the assembly
     :param group_config: The group config to merge into a new group config (original Model will not be altered)
+    :param _visited: Keeps track of visited assembly definitions to prevent infinite recursion.
     """
     if not assembly or not isinstance(releases_config, Model):
         return group_config
 
+    _check_recursion(releases_config, assembly)
     target_assembly = releases_config.releases[assembly].assembly
 
     if target_assembly.basis.assembly:  # Does this assembly inherit from another?
-        # Recursive apply ancestor assemblies
+        # Recursively apply ancestor assemblies
         group_config = assembly_group_config(releases_config, target_assembly.basis.assembly, group_config)
 
     target_assembly_group = target_assembly.group
@@ -91,6 +104,7 @@ def assembly_metadata_config(releases_config: Model, assembly: str, meta_type: s
     if not assembly or not isinstance(releases_config, Model):
         return meta_config
 
+    _check_recursion(releases_config, assembly)
     target_assembly = releases_config.releases[assembly].assembly
 
     if target_assembly.basis.assembly:  # Does this assembly inherit from another?
@@ -101,7 +115,7 @@ def assembly_metadata_config(releases_config: Model, assembly: str, meta_type: s
 
     component_list = target_assembly.members[f'{meta_type}s']
     for component_entry in component_list:
-        if component_entry.distgit_key == '*' or component_entry.distgit_key == distgit_key:
+        if component_entry.distgit_key == '*' or component_entry.distgit_key == distgit_key and component_entry.metadata:
             config_dict = merger(component_entry.metadata.primitive(), config_dict)
 
     return Model(dict_to_model=config_dict)
@@ -117,6 +131,7 @@ def assembly_basis_event(releases_config: Model, assembly: str) -> typing.Option
     if not assembly or not isinstance(releases_config, Model):
         return None
 
+    _check_recursion(releases_config, assembly)
     target_assembly = releases_config.releases[assembly].assembly
     if target_assembly.basis.brew_event:
         return int(target_assembly.basis.brew_event)
@@ -135,4 +150,5 @@ def assembly_config_finalize(releases_config: Model, assembly: str, rpm_metas, o
     :param ordered_image_metas: A list of image metadata to update relative to the assembly.
     :return: N/A. Metas are updated in-place. Only call during runtime.initialize.
     """
-
+    _check_recursion(releases_config, assembly)
+    pass

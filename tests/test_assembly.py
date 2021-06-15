@@ -94,6 +94,20 @@ releases:
                     target: customer_6
 
 
+  ART_INFINITE:
+    assembly:
+      basis:
+        assembly: ART_INFINITE
+      members:
+        rpms:
+        - distgit_key: '*'
+          metadata:
+            content:
+              source:
+                git:
+                  branch:
+                    target: customer_6
+
 """
         self.releases_config = Model(dict_to_model=yaml.safe_load(releases_yml))
 
@@ -154,6 +168,14 @@ releases:
         self.assertEqual(assembly_basis_event(self.releases_config, 'ART_1'), None)
         self.assertEqual(assembly_basis_event(self.releases_config, 'ART_6'), 5)
 
+        try:
+            assembly_basis_event(self.releases_config, 'ART_INFINITE')
+            self.fail('Expected ValueError on assembly infinite recursion')
+        except ValueError:
+            pass
+        except Exception as e:
+            self.fail(f'Expected ValueError on assembly infinite recursion but got: {type(e)}: {e}')
+
     def test_assembly_group_config(self):
 
         group_config = Model(dict_to_model={
@@ -191,6 +213,14 @@ releases:
 
         config = assembly_group_config(self.releases_config, 'not_defined', group_config)
         self.assertEqual(len(config.arches), 1)
+
+        try:
+            assembly_group_config(self.releases_config, 'ART_INFINITE', group_config)
+            self.fail('Expected ValueError on assembly infinite recursion')
+        except ValueError:
+            pass
+        except Exception as e:
+            self.fail(f'Expected ValueError on assembly infinite recursion but got: {type(e)}: {e}')
 
     def test_asembly_metadata_config(self):
 
@@ -236,3 +266,11 @@ releases:
         # Check that things were overridden. 6 changes branches for all rpms
         self.assertEqual(config.content.source.git.url, 'git@github.com:jupierce/kuryr-kubernetes.git')
         self.assertEqual(config.content.source.git.branch.target, 'customer_6')
+
+        try:
+            assembly_metadata_config(self.releases_config, 'ART_INFINITE', 'rpm', 'openshift-kuryr', meta_config)
+            self.fail('Expected ValueError on assembly infinite recursion')
+        except ValueError:
+            pass
+        except Exception as e:
+            self.fail(f'Expected ValueError on assembly infinite recursion but got: {type(e)}: {e}')

@@ -618,7 +618,7 @@ class Runtime(object):
             self.brew_event = self.assembly_basis_event
             self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
 
-        assembly_config_finalize(self.get_releases_config(), self.rpm_metas(), self.ordered_image_metas())
+        assembly_config_finalize(self.get_releases_config(), self.assembly, self.rpm_metas(), self.ordered_image_metas())
 
         if clone_distgits:
             self.clone_distgits()

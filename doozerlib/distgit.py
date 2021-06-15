@@ -1463,7 +1463,7 @@ class ImageDistGitRepo(DistGitRepo):
                 original_parents = dfp.parent_images
                 count = 0
                 for i, image in enumerate(parent_images):
-                    # Does this image inherit from an image defined in a different distgit?
+                    # Does this image inherit from an image defined in a different group member distgit?
                     if image.member is not Missing:
                         base = image.member
                         from_image_metadata = self.runtime.resolve_image(base, False)
@@ -1471,7 +1471,9 @@ class ImageDistGitRepo(DistGitRepo):
                         if from_image_metadata is None:
                             if not ignore_missing_base:
                                 raise IOError("Unable to find base image metadata [%s] in included images. Use --ignore-missing-base to ignore." % base)
-                            elif self.runtime.latest_parent_version:
+                            elif self.runtime.latest_parent_version or self.runtime.assembly_basis_event:
+                                # If there is a basis event, we must look for latest; we can't just persist
+                                # what is in the Dockerfile. It has to be constrained to the brew event.
                                 self.logger.info('[{}] parent image {} not included. Looking up FROM tag.'.format(self.config.name, base))
                                 base_meta = self.runtime.late_resolve_image(base)
                                 _, v, r = base_meta.get_latest_build_info()
@@ -1512,12 +1514,12 @@ class ImageDistGitRepo(DistGitRepo):
                             if not latest_build:
                                 raise IOError(f'Unable to find latest build for {assembly_msg}')
                             build_model = Model(dict_to_model=latest_build)
-                            if build_model.extra.parent_images is Missing:
+                            if build_model.extra.image.parent_images is Missing:
                                 raise IOError(f'Unable to find latest build parent images in {latest_build} for {assembly_msg}')
-                            elif len(build_model.extra.parent_images) != len(parent_images):
+                            elif len(build_model.extra.image.parent_images) != len(parent_images):
                                 raise IOError(f'Did not find the expected cardinality ({len(parent_images)} of parent images in {latest_build} for {assembly_msg}')
 
-                            # build_model.extra.parent_images is an array of tags (entries like openshift/golang-builder:rhel_8_golang_1.15).
+                            # build_model.extra.image.parent_images is an array of tags (entries like openshift/golang-builder:rhel_8_golang_1.15).
                             # We can't use floating tags for this, so we need to look up those tags in parent_image_builds,
                             # which is also in the extras data.
                             # example parent_image_builds: {'registry-proxy.engineering.redhat.com/rh-osbs/openshift-base-rhel8:v4.6.0.20210528.150530': {'id': 1616717,
@@ -1526,9 +1528,9 @@ class ImageDistGitRepo(DistGitRepo):
                             #       'nvr': 'openshift-golang-builder-container-v1.15.7-202103191923.el8'}}
                             # Note this map actually gets us to an NVR.
                             # Example latest_build return: https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
-                            target_parent_name = build_model.extra.parent_images[i]  # Which parent are looking for? e.g. 'openshift/golang-builder:rhel_8_golang_1.15'
+                            target_parent_name = build_model.extra.image.parent_images[i]  # Which parent are looking for? e.g. 'openshift/golang-builder:rhel_8_golang_1.15'
                             tag_pullspec = self.runtime.resolve_brew_image_url(target_parent_name)  # e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.15
-                            parent_build_info = build_model.extra.parent_image_builds[tag_pullspec]
+                            parent_build_info = build_model.extra.image.parent_image_builds[tag_pullspec]
                             if parent_build_info is Missing:
                                 raise IOError(f'Unable to resolve parent {target_parent_name} in {latest_build} for {assembly_msg}; tried {tag_pullspec}')
                             parent_build_nvr = parent_build_info.nvr

@@ -291,7 +291,7 @@ class Metadata(object):
             check_f=lambda req: req.code == 200)
         return req.read()
 
-    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None):
+    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None, honor_is=True):
         """
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
         :param assembly: A non-default assembly name to search relative to. If not specified, runtime.assembly
@@ -306,6 +306,7 @@ class Metadata(object):
                             '7' for el7, '8' for el8, etc. You can also pass in a brew target that
                             contains '....-rhel-?..' and the number will be extraced. If you want the true
                             latest, leave as None.
+        :param honor_is: If True, and an assembly component specifies 'is', that nvr will be returned.
         :return: Returns the most recent build object from koji for this package & assembly.
                  Example https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
         """
@@ -339,6 +340,13 @@ class Metadata(object):
 
             if assembly is None:
                 assembly = self.runtime.assembly
+
+            def default_return():
+                msg = f"No builds detected for using prefix: '{pattern_prefix}', extra_pattern: '{extra_pattern}', assembly: '{assembly}', build_state: '{build_state.name}', el_target: '{el_target}'"
+                if default != -1:
+                    self.logger.info(msg)
+                    return default
+                raise IOError(msg)
 
             def latest_build_list(pattern_suffix):
                 # Include * after pattern_suffix to tolerate:
@@ -378,15 +386,32 @@ class Metadata(object):
 
                 return refined
 
-            if self.config['is']:
-                # The image metadata (or, more likely, the currently assembly) has the image
-                # pinned. Return only the pinned NVR. When a child image is being rebased,
-                # it uses get_latest_build to find the parent NVR to use (if it is not
-                # included in the "-i" doozer argument). We need it to find the pinned NVR
-                # to place in its Dockerfile.
-                # Pinning also informs gen-payload when attempting to assemble a release.
+            if honor_is and self.config['is']:
+                if build_state != BuildStates.COMPLETE:
+                    # If this component is defined by 'is', history failures, etc, do not matter.
+                    return default_return()
+
+                # under 'is' for RPMs, we expect 'el7' and/or 'el8', etc. For images, just 'nvr'.
+                isd = self.config['is']
+                if self.meta_type == 'rpm':
+                    if el_target is None:
+                        raise ValueError(f'Expected el_target to be set when querying a pinned RPM component {self.distgit_key}')
+                    is_nvr = isd[f'el{el_target}']
+                    if not is_nvr:
+                        return default_return()
+                else:
+                    # The image metadata (or, more likely, the currently assembly) has the image
+                    # pinned. Return only the pinned NVR. When a child image is being rebased,
+                    # it uses get_latest_build to find the parent NVR to use (if it is not
+                    # included in the "-i" doozer argument). We need it to find the pinned NVR
+                    # to place in its Dockerfile.
+                    # Pinning also informs gen-payload when attempting to assemble a release.
+                    is_nvr = isd.nvr
+                    if not is_nvr:
+                        raise ValueError(f'Did not find nvr field in pinned Image component {self.distgit_key}')
+
                 # strict means raise an exception if not found.
-                return koji_api.getBuild(self.config['is'], strict=True)
+                return koji_api.getBuild(is_nvr, strict=True)
 
             if not assembly:
                 # if assembly is '' (by parameter) or still None after runtime.assembly,
@@ -416,10 +441,7 @@ class Metadata(object):
                             builds = []
 
         if not builds:
-            if default != -1:
-                self.logger.info("No builds detected for using prefix: '%s', extra_pattern: '%s', assembly: '%s', build_state: '%s', el_target: '%s'" % (pattern_prefix, extra_pattern, assembly, build_state.name, el_target))
-                return default
-            raise IOError("No builds detected for %s using prefix: '%s' and assembly: %s" % (self.qualified_name, pattern_prefix, assembly))
+            return default_return()
 
         return builds[0]
 
