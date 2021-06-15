@@ -719,6 +719,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             except Exception as owners_e:
                 yellow_print(f'Error finding assignee in OWNERS for {public_repo_url}: {owners_e}')
 
+            fork_ci_build_root_coordinate = None
             fork_branch_df_digest = None  # digest of dockerfile image names
             if fork_branch:
                 # There is already an ART reconciliation branch. Our fork branch might be up-to-date
@@ -735,7 +736,6 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                     # made the fork.
                     fork_branch_df_digest = 'DOCKERFILE_NOT_FOUND'
 
-                fork_ci_build_root_coordinate = None
                 if ci_operator_config_path.exists():
                     fork_ci_operator_config = yaml.safe_load(ci_operator_config_path.read_text(encoding='utf-8'))  # Read in content from fork
                     fork_ci_build_root_coordinate = fork_ci_operator_config.get('build_root_image', None)
