@@ -850,7 +850,7 @@ open_prs: {open_prs}
                 yellow_print(diff_text)
 
                 if not moist_run:
-                    commit_prefix = ''
+                    commit_prefix = image_meta.config.content.source.ci_alignment.streams_prs.commit_prefix or ''
                     if repo_name.startswith('kubernetes'):
                         # A couple repos have this requirement; openshift/kubernetes & openshift/kubernetes-autoscaler.
                         # This check may suffice  for now, but it may eventually need to be in doozer metadata.
