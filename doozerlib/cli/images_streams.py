@@ -367,6 +367,11 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
             dfp.add_lines("RUN yum-config-manager --save '--setopt=skip_if_unavailable=True'")
             dfp.add_lines("RUN yum-config-manager --save '--setopt=*.skip_if_unavailable=True'")
 
+        if config.final_user:
+            # If the image should not run as root/0, then allow metadata to specify a
+            # true final user.
+            dfp.add_lines(f'USER {config.final_user}')
+
         # We've arrived at a Dockerfile.
         dockerfile_content = dfp.content
 
