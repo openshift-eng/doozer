@@ -118,7 +118,7 @@ class TestMetadata(TestCase):
         runtime = self.runtime
         meta = self.meta
         koji_mock = self.koji_mock
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
 
         def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
             return self._list_builds(builds, packageID=packageID, state=state, pattern=pattern, queryOpts=queryOpts)
@@ -214,7 +214,7 @@ class TestMetadata(TestCase):
     def test_get_latest_build_multi_target(self):
         meta = self.meta
         koji_mock = self.koji_mock
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
 
         def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
             return self._list_builds(builds, packageID=packageID, state=state, pattern=pattern, queryOpts=queryOpts)
@@ -255,7 +255,7 @@ class TestMetadata(TestCase):
         runtime = self.runtime
         meta = self.meta
         koji_mock = self.koji_mock
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         then = now - datetime.timedelta(hours=5)
 
         def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
@@ -319,7 +319,7 @@ class TestMetadata(TestCase):
         runtime = self.runtime
         meta = self.meta
         koji_mock = self.koji_mock
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         then = now - datetime.timedelta(hours=5)
 
         def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
@@ -392,7 +392,7 @@ class TestMetadata(TestCase):
         runtime = self.runtime
         meta = self.meta
         koji_mock = self.koji_mock
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         then = now - datetime.timedelta(hours=5)
 
         def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
