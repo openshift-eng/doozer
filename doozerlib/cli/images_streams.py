@@ -656,13 +656,20 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             public_branch = source_repo_branch
 
         # There are two standard upstream branching styles:
-        # release-4.x   : CI fast-forwards from master when appropriate
+        # release-4.x   : CI fast-forwards from default branch (master or main) when appropriate
         # openshift-4.x : Upstream team manages completely.
-        # For the former style, we may need to open the PRs against master.
+        # For the former style, we may need to open the PRs against the default branch (master or main).
         # For the latter style, always open directly against named branch
         if public_branch.startswith('release-') and prs_in_master:
-            # TODO: auto-detect default branch for repo instead of assuming master
-            public_branch = 'master'
+            public_branches, _ = exectools.cmd_assert(f'git ls-remote --heads {public_repo_url}', strip=True)
+            lines = public_branches.splitlines()
+            if [bl for bl in lines if bl.endswith('/main')]:
+                public_branch = 'main'
+            elif [bl for bl in lines if bl.endswith('/master')]:
+                public_branch = 'master'
+            else:
+                # There are ways of determining default branch without using naming conventions, but as of today, we don't need it.
+                raise IOError(f'Did not find master or main branch; unable to detect default branch: {public_branches}')
 
         _, org, repo_name = split_git_url(public_repo_url)
 
