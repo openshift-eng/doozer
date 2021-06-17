@@ -864,7 +864,7 @@ open_prs: {open_prs}
                 if not moist_run:
                     commit_prefix = image_meta.config.content.source.ci_alignment.streams_prs.commit_prefix or ''
                     if repo_name.startswith('kubernetes') and not commit_prefix:
-                        # Repos starting with 'kubernetes' don't have this in metadata atm. Preserving 
+                        # Repos starting with 'kubernetes' don't have this in metadata atm. Preserving
                         # historical behavior until they do.
                         commit_prefix = 'UPSTREAM: <carry>: '
                     commit_msg = f"""{commit_prefix}{first_commit_line}
@@ -904,11 +904,6 @@ __Roles & Responsibilities__:
   in `#aos-art` on Slack. If necessary, the changes required by this pull request can be
   introduced with a separate PR opened by the component team. Once the repository is aligned,
   this PR will be closed automatically.
-- Component owners are responsible for removing conflicting directives from their
-  [ci-operator config in openshift/release](https://github.com/openshift/release/tree/master/ci-operator/config).
-  When aligning through ART reconciliation PRs, you do not need to specify `from:` or
-  any image overrides in your ci-operator configuration ([example stanzas which could be removed](https://github.com/openshift/release/blob/6d4796cf7daa84295a783326f2be98e00f921bb6/ci-operator/config/openshift/cluster-authentication-operator/openshift-cluster-authentication-operator-master.yaml#L42-L46)).
-  Merging ART alignment PRs is sufficient and no overrides should be required.
 - Patch-manager or those with sufficient privileges within this repository may add
   any required labels to ensure the PR merges once tests are passing. Downstream builds
   are *already* being built with these changes. Merging this PR only improves the fidelity
