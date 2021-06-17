@@ -1697,7 +1697,7 @@ class ImageDistGitRepo(DistGitRepo):
             else:
                 self.logger.warning("Will not inject `USER 0` before `yum update -y` for the final build stage because `final_stage_user` is missing (or 0) in image meta."
                                     " If this build fails with `yum update -y` permission denied error, please set correct `final_stage_user` and rebase again.")
-            output.write(f"# {yum_update_line_flag}\n{yum_update_line}\n")
+            output.write(f"# {yum_update_line_flag}\n{yum_update_line}  # set final_stage_user in ART metadata if this fails\n")
             if build_stage == build_stage_num and final_stage_user:
                 output.write(f"# {yum_update_line_flag}\nUSER {final_stage_user}\n")
         output.seek(0)
