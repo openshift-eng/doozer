@@ -666,6 +666,10 @@ class OperatorMetadataBuilder(object):
         return self.runtime.group_config.branch
 
     def get_operator_name(self):
+        """
+        Extracts the operator name from brew information; .e.g. "clusterresourceoverride-operator"
+        This is the same as the name of the distgit / image metadata yaml filename.
+        """
         _rc, stdout, _stderr = self.brew_buildinfo
         return re.search('Source:([^#]+)', stdout).group(1).split('/')[-1]
 
@@ -678,9 +682,24 @@ class OperatorMetadataBuilder(object):
 
     @log
     def get_brew_buildinfo(self):
-        """Output of this command is used to extract the operator name and its commit hash
+        """
+        Output of this command is used to extract the operator name and its commit hash.
+        TODO: replace with koji api calls.
         """
         cmd = 'brew buildinfo {}'.format(self.nvr)
+        """
+        Example output:
+            $ brew buildinfo ose-clusterresourceoverride-operator-container-v4.8.0-202106152230.p0.git.09010e9.assembly.stream
+                BUILD: ose-clusterresourceoverride-operator-container-v4.8.0-202106152230.p0.git.09010e9.assembly.stream [1635324]
+                State: COMPLETE
+                Built by: ocp-build/buildvm.openshift.eng.bos.redhat.com
+                Source: git://pkgs.devel.redhat.com/containers/clusterresourceoverride-operator#85e1a37d1a6cdfaa83c1ebb8309ff352da0e8801
+                Volume: DEFAULT
+                Task: none
+                Finished: Tue, 15 Jun 2021 23:45:20 UTC
+                Tags: rhaos-4.8-rhel-8-candidate RHBA-2021:2435-pending
+                ...
+        """
         stdout, stderr = exectools.cmd_assert(cmd, retries=3)
         return 0, stdout, stderr  # In this used to be cmd_gather, so return rc=0.
 
@@ -758,7 +777,7 @@ class OperatorMetadataLatestNvrReporter(object):
 
         for brew_build in self.get_all_builds():
             component, version, release = self.unpack_nvr(brew_build)
-            release = int(re.search(r'\d+', release).group())
+            release = int(re.search(r'\d+', release).group())  # extract datetime from release; e.g. 202106152230
             if component == self.metadata_component and version == self.metadata_version and release > candidate_release:
                 candidate_release = release
                 candidate = brew_build
@@ -777,6 +796,9 @@ class OperatorMetadataLatestNvrReporter(object):
             yield line.split(' ')[0]
 
     def unpack_nvr(self, nvr):
+        """
+        e.g. ('ose-clusterresourceoverride-operator-container', 'v4.8.0', '202106152230.p0.git.09010e9.assembly.stream')
+        """
         return tuple(nvr.rsplit('-', 2))
 
     @property
