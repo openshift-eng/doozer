@@ -5,6 +5,7 @@ import yaml
 import json
 import hashlib
 import time
+import random
 
 from github import Github, UnknownObjectException, GithubException
 
@@ -726,8 +727,8 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 root_owners_path = Dir.getpath().joinpath('OWNERS')
                 if root_owners_path.exists():
                     parsed_owners = yaml.safe_load(root_owners_path.read_text())
-                    if 'approvers' in parsed_owners:
-                        assignee = parsed_owners['approvers'][0]
+                    if 'approvers' in parsed_owners and len(parsed_owners['approvers']) > 0:
+                        assignee = random.choice(parsed_owners['approvers'])
             except Exception as owners_e:
                 yellow_print(f'Error finding assignee in OWNERS for {public_repo_url}: {owners_e}')
 
