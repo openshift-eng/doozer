@@ -2171,7 +2171,7 @@ class ImageDistGitRepo(DistGitRepo):
                     private_fix = True
                 elif util.isolate_pflag_in_release(prev_release) == 'p0':
                     private_fix = False
-            version = dfp.labels["version"]
+            version = dfp.labels.get("version")
             return version, prev_release, private_fix
         return None, None, None
 
