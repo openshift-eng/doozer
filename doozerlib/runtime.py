@@ -23,7 +23,6 @@ import urllib.parse
 import signal
 import io
 import pathlib
-import koji
 from typing import Optional, List, Dict, Tuple
 import time
 
@@ -45,6 +44,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 from doozerlib import util
 from doozerlib import brew
+from doozerlib.assembly import assembly_group_config, assembly_config_finalize, assembly_basis_event
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -148,6 +148,8 @@ class Runtime(object):
         self.session_pool = {}
         self.session_pool_available = {}
         self.brew_event = None
+        self.assembly_basis_event = None
+        self.releases_config = None
         self.assembly = 'test'
 
         self.stream: List[str] = []  # Click option. A list of image stream overrides from the command line.
@@ -259,6 +261,18 @@ class Runtime(object):
                 self.named_semaphores[p] = new_semaphore
                 return new_semaphore
 
+    def get_releases_config(self):
+        if self.releases_config is not None:
+            return self.releases_config
+
+        load = self.gitdata.load_data(key='releases')
+        if load:
+            self.releases_config = Model(load.data)
+        else:
+            self.releases_config = Model()
+
+        return self.releases_config
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
@@ -276,7 +290,7 @@ class Runtime(object):
             except KeyError as e:
                 raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
 
-        return tmp_config
+        return assembly_group_config(self.get_releases_config(), self.assembly, tmp_config)
 
     def init_state(self):
         self.state = dict(state.TEMPLATE_BASE_STATE)
@@ -400,6 +414,8 @@ class Runtime(object):
 
         if self.cache_dir:
             self.cache_dir = os.path.abspath(self.cache_dir)
+
+        self.get_releases_config()  # Init self.releases_config
 
         self.group_dir = self.gitdata.data_dir
         self.group_config = self.get_group_config()
@@ -593,6 +609,16 @@ class Runtime(object):
         streams = self.gitdata.load_data(key='streams')
         if streams:
             self.streams = Model(self.gitdata.load_data(key='streams', replace_vars=replace_vars).data)
+
+        self.assembly_basis_event = assembly_basis_event(self.get_releases_config(), self.assembly)
+        if self.assembly_basis_event:
+            if self.brew_event:
+                raise IOError(f'Cannot run with assembly basis event {assembly_basis_event} and --brew-event at the same time.')
+            # If the assembly has a basis event, we constrain all brew calls to that event.
+            self.brew_event = self.assembly_basis_event
+            self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
+
+        assembly_config_finalize(self.get_releases_config(), self.assembly, self.rpm_metas(), self.ordered_image_metas())
 
         if clone_distgits:
             self.clone_distgits()

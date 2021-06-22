@@ -207,20 +207,16 @@ class RPMMetadata(Metadata):
                 if (check_mode == "exact" and nevr[2] != first_nevr[2]) or (check_mode == "x.y" and nevr[2].split(".")[:2] != first_nevr[2].split(".")[:2]):
                     raise DoozerFatalError(f"Buildroot for target {target} has inconsistent golang compiler version {nevr[2]} while target {first_target} has {first_nevr[2]}.")
 
-    def get_package_name_from_spec(self, default=-1):
+    def get_package_name_from_spec(self):
         """
         Returns the brew package name for the distgit repository. Method requires
         a local clone. This differs from get_package_name because it will actually
         parse the .spec file in the distgit clone vs trusting the ocp-build-data.
-        :param default: If specified, this value will be returned if package name could not be found. If
-                        not specified, an exception will be raised instead.
         :return: The package name if detected in the distgit spec file. Otherwise, the specified default.
                 If default is not passed in, an exception will be raised if the package name can't be found.
         """
         specs = glob.glob(f'{self.distgit_repo().distgit_dir}/*.spec')
         if len(specs) != 1:
-            if default != -1:
-                return default
             raise IOError('Unable to find .spec file in RPM distgit: ' + self.qualified_name)
 
         spec_path = specs[0]
@@ -229,32 +225,18 @@ class RPMMetadata(Metadata):
                 if line.lower().startswith('name:'):
                     return line[5:].strip()  # Exclude "Name:" and then remove whitespace
 
-        if default != -1:
-            return default
-
         raise IOError(f'Unable to find Name: field in rpm spec: {spec_path}')
 
-    def get_package_name(self, default=-1):
+    def get_package_name(self) -> str:
         """
         Returns the brew package name for the distgit repository. Package names for RPMs
         do not necessarily match the distgit component name. The package name is controlled
         by the RPM's spec file. The 'name' field in the doozer metadata should match what is
         in the RPM's spec file.
-        :param default: If specified, this value will be returned if package name could not be found.
         :return: The package name - Otherwise, the specified default.
                 If default is not passed in, an exception will be raised if the package name can't be found.
         """
-        package_name = self.config.name  # This should be the package name for the RPM
-        if package_name:
-            return package_name
-
-        if default != -1:
-            return default
-
-        raise IOError(f'Missing package name in RPM doozer metadata: {self.distgit_key}')
-
-    def get_component_name(self, default=-1):
-        return self.get_package_name(default=default)
+        return self.get_component_name()
 
     def candidate_brew_tag(self):
         return self.targets[0]
