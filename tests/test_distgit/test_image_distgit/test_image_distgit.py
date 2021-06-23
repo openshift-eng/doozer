@@ -1,11 +1,19 @@
 from __future__ import absolute_import, print_function, unicode_literals
+import io
+import logging
+import pathlib
+
 import re
 import tempfile
 import unittest
 from threading import Lock
+
 import flexmock
+from mock import MagicMock, Mock
+from mock.mock import patch
 
 from doozerlib import distgit, model
+from doozerlib.image import ImageMetadata
 
 from ..support import MockScanner, TestDistgit
 
@@ -300,6 +308,163 @@ class TestImageDistGit(TestDistgit):
         # source specified and doesn't match Dockerfile in dist-git
         flexmock(self.img_dg.runtime).should_receive("detect_remote_source_branch").and_return(("branch", "eggs"))
         self.assertFalse(self.img_dg.matches_source_commit({}))
+
+    def test_inject_yum_update_commands_without_final_stage_user(self):
+        runtime = MagicMock()
+        meta = ImageMetadata(runtime, model.Model({
+            "key": "foo",
+            'data': {
+                'name': 'openshift/foo',
+                'distgit': {'branch': 'fake-branch-rhel-8'},
+                "enabled_repos": ["repo-a", "repo-b"]
+            },
+        }))
+        dg = distgit.ImageDistGitRepo(meta, autoclone=False)
+        dockerfile = """
+FROM some-base-image:some-tag AS builder
+LABEL name=value
+RUN some-command
+FROM another-base-image:some-tag
+COPY --from=builder /some/path/a /some/path/b
+        """.strip()
+        dg.logger = logging.getLogger()
+        dg.dg_path = MagicMock()
+        actual = dg._update_yum_update_commands(True, io.StringIO(dockerfile)).getvalue().strip().splitlines()
+        expected = """
+FROM some-base-image:some-tag AS builder
+# __doozer=yum-update
+USER 0
+# __doozer=yum-update
+RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+LABEL name=value
+RUN some-command
+FROM another-base-image:some-tag
+# __doozer=yum-update
+RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+COPY --from=builder /some/path/a /some/path/b
+        """.strip().splitlines()
+        self.assertListEqual(actual, expected)
+
+    def test_inject_yum_update_commands_with_final_stage_user(self):
+        runtime = MagicMock()
+        meta = ImageMetadata(runtime, model.Model({
+            "key": "foo",
+            'data': {
+                'name': 'openshift/foo',
+                'distgit': {'branch': 'fake-branch-rhel-8'},
+                "enabled_repos": ["repo-a", "repo-b"],
+                "final_stage_user": 1002,
+            },
+        }))
+        dg = distgit.ImageDistGitRepo(meta, autoclone=False)
+        dockerfile = """
+FROM some-base-image:some-tag AS builder
+LABEL name=value
+RUN some-command
+FROM another-base-image:some-tag
+COPY --from=builder /some/path/a /some/path/b
+        """.strip()
+        dg.logger = logging.getLogger()
+        dg.dg_path = MagicMock()
+        actual = dg._update_yum_update_commands(True, io.StringIO(dockerfile)).getvalue().strip().splitlines()
+        expected = """
+FROM some-base-image:some-tag AS builder
+# __doozer=yum-update
+USER 0
+# __doozer=yum-update
+RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+LABEL name=value
+RUN some-command
+FROM another-base-image:some-tag
+# __doozer=yum-update
+USER 0
+# __doozer=yum-update
+RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+# __doozer=yum-update
+USER 1002
+COPY --from=builder /some/path/a /some/path/b
+        """.strip().splitlines()
+        self.assertListEqual(actual, expected)
+
+    def test_remove_yum_update_commands(self):
+        runtime = MagicMock()
+        meta = ImageMetadata(runtime, model.Model({
+            "key": "foo",
+            'data': {
+                'name': 'openshift/foo',
+                'distgit': {'branch': 'fake-branch-rhel-8'},
+                "enabled_repos": ["repo-a", "repo-b"]
+            },
+        }))
+        dg = distgit.ImageDistGitRepo(meta, autoclone=False)
+        dg.logger = logging.getLogger()
+        dg.dg_path = MagicMock()
+        dockerfile = """
+FROM some-base-image:some-tag AS builder
+# __doozer=yum-update
+USER 0
+# __doozer=yum-update
+RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+LABEL name=value
+RUN some-command
+FROM another-base-image:some-tag
+# __doozer=yum-update
+USER 0
+# __doozer=yum-update
+RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+# __doozer=yum-update
+USER 1001
+COPY --from=builder /some/path/a /some/path/b
+        """.strip()
+        actual = dg._update_yum_update_commands(False, io.StringIO(dockerfile)).getvalue().strip().splitlines()
+        expected = """
+FROM some-base-image:some-tag AS builder
+LABEL name=value
+RUN some-command
+FROM another-base-image:some-tag
+COPY --from=builder /some/path/a /some/path/b
+        """.strip().splitlines()
+        self.assertListEqual(actual, expected)
+
+    def test_inject_yum_update_commands_without_repos(self):
+        runtime = MagicMock()
+        meta = ImageMetadata(runtime, model.Model({
+            "key": "foo",
+            'data': {
+                'name': 'openshift/foo',
+                'distgit': {'branch': 'fake-branch-rhel-8'},
+                "enabled_repos": []
+            },
+        }))
+        dg = distgit.ImageDistGitRepo(meta, autoclone=False)
+        dg.logger = logging.getLogger()
+        dg.dg_path = MagicMock()
+        dockerfile = """
+FROM some-base-image:some-tag AS builder
+# __doozer=yum-update
+USER 0
+# __doozer=yum-update
+RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+LABEL name=value
+RUN some-command
+FROM another-base-image:some-tag
+# __doozer=yum-update
+USER 0
+# __doozer=yum-update
+RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+# __doozer=yum-update
+USER 1001
+COPY --from=builder /some/path/a /some/path/b
+        """.strip()
+        actual = dg._update_yum_update_commands(True, io.StringIO(dockerfile)).getvalue().strip().splitlines()
+        expected = """
+FROM some-base-image:some-tag AS builder
+LABEL name=value
+RUN some-command
+FROM another-base-image:some-tag
+COPY --from=builder /some/path/a /some/path/b
+        """.strip().splitlines()
+        self.assertListEqual(actual, expected)
 
 
 if __name__ == "__main__":

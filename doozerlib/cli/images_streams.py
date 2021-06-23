@@ -196,6 +196,8 @@ def _get_upstreaming_entries(runtime, stream_names=None):
         if image_meta.config.content.source.ci_alignment.upstream_image is not Missing:
             upstream_entry = model.Model(dict_to_model=image_meta.config.content.source.ci_alignment.primitive())  # Make a copy
             upstream_entry['image'] = image_meta.pull_url()  # Make the image metadata entry match what would exist in streams.yml.
+            if upstream_entry.final_user is Missing:
+                upstream_entry.final_user = image_meta.config.final_stage_user
             upstreaming_entries[image_meta.distgit_key] = upstream_entry
 
     return upstreaming_entries

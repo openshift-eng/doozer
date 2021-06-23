@@ -1361,11 +1361,8 @@ class ImageDistGitRepo(DistGitRepo):
                 if changed:
                     dfp.add_lines_at(entry, "RUN " + new_value, replace=True)
 
-    def update_distgit_dir(self, version, release, prev_release=None):
+    def update_distgit_dir(self, version, release, prev_release=None, force_yum_updates=False):
         ignore_missing_base = self.runtime.ignore_missing_base
-        # A collection of comment lines that will be included in the generated Dockerfile. They
-        # will be prefix by the OIT_COMMENT_PREFIX and followed by newlines in the Dockerfile.
-        oit_comments = []
 
         dg_path = self.dg_path
         with Dir(self.distgit_dir):
@@ -1695,10 +1692,10 @@ class ImageDistGitRepo(DistGitRepo):
                 'BUILD_RELEASE': release if release else '',
             }
 
+            df_fileobj = self._update_yum_update_commands(force_yum_updates, io.StringIO(df_content))
             with dg_path.joinpath('Dockerfile').open('w', encoding="utf-8") as df:
-                for comment in oit_comments:
-                    df.write("%s %s\n" % (OIT_COMMENT_PREFIX, comment))
-                df.write(df_content)
+                shutil.copyfileobj(df_fileobj, df)
+                df_fileobj.close()
 
             self._update_environment_variables(env_vars)
 
@@ -1707,6 +1704,53 @@ class ImageDistGitRepo(DistGitRepo):
             self._update_csv(version, release)
 
             return version, release
+
+    def _update_yum_update_commands(self, force_yum_updates: bool, df_fileobj: io.TextIOBase) -> io.StringIO:
+        """ If force_yum_updates is True, inject "yum updates -y" in each stage; Otherwise, remove the lines we injected.
+        Returns an in-memory text stream for the new Dockerfile content
+        """
+        if force_yum_updates and not self.config.get('enabled_repos'):
+            # If no yum repos are disabled in image meta, "yum update -y" will fail with "Error: There are no enabled repositories in ...".
+            # Remove "yum update -y" lines intead.
+            self.logger.warning("Will not inject \"yum updates -y\" for this image because no yum repos are enabled.")
+            force_yum_updates = False
+        if force_yum_updates:
+            self.logger.info("Injecting \"yum updates -y\" in each stage...")
+
+        parser = DockerfileParser(fileobj=df_fileobj)
+
+        df_lines_iter = iter(parser.content.splitlines(False))
+        build_stage_num = len(parser.parent_images)
+        final_stage_user = self.metadata.config.final_stage_user or 0
+
+        yum_update_line_flag = "__doozer=yum-update"
+        yum_update_line = "RUN yum update -y && yum clean all"
+        output = io.StringIO()
+        build_stage = 0
+        for line in df_lines_iter:
+            if yum_update_line_flag in line:
+                # Remove the lines we have injected by skipping 2 lines
+                next(df_lines_iter)
+                continue
+            output.write(f'{line}\n')
+            if not force_yum_updates or not line.startswith('FROM '):
+                continue
+            build_stage += 1
+            # If the curent user inherited from the base image for this stage is not root, `yum update -y` will fail.
+            # We need to change the current user to root.
+            # For non-final stages, it should be safe to inject "USER 0" before `yum update -y`.
+            # However for the final stage, injecting "USER 0" without changing the user back may cause unexpected behavior.
+            # Per https://github.com/openshift/doozer/pull/428#issuecomment-861795424, introduce a new metadata `final_stage_user` for images so we can switch the user back later.
+            if build_stage < build_stage_num or final_stage_user:
+                output.write(f"# {yum_update_line_flag}\nUSER 0\n")
+            else:
+                self.logger.warning("Will not inject `USER 0` before `yum update -y` for the final build stage because `final_stage_user` is missing (or 0) in image meta."
+                                    " If this build fails with `yum update -y` permission denied error, please set correct `final_stage_user` and rebase again.")
+            output.write(f"# {yum_update_line_flag}\n{yum_update_line}  # set final_stage_user in ART metadata if this fails\n")
+            if build_stage == build_stage_num and final_stage_user:
+                output.write(f"# {yum_update_line_flag}\nUSER {final_stage_user}\n")
+        output.seek(0)
+        return output
 
     def _generate_config_digest(self):
         # The config digest is used by scan-sources to detect config changes
@@ -2224,7 +2268,7 @@ class ImageDistGitRepo(DistGitRepo):
             return version, prev_release, private_fix
         return None, None, None
 
-    def rebase_dir(self, version, release, terminate_event):
+    def rebase_dir(self, version, release, terminate_event, force_yum_updates=False):
         try:
             # If this image is FROM another group member, we need to wait on that group
             # member to determine if there are embargoes in that group member.
@@ -2265,7 +2309,7 @@ class ImageDistGitRepo(DistGitRepo):
             if self.private_fix:
                 self.logger.warning("The source of this image contains embargoed fixes.")
 
-            real_version, real_release = self.update_distgit_dir(version, release, prev_release)
+            real_version, real_release = self.update_distgit_dir(version, release, prev_release, force_yum_updates)
             self.rebase_status = True
             return real_version, real_release
         except Exception:
