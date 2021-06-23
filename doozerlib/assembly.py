@@ -92,12 +92,12 @@ def assembly_group_config(releases_config: Model, assembly: str, group_config: M
 
 def assembly_metadata_config(releases_config: Model, assembly: str, meta_type: str, distgit_key: str, meta_config: Model) -> Model:
     """
-    Returns a group config based on the assembly information
-    and the input group config.
+    Returns a group member's metadata configuration based on the assembly information
+    and the initial file-based config.
     :param releases_config: A Model for releases.yaml.
     :param assembly: The name of the assembly
     :param meta_type: 'rpm' or 'image'
-    :param distgit_key: The name of the underlying component
+    :param distgit_key: The member's distgit_key
     :param meta_config: The meta's config object
     :return: Returns a computed config for the metadata (e.g. value for meta.config).
     """
