@@ -98,7 +98,7 @@ releases:
       basis:
         brew_event: 5
       members:
-        rpms:
+        images:
         - distgit_key: openshift-kuryr
           metadata:
             content:
@@ -108,17 +108,34 @@ releases:
                   branch:
                     target: 1_hash
             is: kuryr-nvr
+            dependencies:
+              rpms:
+              - el7: some-nvr-1
+                non_gc_tag: some-tag-1
+      group:
+        dependencies:
+          rpms:
+            - el7: some-nvr-3
+              non_gc_tag: some-tag-3
 
   ART_8:
     assembly:
       basis:
         assembly: ART_7
       members:
-        rpms:
+        images:
         - distgit_key: openshift-kuryr
           metadata:
             is: kuryr-nvr2
-
+            dependencies:
+              rpms:
+              - el7: some-nvr-2
+                non_gc_tag: some-tag-2
+      group:
+        dependencies:
+          rpms:
+            - el7: some-nvr-4
+              non_gc_tag: some-tag-4
 
   ART_INFINITE:
     assembly:
@@ -240,6 +257,12 @@ releases:
         config = assembly_group_config(self.releases_config, 'not_defined', group_config)
         self.assertEqual(len(config.arches), 1)
 
+        config = assembly_group_config(self.releases_config, 'ART_7', group_config)
+        self.assertEqual(len(config.dependencies.rpms), 1)
+
+        config = assembly_group_config(self.releases_config, 'ART_8', group_config)
+        self.assertEqual(len(config.dependencies.rpms), 2)
+
         try:
             assembly_group_config(self.releases_config, 'ART_INFINITE', group_config)
             self.fail('Expected ValueError on assembly infinite recursion')
@@ -293,13 +316,15 @@ releases:
         self.assertEqual(config.content.source.git.url, 'git@github.com:jupierce/kuryr-kubernetes.git')
         self.assertEqual(config.content.source.git.branch.target, 'customer_6')
 
-        config = assembly_metadata_config(self.releases_config, 'ART_8', 'rpm', 'openshift-kuryr', meta_config)
+        config = assembly_metadata_config(self.releases_config, 'ART_8', 'image', 'openshift-kuryr', meta_config)
         # Ensure no loss
         self.assertEqual(config.name, 'openshift-kuryr')
         self.assertEqual(config.content.source.git.url, 'git@github.com:jupierce/kuryr-kubernetes.git')
         self.assertEqual(config.content.source.git.branch.target, '1_hash')
         # Ensure that 'is' comes from ART_8 and not ART_7
         self.assertEqual(config['is'], 'kuryr-nvr2')
+        # Ensure that 'dependencies' were accumulate
+        self.assertEqual(len(config.dependencies.rpms), 2)
 
         try:
             assembly_metadata_config(self.releases_config, 'ART_INFINITE', 'rpm', 'openshift-kuryr', meta_config)
