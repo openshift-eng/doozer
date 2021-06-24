@@ -93,6 +93,32 @@ releases:
                   branch:
                     target: customer_6
 
+  ART_7:
+    assembly:
+      basis:
+        brew_event: 5
+      members:
+        rpms:
+        - distgit_key: openshift-kuryr
+          metadata:
+            content:
+              source:
+                git:
+                  url: git@github.com:jupierce/kuryr-kubernetes.git
+                  branch:
+                    target: 1_hash
+            is: kuryr-nvr
+
+  ART_8:
+    assembly:
+      basis:
+        assembly: ART_7
+      members:
+        rpms:
+        - distgit_key: openshift-kuryr
+          metadata:
+            is: kuryr-nvr2
+
 
   ART_INFINITE:
     assembly:
@@ -266,6 +292,14 @@ releases:
         # Check that things were overridden. 6 changes branches for all rpms
         self.assertEqual(config.content.source.git.url, 'git@github.com:jupierce/kuryr-kubernetes.git')
         self.assertEqual(config.content.source.git.branch.target, 'customer_6')
+
+        config = assembly_metadata_config(self.releases_config, 'ART_8', 'rpm', 'openshift-kuryr', meta_config)
+        # Ensure no loss
+        self.assertEqual(config.name, 'openshift-kuryr')
+        self.assertEqual(config.content.source.git.url, 'git@github.com:jupierce/kuryr-kubernetes.git')
+        self.assertEqual(config.content.source.git.branch.target, '1_hash')
+        # Ensure that 'is' comes from ART_8 and not ART_7
+        self.assertEqual(config['is'], 'kuryr-nvr2')
 
         try:
             assembly_metadata_config(self.releases_config, 'ART_INFINITE', 'rpm', 'openshift-kuryr', meta_config)
