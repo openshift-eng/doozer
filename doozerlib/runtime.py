@@ -620,6 +620,13 @@ class Runtime(object):
 
         assembly_config_finalize(self.get_releases_config(), self.assembly, self.rpm_metas(), self.ordered_image_metas())
 
+        if not self.brew_event:
+            with self.shared_koji_client_session() as koji_session:
+                # If brew event is not set as part of the assembly and not specified on the command line,
+                # lock in an event so that there are no race conditions.
+                event_info = koji_session.getLastEvent()
+                self.brew_event = event_info['id']
+
         if clone_distgits:
             self.clone_distgits()
 

@@ -17,6 +17,7 @@ import yaml
 from kobo.rpmlib import compare_nvr, parse_nvr
 from requests_kerberos import HTTPKerberosAuth
 
+from doozerlib.assembly import assembly_metadata_config
 from doozerlib.brew import get_build_objects
 from doozerlib.cli import cli
 from doozerlib.model import Missing
@@ -505,20 +506,11 @@ def from_tags(config: SimpleNamespace, brew_tag: Tuple[Tuple[str, str], ...], em
     runtime: Runtime = config.runtime
     runtime.initialize(mode="rpms", clone_source=False, clone_distgits=False, prevent_cloning=True)
     assembly = runtime.assembly
-    event = runtime.brew_event
     koji_proxy = runtime.build_retrying_koji_client()
     koji_proxy.gssapi_login()
+    event = runtime.brew_event
+    event_info = koji_proxy.getEvent(event)
     errata_proxy = xmlrpclib.ServerProxy(config.errata_xmlrpc_url)
-
-    if event:
-        if runtime.assembly_basis_event:
-            assert runtime.assembly_basis_event == event  # to be safe
-        event_info = koji_proxy.getEvent(event)
-    else:
-        # If none was specified, lock in an event so that there are no race conditions with
-        # packages changing while we run.
-        event_info = koji_proxy.getLastEvent()
-        event = event_info['id']
 
     # Gather up all nvrs tagged in the embargoed brew tags into a set.
     embargoed_tag_nvrs = set()
@@ -569,33 +561,24 @@ def from_tags(config: SimpleNamespace, brew_tag: Tuple[Tuple[str, str], ...], em
             el_version_match = re.search(r"rhel-(\d+)", tag)
             el_version = int(el_version_match[1]) if el_version_match else 0
             if el_version:  # Only honor pinned rpms if this tag is relevant to a RHEL version
-                # Honor pinned rpm nvrs specified in assembly.members.rpms
-                for component in runtime.releases_config.releases[runtime.assembly].assembly.members.rpms:
-                    nvr = component["is"][f"el{el_version}"]
+                # Honor pinned rpm nvrs pinned by "is"
+                for distgit_key, rpm_meta in runtime.rpm_map.items():
+                    meta_config = assembly_metadata_config(runtime.get_releases_config(), runtime.assembly, 'rpm', distgit_key, rpm_meta.config)
+                    nvr = meta_config["is"][f"el{el_version}"]
                     if not nvr:
                         continue
-                    if "*" in component.distgit_key:
-                        raise ValueError(f"You cannot pin an NVR in an assembly entry that has a wildcard in its distgit key ({component.distgit_key}).")
-                    rpm_meta = runtime.rpm_map.get(component.distgit_key)
-                    if not rpm_meta:
-                        raise ValueError(f"Distgit key {component.distgit_key} is unknown or excluded.")
                     nvre_obj = parse_nvr(str(nvr))
                     if nvre_obj["name"] != rpm_meta.rpm_name:
-                        raise ValueError(f"RPM {nvr} is pinned to assembly {runtime.assembly} for distgit key {component.distgit_key}, but its package name is not {rpm_meta.rpm_name}.")
-                    if isolate_assembly_in_release(nvre_obj["release"]) != runtime.assembly:
-                        raise ValueError(f"RPM {nvr} is pinned to assembly {runtime.assembly}, but that rpm is not a part of the assembly.")
-                    if nvre_obj["name"] in pinned_nvrs and pinned_nvrs[nvre_obj['name']] != nvr:
-                        raise ValueError(f"Cannot pin {nvr} because a different NVR {pinned_nvrs[nvre_obj['name']]} for the same component is already pinned.")
+                        raise ValueError(f"RPM {nvr} is pinned to assembly {runtime.assembly} for distgit key {distgit_key}, but its package name is not {rpm_meta.rpm_name}.")
                     pinned_nvrs[nvre_obj["name"]] = nvr
-                # assert pinned rpm nvrs specified in assembly.members.rpms exist in Brew then add them to plashet
                 if pinned_nvrs:
                     pinned_nvr_list = list(pinned_nvrs.values())
                     logger.info("Found %s NVRs pinned to the runtime assembly %s. Fetching build infos from Brew...", len(pinned_nvr_list), runtime.assembly)
                     pinned_builds = get_build_objects(pinned_nvr_list, koji_proxy)
                     missing_nvrs = [nvr for nvr, build in zip(pinned_nvr_list, pinned_builds) if not build]
                     if missing_nvrs:
-                        raise IOError(f"The following NVRs don't exist: {missing_nvrs}")
-                    # Pinned_builds should take precedence over very build in `latest_builds`
+                        raise IOError(f"The following NVRs pinned by 'is' don't exist: {missing_nvrs}")
+                    # Pinned_builds should take precedence over every build in `latest_builds`
                     for pinned_build in pinned_builds:
                         component = pinned_build["name"]
                         if component in component_builds and pinned_build["id"] != component_builds[component]["id"]:
@@ -610,16 +593,16 @@ def from_tags(config: SimpleNamespace, brew_tag: Tuple[Tuple[str, str], ...], em
                     dep_builds = get_build_objects(dep_nvr_list, koji_proxy)
                     missing_nvrs = [nvr for nvr, build in zip(dep_nvr_list, dep_builds) if not build]
                     if missing_nvrs:
-                        raise IOError(f"The following NVRs don't exist: {missing_nvrs}")
+                        raise IOError(f"The following group dependency NVRs don't exist: {missing_nvrs}")
                     # Make sure group dependencies have no ART managed rpms.
                     dep_components = {dep_build["name"] for dep_build in dep_builds}
                     art_rpms_in_group_deps = dep_components & {meta.rpm_name for meta in runtime.rpm_map.values()}
                     if art_rpms_in_group_deps:
-                        raise IOError("Unable to build plashet. `group_config.dependencies` specifies ART managed RPMs: {art_rpms_in_group_deps}")
+                        raise ValueError("Unable to build plashet. Group dependencies cannot have ART managed RPMs: {art_rpms_in_group_deps}")
                     # Make sure group dependencies have no nvrs pinned by "is", which should be filtered into art_rpms_in_group_deps, but to be safe
                     rpms_members_in_group_deps = dep_components & pinned_nvrs.keys()
                     if rpms_members_in_group_deps:  # should be filtered out by art_rpms_in_group_deps, but to be safe
-                        raise IOError("Unable to build plashet. `group_config.dependencies` specifies RPMs pinned by 'is': {rpms_members_in_group_deps}")
+                        raise ValueError("Unable to build plashet. Group dependencies cannot have RPMs pinned by 'is': {rpms_members_in_group_deps}")
                     pinned_nvrs.update(dep_nvrs)
                     # Group dependencies should take precedence over anything previously determined except those pinned by "is".
                     for dep_build in dep_builds:
