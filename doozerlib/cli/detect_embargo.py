@@ -45,7 +45,8 @@ def detect_in_nvr(runtime: Runtime, nvrs, as_yaml, as_json):
     embargoed_builds = detect_embargoes_in_nvrs(runtime, nvrs)
     print_result_and_exit(embargoed_builds, None, None, as_yaml, as_json)
 
-@detect_embargo.command("images", short_help="Detect embargoed fixes in given images")
+
+@detect_embargo.command("images", short_help="Check whether latest builds become embargoes")
 @click.option("--version", "version", default=None, type=str, help="specify version")
 @click.option("--yaml", "as_yaml", is_flag=True,
               help="Print out the result as YAML format.")
@@ -54,7 +55,7 @@ def detect_in_nvr(runtime: Runtime, nvrs, as_yaml, as_json):
 @click.argument("images", metavar="IMAGES...", nargs=-1, required=True)
 @pass_runtime
 def detect_in_images(runtime: Runtime, images, as_yaml, as_json, version):
-    """ Check whether latest build of image in given images list become embargoes
+    """ Check whether latest build of image in given images list become embargo
 
     If neither --yaml nor --json is given, this program will exit with status 0 if true, or with status 2 if not.
     Errors are signaled by a non-zero status that is not 2.
@@ -66,8 +67,34 @@ def detect_in_images(runtime: Runtime, images, as_yaml, as_json, version):
     if as_yaml and as_json:
         raise click.BadParameter("Must use one of --yaml or --json.")
     runtime.initialize(clone_distgits=False)
-    embargoed_builds = detect_embargoes_in_images(runtime, images, version)
+    embargoed_builds = detect_embargoes_in_builds(runtime, images, "image", version)
     print_result_and_exit(embargoed_builds, None, None, as_yaml, as_json)
+
+
+@detect_embargo.command("rpms", short_help="Check whether latest builds become embargoes")
+@click.option("--version", "version", default=None, type=str, help="specify version")
+@click.option("--yaml", "as_yaml", is_flag=True,
+              help="Print out the result as YAML format.")
+@click.option("--json", "as_json", is_flag=True,
+              help="Print out the result as JSON format.")
+@click.argument("rpms", metavar="RPMS...", nargs=-1, required=True)
+@pass_runtime
+def detect_in_rpms(runtime: Runtime, rpms, as_yaml, as_json, version):
+    """ Check whether latest build of rpm in given rpms list become embargo
+
+    If neither --yaml nor --json is given, this program will exit with status 0 if true, or with status 2 if not.
+    Errors are signaled by a non-zero status that is not 2.
+
+    Example:
+
+        $ doozer --group=openshift-4.7 detect-embargo rpms --version 4.7 openshift openshift-clients openshift-ansible
+    """
+    if as_yaml and as_json:
+        raise click.BadParameter("Must use one of --yaml or --json.")
+    runtime.initialize(clone_distgits=False)
+    embargoed_builds = detect_embargoes_in_builds(runtime, rpms, "rpm", version)
+    print_result_and_exit(embargoed_builds, None, None, as_yaml, as_json)
+
 
 @detect_embargo.command("tag", short_help="Detect embargoed fixes in builds with given Koji tags")
 @click.option("--kind", "kind", default="all", metavar="KIND", type=click.Choice(["rpm", "image", "all"]),
@@ -164,31 +191,41 @@ def detect_embargoes_in_nvrs(runtime: Runtime, nvrs: List[str]):
     embargoed_builds = [b for b in builds if b["id"] in embargoed_build_ids]
     return embargoed_builds
 
-def detect_embargoes_in_images(runtime: Runtime, images: List[str], version: str):
-    """ Check whether latest build of image in given images list become embargoes
+
+def detect_embargoes_in_builds(runtime: Runtime, builds: List[str], buildtype: str, version: str):
+    """ Check whether latest build in given build list become embargo
     :param runtime: the runtime
-    :param images: list of images name
+    :param builds: list of builds name
+    :param buildtype: build type can be rpm or image
+    :param version: release version
     :return: list of Brew build dicts that have embargoed fixes
     """
-    runtime.logger.info(f"Fetching {len(images)} builds from Brew...")
+    runtime.logger.info(f"Fetching {len(builds)} builds from Brew...")
     brew_session = runtime.build_retrying_koji_client()
     detector = bs_detector.BuildStatusDetector(brew_session, runtime.logger)
     embargoed_builds = []
-    for image in images:
-        pattern = image + '-container-v' + version
+    for build in builds:
+        pattern = build
+        if buildtype == "rpm":
+            component_name = runtime.rpm_map[build].get_component_name()
+            pattern = component_name + "-" + version
+        elif buildtype == "image":
+            component_name = runtime.image_map[build].get_component_name()
+            pattern = component_name + "-v" + version
         results = brew_session.search(pattern, 'build', 'regexp', {'limit': 2, 'order': '-id'})
         if len(results) != 2:
-            runtime.logger.info(f"Not enouth recent builds found for {image}")
+            runtime.logger.info(f"Not enough recent builds found for {build}")
             continue
-        builds = [brew_session.getBuild(results[0]['name']), brew_session.getBuild(results[1]['name'])]
-        for i, b in enumerate(builds):
+        brew_builds = [brew_session.getBuild(results[0]['name']), brew_session.getBuild(results[1]['name'])]
+        for i, b in enumerate(brew_builds):
             if not b:
-                raise DoozerFatalError(f"Unable to get {builds[i]} from Brew.")
-        runtime.logger.info(f"Detecting embargoes for {image} builds...")
-        embargoed_build_id = detector.find_embargoed_builds(builds, runtime.get_candidate_brew_tags())
-        if builds[0]["id"] in embargoed_build_id and builds[1]["id"] not in embargoed_build_id:
-            embargoed_builds += builds[0]
+                raise DoozerFatalError(f"Unable to get {brew_builds[i]} from Brew.")
+        runtime.logger.info(f"Detecting embargoes for {build} builds...")
+        embargoed_build_id = detector.find_embargoed_builds(brew_builds, runtime.get_candidate_brew_tags())
+        if brew_builds[0]["id"] in embargoed_build_id and brew_builds[1]["id"] not in embargoed_build_id:
+            embargoed_builds += brew_builds[0]
     return embargoed_builds
+
 
 def detect_embargoes_in_tags(runtime: Runtime, kind: str, included_tags: List[str], excluded_tags: List[str], event_id: Optional[int]):
     """ Finds embargoes in builds with given tags
