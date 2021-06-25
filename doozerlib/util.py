@@ -386,6 +386,29 @@ def isolate_assembly_in_release(release: str) -> str:
     return None
 
 
+def isolate_el_version_in_release(release: str) -> Optional[int]:
+    """
+    Given a release field, determines whether is contains
+    a RHEL version. If it does, it returns the version value.
+    If it is not found, None is returned.
+    """
+    match = re.match(r'.*\.el(\d+)(?:\.+|$)', release)
+    if match:
+        return int(match.group(1))
+
+    return None
+
+
+def isolate_el_version_in_brew_tag(tag: str) -> Optional[int]:
+    """
+    Given a brew tag (target) name, determines whether is contains
+    a RHEL version. If it does, it returns the version value.
+    If it is not found, None is returned.
+    """
+    el_version_match = re.search(r"rhel-(\d+)", tag)
+    return int(el_version_match[1]) if el_version_match else None
+
+
 # https://code.activestate.com/recipes/577504/
 def total_size(o, handlers={}, verbose=False):
     """ Returns the approximate memory footprint an object and all of its contents.
@@ -501,3 +524,22 @@ def find_latest_builds(brew_builds: Iterable[Dict], assembly: Optional[str]) -> 
         chosen_build = find_latest_build(builds, assembly)
         if chosen_build:
             yield chosen_build
+
+
+def to_nvre(build_record: Dict):
+    """
+    From a build record object (such as an entry returned by listTagged),
+    returns the full nvre in the form n-v-r:E.
+    """
+    nvr = build_record['nvr']
+    if 'epoch' in build_record and build_record["epoch"] and build_record["epoch"] != 'None':
+        return f'{nvr}:{build_record["epoch"]}'
+    return nvr
+
+
+def strip_epoch(nvr: str):
+    """
+    If an NVR string is N-V-R:E, returns only the NVR portion. Otherwise
+    returns NVR exactly as-is.
+    """
+    return nvr.split(':')[0]

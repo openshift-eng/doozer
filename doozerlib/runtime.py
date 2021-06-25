@@ -190,10 +190,10 @@ class Runtime(object):
         self.flags_dir = None
 
         # Map of dist-git repo name -> ImageMetadata object. Populated when group is set.
-        self.image_map = {}
+        self.image_map: Dict[str, ImageMetadata] = {}
 
         # Map of dist-git repo name -> RPMMetadata object. Populated when group is set.
-        self.rpm_map = {}
+        self.rpm_map: Dict[str, RPMMetadata] = {}
 
         # Map of source code repo aliases (e.g. "ose") to a tuple representing the source resolution cache.
         # See registry_repo.
