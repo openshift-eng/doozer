@@ -868,7 +868,7 @@ def print_build_metrics(runtime):
               default='',
               help="Repo type (e.g. signed, unsigned).")
 @click.option("--repo", default=[], metavar="REPO_URL",
-              multiple=True, help="Custom repo URL to supply to brew build.")
+              multiple=True, help="Custom repo URL to supply to brew build. If specified, defaults from --repo-type will be ignored.")
 @click.option('--push-to-defaults', default=False, is_flag=True,
               help='Push to default registries when build completes.')
 @click.option("--push-to", default=[], metavar="REGISTRY", multiple=True,
