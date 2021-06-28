@@ -731,6 +731,9 @@ def for_assembly(config: SimpleNamespace, image: Optional[str], rhcos: bool, bre
     Creates a directory containing arch specific yum repository subdirectories based on a complete set of RPMs required for image builds.
     In other words, when doozer runs brew builds for an assembly image, it should only need to pass in a single repository created by for-assembly in order for the image to build successfully.
     """
+    if image and rhcos:
+        raise click.BadParameter("Cannot use --image and --rhcos at the same time.")
+
     runtime: Runtime = config.runtime
     runtime.initialize(mode="both", clone_source=False, clone_distgits=False, prevent_cloning=True)
     if not runtime.assembly_basis_event:
@@ -775,7 +778,7 @@ def for_assembly(config: SimpleNamespace, image: Optional[str], rhcos: bool, bre
             # Builds pinned by "is" should take precedence over every build from tag
             for component, pinned_build in pinned_by_is.items():
                 if component in component_builds and pinned_build["id"] != component_builds[component]["id"]:
-                    logger.warning("Swapping stream nvr %s for pinned nvr %s...", component_builds[component]["nvr"], pinned_build["nvr"])
+                    logger.warning("Swapping tagged nvr %s for pinned nvr %s...", component_builds[component]["nvr"], pinned_build["nvr"])
             component_builds.update(pinned_by_is)  # pinned rpms take precedence over those from tags
             signable_components |= pinned_by_is.keys()  # ART-managed rpms are always signable
 
@@ -784,24 +787,33 @@ def for_assembly(config: SimpleNamespace, image: Optional[str], rhcos: bool, bre
             # Group dependencies should take precedence over anything previously determined except those pinned by "is".
             for component, dep_build in group_deps.items():
                 if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
-                    logger.warning("Swapping stream nvr %s for group dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
+                    logger.warning("Swapping tagged nvr %s for group dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
             component_builds.update(group_deps)
 
-        # If "--image" is specified, the final list of package NVRs should include any dependencies specified in the component overrides for the assembly.
-        if image:
-            image_meta = runtime.image_map.get(image)
-            if not image_meta:
-                raise IOError(f"Distgit key '{image}' specified by '--image' is not found or excluded from build data.")
-            image_el_version = isolate_el_version_in_brew_tag(image_meta.branch())
-            if image_el_version is None:  # This should never happen, but be safe
-                raise ValueError(f"Distgit repo {image} uses a distgit branch {image_meta.branch()} that is irrelevant to any RHEL version.")
-            if image_el_version == tag_el_version:
-                image_deps = builder.from_image_member_deps(image_el_version, runtime.assembly, runtime.get_releases_config(), image_meta, runtime.rpm_map)  # the return value doesn't include any ART managed rpms
-                # image member dependencies should take precedence over anything previously determined except those pinned by "is".
-                for component, dep_build in image_deps.items():
+            # If "--image" is specified, the final list of package NVRs should include any dependencies specified in the component overrides for the assembly.
+            if image:
+                image_meta = runtime.image_map.get(image)
+                if not image_meta:
+                    raise IOError(f"Distgit key '{image}' specified by '--image' is not found or excluded from build data.")
+                image_el_version = isolate_el_version_in_brew_tag(image_meta.branch())
+                if image_el_version is None:  # This should never happen, but be safe
+                    raise ValueError(f"Distgit repo {image} uses a distgit branch {image_meta.branch()} that is irrelevant to any RHEL version.")
+                if image_el_version == tag_el_version:
+                    image_deps = builder.from_image_member_deps(image_el_version, runtime.assembly, runtime.get_releases_config(), image_meta, runtime.rpm_map)  # the return value doesn't include any ART managed rpms
+                    # image member dependencies should take precedence over anything previously determined except those pinned by "is".
+                    for component, dep_build in image_deps.items():
+                        if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
+                            logger.warning("Swapping tagged nvr %s for image member dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
+                    component_builds.update(image_deps)
+
+            # If "--rhcos" argument is specified, the final list of package NVRs should include any dependencies specified in the assembly's assembly.rhcos.dependencies field.
+            elif rhcos:
+                rhcos_deps = builder.from_rhcos_deps(tag_el_version, runtime.assembly, runtime.get_releases_config(), runtime.rpm_map)   # the return value doesn't include any ART managed rpms
+                # RHCOS dependencies should take precedence over anything previously determined except those pinned by "is".
+                for component, dep_build in rhcos_deps.items():
                     if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
-                        logger.warning("Swapping stream nvr %s for group dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
-                component_builds.update(image_deps)
+                        logger.warning("Swapping tagged nvr %s for RHCOS dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
+                component_builds.update(rhcos_deps)
 
         for component, build in component_builds.items():
             nvre = to_nvre(build)

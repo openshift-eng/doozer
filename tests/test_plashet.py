@@ -181,3 +181,28 @@ class TestPlashetBuilder(TestCase):
         self.assertEqual([b["nvr"] for b in actual.values()], ["fake1-1.2.3-1.el8", "fake2-1.2.3-1.el8", "fake3-1.2.3-1.el8"])
         builder._get_builds.assert_called_once_with(["fake1-1.2.3-1.el8", "fake2-1.2.3-1.el8", "fake3-1.2.3-1.el8"])
         assembly_metadata_config.assert_called_once()
+
+    @patch("doozerlib.plashet.assembly_rhcos_config")
+    def test_from_rhcos_deps(self, assembly_rhcos_config: Mock):
+        builder = PlashetBuilder(MagicMock())
+
+        builder._get_builds = MagicMock(return_value=[
+            {"id": 1, "build_id": 1, "name": "fake1", "nvr": "fake1-1.2.3-1.el8"},
+            {"id": 2, "build_id": 2, "name": "fake2", "nvr": "fake2-1.2.3-1.el8"},
+            {"id": 3, "build_id": 3, "name": "fake3", "nvr": "fake3-1.2.3-1.el8"},
+        ])
+        assembly_rhcos_config.return_value = Model({
+            "dependencies": {
+                "rpms": [
+                    {"el8": "fake1-1.2.3-1.el8"},
+                    {"el8": "fake2-1.2.3-1.el8"},
+                    {"el8": "fake3-1.2.3-1.el8"},
+                    {"el7": "fake2-1.2.3-1.el7"},
+                    {"el7": "fake2-1.2.3-1.el7"},
+                ]
+            }
+        })
+        actual = builder.from_rhcos_deps(8, "art1", Model(), {})
+        self.assertEqual([b["nvr"] for b in actual.values()], ["fake1-1.2.3-1.el8", "fake2-1.2.3-1.el8", "fake3-1.2.3-1.el8"])
+        builder._get_builds.assert_called_once_with(["fake1-1.2.3-1.el8", "fake2-1.2.3-1.el8", "fake3-1.2.3-1.el8"])
+        assembly_rhcos_config.assert_called_once()
