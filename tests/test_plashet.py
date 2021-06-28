@@ -126,3 +126,58 @@ class TestPlashetBuilder(TestCase):
         actual = builder.from_pinned_by_is(8, "art1", releases_config, rpm_metas)
         self.assertEqual([b["nvr"] for b in actual.values()], ["fake1-1.2.3-1.el8", "fake2-1.2.3-1.el8"])
         builder._get_builds.assert_called_once()
+
+    @patch("doozerlib.plashet.list_archives_by_builds")
+    def test_from_images(self, list_archives_by_builds: Mock):
+        builder = PlashetBuilder(MagicMock())
+        image_map = {
+            "fake-image1": MagicMock(),
+            "fake-image2": MagicMock(),
+        }
+        list_archives_by_builds.return_value = [
+            [{"rpms": [{"build_id": 101}, {"build_id": 102}, {"build_id": 103}]}, {"rpms": [{"build_id": 102}, {"build_id": 104}]}],
+            [{"rpms": [{"build_id": 201}, {"build_id": 202}]}],
+        ]
+        builder._get_builds = MagicMock(return_value=[
+            {"id": 101, "build_id": 101, "name": "fake101", "nvr": "fake101-1.2.3-1.el8"},
+            {"id": 102, "build_id": 102, "name": "fake102", "nvr": "fake102-1.2.3-1.el8"},
+            {"id": 103, "build_id": 103, "name": "fake103", "nvr": "fake103-1.2.3-1.el8"},
+            {"id": 104, "build_id": 104, "name": "fake104", "nvr": "fake104-1.2.3-1.el8"},
+            {"id": 201, "build_id": 201, "name": "fake201", "nvr": "fake201-1.2.3-1.el8"},
+            {"id": 202, "build_id": 202, "name": "fake202", "nvr": "fake202-1.2.3-1.el8"},
+        ])
+        actual = builder.from_images(image_map)
+        self.assertEqual({rpm_build["nvr"] for rpm_build in actual["fake-image1"]}, {"fake101-1.2.3-1.el8", "fake102-1.2.3-1.el8", "fake103-1.2.3-1.el8", "fake104-1.2.3-1.el8"})
+        self.assertEqual({rpm_build["nvr"] for rpm_build in actual["fake-image2"]}, {"fake201-1.2.3-1.el8", "fake202-1.2.3-1.el8"})
+        image_map["fake-image1"].get_latest_build.assert_called_once()
+        image_map["fake-image2"].get_latest_build.assert_called_once()
+        builder._get_builds.assert_called_once_with({101, 102, 103, 104, 201, 202})
+        list_archives_by_builds.assert_called_once()
+
+    @patch("doozerlib.plashet.assembly_metadata_config")
+    def test_from_image_member_deps(self, assembly_metadata_config: Mock):
+        builder = PlashetBuilder(MagicMock())
+
+        builder._get_builds = MagicMock(return_value=[
+            {"id": 1, "build_id": 1, "name": "fake1", "nvr": "fake1-1.2.3-1.el8"},
+            {"id": 2, "build_id": 2, "name": "fake2", "nvr": "fake2-1.2.3-1.el8"},
+            {"id": 3, "build_id": 3, "name": "fake3", "nvr": "fake3-1.2.3-1.el8"},
+        ])
+        assembly_metadata_config.return_value = Model({
+            "dependencies": {
+                "rpms": [
+                    {"el8": "fake1-1.2.3-1.el8"},
+                    {"el8": "fake2-1.2.3-1.el8"},
+                    {"el8": "fake3-1.2.3-1.el8"},
+                    {"el7": "fake2-1.2.3-1.el7"},
+                    {"el7": "fake2-1.2.3-1.el7"},
+                ]
+            }
+        })
+        image_meta = Model({
+            "distgit_key": "fake-image",
+        })
+        actual = builder.from_image_member_deps(8, "art1", Model(), image_meta, {})
+        self.assertEqual([b["nvr"] for b in actual.values()], ["fake1-1.2.3-1.el8", "fake2-1.2.3-1.el8", "fake3-1.2.3-1.el8"])
+        builder._get_builds.assert_called_once_with(["fake1-1.2.3-1.el8", "fake2-1.2.3-1.el8", "fake3-1.2.3-1.el8"])
+        assembly_metadata_config.assert_called_once()
