@@ -439,6 +439,8 @@ class KojiWrapper(koji.ClientSession):
         'listRPMs',
         'getPackage',
         'listTags',
+        'gssapi_login',
+        'sslLogin',
     ])
 
     def __init__(self, koji_session_args, brew_event=None):

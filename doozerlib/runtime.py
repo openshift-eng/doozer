@@ -190,10 +190,10 @@ class Runtime(object):
         self.flags_dir = None
 
         # Map of dist-git repo name -> ImageMetadata object. Populated when group is set.
-        self.image_map = {}
+        self.image_map: Dict[str, ImageMetadata] = {}
 
         # Map of dist-git repo name -> RPMMetadata object. Populated when group is set.
-        self.rpm_map = {}
+        self.rpm_map: Dict[str, RPMMetadata] = {}
 
         # Map of source code repo aliases (e.g. "ose") to a tuple representing the source resolution cache.
         # See registry_repo.
@@ -619,6 +619,13 @@ class Runtime(object):
             self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
 
         assembly_config_finalize(self.get_releases_config(), self.assembly, self.rpm_metas(), self.ordered_image_metas())
+
+        if not self.brew_event:
+            with self.shared_koji_client_session() as koji_session:
+                # If brew event is not set as part of the assembly and not specified on the command line,
+                # lock in an event so that there are no race conditions.
+                event_info = koji_session.getLastEvent()
+                self.brew_event = event_info['id']
 
         if clone_distgits:
             self.clone_distgits()
