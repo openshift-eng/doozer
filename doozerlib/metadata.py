@@ -76,8 +76,7 @@ class RebuildHint(NamedTuple):
 
 
 class Metadata(object):
-
-    def __init__(self, meta_type, runtime, data_obj: Dict, commitish: Optional[str] = None, prevent_cloning: Optional[bool] = False):
+    def __init__(self, meta_type: str, runtime, data_obj: Dict, commitish: Optional[str] = None, prevent_cloning: Optional[bool] = False):
         """
         :param meta_type - a string. Index to the sub-class <'rpm'|'image'>.
         :param runtime - a Runtime object.
@@ -189,6 +188,9 @@ class Metadata(object):
 
     def hotfix_brew_tag(self):
         return f'{self.branch()}-hotfix'
+
+    def default_brew_tag(self):
+        return self.hotfix_brew_tag() if self.runtime.hotfix else self.candidate_brew_tag()
 
     def default_brew_target(self):
         return NotImplementedError()
