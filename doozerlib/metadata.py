@@ -291,12 +291,13 @@ class Metadata(object):
             check_f=lambda req: req.code == 200)
         return req.read()
 
-    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None, honor_is=True):
+    def get_latest_build(self, default=-1, assembly=None, version=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None, honor_is=True):
         """
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
         :param assembly: A non-default assembly name to search relative to. If not specified, runtime.assembly
                          will be used. If runtime.assembly is also None, the search will return true latest.
                          If the assembly parameter is set to '', this search will also return true latest.
+        :param version: If specified, overrides the default major.minor information from the distgit branch.
         :param extra_pattern: An extra glob pattern that must be matched in the middle of the
                          build's release field. Pattern must match release timestamp and components
                          like p? and git commit (up to, but not including ".assembly.<name>" release
