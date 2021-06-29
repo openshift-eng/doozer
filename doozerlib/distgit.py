@@ -1115,13 +1115,12 @@ class ImageDistGitRepo(DistGitRepo):
             cmd_list.append('--signing-intent')
             cmd_list.append(signing_intent)
         else:
-            if repo_type:
+            if repo_type and not repo_list:  # If --repo was not specified on the command line
                 repo_file = f".oit/{repo_type}.repo"
                 existence, repo_url = self.cgit_file_available(repo_file)
                 if not existence:
                     raise FileNotFoundError(f"Repo file {repo_file} is not available on cgit; cgit cache may not be reflecting distgit in a timely manner.")
-                repo_list = list(repo_list)  # In case we get a tuple
-                repo_list.append(repo_url)
+                repo_list = [repo_url]
 
             if repo_list:
                 # rhpkg supports --repo-url [URL [URL ...]]
