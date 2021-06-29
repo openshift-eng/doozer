@@ -911,8 +911,13 @@ class ImageDistGitRepo(DistGitRepo):
             # built so that push_image will have a fixed point of reference and not detect any
             # subsequent builds.
             push_version, push_release = ('', '')
-            if not scratch:
-                _, push_version, push_release = self.metadata.get_latest_build_info()
+            if not dry_run and not scratch:
+                # Use tag based get_latest_build because golang builder images don't follow the version numbering scheme like normal OCP images.
+                with self.runtime.shared_koji_client_session() as koji_api:
+                    builds = koji_api.listTagged(self.metadata.default_brew_tag(), package=self.metadata.get_component_name(), type="image", inherit=False)
+                    latest_build = util.find_latest_build(builds, self.runtime.assembly)
+                    push_version = latest_build["version"]
+                    push_release = latest_build["release"]
             record["message"] = "Success"
             record["status"] = 0
             self.build_status = True
@@ -1117,7 +1122,11 @@ class ImageDistGitRepo(DistGitRepo):
         else:
             if repo_type and not repo_list:  # If --repo was not specified on the command line
                 repo_file = f".oit/{repo_type}.repo"
-                existence, repo_url = self.cgit_file_available(repo_file)
+                if not dry_run:
+                    existence, repo_url = self.cgit_file_available(repo_file)
+                else:
+                    self.logger.warning("[DRY RUN] Would have checked if cgit repo file is present.")
+                    existence, repo_url = True, f"https://cgit.example.com/{repo_file}"
                 if not existence:
                     raise FileNotFoundError(f"Repo file {repo_file} is not available on cgit; cgit cache may not be reflecting distgit in a timely manner.")
                 repo_list = [repo_url]
