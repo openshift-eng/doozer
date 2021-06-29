@@ -623,7 +623,7 @@ def from_tags(config: SimpleNamespace, brew_tag: Tuple[Tuple[str, str], ...], em
 
             logger.info(f'{tag} contains package: {nvre}')
             desired_nvres.add(nvre)
-            if component in signable_components:
+            if package_name in signable_components:
                 nvr_product_version[strip_epoch(nvre)] = product_version
 
             if package_name.startswith(tuple(include_previous_for)) or include_previous:
