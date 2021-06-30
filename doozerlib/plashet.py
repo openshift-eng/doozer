@@ -184,7 +184,7 @@ class PlashetBuilder:
         :param el_version: RHEL version
         :param assembly: Assembly name to query. If None, this method will return true latest builds.
         :param releases_config: a Model for releases.yaml
-         :param rpm_map: Map of rpm_distgit_key -> RPMMetadata
+        :param rpm_map: Map of rpm_distgit_key -> RPMMetadata
         :return: a dict; keys are component names, values are Brew build dicts
         """
         component_builds: Dict[str, Dict] = {}  # keys are rpm component names, values are brew build dicts
