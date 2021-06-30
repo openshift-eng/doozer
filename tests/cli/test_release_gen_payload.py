@@ -14,10 +14,10 @@ def _fake_generator():
     runtime.command = "dummy"
     runtime.state = {}
     runtime.logger = MagicMock()
+    runtime.brew_event = None
     return rgp.PayloadGenerator(
         runtime,
         brew_session=MagicMock(),
-        brew_event=None,
         base_target=rgp.SyncTarget(),
     )
 
@@ -82,79 +82,4 @@ class TestReleaseGenPayloadCli(TestCase):
         entries = []
         expected = {}
         actual = _fake_generator()._inconsistency_annotation(entries)
-        self.assertEqual(actual, expected)
-
-
-class TestPayloadGenerator(TestCase):
-    @mock.patch("doozerlib.cli.release_gen_payload.brew.get_tagged_builds")
-    def test_get_latest_builds(self, get_tagged_builds: mock.Mock):
-        runtime = MagicMock()
-        image_metas = [
-            ImageMetadata(runtime, Model({
-                "key": "a",
-                'data': {
-                    'name': 'openshift/a',
-                    'distgit': {'branch': 'fake-branch-rhel-8'},
-                },
-            })),
-            ImageMetadata(runtime, Model({
-                "key": "b",
-                'data': {
-                    'name': 'openshift/b',
-                    'distgit': {'branch': 'fake-branch-rhel-7'},
-                },
-            })),
-            ImageMetadata(runtime, Model({
-                "key": "c",
-                'data': {
-                    'name': 'openshift/c',
-                    'distgit': {'branch': 'fake-branch-rhel-8'},
-                },
-            })),
-        ]
-        get_tagged_builds.return_value = [
-            [
-                {"id": 13, "name": "a-container", "version": "v1.2.3", "release": "3.assembly.stream"},
-                {"id": 12, "name": "a-container", "version": "v1.2.3", "release": "2.assembly.hotfix_a"},
-                {"id": 11, "name": "a-container", "version": "v1.2.3", "release": "1.assembly.hotfix_a"},
-            ],
-            [
-                {"id": 23, "name": "b-container", "version": "v1.2.3", "release": "3.assembly.test"},
-                {"id": 22, "name": "b-container", "version": "v1.2.3", "release": "2.assembly.hotfix_b"},
-                {"id": 21, "name": "b-container", "version": "v1.2.3", "release": "1.assembly.stream"},
-            ],
-            [
-                {"id": 33, "name": "c-container", "version": "v1.2.3", "release": "3"},
-                {"id": 32, "name": "c-container", "version": "v1.2.3", "release": "2.assembly.hotfix_b"},
-                {"id": 31, "name": "c-container", "version": "v1.2.3", "release": "1"},
-            ],
-        ]
-        generator = rgp.PayloadGenerator(runtime, MagicMock(), None, MagicMock())
-
-        # assembly == "hotfix_a"
-        runtime.assembly = "hotfix_a"
-        expected = [12, 21, 33]
-        latest, _ = generator._get_latest_builds(image_metas)
-        actual = [record.build["id"] for record in latest]
-        self.assertEqual(actual, expected)
-
-        # assembly == "hotfix_b"
-        runtime.assembly = "hotfix_b"
-        expected = [13, 22, 32]
-        latest, _ = generator._get_latest_builds(image_metas)
-        actual = [record.build["id"] for record in latest]
-        self.assertEqual(actual, expected)
-
-        # assembly == "hotfix_c"
-        runtime.assembly = "hotfix_c"
-        expected = [13, 21, 33]
-        latest, _ = generator._get_latest_builds(image_metas)
-        actual = [record.build["id"] for record in latest]
-        self.assertEqual(actual, expected)
-
-        # assembly == None
-        runtime.assembly = None
-        expected = [13, 23, 33]
-        latest, _ = generator._get_latest_builds(image_metas)
-        actual = [record.build["id"] for record in latest]
         self.assertEqual(actual, expected)

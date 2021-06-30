@@ -413,7 +413,10 @@ class Metadata(object):
                         raise ValueError(f'Did not find nvr field in pinned Image component {self.distgit_key}')
 
                 # strict means raise an exception if not found.
-                return koji_api.getBuild(is_nvr, strict=True)
+                found_build = koji_api.getBuild(is_nvr, strict=True)
+                # Different brew apis return different keys here; normalize to make the rest of doozer not need to change.
+                found_build['id'] = found_build['build_id']
+                return found_build
 
             if not assembly:
                 # if assembly is '' (by parameter) or still None after runtime.assembly,
@@ -445,7 +448,10 @@ class Metadata(object):
         if not builds:
             return default_return()
 
-        return builds[0]
+        found_build = builds[0]
+        # Different brew apis return different keys here; normalize to make the rest of doozer not need to change.
+        found_build['id'] = found_build['build_id']
+        return found_build
 
     def get_latest_build_info(self, default=-1, **kwargs):
         """

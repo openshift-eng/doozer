@@ -23,12 +23,10 @@ from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yel
               help="Quay ORGANIZATION to mirror into.\ndefault=openshift-release-dev")
 @click.option("--repository", metavar='REPO', required=False, default='ocp-v4.0-art-dev',
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
-@click.option("--event-id", metavar='NUM', required=False, type=int,
-              help="A Brew event ID. If specified, the latest images as of the given Brew event will be chosen for mirroring intead of now.")
 @click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
               help="Architecture (brew nomenclature) to exclude from payload generation")
 @pass_runtime
-def release_gen_payload(runtime, is_name, is_namespace, organization, repository, event_id, exclude_arch):
+def release_gen_payload(runtime, is_name, is_namespace, organization, repository, exclude_arch):
     """Generates two sets of input files for `oc` commands to mirror
 content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
@@ -94,7 +92,7 @@ read and propagate/expose this annotation in its display of the release image.
         istream_namespace=is_namespace if is_namespace else default_is_base_namespace()
     )
 
-    gen = PayloadGenerator(runtime, brew_session, event_id, base_target, exclude_arch)
+    gen = PayloadGenerator(runtime, brew_session, base_target, exclude_arch)
     latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items = gen.load_latest_builds()
     gen.write_mirror_destinations(latest_builds, mismatched_siblings)
 
@@ -135,10 +133,9 @@ class BuildRecord(object):
 
 
 class PayloadGenerator:
-    def __init__(self, runtime: Runtime, brew_session: ClientSession, brew_event: Optional[int], base_target: SyncTarget, exclude_arches: Optional[List[str]] = None):
+    def __init__(self, runtime: Runtime, brew_session: ClientSession, base_target: SyncTarget, exclude_arches: Optional[List[str]] = None):
         self.runtime = runtime
         self.brew_session = brew_session
-        self.brew_event = brew_event
         self.base_target = base_target
         self.exclude_arches = exclude_arches or []
         self.state = runtime.state[runtime.command] = dict(state.TEMPLATE_IMAGE)
@@ -202,9 +199,7 @@ class PayloadGenerator:
         :param payload_images: a list of image metadata for payload images
         :return: list of build records, list of images missing builds
         """
-        tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in payload_images]
-        lists_of_brew_builds = brew.get_tagged_builds(tag_component_tuples, "image", event=self.brew_event, session=self.brew_session, inherit=True)
-        brew_latest_builds = [find_latest_build(builds, self.runtime.assembly) for builds in lists_of_brew_builds]
+        brew_latest_builds = [image_meta.get_latest_build() for image_meta in payload_images]
 
         # look up the archives for each image (to get the RPMs that went into them)
         brew_build_ids = [b["id"] if b else 0 for b in brew_latest_builds]
@@ -439,7 +434,7 @@ class PayloadGenerator:
         candidate_rpms = {
             # the RPMs are collected by name mainly to de-duplicate (same RPM, multiple arches)
             rpm['name']: rpm for rpm in
-            self.bs_detector.find_unshipped_candidate_rpms(candidate_tag, self.brew_event)
+            self.bs_detector.find_unshipped_candidate_rpms(candidate_tag, self.runtime.brew_event)
         }
 
         inconsistencies = {}
