@@ -1,7 +1,7 @@
 import typing
 import copy
 
-from doozerlib.model import Model
+from doozerlib.model import Missing, Model
 
 
 def merger(a, b):
@@ -119,6 +119,25 @@ def assembly_metadata_config(releases_config: Model, assembly: str, meta_type: s
             config_dict = merger(component_entry.metadata.primitive(), config_dict)
 
     return Model(dict_to_model=config_dict)
+
+
+def assembly_rhcos_config(releases_config: Model, assembly: str) -> Model:
+    """
+    :param releases_config: The content of releases.yml in Model form.
+    :param assembly: The name of the assembly to assess
+    Returns the a computed rhcos config model for a given assembly.
+    """
+    if not assembly or not isinstance(releases_config, Model):
+        return Missing
+
+    _check_recursion(releases_config, assembly)
+    target_assembly = releases_config.releases[assembly].assembly
+    rhcos_config_dict = target_assembly.get("rhcos", {})
+    if target_assembly.basis.assembly:  # Does this assembly inherit from another?
+        # Recursive apply ancestor assemblies
+        basis_rhcos_config = assembly_rhcos_config(releases_config, target_assembly.basis.assembly)
+        rhcos_config_dict = merger(rhcos_config_dict, basis_rhcos_config.primitive())
+    return Model(dict_to_model=rhcos_config_dict)
 
 
 def assembly_basis_event(releases_config: Model, assembly: str) -> typing.Optional[int]:

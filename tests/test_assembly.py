@@ -2,7 +2,7 @@ import yaml
 
 from unittest import TestCase
 
-from doozerlib.assembly import merger, assembly_group_config, assembly_metadata_config, assembly_basis_event
+from doozerlib.assembly import assembly_rhcos_config, merger, assembly_group_config, assembly_metadata_config, assembly_basis_event
 from doozerlib.model import Model, Missing
 
 
@@ -117,6 +117,16 @@ releases:
           rpms:
             - el7: some-nvr-3
               non_gc_tag: some-tag-3
+      rhcos:
+        machine-os-content:
+          images:
+            x86_64: registry.example.com/rhcos-x86_64:test
+        dependencies:
+          rpms:
+            - el7: some-nvr-4
+              non_gc_tag: some-tag-4
+            - el8: some-nvr-5
+              non_gc_tag: some-tag-4
 
   ART_8:
     assembly:
@@ -136,6 +146,13 @@ releases:
           rpms:
             - el7: some-nvr-4
               non_gc_tag: some-tag-4
+      rhcos:
+        machine-os-content:
+          images: {}
+        dependencies:
+          rpms:
+            - el8: some-nvr-6
+              non_gc_tag: some-tag-6
 
   ART_INFINITE:
     assembly:
@@ -333,3 +350,7 @@ releases:
             pass
         except Exception as e:
             self.fail(f'Expected ValueError on assembly infinite recursion but got: {type(e)}: {e}')
+
+    def test_assembly_rhcos_config(self):
+        rhcos_config = assembly_rhcos_config(self.releases_config, "ART_8")
+        self.assertEqual(len(rhcos_config.dependencies.rpms), 3)

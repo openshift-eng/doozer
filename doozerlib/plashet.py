@@ -6,7 +6,7 @@ from typing import Dict, Iterable, List, Optional, Union
 from kobo.rpmlib import parse_nvr
 from koji import ClientSession
 
-from doozerlib.assembly import assembly_metadata_config
+from doozerlib.assembly import assembly_metadata_config, assembly_rhcos_config
 from doozerlib.brew import get_build_objects, list_archives_by_builds
 from doozerlib.image import ImageMetadata
 from doozerlib.model import Model
@@ -170,11 +170,39 @@ class PlashetBuilder:
             dep_builds = self._get_builds(dep_nvr_list)
             missing_nvrs = [nvr for nvr, build in zip(dep_nvr_list, dep_builds) if not build]
             if missing_nvrs:
-                raise IOError(f"The following group dependency NVRs don't exist: {missing_nvrs}")
+                raise IOError(f"The following image member dependency NVRs don't exist: {missing_nvrs}")
             # Make sure image member dependencies have no ART managed rpms.
             art_rpms_in_deps = {dep_build["name"] for dep_build in dep_builds} & {meta.rpm_name for meta in rpm_map.values()}
             if art_rpms_in_deps:
                 raise ValueError(f"Unable to build plashet. Image member dependencies cannot have ART managed RPMs: {art_rpms_in_deps}")
+            for dep_build in dep_builds:
+                component_builds[dep_build["name"]] = dep_build
+        return component_builds
+
+    def from_rhcos_deps(self, el_version: int, assembly: str, releases_config: Model, rpm_map: Dict[str, Dict]):
+        """ Returns RPM builds defined in RHCOS config dependencies
+        :param el_version: RHEL version
+        :param assembly: Assembly name to query. If None, this method will return true latest builds.
+        :param releases_config: a Model for releases.yaml
+        :param rpm_map: Map of rpm_distgit_key -> RPMMetadata
+        :return: a dict; keys are component names, values are Brew build dicts
+        """
+        component_builds: Dict[str, Dict] = {}  # keys are rpm component names, values are brew build dicts
+        rhcos_config = assembly_rhcos_config(releases_config, assembly)
+        # honor RHCOS dependencies
+        # rpms for this rhel version listed in RHCOS dependencies; keys are rpm component names, values are nvrs
+        dep_nvrs = {parse_nvr(dep[f"el{el_version}"])["name"]: dep[f"el{el_version}"] for dep in rhcos_config.dependencies.rpms if dep[f"el{el_version}"]}
+        if dep_nvrs:
+            dep_nvr_list = list(dep_nvrs.values())
+            self._logger.info("Found %s NVRs defined in RHCOS dependencies. Fetching build infos from Brew...", len(dep_nvr_list))
+            dep_builds = self._get_builds(dep_nvr_list)
+            missing_nvrs = [nvr for nvr, build in zip(dep_nvr_list, dep_builds) if not build]
+            if missing_nvrs:
+                raise IOError(f"The following RHCOS dependency NVRs don't exist: {missing_nvrs}")
+            # Make sure RHCOS dependencies have no ART managed rpms.
+            art_rpms_in_rhcos_deps = {dep_build["name"] for dep_build in dep_builds} & {meta.rpm_name for meta in rpm_map.values()}
+            if art_rpms_in_rhcos_deps:
+                raise ValueError(f"Unable to build plashet. Group dependencies cannot have ART managed RPMs: {art_rpms_in_rhcos_deps}")
             for dep_build in dep_builds:
                 component_builds[dep_build["name"]] = dep_build
         return component_builds
