@@ -2245,7 +2245,11 @@ class ImageDistGitRepo(DistGitRepo):
                     "component_name": self.metadata.distgit_key,
                     "kind": "Dockerfile",
                     "content": new_dockerfile_data,
-                    "set_env": {"PATH": path},
+                    "set_env": {
+                        "PATH": path,
+                        "BREW_EVENT": f'{self.runtime.brew_event}',
+                        "BREW_TAG": f'{self.metadata.default_brew_tag()}'
+                    },
                     "distgit_path": self.dg_path,
                 }
                 modifier.act(context=context, ceiling_dir=str(dg_path))
