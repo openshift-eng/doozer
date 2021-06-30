@@ -972,7 +972,7 @@ class Runtime(object):
         elif self.group_config.urls.brew_image_namespace is not Missing:
             # if there is a namespace, we need to flatten the image name.
             # e.g. openshift/image:latest => openshift-image:latest
-            # ref: https://mojo.redhat.com/docs/DOC-1204856
+            # ref: https://source.redhat.com/groups/public/container-build-system/container_build_system_wiki/pulling_pre_quay_switch_over_osbs_built_container_images_using_the_osbs_registry_proxy
             url = self.group_config.urls.brew_image_host
             ns = self.group_config.urls.brew_image_namespace
             name = image_name_and_version.replace('/', '-')
