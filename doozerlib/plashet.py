@@ -179,7 +179,7 @@ class PlashetBuilder:
                 component_builds[dep_build["name"]] = dep_build
         return component_builds
 
-    def from_rhcos_deps(self, el_version: int, assembly: str, releases_config: Model, rpm_map: Dict[str, RPMMetadata]):
+    def from_rhcos_deps(self, el_version: int, assembly: str, releases_config: Model, rpm_map: Dict[str, Dict]):
         """ Returns RPM builds defined in RHCOS config dependencies
         :param el_version: RHEL version
         :param assembly: Assembly name to query. If None, this method will return true latest builds.
