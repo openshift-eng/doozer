@@ -1,7 +1,14 @@
 import typing
 import copy
 
+from enum import Enum
+
 from doozerlib.model import Missing, Model
+
+
+class AssemblyTypes(Enum):
+    STANDARD = 0  # All constraints / checks enforced (e.g. consistent RPMs / siblings)
+    CUSTOM = 1  # No constraints enforced
 
 
 def merger(a, b):
@@ -62,6 +69,22 @@ def _check_recursion(releases_config: Model, assembly: str):
         found.append(next_assembly)
         target_assembly = releases_config.releases[next_assembly].assembly
         next_assembly = target_assembly.basis.assembly
+
+
+def assembly_type(releases_config: Model, assembly: str) -> AssemblyTypes:
+
+    if not assembly or not isinstance(releases_config, Model):
+        return AssemblyTypes.STANDARD
+
+    target_assembly = releases_config.releases[assembly].assembly
+    str_type = target_assembly['type']
+    if not str_type or str_type == "standard":
+        # Assemblies are standard by default
+        return AssemblyTypes.STANDARD
+    elif str_type == "custom":
+        return AssemblyTypes.CUSTOM
+    else:
+        raise ValueError(f'Unknown assembly type: {str_type}')
 
 
 def assembly_group_config(releases_config: Model, assembly: str, group_config: Model) -> Model:

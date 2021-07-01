@@ -1,15 +1,17 @@
 import io
 import json
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 
 import click
 import yaml
 from koji import ClientSession
 
 from doozerlib import brew, build_status_detector, exectools, rhcos, state
+from doozerlib import assembly
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.image import ImageMetadata
+from doozerlib.model import Model
 from doozerlib.runtime import Runtime
 from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yellow_print
 
@@ -155,6 +157,9 @@ class PayloadGenerator:
         self._designate_privacy(latest_builds, images)
 
         mismatched_siblings = self._find_mismatched_siblings(latest_builds)
+        if self.runtime.assembly_type == assembly.AssemblyTypes.CUSTOM:
+            self.runtime.logger.warning(f'There are mismatched siblings in this assembly, but it is "custom"; ignoring: {mismatched_siblings}')
+            mismatched_siblings = set()
 
         return latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items
 
@@ -194,12 +199,24 @@ class PayloadGenerator:
         Find latest brew build (at event, if given) of each payload image.
 
         If assemblies are disabled, it will return the latest tagged brew build with the candidate brew tag.
-        If assemblies are enabled, it will return the latest tagged brew build in the given assembly. If no such build, it will fall back to the latest build in "stream" assembly.
+        If assemblies are enabled, it will return the latest tagged brew build in the given assembly.
+          If no such build, it will fall back to the latest build in "stream" assembly.
 
         :param payload_images: a list of image metadata for payload images
         :return: list of build records, list of images missing builds
         """
-        brew_latest_builds = [image_meta.get_latest_build() for image_meta in payload_images]
+        brew_latest_builds = []
+        for image_meta in payload_images:
+            latest_build: ImageMetadata = image_meta.get_latest_build()
+            if self.runtime.assembly_basis_event:
+                # If we are preparing an assembly with a basis event, let's start getting
+                # serious and tag these images so they don't get garbage collected.
+                with self.runtime.shared_koji_client_session() as koji_api:
+                    tags = {tag['name'] for tag in koji_api.listTags(build=latest_build['id'])}
+                    if latest_build.hotfix_brew_tag() not in tags:
+                        koji_api.tagBuild(latest_build.hotfix_brew_tag(), build=latest_build['id'])
+
+            brew_latest_builds.append(latest_build)
 
         # look up the archives for each image (to get the RPMs that went into them)
         brew_build_ids = [b["id"] if b else 0 for b in brew_latest_builds]
@@ -254,8 +271,7 @@ class PayloadGenerator:
         for brew_arch, private in mirror_src_for_arch_and_name.keys():
             rhcos_source_for_priv_arch[private][brew_arch] = self._latest_mosc_source(brew_arch, private)
         rhcos_inconsistencies = {  # map[private] -> map[annotation] -> description
-            private: self._find_rhcos_build_inconsistencies(rhcos_source_for_priv_arch[private])
-            for private in (True, False)
+            private: self._find_rhcos_build_inconsistencies(rhcos_source_for_priv_arch[private]) for private in (True, False)
         }
 
         for dest, source_for_name in mirror_src_for_arch_and_name.items():
@@ -492,13 +508,31 @@ class PayloadGenerator:
         return tag_list
 
     def _latest_mosc_source(self, brew_arch, private):
-        stream_name = f"{brew_arch}{'-priv' if private else ''}"
-        self.runtime.logger.info(f"Getting latest RHCOS source for {stream_name}...")
+        image_stream_suffix = f"{brew_arch}{'-priv' if private else ''}"
+        runtime = self.runtime
+        runtime.logger.info(f"Getting latest RHCOS source for {image_stream_suffix}...")
+
+        assembly_rhcos_config = assembly.assembly_rhcos_config(runtime.releases_config, runtime.assembly)
+        # See if this assembly has assembly.rhcos.machine-os-content.images populated for this architecture.
+        assembly_rhcos_arch_pullspec = assembly_rhcos_config['machine-os-content'].images[brew_arch]
+        if self.runtime.assembly_basis_event and not assembly_rhcos_arch_pullspec:
+            raise Exception(f'Assembly {runtime.assembly} has a basis event but no assembly.rhcos MOSC image data for {brew_arch}; all MOSC image data must be populated for this assembly to be valid')
+
         try:
+
             version = self.runtime.get_minor_version()
-            build_id, pullspec = rhcos.latest_machine_os_content(version, brew_arch, private)
-            if not pullspec:
-                raise Exception(f"No RHCOS found for {version}")
+
+            if assembly_rhcos_arch_pullspec:
+                pullspec = assembly_rhcos_arch_pullspec
+                image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}')
+                image_info = Model(dict_to_model=json.loads(image_info_str))
+                build_id = image_info.config.config.Labels.version
+                if not build_id:
+                    raise Exception(f'Unable to determine MOSC build_id from: {pullspec}. Retrieved image info: {image_info_str}')
+            else:
+                build_id, pullspec = rhcos.latest_machine_os_content(version, brew_arch, private)
+                if not pullspec:
+                    raise Exception(f"No RHCOS found for {version}")
 
             commitmeta = rhcos.rhcos_build_meta(build_id, version, brew_arch, private, meta_type="commitmeta")
             rpm_list = commitmeta.get("rpmostree.rpmdb.pkglist")
@@ -506,7 +540,7 @@ class PayloadGenerator:
                 raise Exception(f"no pkglist in {commitmeta}")
 
         except Exception as ex:
-            problem = f"{stream_name}: {ex}"
+            problem = f"{image_stream_suffix}: {ex}"
             red_print(f"error finding RHCOS {problem}")
             # record when there is a problem; as each arch is a separate build, make an array
             self.state.setdefault("images", {}).setdefault("machine-os-content", []).append(problem)
@@ -542,7 +576,7 @@ class PayloadGenerator:
             }
         }
 
-    def _find_mismatched_siblings(self, builds):
+    def _find_mismatched_siblings(self, builds) -> Set:
         """ Sibling images are those built from the same repository. We need to throw an error if there are sibling built from different commit.
         """
         # First, loop over all builds and store their source repos and commits to a dict
