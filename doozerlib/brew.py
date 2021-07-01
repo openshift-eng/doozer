@@ -4,21 +4,20 @@ Utility functions for general interactions with Brew and Builds
 from __future__ import absolute_import, print_function, unicode_literals
 
 # stdlib
-import time
-import threading
-import subprocess
-from multiprocessing import Lock
-import traceback
-import requests
 import json
-from typing import List, Tuple, Dict, Optional
-
-from . import logutil
+import threading
+import time
+import traceback
+from enum import Enum
+from multiprocessing import Lock
+from typing import Dict, Iterable, List, Optional, Tuple
 
 # 3rd party
 import koji
 import koji_cli.lib
+import requests
 
+from . import logutil
 from .model import Missing
 from .util import red_print, total_size
 
@@ -33,6 +32,23 @@ logger = logutil.getLogger(__name__)
 watch_task_info = {}
 # Protects threaded access to watch_task_info
 watch_task_lock = Lock()
+
+
+class TaskStates(Enum):
+    FREE = 0
+    OPEN = 1
+    CLOSED = 2
+    CANCELED = 3
+    ASSIGNED = 4
+    FAILED = 5
+
+
+class BuildStates(Enum):
+    BUILDING = 0
+    COMPLETE = 1
+    DELETED = 2
+    FAILED = 3
+    CANCELED = 4
 
 
 def get_watch_task_info_copy():
@@ -189,19 +205,26 @@ def get_latest_builds(tag_component_tuples: List[Tuple[str, str]], build_type: O
     return [task.result if task else None for task in tasks]
 
 
-def get_tagged_builds(tags: List[str], build_type: Optional[str], event: Optional[int], session: koji.ClientSession) -> List[Optional[List[Dict]]]:
-    """ Get tagged builds for multiple Brew tags
+def get_tagged_builds(tag_component_tuples: Iterable[Tuple[str, Optional[str]]], build_type: Optional[str], event: Optional[int], session: koji.ClientSession, inherit: bool = False) -> List[Optional[List[Dict]]]:
+    """ Get tagged builds as of the given event
+
+    In each list for a component, builds are ordered from newest tagged to oldest tagged:
+    https://pagure.io/koji/blob/3fed02c8adb93cde614af9f61abd12bbccdd6682/f/hub/kojihub.py#_1392
 
     :param tag_component_tuples: List of (tag, component_name) tuples
     :param build_type: if given, only retrieve specified build type (rpm, image)
     :param event: Brew event ID, or None for now.
     :param session: instance of Brew session
+    :param inherit: True to include builds inherited from parent tags
     :return: a list of lists of Koji/Brew build dicts
     """
     tasks = []
     with session.multicall(strict=True) as m:
-        for tag in tags:
-            tasks.append(m.listTagged(tag, event=event, type=build_type))
+        for tag, component_name in tag_component_tuples:
+            if not tag:
+                tasks.append(None)
+                continue
+            tasks.append(m.listTagged(tag, event=event, package=component_name, type=build_type, inherit=inherit))
     return [task.result if task else None for task in tasks]
 
 
@@ -312,7 +335,8 @@ def has_tag_changed_since_build(runtime, koji_client, build, tag, inherit=True) 
             # Example result of full queryHistory: https://gist.github.com/jupierce/943b845c07defe784522fd9fd76f4ab0
             tag_listing = koji_client.queryHistory(table='tag_listing',
                                                    tag=found_in_tag_name, build=last_tagged_build['build_id'])['tag_listing']
-            latest_tag_change_event = tag_listing[0]  # Order is by increasing age, so 0 is the most recent time this build was tagged
+            tag_listing.sort(key=lambda event: event['create_event'])
+            latest_tag_change_event = tag_listing[-1]
 
         with cache_lock:
             latest_tag_change_events[tag] = latest_tag_change_event
@@ -405,7 +429,7 @@ class KojiWrapper(koji.ClientSession):
         'newRepo',
     ])
 
-    # Methods which cannot be constrained, but are considered safe to allow even wthen brew-event is set.
+    # Methods which cannot be constrained, but are considered safe to allow even when brew-event is set.
     # Why? If you know the parameters, those parameters should have already been constrained by another
     # koji API call.
     safe_methods = set([
@@ -413,6 +437,86 @@ class KojiWrapper(koji.ClientSession):
         'getBuild',
         'listArchives',
         'listRPMs',
+        'getPackage',
+        'listTags',
+        'gssapi_login',
+        'sslLogin',
+        'getTaskInfo',
+        'build',
+        'buildContainer',
+        'buildImage',
+        'buildReferences',
+        'cancelBuild',
+        'cancelTask',
+        'cancelTaskChildren',
+        'cancelTaskFull',
+        'chainBuild',
+        'chainMaven',
+        'createImageBuild',
+        'createMavenBuild',
+        'filterResults',
+        'getAPIVersion',
+        'getArchive',
+        'getArchiveFile',
+        'getArchiveType',
+        'getArchiveTypes',
+        'getAverageBuildDuration',
+        'getBuildLogs',
+        'getBuildNotificationBlock',
+        'getBuildType',
+        'getBuildroot',
+        'getChangelogEntries',
+        'getImageArchive',
+        'getImageBuild',
+        'getLoggedInUser',
+        'getMavenArchive',
+        'getMavenBuild',
+        'getPerms',
+        'getRPM',
+        'getRPMDeps',
+        'getRPMFile',
+        'getRPMHeaders',
+        'getTaskChildren',
+        'getTaskDescendents',
+        'getTaskRequest',
+        'getTaskResult',
+        'getUser',
+        'getUserPerms',
+        'getVolume',
+        'getWinArchive',
+        'getWinBuild',
+        'hello',
+        'listArchiveFiles',
+        'listArchives',
+        'listBTypes',
+        'listBuildRPMs',
+        'listBuildroots',
+        'listRPMFiles',
+        'listRPMs',
+        'listTags',
+        'listTaskOutput',
+        'listTasks',
+        'listUsers',
+        'listVolumes',
+        'login',
+        'logout',
+        'logoutChild',
+        'makeTask',
+        'mavenEnabled',
+        'mergeScratch',
+        'moveAllBuilds',
+        'moveBuild',
+        'queryRPMSigs',
+        'resubmitTask',
+        'search',
+        'tagBuild',
+        'tagBuildBypass',
+        'taskFinished',
+        'taskReport',
+        'untagBuild',
+        'winEnabled',
+        'winBuild',
+        'uploadFile',
     ])
 
     def __init__(self, koji_session_args, brew_event=None):
@@ -425,6 +529,9 @@ class KojiWrapper(koji.ClientSession):
         """
         self.___brew_event = None if not brew_event else int(brew_event)
         super(KojiWrapper, self).__init__(*koji_session_args)
+        self.___before_timestamp = None
+        if brew_event:
+            self.___before_timestamp = self.getEvent(self.___brew_event)['ts']
 
     @classmethod
     def clear_global_cache(cls):
@@ -477,6 +584,10 @@ class KojiWrapper(koji.ClientSession):
                     # Only set the kwarg if the caller didn't
                     kwargs = kwargs or {}
                     kwargs['beforeEvent'] = brew_event + 1
+            elif method_name == 'listBuilds':
+                if 'completeBefore' not in kwargs and 'createdBefore' not in kwargs:
+                    kwargs = kwargs or {}
+                    kwargs['completeBefore'] = self.___before_timestamp
             elif method_name in KojiWrapper.methods_with_event:
                 if 'event' not in kwargs:
                     # Only set the kwarg if the caller didn't
