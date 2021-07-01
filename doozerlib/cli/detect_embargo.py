@@ -91,7 +91,7 @@ def detect_in_rpms(runtime: Runtime, rpms, as_yaml, as_json, version):
     """
     if as_yaml and as_json:
         raise click.BadParameter("Must use one of --yaml or --json.")
-    runtime.initialize(clone_distgits=False)
+    runtime.initialize(mode="rpms", clone_source=False, clone_distgits=False)
     embargoed_builds = detect_embargoes_in_builds(runtime, rpms, "rpm", version)
     print_result_and_exit(embargoed_builds, None, None, as_yaml, as_json)
 
