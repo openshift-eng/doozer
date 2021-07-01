@@ -1,13 +1,17 @@
 import io
 import json
+from typing import List, Optional, Tuple
 
 import click
 import yaml
+from koji import ClientSession
 
 from doozerlib import brew, build_status_detector, exectools, rhcos, state
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
-from doozerlib.util import red_print, yellow_print, go_suffix_for_arch
+from doozerlib.image import ImageMetadata
+from doozerlib.runtime import Runtime
+from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yellow_print
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
@@ -19,10 +23,10 @@ from doozerlib.util import red_print, yellow_print, go_suffix_for_arch
               help="Quay ORGANIZATION to mirror into.\ndefault=openshift-release-dev")
 @click.option("--repository", metavar='REPO', required=False, default='ocp-v4.0-art-dev',
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
-@click.option("--event-id", metavar='NUM', required=False, type=int,
-              help="A Brew event ID. If specified, the latest images as of the given Brew event will be chosen for mirroring intead of now.")
+@click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
+              help="Architecture (brew nomenclature) to exclude from payload generation")
 @pass_runtime
-def release_gen_payload(runtime, is_name, is_namespace, organization, repository, event_id):
+def release_gen_payload(runtime, is_name, is_namespace, organization, repository, exclude_arch):
     """Generates two sets of input files for `oc` commands to mirror
 content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
@@ -88,7 +92,7 @@ read and propagate/expose this annotation in its display of the release image.
         istream_namespace=is_namespace if is_namespace else default_is_base_namespace()
     )
 
-    gen = PayloadGenerator(runtime, brew_session, event_id, base_target)
+    gen = PayloadGenerator(runtime, brew_session, base_target, exclude_arch)
     latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items = gen.load_latest_builds()
     gen.write_mirror_destinations(latest_builds, mismatched_siblings)
 
@@ -113,13 +117,27 @@ read and propagate/expose this annotation in its display of the release image.
             click.echo("   {}".format(img))
 
 
-class PayloadGenerator:
+class SyncTarget(object):
+    def __init__(self, orgrepo=None, istream_name=None, istream_namespace=None):
+        self.orgrepo = orgrepo
+        self.istream_name = istream_name
+        self.istream_namespace = istream_namespace
 
-    def __init__(self, runtime, brew_session, brew_event, base_target):
+
+class BuildRecord(object):
+    def __init__(self, image=None, build=None, archives=None, private=False):
+        self.image = image
+        self.build = build
+        self.archives = archives
+        self.private = private
+
+
+class PayloadGenerator:
+    def __init__(self, runtime: Runtime, brew_session: ClientSession, base_target: SyncTarget, exclude_arches: Optional[List[str]] = None):
         self.runtime = runtime
         self.brew_session = brew_session
-        self.brew_event = brew_event
         self.base_target = base_target
+        self.exclude_arches = exclude_arches or []
         self.state = runtime.state[runtime.command] = dict(state.TEMPLATE_IMAGE)
         self.bs_detector = build_status_detector.BuildStatusDetector(brew_session, runtime.logger)
 
@@ -133,6 +151,7 @@ class PayloadGenerator:
         self.state['payload_images'] = len(release_payload_images)
 
         latest_builds, images_missing_builds = self._get_latest_builds(release_payload_images)
+        self.runtime.logger.info("Determining if image builds have embargoed contents...")
         self._designate_privacy(latest_builds, images)
 
         mismatched_siblings = self._find_mismatched_siblings(latest_builds)
@@ -170,16 +189,17 @@ class PayloadGenerator:
 
         return payload_images, invalid_name_items
 
-    def _get_latest_builds(self, payload_images):
+    def _get_latest_builds(self, payload_images: List[ImageMetadata]) -> Tuple[List[BuildRecord], List[ImageMetadata]]:
         """
-        find latest brew build (at event, if given) of each payload image.
+        Find latest brew build (at event, if given) of each payload image.
+
+        If assemblies are disabled, it will return the latest tagged brew build with the candidate brew tag.
+        If assemblies are enabled, it will return the latest tagged brew build in the given assembly. If no such build, it will fall back to the latest build in "stream" assembly.
+
         :param payload_images: a list of image metadata for payload images
         :return: list of build records, list of images missing builds
         """
-        tag_component_tuples = [(image.candidate_brew_tag(), image.get_component_name()) for image in payload_images]
-        brew_latest_builds = brew.get_latest_builds(tag_component_tuples, "image", self.brew_event, self.brew_session)
-        # there's zero or one "latest" build in each list; flatten the data structure.
-        brew_latest_builds = [builds[0] if builds else {} for builds in brew_latest_builds]
+        brew_latest_builds = [image_meta.get_latest_build() for image_meta in payload_images]
 
         # look up the archives for each image (to get the RPMs that went into them)
         brew_build_ids = [b["id"] if b else 0 for b in brew_latest_builds]
@@ -226,21 +246,21 @@ class PayloadGenerator:
     def write_mirror_destinations(self, latest_builds, mismatched_siblings):
         self.runtime.logger.info("Creating mirroring lists...")
 
-        # returns map[(arch, private)] -> map[image_name] -> { version: release: image_src: digest: build_record: }
+        # returns map[(brew_arch, private)] -> map[image_name] -> { version: release: image_src: digest: build_record: }
         mirror_src_for_arch_and_name = self._get_mirror_sources(latest_builds, mismatched_siblings)
 
         # we need to evaluate rhcos inconsistencies across architectures (separate builds)
-        rhcos_source_for_priv_arch = {False: {}, True: {}}  # map[private][arch] -> source
-        for arch, private in mirror_src_for_arch_and_name.keys():
-            rhcos_source_for_priv_arch[private][arch] = self._latest_mosc_source(arch, private)
+        rhcos_source_for_priv_arch = {False: {}, True: {}}  # map[private][brew_arch] -> source
+        for brew_arch, private in mirror_src_for_arch_and_name.keys():
+            rhcos_source_for_priv_arch[private][brew_arch] = self._latest_mosc_source(brew_arch, private)
         rhcos_inconsistencies = {  # map[private] -> map[annotation] -> description
             private: self._find_rhcos_build_inconsistencies(rhcos_source_for_priv_arch[private])
             for private in (True, False)
         }
 
         for dest, source_for_name in mirror_src_for_arch_and_name.items():
-            arch, private = dest
-            dest = f"{arch}{'-priv' if private else ''}"
+            brew_arch, private = dest
+            dest = f"{brew_arch}{'-priv' if private else ''}"
 
             # Save the default SRC=DEST input to a file for syncing by 'oc image mirror'
             with io.open(f"src_dest.{dest}", "w+", encoding="utf-8") as out_file:
@@ -252,13 +272,13 @@ class PayloadGenerator:
             name, namespace = is_name_and_space(
                 self.base_target.istream_name,
                 self.base_target.istream_namespace,
-                arch, private)
+                brew_arch, private)
             target = SyncTarget(self.base_target.orgrepo, name, namespace)
             x86_source_for_name = mirror_src_for_arch_and_name[('x86_64', private)]
             istream_spec = self._get_istream_spec(
-                arch, private, target,
+                brew_arch, private, target,
                 source_for_name, x86_source_for_name,
-                rhcos_source_for_priv_arch[private][arch], rhcos_inconsistencies[private]
+                rhcos_source_for_priv_arch[private][brew_arch], rhcos_inconsistencies[private]
             )
             with io.open(f"image_stream.{dest}.yaml", "w+", encoding="utf-8") as out_file:
                 yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
@@ -268,9 +288,9 @@ class PayloadGenerator:
 
         # gather a list of all rpms used in every arch of rhcos build
         nvrs_for_rpm = {}
-        for arch, source in rhcos_source_for_arch.items():
+        for brew_arch, source in rhcos_source_for_arch.items():
             if not source:  # sometimes could be missing e.g. browser outage; just note that here
-                annotation = f"Could not retrieve RHCOS for {arch}"
+                annotation = f"Could not retrieve RHCOS for {brew_arch}"
                 inconsistencies[annotation] = annotation  # not much more to explain
                 continue
             for rpm in source['archive']['rpms']:
@@ -288,7 +308,7 @@ class PayloadGenerator:
         Determine the image sources to mirror to each arch-private-specific imagestream,
         excluding mismatched siblings; also record success/failure per state.
 
-        :return: map[(arch, private)] -> map[image_name] -> { version: release: image_src: digest: build_record: }
+        :return: map[(brew_arch, private)] -> map[image_name] -> { version: release: image_src: digest: build_record: }
         """
         mirroring = {}
         for record in latest_builds:
@@ -304,7 +324,9 @@ class PayloadGenerator:
                 else:
                     tag_name = image.image_name_short[4:] if image.image_name_short.startswith("ose-") else image.image_name_short  # it _should_ but... to be safe
                 for archive in record.archives:
-                    arch = archive["arch"]
+                    brew_arch = archive["arch"]
+                    if brew_arch in self.exclude_arches:
+                        continue
                     pullspecs = archive["extra"]["docker"]["repositories"]
                     if not pullspecs or ":" not in pullspecs[-1]:  # in case of no pullspecs or invalid format
                         error = f"Unable to find pullspecs for: {image.image_name_short}"
@@ -327,18 +349,18 @@ class PayloadGenerator:
                     if record.private:  # exclude embargoed images from the ocp[-arch] imagestreams
                         yellow_print(f"Omitting embargoed image {pullspecs[-1]}")
                     else:
-                        mirroring_list = mirroring.setdefault((arch, False), {})
+                        mirroring_list = mirroring.setdefault((brew_arch, False), {})
                         if tag_name not in mirroring_list or payload_name:
                             # if multiple images in arch have the same tag, only explicit payload_name overwrites (https://issues.redhat.com/browse/ART-2823
-                            self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the public mirroring list with imagestream tag {tag_name}...")
+                            self.runtime.logger.info(f"Adding {brew_arch} image {pullspecs[-1]} to the public mirroring list with imagestream tag {tag_name}...")
                             mirroring_list[tag_name] = mirroring_value
 
                     if self.runtime.group_config.public_upstreams:
                         # when public_upstreams are configured, both embargoed and non-embargoed images should be included in the ocp[-arch]-priv imagestreams
-                        mirroring_list = mirroring.setdefault((arch, True), {})
+                        mirroring_list = mirroring.setdefault((brew_arch, True), {})
                         if tag_name not in mirroring_list or payload_name:
                             # if multiple images in arch have the same tag, only explicit payload_name overwrites (https://issues.redhat.com/browse/ART-2823
-                            self.runtime.logger.info(f"Adding {arch} image {pullspecs[-1]} to the private mirroring list with imagestream tag {tag_name}...")
+                            self.runtime.logger.info(f"Adding {brew_arch} image {pullspecs[-1]} to the private mirroring list with imagestream tag {tag_name}...")
                             mirroring_list[tag_name] = mirroring_value
 
             # per build, record in the state whether we can successfully mirror it
@@ -355,7 +377,7 @@ class PayloadGenerator:
         tag = source["digest"].replace(":", "-")  # sha256:abcdef -> sha256-abcdef
         return f"quay.io/{orgrepo}:{tag}"
 
-    def _get_istream_spec(self, arch, private, target, source_for_name, x86_source_for_name,
+    def _get_istream_spec(self, brew_arch, private, target, source_for_name, x86_source_for_name,
                           rhcos_source, rhcos_inconsistencies):
         # Write tag specs for the image stream. The name of each tag
         # spec does not include the 'ose-' prefix. This keeps them
@@ -383,7 +405,7 @@ class PayloadGenerator:
             mosc_istag = self._get_mosc_istag_spec(rhcos_source, rhcos_inconsistencies)
             tag_list.append(mosc_istag)
 
-        tag_list.extend(self._extra_dummy_tags(arch, private, source_for_name, x86_source_for_name, target))
+        tag_list.extend(self._extra_dummy_tags(brew_arch, private, source_for_name, x86_source_for_name, target))
 
         return istream_spec
 
@@ -412,7 +434,7 @@ class PayloadGenerator:
         candidate_rpms = {
             # the RPMs are collected by name mainly to de-duplicate (same RPM, multiple arches)
             rpm['name']: rpm for rpm in
-            self.bs_detector.find_unshipped_candidate_rpms(candidate_tag, self.brew_event)
+            self.bs_detector.find_unshipped_candidate_rpms(candidate_tag, self.runtime.brew_event)
         }
 
         inconsistencies = {}
@@ -439,7 +461,7 @@ class PayloadGenerator:
             inconsistencies[5:] = ["(...and more)"]
         return {"release.openshift.io/inconsistency": json.dumps(inconsistencies)}
 
-    def _extra_dummy_tags(self, arch, private, source_for_name, x86_source_for_name, target, stand_in_tag="pod"):
+    def _extra_dummy_tags(self, brew_arch, private, source_for_name, x86_source_for_name, target, stand_in_tag="pod"):
         """
         For non-x86 arches, not all images are built (e.g. kuryr), but they may
         be mentioned in CVO image references. Thus, make sure there is a tag for
@@ -451,7 +473,7 @@ class PayloadGenerator:
         if stand_in_tag in source_for_name:  # stand_in_tag image serves as the dummy image for the replacement
             extra_tags = x86_source_for_name.keys() - source_for_name.keys()
             for tag_name in extra_tags:
-                yellow_print('Unable to find tag {} for arch {} ; substituting {} image'.format(tag_name, arch, stand_in_tag))
+                yellow_print('Unable to find tag {} for arch {} ; substituting {} image'.format(tag_name, brew_arch, stand_in_tag))
                 tag_list.append({
                     'name': tag_name,
                     'from': {
@@ -461,24 +483,24 @@ class PayloadGenerator:
                 })
         elif self.runtime.group_config.public_upstreams and not private:
             # If stand_in_tag is embargoed, it is expected that stand_in_tag is missing in any non *-priv imagestreams.
-            self.runtime.logger.warning(f"Unable to find {stand_in_tag} tag from {arch} imagestream. Is {stand_in_tag} image embargoed or out of sync with siblings?")
+            self.runtime.logger.warning(f"Unable to find {stand_in_tag} tag from {brew_arch} imagestream. Is {stand_in_tag} image embargoed or out of sync with siblings?")
         else:
             # if CVE embargoes supporting is disabled or the stand_in_tag image is also
             # missing in *-priv namespaces, an error will be raised.
-            raise DoozerFatalError(f"A dummy image is required for arch {arch}, but {stand_in_tag} image is not available to stand in")
+            raise DoozerFatalError(f"A dummy image is required for arch {brew_arch}, but {stand_in_tag} image is not available to stand in")
 
         return tag_list
 
-    def _latest_mosc_source(self, arch, private):
-        stream_name = f"{arch}{'-priv' if private else ''}"
+    def _latest_mosc_source(self, brew_arch, private):
+        stream_name = f"{brew_arch}{'-priv' if private else ''}"
         self.runtime.logger.info(f"Getting latest RHCOS source for {stream_name}...")
         try:
             version = self.runtime.get_minor_version()
-            build_id, pullspec = rhcos.latest_machine_os_content(version, arch, private)
+            build_id, pullspec = rhcos.latest_machine_os_content(version, brew_arch, private)
             if not pullspec:
                 raise Exception(f"No RHCOS found for {version}")
 
-            commitmeta = rhcos.rhcos_build_meta(build_id, version, arch, private, meta_type="commitmeta")
+            commitmeta = rhcos.rhcos_build_meta(build_id, version, brew_arch, private, meta_type="commitmeta")
             rpm_list = commitmeta.get("rpmostree.rpmdb.pkglist")
             if not rpm_list:
                 raise Exception(f"no pkglist in {commitmeta}")
@@ -492,7 +514,7 @@ class PayloadGenerator:
 
         # create fake brew image archive to be analyzed later for rpm inconsistencies
         archive = dict(
-            build_id=f"({arch}){build_id}",
+            build_id=f"({brew_arch}){build_id}",
             rpms=[dict(name=r[0], epoch=r[1], nvr=f"{r[0]}-{r[2]}-{r[3]}") for r in rpm_list],
             # nothing else should be needed - if we need more, will have to fake it here
         )
@@ -555,23 +577,6 @@ class PayloadGenerator:
         return mismatched_siblings
 
 
-class BuildRecord(object):
-
-    def __init__(self, image=None, build=None, archives=None, private=False):
-        self.image = image
-        self.build = build
-        self.archives = archives
-        self.private = private
-
-
-class SyncTarget(object):
-
-    def __init__(self, orgrepo=None, istream_name=None, istream_namespace=None):
-        self.orgrepo = orgrepo
-        self.istream_name = istream_name
-        self.istream_namespace = istream_namespace
-
-
 def default_is_base_name(version):
     return f"{version}-art-latest"
 
@@ -580,8 +585,8 @@ def default_is_base_namespace():
     return "ocp"
 
 
-def is_name_and_space(base_name, base_namespace, arch, private):
-    arch_suffix = go_suffix_for_arch(arch)
+def is_name_and_space(base_name, base_namespace, brew_arch, private):
+    arch_suffix = go_suffix_for_arch(brew_arch)
     priv_suffix = "-priv" if private else ""
     name = f"{base_name}{arch_suffix}{priv_suffix}"
     namespace = f"{base_namespace}{arch_suffix}{priv_suffix}"

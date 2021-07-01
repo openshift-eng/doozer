@@ -5,6 +5,7 @@ import yaml
 import json
 import hashlib
 import time
+import random
 
 from github import Github, UnknownObjectException, GithubException
 
@@ -195,6 +196,8 @@ def _get_upstreaming_entries(runtime, stream_names=None):
         if image_meta.config.content.source.ci_alignment.upstream_image is not Missing:
             upstream_entry = model.Model(dict_to_model=image_meta.config.content.source.ci_alignment.primitive())  # Make a copy
             upstream_entry['image'] = image_meta.pull_url()  # Make the image metadata entry match what would exist in streams.yml.
+            if upstream_entry.final_user is Missing:
+                upstream_entry.final_user = image_meta.config.final_stage_user
             upstreaming_entries[image_meta.distgit_key] = upstream_entry
 
     return upstreaming_entries
@@ -366,6 +369,11 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
             add_localdev_repo_profile('el7')
             dfp.add_lines("RUN yum-config-manager --save '--setopt=skip_if_unavailable=True'")
             dfp.add_lines("RUN yum-config-manager --save '--setopt=*.skip_if_unavailable=True'")
+
+        if config.final_user:
+            # If the image should not run as root/0, then allow metadata to specify a
+            # true final user.
+            dfp.add_lines(f'USER {config.final_user}')
 
         # We've arrived at a Dockerfile.
         dockerfile_content = dfp.content
@@ -568,8 +576,8 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             logger.info('The image has alignment PRs disabled; ignoring')
             continue
 
-        if image_meta.config.for_release is False:
-            logger.info('Skipping PR check since image is for_release: false')
+        if image_meta.config.content.source.ci_alignment.upstream_image:
+            logger.info(f'Skipping PR check since image has alternative upstream representation: {image_meta.config.content.source.ci_alignment.upstream_image}')
             continue
 
         from_config = image_meta.config['from']
@@ -651,13 +659,20 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             public_branch = source_repo_branch
 
         # There are two standard upstream branching styles:
-        # release-4.x   : CI fast-forwards from master when appropriate
+        # release-4.x   : CI fast-forwards from default branch (master or main) when appropriate
         # openshift-4.x : Upstream team manages completely.
-        # For the former style, we may need to open the PRs against master.
+        # For the former style, we may need to open the PRs against the default branch (master or main).
         # For the latter style, always open directly against named branch
         if public_branch.startswith('release-') and prs_in_master:
-            # TODO: auto-detect default branch for repo instead of assuming master
-            public_branch = 'master'
+            public_branches, _ = exectools.cmd_assert(f'git ls-remote --heads {public_repo_url}', strip=True)
+            lines = public_branches.splitlines()
+            if [bl for bl in lines if bl.endswith('/main')]:
+                public_branch = 'main'
+            elif [bl for bl in lines if bl.endswith('/master')]:
+                public_branch = 'master'
+            else:
+                # There are ways of determining default branch without using naming conventions, but as of today, we don't need it.
+                raise IOError(f'Did not find master or main branch; unable to detect default branch: {public_branches}')
 
         _, org, repo_name = split_git_url(public_repo_url)
 
@@ -714,11 +729,12 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                 root_owners_path = Dir.getpath().joinpath('OWNERS')
                 if root_owners_path.exists():
                     parsed_owners = yaml.safe_load(root_owners_path.read_text())
-                    if 'approvers' in parsed_owners:
-                        assignee = parsed_owners['approvers'][0]
+                    if 'approvers' in parsed_owners and len(parsed_owners['approvers']) > 0:
+                        assignee = random.choice(parsed_owners['approvers'])
             except Exception as owners_e:
                 yellow_print(f'Error finding assignee in OWNERS for {public_repo_url}: {owners_e}')
 
+            fork_ci_build_root_coordinate = None
             fork_branch_df_digest = None  # digest of dockerfile image names
             if fork_branch:
                 # There is already an ART reconciliation branch. Our fork branch might be up-to-date
@@ -735,7 +751,6 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
                     # made the fork.
                     fork_branch_df_digest = 'DOCKERFILE_NOT_FOUND'
 
-                fork_ci_build_root_coordinate = None
                 if ci_operator_config_path.exists():
                     fork_ci_operator_config = yaml.safe_load(ci_operator_config_path.read_text(encoding='utf-8'))  # Read in content from fork
                     fork_ci_build_root_coordinate = fork_ci_operator_config.get('build_root_image', None)
@@ -779,7 +794,8 @@ Fork build_root (in .ci-operator.yaml): {fork_ci_build_root_coordinate}
             yellow_print(f'Upstream dockerfile does not match desired state in {public_repo_url}/blob/{public_branch}/{dockerfile_name}')
 
             first_commit_line = f"Updating {image_meta.name} images to be consistent with ART"
-            reconcile_info = f"Reconciling with {convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}"
+            reconcile_url = f'{convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}'
+            reconcile_info = f"Reconciling with {reconcile_url}"
 
             diff_text = None
             # Three possible states at this point:
@@ -849,10 +865,10 @@ open_prs: {open_prs}
                 yellow_print(diff_text)
 
                 if not moist_run:
-                    commit_prefix = ''
-                    if repo_name.startswith('kubernetes'):
-                        # A couple repos have this requirement; openshift/kubernetes & openshift/kubernetes-autoscaler.
-                        # This check may suffice  for now, but it may eventually need to be in doozer metadata.
+                    commit_prefix = image_meta.config.content.source.ci_alignment.streams_prs.commit_prefix or ''
+                    if repo_name.startswith('kubernetes') and not commit_prefix:
+                        # Repos starting with 'kubernetes' don't have this in metadata atm. Preserving
+                        # historical behavior until they do.
                         commit_prefix = 'UPSTREAM: <carry>: '
                     commit_msg = f"""{commit_prefix}{first_commit_line}
 {reconcile_info}
@@ -863,7 +879,38 @@ open_prs: {open_prs}
 
             # At this point, we have a fork branch in the proper state
             pr_body = f"""{first_commit_line}
-{reconcile_info}
+__TLDR__:
+Component owners, please ensure that this PR merges as it impacts the fidelity
+of your CI signal. Patch-manager / leads, this PR is a no-op from a product
+perspective -- feel free to manually apply any labels (e.g. bugzilla/valid-bug) to help the
+PR merge as long as tests are passing.
+
+__Detail__:
+This repository is out of sync with the downstream product builds for this component.
+One or more images differ from those being used by ART to create product builds. This
+should be addressed to ensure that the component's CI testing is accurately
+reflecting what customers will experience.
+
+The information within the following ART component metadata is driving this alignment
+request: [{os.path.basename(image_meta.config_filename)}]({reconcile_url}).
+
+The vast majority of these PRs are opened because a different Golang version is being
+used to build the downstream component. ART compiles most components with the version
+of Golang being used by the control plane for a given OpenShift release. Exceptions
+to this convention (i.e. you believe your component must be compiled with a Golang
+version independent from the control plane) must be granted by the OpenShift
+architecture team and communicated to the ART team.
+
+__Roles & Responsibilities__:
+- Component owners are responsible for ensuring these alignment PRs merge with passing
+  tests OR that necessary metadata changes are reported to the ART team: `@release-artists`
+  in `#aos-art` on Slack. If necessary, the changes required by this pull request can be
+  introduced with a separate PR opened by the component team. Once the repository is aligned,
+  this PR will be closed automatically.
+- Patch-manager or those with sufficient privileges within this repository may add
+  any required labels to ensure the PR merges once tests are passing. Downstream builds
+  are *already* being built with these changes. Merging this PR only improves the fidelity
+  of our CI.
 """
             if desired_ci_build_root_coordinate:
                 pr_body += """

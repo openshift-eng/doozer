@@ -3,11 +3,11 @@ from __future__ import absolute_import, print_function, unicode_literals
 import hashlib
 import json
 import random
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from doozerlib import brew, exectools, util
 from doozerlib.distgit import pull_image
-from doozerlib.metadata import Metadata
+from doozerlib.metadata import Metadata, RebuildHint, RebuildHintCode
 from doozerlib.model import Missing, Model
 from doozerlib.pushd import Dir
 from doozerlib import coverity
@@ -15,8 +15,8 @@ from doozerlib import coverity
 
 class ImageMetadata(Metadata):
 
-    def __init__(self, runtime, data_obj: Dict, commitish: Optional[str] = None, clone_source: Optional[bool] = False):
-        super(ImageMetadata, self).__init__('image', runtime, data_obj, commitish)
+    def __init__(self, runtime, data_obj: Dict, commitish: Optional[str] = None, clone_source: Optional[bool] = False, prevent_cloning: Optional[bool] = False):
+        super(ImageMetadata, self).__init__('image', runtime, data_obj, commitish, prevent_cloning=prevent_cloning)
         self.image_name = self.config.name
         self.required = self.config.get('required', False)
         self.image_name_short = self.image_name.split('/')[-1]
@@ -94,29 +94,6 @@ class ImageMetadata(Metadata):
     @property
     def for_release(self):
         return self.config.get('for_release', True)
-
-    def get_component_name(self, default=-1):
-        """
-        :param default: Not used. Here to stay consistent with similar rpmcfg.get_component_name
-        :return: Returns the component name of the image. This is the name in the nvr
-        that brew assigns to this image's build.
-        """
-        # By default, the bugzilla component is the name of the distgit,
-        # but this can be overridden in the config yaml.
-        component_name = self.name
-
-        # For apbs, component name seems to have -apb appended.
-        # ex. http://dist-git.host.prod.eng.bos.redhat.com/cgit/apbs/openshift-enterprise-mediawiki/tree/Dockerfile?h=rhaos-3.7-rhel-7
-        if self.namespace == "apbs":
-            component_name = "%s-apb" % component_name
-
-        if self.namespace == "containers":
-            component_name = "%s-container" % component_name
-
-        if self.config.distgit.component is not Missing:
-            component_name = self.config.distgit.component
-
-        return component_name
 
     def get_brew_image_name_short(self):
         # Get image name in the Brew pullspec. e.g. openshift3/ose-ansible --> openshift3-ose-ansible
@@ -236,7 +213,7 @@ class ImageMetadata(Metadata):
     # Mapping of brew pullspec => most recent brew build dict.
     builder_image_builds = dict()
 
-    def does_image_need_change(self, changing_rpm_packages=[], buildroot_tag=None, newest_image_event_ts=None, oldest_image_event_ts=None):
+    def does_image_need_change(self, changing_rpm_packages=[], buildroot_tag=None, newest_image_event_ts=None, oldest_image_event_ts=None) -> Tuple[Metadata, RebuildHint]:
         """
         Answers the question of whether the latest built image needs to be rebuilt based on
         the packages (and therefore RPMs) it is dependent on might have changed in tags
@@ -246,8 +223,7 @@ class ImageMetadata(Metadata):
         :param buildroot_tag: The build root for this image
         :param newest_image_event_ts: The build timestamp of the most recently built image in this group.
         :param oldest_image_event_ts: The build timestamp of the oldest build in this group from getLatestBuild of each component.
-        :return: (meta, <bool>, messsage). If True, the image might need to be rebuilt -- the message will say
-                why. If False, message will be None.
+        :return: (meta, RebuildHint).
         """
 
         dgk = self.distgit_key
@@ -259,7 +235,7 @@ class ImageMetadata(Metadata):
             image_build = self.get_latest_build(default='')
             if not image_build:
                 # Seems this have never been built. Mark it as needing change.
-                return self, True, 'Image has never been built before'
+                return self, RebuildHint(RebuildHintCode.NO_LATEST_BUILD, 'Image has never been built before')
 
             self.logger.debug(f'Image {dgk} latest is {image_build}')
 
@@ -281,13 +257,14 @@ class ImageMetadata(Metadata):
                     extra_latest_tagging_infos = koji_api.queryHistory(table='tag_listing', tag=extra_package_brew_tag, package=extra_package_name, active=True)['tag_listing']
 
                     if extra_latest_tagging_infos:
+                        extra_latest_tagging_infos.sort(key=lambda event: event['create_event'])
                         # We have information about the most recent time this package was tagged into the
                         # relevant tag. Why the tagging event and not the build time? Well, the build could have been
                         # made long ago, but only tagged into the relevant tag recently.
-                        extra_latest_tagging_event = extra_latest_tagging_infos[0]['create_event']
+                        extra_latest_tagging_event = extra_latest_tagging_infos[-1]['create_event']
                         self.logger.debug(f'Checking image creation time against extra_packages {extra_package_name} in tag {extra_package_brew_tag} @ tagging event {extra_latest_tagging_event}')
                         if extra_latest_tagging_event > image_build_event_id:
-                            return self, True, f'Image {dgk} is sensitive to extra_packages {extra_package_name} which changed at event {extra_latest_tagging_event}'
+                            return self, RebuildHint(RebuildHintCode.PACKAGE_CHANGE, f'Image {dgk} is sensitive to extra_packages {extra_package_name} which changed at event {extra_latest_tagging_event}')
                     else:
                         self.logger.warning(f'{dgk} unable to find tagging event for for extra_packages {extra_package_name} in tag {extra_package_brew_tag} ; Possible metadata error.')
 
@@ -331,14 +308,14 @@ class ImageMetadata(Metadata):
 
                 if image_build_event_id < builder_brew_build['creation_event_id']:
                     self.logger.info(f'will be rebuilt because a builder or parent image changed: {builder_image_name}')
-                    return self, True, f'A builder or parent image {builder_image_name} has changed since {image_nvr} was built'
+                    return self, RebuildHint(RebuildHintCode.BUILDER_CHANGING, f'A builder or parent image {builder_image_name} has changed since {image_nvr} was built')
 
             build_root_change = brew.has_tag_changed_since_build(runtime, koji_api, image_build, buildroot_tag, inherit=True)
             if build_root_change:
                 self.logger.info(f'Image will be rebuilt due to buildroot change since {image_nvr} (last build event={image_build_event_id}). Build root change: [{build_root_change}]')
-                return self, True, f'Buildroot tag changes since {image_nvr} was built'
+                return self, RebuildHint(RebuildHintCode.BUILD_ROOT_CHANGING, f'Buildroot tag changes since {image_nvr} was built')
 
-            archives = koji_api.listArchives(image_build['id'])
+            archives = koji_api.listArchives(image_build['build_id'])
 
             # Compare to the arches in runtime
             build_arches = set()
@@ -350,7 +327,7 @@ class ImageMetadata(Metadata):
             target_arches = set(self.get_arches())
             if target_arches != build_arches:
                 # The latest brew build does not exactly match the required arches as specified in group.yml
-                return self, True, f'Arches of {image_nvr}: ({build_arches}) does not match target arches {target_arches}'
+                return self, RebuildHint(RebuildHintCode.ARCHES_CHANGE, f'Arches of {image_nvr}: ({build_arches}) does not match target arches {target_arches}')
 
             for archive in archives:
                 # Example results of listing RPMs in an given imageID:
@@ -362,7 +339,7 @@ class ImageMetadata(Metadata):
                     build = koji_api.getBuild(build_id, brew.KojiWrapperOpts(caching=True))
                     package_name = build['package_name']
                     if package_name in changing_rpm_packages:
-                        return self, True, f'Image includes {package_name} which is also about to change'
+                        return self, RebuildHint(RebuildHintCode.PACKAGE_CHANGE, f'Image includes {package_name} which is also about to change')
                     # Several RPMs may belong to the same package, and each archive must use the same
                     # build of a package, so all we need to collect is the set of build_ids for the packages
                     # across all of the archives.
@@ -383,11 +360,11 @@ class ImageMetadata(Metadata):
             n_threads=10
         )
 
-        for changed, msg in changes_res.get():
-            if changed:
-                return self, True, msg
+        for rebuild_hint in changes_res.get():
+            if rebuild_hint.rebuild:
+                return self, rebuild_hint
 
-        return self, False, None
+        return self, RebuildHint(RebuildHintCode.BUILD_IS_UP_TO_DATE, 'No change detected')
 
     def covscan(self, cc: coverity.CoverityContext) -> bool:
         self.logger.info('Setting up for coverity scan')
@@ -436,7 +413,7 @@ class ImageMetadata(Metadata):
         return target
 
 
-def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, package_build, newest_image_event_ts, oldest_image_event_ts):
+def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, package_build, newest_image_event_ts, oldest_image_event_ts) -> RebuildHint:
     """
     Determines if a given rpm is part of a package that has been tagged in a relevant tag AFTER image_build_event_id
     :param image_meta: The image meta object for the image.
@@ -444,8 +421,7 @@ def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, 
     :param package_build: The package build to assess.
     :param newest_image_event_ts: The build timestamp of the most recently built image in this group.
     :param oldest_image_event_ts: The build timestamp of the oldest build in this group from getLatestBuild of each component.
-    :return: (<bool>, message) . If True, the message will describe the change reason. If False, message will
-            will be None.
+    :return: A rebuild hint with information on whether a rebuild should be performed and why
     """
 
     # If you are considering changing this code, you are going to have to contend with
@@ -528,6 +504,6 @@ def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, 
         intersection_set = subsequent_active_tag_names.intersection(contemporary_active_tag_names)
 
         if intersection_set:
-            return True, f'Package {package_name} has been retagged by potentially relevant tags since image build: {intersection_set}'
+            return RebuildHint(RebuildHintCode.PACKAGE_CHANGE, f'Package {package_name} has been retagged by potentially relevant tags since image build: {intersection_set}')
 
-    return False, None
+    return RebuildHint(RebuildHintCode.BUILD_IS_UP_TO_DATE, 'No package change detected')

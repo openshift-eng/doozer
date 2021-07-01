@@ -1,3 +1,6 @@
+import mock
+from doozerlib.model import Model
+from doozerlib.image import ImageMetadata
 import json
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -11,10 +14,10 @@ def _fake_generator():
     runtime.command = "dummy"
     runtime.state = {}
     runtime.logger = MagicMock()
+    runtime.brew_event = None
     return rgp.PayloadGenerator(
         runtime,
         brew_session=MagicMock(),
-        brew_event=None,
         base_target=rgp.SyncTarget(),
     )
 

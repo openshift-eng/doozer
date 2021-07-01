@@ -18,6 +18,7 @@ from doozerlib.cli.images_health import images_health
 from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
 from doozerlib.cli.scan_sources import config_scan_source_changes
 from doozerlib.cli.rpms_build import rpms_build
+from doozerlib.cli.config_plashet import config_plashet
 from doozerlib import coverity
 
 from doozerlib.exceptions import DoozerFatalError
@@ -42,7 +43,7 @@ import io
 import json
 import functools
 import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 import re
 import semver
 import urllib
@@ -243,10 +244,12 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
+@click.option("--force-yum-updates", is_flag=True, default=False,
+              help="Inject \"yum update -y\" in each stage. This ensures the component image will be able to override RPMs it is inheriting from its parent image using RPMs in the rebuild plashet.")
 @option_commit_message
 @option_push
 @pass_runtime
-def images_update_dockerfile(runtime, version, release, repo_type, message, push):
+def images_update_dockerfile(runtime: Runtime, version: Optional[str], release: Optional[str], repo_type: str, force_yum_updates: bool, message: str, push: bool):
     """
     Updates the Dockerfile in each distgit repository with the latest metadata and
     the version/release information specified. This does not update the Dockerfile
@@ -299,7 +302,7 @@ def images_update_dockerfile(runtime, version, release, repo_type, message, push
             dgr = image_meta.distgit_repo()
             _, prev_release, prev_private_fix = dgr.extract_version_release_private_fix()
             dgr.private_fix = bool(prev_private_fix)  # preserve the .p? field when updating the release
-            (real_version, real_release) = dgr.update_distgit_dir(version, release, prev_release)
+            (real_version, real_release) = dgr.update_distgit_dir(version, release, prev_release, force_yum_updates)
             dgr.commit(message)
             dgr.tag(real_version, real_release)
             state.record_image_success(lstate, image_meta)
@@ -499,10 +502,12 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
+@click.option("--force-yum-updates", is_flag=True, default=False,
+              help="Inject \"yum update -y\" in each stage. This ensures the component image will be able to override RPMs it is inheriting from its parent image using RPMs in the rebuild plashet.")
 @option_commit_message
 @option_push
 @pass_runtime
-def images_rebase(runtime, version, release, embargoed, repo_type, message, push):
+def images_rebase(runtime: Runtime, version: Optional[str], release: Optional[str], embargoed: bool, repo_type: str, force_yum_updates: bool, message: str, push: bool):
     """
     Many of the Dockerfiles stored in distgit are based off of content managed in GitHub.
     For example, openshift-enterprise-node should always closely reflect the changes
@@ -554,7 +559,7 @@ def images_rebase(runtime, version, release, embargoed, repo_type, message, push
             dgr = image_meta.distgit_repo()
             if embargoed:
                 dgr.private_fix = True
-            (real_version, real_release) = dgr.rebase_dir(version, release, terminate_event)
+            (real_version, real_release) = dgr.rebase_dir(version, release, terminate_event, force_yum_updates)
             sha = dgr.commit(message, log_diff=True)
             dgr.tag(real_version, real_release)
             runtime.add_record(
@@ -863,7 +868,7 @@ def print_build_metrics(runtime):
               default='',
               help="Repo type (e.g. signed, unsigned).")
 @click.option("--repo", default=[], metavar="REPO_URL",
-              multiple=True, help="Custom repo URL to supply to brew build.")
+              multiple=True, help="Custom repo URL to supply to brew build. If specified, defaults from --repo-type will be ignored.")
 @click.option('--push-to-defaults', default=False, is_flag=True,
               help='Push to default registries when build completes.')
 @click.option("--push-to", default=[], metavar="REGISTRY", multiple=True,
@@ -1201,6 +1206,8 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
     {bz_product} - The BZ product, if known
     {bz_component} - The BZ component, if known
     {bz_subcomponent} - The BZ subcomponent, if known
+    {upstream} - The upstream repository for the image
+    {upstream_public} - The public upstream repository (if different) for the image
     {lf} - Line feed
 
     If pattern contains no braces, it will be wrapped with them automatically. For example:
@@ -1267,6 +1274,14 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
         s = s.replace("{image_name}", image.image_name)
         s = s.replace("{image_name_short}", image.image_name_short)
         s = s.replace("{component}", image.get_component_name())
+
+        source_url = image.config.content.source.git.url
+        s = s.replace("{upstream}", source_url or 'None')
+        if source_url:
+            public_url = runtime.get_public_upstream(source_url)[0]
+        else:
+            public_url = None
+        s = s.replace("{upstream_public}", public_url or 'None')
 
         if '{bz_' in s:
             mi = image.get_maintainer_info()
@@ -1633,7 +1648,7 @@ def config_mode(runtime, mode, push, message):
 
 
 @cli.command("config:print", short_help="View config for given images / rpms")
-@click.option("-n", "--name-only", default=False, is_flag=True, multiple=True,
+@click.option("-n", "--name-only", default=[], is_flag=True, multiple=True,
               help="Just print name of matched configs. Overrides --key")
 @click.option("--key", help="Specific key in config to print", default=None)
 @click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
@@ -1912,7 +1927,7 @@ installonly_limit=3
                 continue
 
             color_print('Syncing repo {}'.format(repo.name), 'blue')
-            cmd = f'reposync -c {yc_file.name} -p {output} --delete --arch {arch} -r {repo.name} -e {metadata_dir}'
+            cmd = f'reposync --download-metadata -c {yc_file.name} -p {output} --delete --arch {arch} -r {repo.name} -e {metadata_dir}'
             if repo.is_reposync_latest_only():
                 cmd += ' -n'
 

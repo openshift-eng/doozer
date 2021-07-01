@@ -58,6 +58,7 @@ class TestGenericDistGit(TestDistgit):
                             runtime=flexmock(local=False, branch="_irrelevant_", upcycle=False),
                             config=MockConfig(),
                             logger=logger,
+                            prevent_cloning=False,
                             name="_irrelevant_")
 
         expected_cmd = ['git', '-C', 'my-root-dir/my-namespace/my-distgit-key', 'rev-parse', 'HEAD']
@@ -84,6 +85,7 @@ class TestGenericDistGit(TestDistgit):
                             name="_irrelevant_",
                             logger="_irrelevant_",
                             namespace="_irrelevant_",
+                            prevent_cloning=False,
                             distgit_key="_irrelevant_")
 
         repo = distgit.DistGitRepo(metadata, autoclone=False)
@@ -140,6 +142,7 @@ class TestGenericDistGit(TestDistgit):
                                              rhpkg_config_lst=[]),
                             namespace="my-namespace",
                             distgit_key="my-distgit-key",
+                            prevent_cloning=False,
                             logger=logger,
                             name="_irrelevant_")
 
@@ -196,6 +199,7 @@ class TestGenericDistGit(TestDistgit):
                             namespace="my-namespace",
                             distgit_key="my-distgit-key",
                             qualified_name="my-qualified-name",
+                            prevent_cloning=False,
                             logger=logger,
                             name="_irrelevant_")
 
@@ -241,6 +245,7 @@ class TestGenericDistGit(TestDistgit):
                             distgit_key="my-distgit-key",
                             qualified_name="my-qualified-name",
                             logger=flexmock(info=lambda _: None),
+                            prevent_cloning=False,
                             name="_irrelevant_",)
 
         distgit.DistGitRepo(metadata, autoclone=False).clone("my-root-dir", "my-branch")
@@ -644,7 +649,7 @@ class TestGenericDistGit(TestDistgit):
     def test_cgit_file_available(self, mocked_head):
         meta = MockMetadata(MockRuntime(self.logger))
         cgit_url = "http://distgit.example.com/cgit/containers/foo/plain/some_path/some_file.txt?h=some-branch&id=abcdefg"
-        meta.cgit_url = lambda *args, **kwargs: cgit_url
+        meta.cgit_file_url = lambda *args, **kwargs: cgit_url
         dg = distgit.ImageDistGitRepo(meta, autoclone=False)
         dg.sha = "abcdefg"
 

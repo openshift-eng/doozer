@@ -1,25 +1,26 @@
-from __future__ import absolute_import, print_function, unicode_literals
-from pathlib import Path
-import click
 import copy
 import os
-import yaml
+import pathlib
 import re
-from os.path import abspath
-from typing import Dict
-from datetime import datetime
-from contextlib import contextmanager
-from inspect import getframeinfo, stack
-
-from sys import getsizeof, stderr
-from itertools import chain
 from collections import deque
+from contextlib import contextmanager
+from datetime import datetime
+from inspect import getframeinfo, stack
+from itertools import chain
+from os.path import abspath
+from pathlib import Path
+from sys import getsizeof, stderr
+from typing import Dict, Iterable, List, Optional
+
+import click
+import yaml
+
 try:
     from reprlib import repr
 except ImportError:
     pass
 
-from doozerlib import exectools, constants
+from doozerlib import constants, exectools
 
 
 def stringify(val):
@@ -207,11 +208,13 @@ def is_in_directory(path: os.PathLike, directory: os.PathLike):
         return False
 
 
-def mkdirs(path):
-    """ Make sure a directory exists. Similar to shell command `mkdir -p`.
-    :param path: Str path or pathlib.Path
+def mkdirs(path, mode=0o755):
     """
-    os.makedirs(str(path), exist_ok=True)
+    Make sure a directory exists. Similar to shell command `mkdir -p`.
+    :param path: Str path
+    :param mode: create directories with mode
+    """
+    pathlib.Path(str(path)).mkdir(mode=mode, parents=True, exist_ok=True)
 
 
 @contextmanager
@@ -354,23 +357,56 @@ def get_docker_config_json(config_dir):
         raise FileNotFoundError("Can not find the registry config file in {}".format(config_dir))
 
 
-def isolate_pflag_in_release(release: str):
+def isolate_pflag_in_release(release: str) -> str:
     """
     Given a release field, determines whether is contains
     .p0/.p1 information. If it does, it returns the value
     'p0' or 'p1'. If it is not found, None is returned.
     """
-    if release.endswith('.p1') or release.endswith('.p0'):
-        return release[-2:]
+    match = re.match(r'.*\.(p[?01])(?:\.+|$)', release)
 
-    # p? is not always at the end of the release field if
-    # assemblies are being used.
-    for pflag in ['p0', 'p1']:
-        idx = release.find(f'.{pflag}.')
-        if idx > -1:
-            return pflag
+    if match:
+        return match.group(1)
 
     return None
+
+
+def isolate_assembly_in_release(release: str) -> str:
+    """
+    Given a release field, determines whether is contains
+    an assembly name. If it does, it returns the assembly
+    name. If it is not found, None is returned.
+    """
+    # Because RPM releases will have .el? as their suffix, we cannot
+    # assume that endswith(.assembly.<name>).
+    match = re.match(r'.*\.assembly\.([^.]+)(?:\.+|$)', release)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def isolate_el_version_in_release(release: str) -> Optional[int]:
+    """
+    Given a release field, determines whether is contains
+    a RHEL version. If it does, it returns the version value.
+    If it is not found, None is returned.
+    """
+    match = re.match(r'.*\.el(\d+)(?:\.+|$)', release)
+    if match:
+        return int(match.group(1))
+
+    return None
+
+
+def isolate_el_version_in_brew_tag(tag: str) -> Optional[int]:
+    """
+    Given a brew tag (target) name, determines whether is contains
+    a RHEL version. If it does, it returns the version value.
+    If it is not found, None is returned.
+    """
+    el_version_match = re.search(r"rhel-(\d+)", tag)
+    return int(el_version_match[1]) if el_version_match else None
 
 
 # https://code.activestate.com/recipes/577504/
@@ -449,3 +485,61 @@ def go_suffix_for_arch(arch: str) -> str:
 def brew_suffix_for_arch(arch: str) -> str:
     arch = brew_arch_for_go_arch(arch)  # translate either incoming arch style
     return brew_arch_suffixes[brew_arches.index(arch)]
+
+
+def find_latest_build(builds: List[Dict], assembly: Optional[str]) -> Optional[Dict]:
+    """ Find the latest build specific to the assembly in a list of builds belonging to the same component and brew tag
+    :param brew_builds: a list of build dicts sorted by tagging event in descending order
+    :param assembly: the name of assembly; None if assemblies support is disabled
+    :return: a brew build dict or None
+    """
+    chosen_build = None
+    if not assembly:  # if assembly is not enabled, choose the true latest tagged
+        chosen_build = builds[0] if builds else None
+    else:  # assembly is enabled
+        # find the newest build containing ".assembly.<assembly-name>" in its RELEASE field
+        chosen_build = next((build for build in builds if isolate_assembly_in_release(build["release"]) == assembly), None)
+        if not chosen_build and assembly != "stream":
+            # If no such build, fall back to the newest build containing ".assembly.stream"
+            chosen_build = next((build for build in builds if isolate_assembly_in_release(build["release"]) == "stream"), None)
+        if not chosen_build:
+            # If none of the builds have .assembly.stream in the RELEASE field, fall back to the latest build without .assembly in the RELEASE field
+            chosen_build = next((build for build in builds if isolate_assembly_in_release(build["release"]) is None), None)
+    return chosen_build
+
+
+def find_latest_builds(brew_builds: Iterable[Dict], assembly: Optional[str]) -> Iterable[Dict]:
+    """ Find latest builds specific to the assembly in a list of brew builds.
+    :param brew_builds: a list of build dicts sorted by tagging event in descending order
+    :param assembly: the name of assembly; None if assemblies support is disabled
+    :return: an iterator of latest brew build dicts
+    """
+    # group builds by tag and component name
+    grouped_builds = {}  # key is (tag, component_name), value is a list of Brew build dicts
+    for build in brew_builds:
+        key = (build["tag_name"], build["name"])
+        grouped_builds.setdefault(key, []).append(build)
+
+    for builds in grouped_builds.values():  # builds are ordered from newest tagged to oldest tagged
+        chosen_build = find_latest_build(builds, assembly)
+        if chosen_build:
+            yield chosen_build
+
+
+def to_nvre(build_record: Dict):
+    """
+    From a build record object (such as an entry returned by listTagged),
+    returns the full nvre in the form n-v-r:E.
+    """
+    nvr = build_record['nvr']
+    if 'epoch' in build_record and build_record["epoch"] and build_record["epoch"] != 'None':
+        return f'{nvr}:{build_record["epoch"]}'
+    return nvr
+
+
+def strip_epoch(nvr: str):
+    """
+    If an NVR string is N-V-R:E, returns only the NVR portion. Otherwise
+    returns NVR exactly as-is.
+    """
+    return nvr.split(':')[0]

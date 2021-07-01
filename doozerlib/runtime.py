@@ -23,8 +23,7 @@ import urllib.parse
 import signal
 import io
 import pathlib
-import koji
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 import time
 
 from doozerlib import gitdata
@@ -36,6 +35,7 @@ from .pushd import Dir
 
 from .image import ImageMetadata
 from .rpmcfg import RPMMetadata
+from .metadata import Metadata, RebuildHint
 from doozerlib import state
 from .model import Model, Missing
 from multiprocessing import Lock, RLock, Semaphore
@@ -44,6 +44,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 from doozerlib import util
 from doozerlib import brew
+from doozerlib.assembly import assembly_group_config, assembly_config_finalize, assembly_basis_event
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -147,6 +148,8 @@ class Runtime(object):
         self.session_pool = {}
         self.session_pool_available = {}
         self.brew_event = None
+        self.assembly_basis_event = None
+        self.releases_config = None
         self.assembly = 'test'
 
         self.stream: List[str] = []  # Click option. A list of image stream overrides from the command line.
@@ -187,10 +190,10 @@ class Runtime(object):
         self.flags_dir = None
 
         # Map of dist-git repo name -> ImageMetadata object. Populated when group is set.
-        self.image_map = {}
+        self.image_map: Dict[str, ImageMetadata] = {}
 
         # Map of dist-git repo name -> RPMMetadata object. Populated when group is set.
-        self.rpm_map = {}
+        self.rpm_map: Dict[str, RPMMetadata] = {}
 
         # Map of source code repo aliases (e.g. "ose") to a tuple representing the source resolution cache.
         # See registry_repo.
@@ -258,13 +261,27 @@ class Runtime(object):
                 self.named_semaphores[p] = new_semaphore
                 return new_semaphore
 
+    def get_releases_config(self):
+        if self.releases_config is not None:
+            return self.releases_config
+
+        load = self.gitdata.load_data(key='releases')
+        if load:
+            self.releases_config = Model(load.data)
+        else:
+            self.releases_config = Model()
+
+        return self.releases_config
+
     def get_group_config(self):
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
         # into the YAML content. If `vars` found, the format will be
         # preformed and the YAML model will reloaded from that result
         tmp_config = Model(self.gitdata.load_data(key='group').data)
-        replace_vars = tmp_config.vars
+        replace_vars = tmp_config.vars or Model()
+        if self.assembly:
+            replace_vars['runtime_assembly'] = self.assembly
         if replace_vars is not Missing:
             try:
                 group_yml = yaml.safe_dump(tmp_config.primitive(), default_flow_style=False)
@@ -273,7 +290,7 @@ class Runtime(object):
             except KeyError as e:
                 raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
 
-        return tmp_config
+        return assembly_group_config(self.get_releases_config(), self.assembly, tmp_config)
 
     def init_state(self):
         self.state = dict(state.TEMPLATE_BASE_STATE)
@@ -288,7 +305,8 @@ class Runtime(object):
 
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
-                   no_group=False, clone_source=None, disabled=None):
+                   no_group=False, clone_source=None, disabled=None,
+                   prevent_cloning: bool = False):
 
         if self.initialized:
             return
@@ -396,6 +414,8 @@ class Runtime(object):
 
         if self.cache_dir:
             self.cache_dir = os.path.abspath(self.cache_dir)
+
+        self.get_releases_config()  # Init self.releases_config
 
         self.group_dir = self.gitdata.data_dir
         self.group_config = self.get_group_config()
@@ -516,6 +536,8 @@ class Runtime(object):
             replace_vars = {}
             if self.group_config.vars:
                 replace_vars = self.group_config.vars.primitive()
+            if self.assembly:
+                replace_vars['runtime_assembly'] = self.assembly
 
             # pre-load the image data to get the names for all images
             # eventually we can use this to allow loading images by
@@ -548,7 +570,7 @@ class Runtime(object):
 
             if mode in ['images', 'both']:
                 for i in image_data.values():
-                    metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key), clone_source=clone_source)
+                    metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
                     self.image_map[metadata.distgit_key] = metadata
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
@@ -569,7 +591,7 @@ class Runtime(object):
                     if clone_source is None:
                         # Historically, clone_source defaulted to True for rpms.
                         clone_source = True
-                    metadata = RPMMetadata(self, r, self.upstream_commitish_overrides.get(r.key), clone_source=clone_source)
+                    metadata = RPMMetadata(self, r, self.upstream_commitish_overrides.get(r.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
                     self.rpm_map[metadata.distgit_key] = metadata
                 if not self.rpm_map:
                     self.logger.warning("No rpm metadata directories found for given options within: {}".format(self.group_dir))
@@ -587,6 +609,23 @@ class Runtime(object):
         streams = self.gitdata.load_data(key='streams')
         if streams:
             self.streams = Model(self.gitdata.load_data(key='streams', replace_vars=replace_vars).data)
+
+        self.assembly_basis_event = assembly_basis_event(self.get_releases_config(), self.assembly)
+        if self.assembly_basis_event:
+            if self.brew_event:
+                raise IOError(f'Cannot run with assembly basis event {assembly_basis_event} and --brew-event at the same time.')
+            # If the assembly has a basis event, we constrain all brew calls to that event.
+            self.brew_event = self.assembly_basis_event
+            self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
+
+        assembly_config_finalize(self.get_releases_config(), self.assembly, self.rpm_metas(), self.ordered_image_metas())
+
+        if not self.brew_event:
+            with self.shared_koji_client_session() as koji_session:
+                # If brew event is not set as part of the assembly and not specified on the command line,
+                # lock in an event so that there are no race conditions.
+                event_info = koji_session.getLastEvent()
+                self.brew_event = event_info['id']
 
         if clone_distgits:
             self.clone_distgits()
@@ -767,7 +806,7 @@ class Runtime(object):
                     self.image_order.append(i)
 
     def image_distgit_by_name(self, name):
-        """Returns image meta but full name, short name, or distgit"""
+        """Returns image meta by full name, short name, or distgit"""
         return self.image_name_map.get(name, None)
 
     def rpm_metas(self):
@@ -909,6 +948,8 @@ class Runtime(object):
         replace_vars = {}
         if self.group_config.vars:
             replace_vars = self.group_config.vars.primitive()
+        if self.assembly:
+            replace_vars['runtime_assembly'] = self.assembly
         data_obj = self.gitdata.load_data(path='images', key=distgit_name, replace_vars=replace_vars)
         if not data_obj:
             raise DoozerFatalError('Unable to resolve image metadata for {}'.format(distgit_name))
@@ -1140,6 +1181,9 @@ class Runtime(object):
                         exectools.cmd_assert('git fetch --all', retries=3)
                         exectools.cmd_assert('git reset --hard @{upstream}', retries=3)
                 return source_dir
+
+            if meta.prevent_cloning:
+                raise IOError(f'Attempt to clone upstream {meta.distgit_key} after cloning disabled; a regression has been introduced.')
 
             url = source_details["url"]
             clone_branch, _ = self.detect_remote_source_branch(source_details)
@@ -1393,7 +1437,13 @@ class Runtime(object):
         ]
         return {n: (v, r) for n, v, r in builds}
 
-    def scan_distgit_sources(self):
+    def scan_for_upstream_changes(self) -> List[Tuple[Metadata, RebuildHint]]:
+        """
+        Determines if the current upstream source commit hash has a downstream
+        build associated with it.
+        :return: Returns a list of tuples. Each tuple contains an rpm or image metadata
+        and a change tuple (changed: bool, message: str).
+        """
         return self.parallel_exec(
             lambda meta, _: (meta, meta.needs_rebuild()),
             self.image_metas() + self.rpm_metas(),

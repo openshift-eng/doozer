@@ -144,6 +144,9 @@ class DistGitRepo(object):
             exectools.cmd_assert('rhpkg sources')
 
     def clone(self, distgits_root_dir, distgit_branch):
+        if self.metadata.prevent_cloning:
+            raise IOError(f'Attempt to clone downstream {self.metadata.distgit_key} after cloning disabled; a regression has been introduced.')
+
         with Dir(distgits_root_dir):
 
             namespace_dir = os.path.join(distgits_root_dir, self.metadata.namespace)
@@ -310,7 +313,7 @@ class DistGitRepo(object):
         """
         assert self.sha is not None
         self.logger.debug("Checking if distgit commit %s is available on cgit...", self.sha)
-        url = self.metadata.cgit_url(filename, commit_hash=self.sha, branch=self.branch)
+        url = self.metadata.cgit_file_url(filename, commit_hash=self.sha, branch=self.branch)
         response = requests.head(url)
         if response.status_code == 404:
             self.logger.debug("Distgit commit %s is not available on cgit", self.sha)
@@ -858,7 +861,7 @@ class ImageDistGitRepo(DistGitRepo):
                 if 'member' in builder:
                     self._set_wait_for(builder['member'], terminate_event)
 
-            if self.runtime.assembly and not release.endswith(f".assembly.{self.runtime.assembly}"):
+            if self.runtime.assembly and util.isolate_assembly_in_release(release) != self.runtime.assembly:
                 # Assemblies should follow its naming convention
                 raise ValueError(f"Image {self.name} is not rebased with assembly '{self.runtime.assembly}'.")
 
@@ -908,8 +911,13 @@ class ImageDistGitRepo(DistGitRepo):
             # built so that push_image will have a fixed point of reference and not detect any
             # subsequent builds.
             push_version, push_release = ('', '')
-            if not scratch:
-                _, push_version, push_release = self.metadata.get_latest_build_info()
+            if not dry_run and not scratch:
+                # Use tag based get_latest_build because golang builder images don't follow the version numbering scheme like normal OCP images.
+                with self.runtime.shared_koji_client_session() as koji_api:
+                    builds = koji_api.listTagged(self.metadata.default_brew_tag(), package=self.metadata.get_component_name(), type="image", inherit=False)
+                    latest_build = util.find_latest_build(builds, self.runtime.assembly)
+                    push_version = latest_build["version"]
+                    push_release = latest_build["release"]
             record["message"] = "Success"
             record["status"] = 0
             self.build_status = True
@@ -1112,13 +1120,16 @@ class ImageDistGitRepo(DistGitRepo):
             cmd_list.append('--signing-intent')
             cmd_list.append(signing_intent)
         else:
-            if repo_type:
+            if repo_type and not repo_list:  # If --repo was not specified on the command line
                 repo_file = f".oit/{repo_type}.repo"
-                existence, repo_url = self.cgit_file_available(repo_file)
+                if not dry_run:
+                    existence, repo_url = self.cgit_file_available(repo_file)
+                else:
+                    self.logger.warning("[DRY RUN] Would have checked if cgit repo file is present.")
+                    existence, repo_url = True, f"https://cgit.example.com/{repo_file}"
                 if not existence:
                     raise FileNotFoundError(f"Repo file {repo_file} is not available on cgit; cgit cache may not be reflecting distgit in a timely manner.")
-                repo_list = list(repo_list)  # In case we get a tuple
-                repo_list.append(repo_url)
+                repo_list = [repo_url]
 
             if repo_list:
                 # rhpkg supports --repo-url [URL [URL ...]]
@@ -1358,11 +1369,8 @@ class ImageDistGitRepo(DistGitRepo):
                 if changed:
                     dfp.add_lines_at(entry, "RUN " + new_value, replace=True)
 
-    def update_distgit_dir(self, version, release, prev_release=None):
+    def update_distgit_dir(self, version, release, prev_release=None, force_yum_updates=False):
         ignore_missing_base = self.runtime.ignore_missing_base
-        # A collection of comment lines that will be included in the generated Dockerfile. They
-        # will be prefix by the OIT_COMMENT_PREFIX and followed by newlines in the Dockerfile.
-        oit_comments = []
 
         dg_path = self.dg_path
         with Dir(self.distgit_dir):
@@ -1405,7 +1413,12 @@ class ImageDistGitRepo(DistGitRepo):
 
             if not self.runtime.local:
                 with dg_path.joinpath('additional-tags').open('w', encoding="utf-8") as at:
-                    at.write("%s\n" % uuid_tag)  # The uuid which we ensure we get the right
+                    # Include the UUID in the tags. This will allow other images being rebased
+                    # to have a known tag to refer to this image if they depend on it - even
+                    # before it is built.
+                    at.write("%s\n" % uuid_tag)
+                    if self.runtime.assembly:
+                        at.write("assembly.%s\n" % self.runtime.assembly)
                     if len(vsplit) > 1:
                         at.write("%s.%s\n" % (vsplit[0], vsplit[1]))  # e.g. "v3.7.0" -> "v3.7"
                     if self.metadata.config.additional_tags is not Missing:
@@ -1454,8 +1467,8 @@ class ImageDistGitRepo(DistGitRepo):
 
                 original_parents = dfp.parent_images
                 count = 0
-                for image in parent_images:
-                    # Does this image inherit from an image defined in a different distgit?
+                for i, image in enumerate(parent_images):
+                    # Does this image inherit from an image defined in a different group member distgit?
                     if image.member is not Missing:
                         base = image.member
                         from_image_metadata = self.runtime.resolve_image(base, False)
@@ -1463,7 +1476,9 @@ class ImageDistGitRepo(DistGitRepo):
                         if from_image_metadata is None:
                             if not ignore_missing_base:
                                 raise IOError("Unable to find base image metadata [%s] in included images. Use --ignore-missing-base to ignore." % base)
-                            elif self.runtime.latest_parent_version:
+                            elif self.runtime.latest_parent_version or self.runtime.assembly_basis_event:
+                                # If there is a basis event, we must look for latest; we can't just persist
+                                # what is in the Dockerfile. It has to be constrained to the brew event.
                                 self.logger.info('[{}] parent image {} not included. Looking up FROM tag.'.format(self.config.name, base))
                                 base_meta = self.runtime.late_resolve_image(base)
                                 _, v, r = base_meta.get_latest_build_info()
@@ -1489,9 +1504,56 @@ class ImageDistGitRepo(DistGitRepo):
                         mapped_images.append(image.image)
 
                     elif image.stream is not Missing:
-                        stream = self.runtime.resolve_stream(image.stream)
-                        # TODO: implement expiring images?
-                        mapped_images.append(stream.image)
+                        if self.runtime.assembly_basis_event:
+                            # When rebasing for an assembly build, we want to use the same parent image
+                            # as our corresponding basis image. To that end, we cannot rely on a stream.yml
+                            # entry -- which usually refers to a floating tag. Instead, we look up the latest
+                            # build of this image, relative to the assembly basis event, in brew. It will have
+                            # information on the exact parent images used at the time. We want to use that
+                            # specific sha.
+                            # If you are here trying to figure out how to change this behavior, you should
+                            # consider using 'from!:' in the assembly metadata for this component. This will
+                            # all you to fully pin the parent images (e.g. {'from!:' ['image': <pullspec>] })
+                            latest_build = self.metadata.get_latest_build(default=None)
+                            assembly_msg = f'{self.metadata.distgit_key} in assembly {self.runtime.assembly} with basis event {self.runtime.assembly_basis_event}'
+                            if not latest_build:
+                                raise IOError(f'Unable to find latest build for {assembly_msg}')
+                            build_model = Model(dict_to_model=latest_build)
+                            if build_model.extra.image.parent_images is Missing:
+                                raise IOError(f'Unable to find latest build parent images in {latest_build} for {assembly_msg}')
+                            elif len(build_model.extra.image.parent_images) != len(parent_images):
+                                raise IOError(f'Did not find the expected cardinality ({len(parent_images)} of parent images in {latest_build} for {assembly_msg}')
+
+                            # build_model.extra.image.parent_images is an array of tags (entries like openshift/golang-builder:rhel_8_golang_1.15).
+                            # We can't use floating tags for this, so we need to look up those tags in parent_image_builds,
+                            # which is also in the extras data.
+                            # example parent_image_builds: {'registry-proxy.engineering.redhat.com/rh-osbs/openshift-base-rhel8:v4.6.0.20210528.150530': {'id': 1616717,
+                            #       'nvr': 'openshift-base-rhel8-container-v4.6.0-202105281403.p0.git.f17f552'},
+                            #      'registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.15': {'id': 1542268,
+                            #       'nvr': 'openshift-golang-builder-container-v1.15.7-202103191923.el8'}}
+                            # Note this map actually gets us to an NVR.
+                            # Example latest_build return: https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
+                            target_parent_name = build_model.extra.image.parent_images[i]  # Which parent are looking for? e.g. 'openshift/golang-builder:rhel_8_golang_1.15'
+                            tag_pullspec = self.runtime.resolve_brew_image_url(target_parent_name)  # e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.15
+                            parent_build_info = build_model.extra.image.parent_image_builds[tag_pullspec]
+                            if parent_build_info is Missing:
+                                raise IOError(f'Unable to resolve parent {target_parent_name} in {latest_build} for {assembly_msg}; tried {tag_pullspec}')
+                            parent_build_nvr = parent_build_info.nvr
+                            # Hang in there.. this is a long dance. Now that we know the NVR, we can constuct
+                            # a truly unique pullspec.
+                            if '@' in tag_pullspec:
+                                unique_pullspec = tag_pullspec.rsplit('@', 1)[0]  # remove the sha
+                            elif ':' in tag_pullspec:
+                                unique_pullspec = tag_pullspec.rsplit(':', 1)[0]  # remove the tag
+                            else:
+                                raise IOError(f'Unexpected pullspec format: {tag_pullspec}')
+                            unique_pullspec += f':{parent_build_nvr}'  # qualify with the pullspec using nvr as a tag; e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.15.7-202103191923.el8'
+                            mapped_images.append(unique_pullspec)
+
+                        else:
+                            # Othwerwise, do typical stream resolution.
+                            stream = self.runtime.resolve_stream(image.stream)
+                            mapped_images.append(stream.image)
 
                     else:
                         raise IOError("Image in 'from' for [%s] is missing its definition." % base)
@@ -1554,6 +1616,9 @@ class ImageDistGitRepo(DistGitRepo):
                 if release.endswith(".p?"):
                     release = release[:-3]  # strip .p?
                     release += pval
+
+                if self.source_full_sha:
+                    release += ".git." + self.source_full_sha[:7]
 
                 if self.runtime.assembly:
                     release += f'.assembly.{self.runtime.assembly}'
@@ -1635,10 +1700,10 @@ class ImageDistGitRepo(DistGitRepo):
                 'BUILD_RELEASE': release if release else '',
             }
 
+            df_fileobj = self._update_yum_update_commands(force_yum_updates, io.StringIO(df_content))
             with dg_path.joinpath('Dockerfile').open('w', encoding="utf-8") as df:
-                for comment in oit_comments:
-                    df.write("%s %s\n" % (OIT_COMMENT_PREFIX, comment))
-                df.write(df_content)
+                shutil.copyfileobj(df_fileobj, df)
+                df_fileobj.close()
 
             self._update_environment_variables(env_vars)
 
@@ -1647,6 +1712,53 @@ class ImageDistGitRepo(DistGitRepo):
             self._update_csv(version, release)
 
             return version, release
+
+    def _update_yum_update_commands(self, force_yum_updates: bool, df_fileobj: io.TextIOBase) -> io.StringIO:
+        """ If force_yum_updates is True, inject "yum updates -y" in each stage; Otherwise, remove the lines we injected.
+        Returns an in-memory text stream for the new Dockerfile content
+        """
+        if force_yum_updates and not self.config.get('enabled_repos'):
+            # If no yum repos are disabled in image meta, "yum update -y" will fail with "Error: There are no enabled repositories in ...".
+            # Remove "yum update -y" lines intead.
+            self.logger.warning("Will not inject \"yum updates -y\" for this image because no yum repos are enabled.")
+            force_yum_updates = False
+        if force_yum_updates:
+            self.logger.info("Injecting \"yum updates -y\" in each stage...")
+
+        parser = DockerfileParser(fileobj=df_fileobj)
+
+        df_lines_iter = iter(parser.content.splitlines(False))
+        build_stage_num = len(parser.parent_images)
+        final_stage_user = self.metadata.config.final_stage_user or 0
+
+        yum_update_line_flag = "__doozer=yum-update"
+        yum_update_line = "RUN yum update -y && yum clean all"
+        output = io.StringIO()
+        build_stage = 0
+        for line in df_lines_iter:
+            if yum_update_line_flag in line:
+                # Remove the lines we have injected by skipping 2 lines
+                next(df_lines_iter)
+                continue
+            output.write(f'{line}\n')
+            if not force_yum_updates or not line.startswith('FROM '):
+                continue
+            build_stage += 1
+            # If the curent user inherited from the base image for this stage is not root, `yum update -y` will fail.
+            # We need to change the current user to root.
+            # For non-final stages, it should be safe to inject "USER 0" before `yum update -y`.
+            # However for the final stage, injecting "USER 0" without changing the user back may cause unexpected behavior.
+            # Per https://github.com/openshift/doozer/pull/428#issuecomment-861795424, introduce a new metadata `final_stage_user` for images so we can switch the user back later.
+            if build_stage < build_stage_num or final_stage_user:
+                output.write(f"# {yum_update_line_flag}\nUSER 0\n")
+            else:
+                self.logger.warning("Will not inject `USER 0` before `yum update -y` for the final build stage because `final_stage_user` is missing (or 0) in image meta."
+                                    " If this build fails with `yum update -y` permission denied error, please set correct `final_stage_user` and rebase again.")
+            output.write(f"# {yum_update_line_flag}\n{yum_update_line}  # set final_stage_user in ART metadata if this fails\n")
+            if build_stage == build_stage_num and final_stage_user:
+                output.write(f"# {yum_update_line_flag}\nUSER {final_stage_user}\n")
+        output.seek(0)
+        return output
 
     def _generate_config_digest(self):
         # The config digest is used by scan-sources to detect config changes
@@ -1678,8 +1790,6 @@ class ImageDistGitRepo(DistGitRepo):
         return str(csvs[0]), image_refs
 
     def _update_csv(self, version, release):
-        # AMH - most of this method really shouldn't be in Doozer itself
-        # But right now there's no better way to handle it
         csv_config = self.metadata.config.get('update-csv', None)
         if not csv_config:
             return
@@ -1698,7 +1808,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             try:
                 if name == self.metadata.image_name_short:  # ref is current image
-                    nvr = '{}:{}-{}'.format(name, version, release)
+                    image_tag = '{}:{}-{}'.format(name, version, release)
                 else:
                     distgit = self.runtime.image_distgit_by_name(name)
                     # if upstream is referring to an image we don't actually build, give up.
@@ -1706,16 +1816,17 @@ class ImageDistGitRepo(DistGitRepo):
                         raise DoozerFatalError('Unable to find {} in image-references data for {}'.format(name, self.metadata.distgit_key))
                     meta = self.runtime.image_map.get(distgit, None)
                     if meta:  # image is currently be processed
-                        nvr = '{}:{}-{}'.format(meta.image_name_short, version, release)
+                        uuid_tag = "%s.%s" % (version, self.runtime.uuid)  # applied by additional-tags
+                        image_tag = '{}:{}'.format(meta.image_name_short, uuid_tag)
                     else:
                         meta = self.runtime.late_resolve_image(distgit)
                         _, v, r = meta.get_latest_build_info()
-                        nvr = '{}:{}-{}'.format(meta.image_name_short, v, r)
+                        image_tag = '{}:{}-{}'.format(meta.image_name_short, v, r)
 
                 namespace = self.runtime.group_config.get('csv_namespace', None)
                 if not namespace:
                     raise DoozerFatalError('csv_namespace is required in group.yaml when any image defines update-csv')
-                replace = '{}/{}/{}'.format(registry, namespace, nvr)
+                replace = '{}/{}/{}'.format(registry, namespace, image_tag)
 
                 with io.open(csv_file, 'r+', encoding="utf-8") as f:
                     content = f.read()
@@ -1738,7 +1849,7 @@ class ImageDistGitRepo(DistGitRepo):
             'MINOR': y,
             'SUBMINOR': z,
             'RELEASE': release,
-            'FULL_VER': '{}-{}'.format(version, release)
+            'FULL_VER': '{}-{}'.format(version, release.split('.')[0])
         }
 
         manifests_base = os.path.join(self.distgit_dir, csv_config['manifests-dir'])
@@ -2134,7 +2245,11 @@ class ImageDistGitRepo(DistGitRepo):
                     "component_name": self.metadata.distgit_key,
                     "kind": "Dockerfile",
                     "content": new_dockerfile_data,
-                    "set_env": {"PATH": path},
+                    "set_env": {
+                        "PATH": path,
+                        "BREW_EVENT": f'{self.runtime.brew_event}',
+                        "BREW_TAG": f'{self.metadata.default_brew_tag()}'
+                    },
                     "distgit_path": self.dg_path,
                 }
                 modifier.act(context=context, ceiling_dir=str(dg_path))
@@ -2161,13 +2276,14 @@ class ImageDistGitRepo(DistGitRepo):
                     private_fix = True
                 elif util.isolate_pflag_in_release(prev_release) == 'p0':
                     private_fix = False
-            version = dfp.labels["version"]
+            version = dfp.labels.get("version")
             return version, prev_release, private_fix
         return None, None, None
 
-    def rebase_dir(self, version, release, terminate_event):
+    def rebase_dir(self, version, release, terminate_event, force_yum_updates=False):
         try:
-            # If this image is FROM another group member, we need to wait on that group member to determine if there are embargoes in that group member.
+            # If this image is FROM another group member, we need to wait on that group
+            # member to determine if there are embargoes in that group member.
             image_from = Model(self.config.get('from', None))
             if image_from.member is not Missing:
                 self.wait_for_rebase(image_from.member, terminate_event)
@@ -2205,7 +2321,7 @@ class ImageDistGitRepo(DistGitRepo):
             if self.private_fix:
                 self.logger.warning("The source of this image contains embargoed fixes.")
 
-            real_version, real_release = self.update_distgit_dir(version, release, prev_release)
+            real_version, real_release = self.update_distgit_dir(version, release, prev_release, force_yum_updates)
             self.rebase_status = True
             return real_version, real_release
         except Exception:
