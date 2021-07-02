@@ -274,7 +274,7 @@ class Runtime(object):
 
         return self.releases_config
 
-    def get_group_config(self):
+    def get_group_config(self) -> Model:
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
         # into the YAML content. If `vars` found, the format will be

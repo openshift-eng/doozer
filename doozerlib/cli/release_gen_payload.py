@@ -90,9 +90,12 @@ read and propagate/expose this annotation in its display of the release image.
     brew_session = runtime.build_retrying_koji_client()
     base_target = SyncTarget(  # where we will mirror and record the tags
         orgrepo=f"{organization}/{repository}",
-        istream_name=is_name if is_name else default_is_base_name(runtime.get_minor_version()),
+        istream_name=is_name if is_name else default_is_base_name(runtime),
         istream_namespace=is_namespace if is_namespace else default_is_base_namespace()
     )
+
+    if runtime.assembly != 'stream' and 'art-latest' in base_target.istream_name:
+        raise ValueError('The art-latest imagestreams should not be used for non-stream assemblies')
 
     gen = PayloadGenerator(runtime, brew_session, base_target, exclude_arch)
     latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items = gen.load_latest_builds()
@@ -175,8 +178,13 @@ class PayloadGenerator:
 
         return payload_images, non_release_items
 
-    def _get_payload_images(self, images):
-        # images is a list of image metadata - pick out payload images
+    def _get_payload_images(self, images: List[ImageMetadata]) -> Tuple[List[ImageMetadata], List[ImageMetadata]]:
+        # Iterates through a list of image metas and finds those destined for
+        # the release payload. Images which are marked for the payload but not named
+        # appropriately will be captured in a separate list.
+        # :param images: The list of metas to scan
+        # :return: Returns a tuple containing: (list of images for payload, list of incorrectly named images)
+
         payload_images = []
         invalid_name_items = []
         for image in images:
@@ -611,8 +619,12 @@ class PayloadGenerator:
         return mismatched_siblings
 
 
-def default_is_base_name(version):
-    return f"{version}-art-latest"
+def default_is_base_name(runtime: Runtime):
+    version = runtime.get_minor_version()
+    if runtime.assembly == 'stream':
+        return f'{version}-art-latest'
+    else:
+        return f'{version}-art-assembly-{runtime.assembly}'
 
 
 def default_is_base_namespace():
