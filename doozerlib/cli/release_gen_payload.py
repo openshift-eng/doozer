@@ -255,6 +255,12 @@ class PayloadGenerator:
             # when public_upstreams are not configured, we assume there is no private content.
             return
 
+        if self.runtime.assembly_basis_event:
+            # If an assembly has a basis event, its content is not going to go out
+            # to a release controller. Nothing we write is going to be publicly
+            # available.
+            return
+
         # store RPM archives to BuildStatusDetector cache to limit Brew queries
         for r in latest_builds:
             self.bs_detector.archive_lists[r.build["id"]] = r.archives
@@ -284,6 +290,11 @@ class PayloadGenerator:
 
         for dest, source_for_name in mirror_src_for_arch_and_name.items():
             brew_arch, private = dest
+
+            if self.runtime.assembly_basis_event and private:
+                self.runtime.logger.info(f"Skipping private mirroring list / imagestream for asssembly: {self.runtime.assembly}")
+                continue
+
             dest = f"{brew_arch}{'-priv' if private else ''}"
 
             # Save the default SRC=DEST input to a file for syncing by 'oc image mirror'
