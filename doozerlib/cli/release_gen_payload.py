@@ -27,8 +27,10 @@ from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yel
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
 @click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
               help="Architecture (brew nomenclature) to exclude from payload generation")
+@click.option("--skip-gc-tagging", default=False, is_flag=True,
+              help="By default, for a named assembly, images will be tagged to prevent garbage collection")
 @pass_runtime
-def release_gen_payload(runtime, is_name, is_namespace, organization, repository, exclude_arch):
+def release_gen_payload(runtime, is_name, is_namespace, organization, repository, exclude_arch, skip_gc_tagging):
     """Generates two sets of input files for `oc` commands to mirror
 content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
@@ -97,7 +99,7 @@ read and propagate/expose this annotation in its display of the release image.
     if runtime.assembly != 'stream' and 'art-latest' in base_target.istream_name:
         raise ValueError('The art-latest imagestreams should not be used for non-stream assemblies')
 
-    gen = PayloadGenerator(runtime, brew_session, base_target, exclude_arch)
+    gen = PayloadGenerator(runtime, brew_session, base_target, exclude_arch, skip_gc_tagging=skip_gc_tagging)
     latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items = gen.load_latest_builds()
     gen.write_mirror_destinations(latest_builds, mismatched_siblings)
 
@@ -138,13 +140,14 @@ class BuildRecord(object):
 
 
 class PayloadGenerator:
-    def __init__(self, runtime: Runtime, brew_session: ClientSession, base_target: SyncTarget, exclude_arches: Optional[List[str]] = None):
+    def __init__(self, runtime: Runtime, brew_session: ClientSession, base_target: SyncTarget, exclude_arches: Optional[List[str]] = None, skip_gc_tagging: bool = False):
         self.runtime = runtime
         self.brew_session = brew_session
         self.base_target = base_target
         self.exclude_arches = exclude_arches or []
         self.state = runtime.state[runtime.command] = dict(state.TEMPLATE_IMAGE)
         self.bs_detector = build_status_detector.BuildStatusDetector(brew_session, runtime.logger)
+        self.skip_gc_tagging = skip_gc_tagging
 
     def load_latest_builds(self):
         images = list(self.runtime.image_metas())
@@ -216,13 +219,15 @@ class PayloadGenerator:
         brew_latest_builds = []
         for image_meta in payload_images:
             latest_build: ImageMetadata = image_meta.get_latest_build()
-            if self.runtime.assembly_basis_event:
+            if self.runtime.assembly_basis_event and not self.skip_gc_tagging:
                 # If we are preparing an assembly with a basis event, let's start getting
                 # serious and tag these images so they don't get garbage collected.
                 with self.runtime.shared_koji_client_session() as koji_api:
-                    tags = {tag['name'] for tag in koji_api.listTags(build=latest_build['id'])}
-                    if latest_build.hotfix_brew_tag() not in tags:
-                        koji_api.tagBuild(latest_build.hotfix_brew_tag(), build=latest_build['id'])
+                    build_nvr = latest_build['nvr']
+                    tags = {tag['name'] for tag in koji_api.listTags(build=build_nvr)}
+                    if image_meta.hotfix_brew_tag() not in tags:
+                        self.runtime.logger.info(f'Tagging {image_meta.get_component_name()} build {build_nvr} with {image_meta.hotfix_brew_tag()} to prevent garbage collection')
+                        koji_api.tagBuild(image_meta.hotfix_brew_tag(), build_nvr)
 
             brew_latest_builds.append(latest_build)
 
