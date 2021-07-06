@@ -46,8 +46,8 @@ CONTAINER_YAML_HEADER = """
 
 # Any manual changes will be overwritten by doozer on the next build.
 #
-# See https://mojo.redhat.com/docs/DOC-1159997 for more information on
-# maintaining this file and the format and examples
+# See https://source.redhat.com/groups/public/container-build-system/container_build_system_wiki/odcs_integration_with_osbs
+# for more information on maintaining this file and the format and examples
 
 ---
 """
@@ -456,7 +456,7 @@ class ImageDistGitRepo(DistGitRepo):
         arches: # Optional list of image specific arches. If given, it must be a subset of group arches.
           - x86_64
           - s390x
-        container_yaml: ... # verbatim container.yaml content (see https://mojo.redhat.com/docs/DOC-1159997)
+        container_yaml: ... # verbatim container.yaml content (see https://source.redhat.com/groups/public/container-build-system/container_build_system_wiki/odcs_integration_with_osbs)
         """
 
         # list of platform (architecture) names to build this image for
@@ -469,7 +469,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         if self.config.content.source.pkg_managers is not Missing:
             # If a package manager is specified, then configure cachito.
-            # https://mojo.redhat.com/docs/DOC-1177281#jive_content_id_Cachito_Integration
+            # https://source.redhat.com/groups/public/container-build-system/container_build_system_wiki/containers_from_source_multistage_builds_in_osbs#jive_content_id_Cachito_Integration
             config_overrides.update({
                 'remote_source': {
                     'repo': convert_remote_git_to_https(self.actual_source_url),

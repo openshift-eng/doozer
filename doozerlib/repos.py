@@ -200,8 +200,8 @@ CONTENT_SETS = """
 #    1. You start depending on a new product
 #    2. You are preparing new product release and your content sets will change
 #
-# See https://mojo.redhat.com/docs/DOC-1023066 for more information on
-# maintaining this file and the format and examples
+# See https://source.redhat.com/groups/public/container-build-system/container_build_system_wiki/guide_to_layered_image_build_service_osbs
+# for more information on maintaining this file and the format and examples.
 #
 # You should have one top level item for each architecture being built. Most
 # likely this will be x86_64 and ppc64le initially.

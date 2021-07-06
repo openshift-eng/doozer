@@ -104,8 +104,8 @@ class ImageMetadata(Metadata):
         # Query brew to find the most recently built release for this component version.
         _, version, release = self.get_latest_build_info()
 
-        # we need to pull images from proxy since https://mojo.redhat.com/docs/DOC-1204856 if 'brew_image_namespace'
-        # is enabled.
+        # we need to pull images from proxy if 'brew_image_namespace' is enabled:
+        # https://source.redhat.com/groups/public/container-build-system/container_build_system_wiki/pulling_pre_quay_switch_over_osbs_built_container_images_using_the_osbs_registry_proxy
         if self.runtime.group_config.urls.brew_image_namespace is not Missing:
             name = self.runtime.group_config.urls.brew_image_namespace + '/' + self.config.name.replace('/', '-')
         else:
