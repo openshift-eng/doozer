@@ -96,7 +96,7 @@ read and propagate/expose this annotation in its display of the release image.
         istream_namespace=is_namespace if is_namespace else default_is_base_namespace()
     )
 
-    if runtime.assembly != 'stream' and 'art-latest' in base_target.istream_name:
+    if runtime.assembly and runtime.assembly != 'stream' and 'art-latest' in base_target.istream_name:
         raise ValueError('The art-latest imagestreams should not be used for non-stream assemblies')
 
     gen = PayloadGenerator(runtime, brew_session, base_target, exclude_arch, skip_gc_tagging=skip_gc_tagging)
@@ -163,7 +163,7 @@ class PayloadGenerator:
         self._designate_privacy(latest_builds, images)
 
         mismatched_siblings = self._find_mismatched_siblings(latest_builds)
-        if self.runtime.assembly_type == assembly.AssemblyTypes.CUSTOM:
+        if mismatched_siblings and self.runtime.assembly_type == assembly.AssemblyTypes.CUSTOM:
             self.runtime.logger.warning(f'There are mismatched siblings in this assembly, but it is "custom"; ignoring: {mismatched_siblings}')
             mismatched_siblings = set()
 
