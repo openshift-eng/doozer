@@ -44,7 +44,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 from doozerlib import util
 from doozerlib import brew
-from doozerlib.assembly import assembly_group_config, assembly_config_finalize, assembly_basis_event
+from doozerlib.assembly import assembly_group_config, assembly_config_finalize, assembly_basis_event, assembly_type
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -149,6 +149,7 @@ class Runtime(object):
         self.session_pool_available = {}
         self.brew_event = None
         self.assembly_basis_event = None
+        self.assembly_type = None
         self.releases_config = None
         self.assembly = 'test'
 
@@ -273,7 +274,7 @@ class Runtime(object):
 
         return self.releases_config
 
-    def get_group_config(self):
+    def get_group_config(self) -> Model:
         # group.yml can contain a `vars` section which should be a
         # single level dict containing keys to str.format(**dict) replace
         # into the YAML content. If `vars` found, the format will be
@@ -617,6 +618,8 @@ class Runtime(object):
             # If the assembly has a basis event, we constrain all brew calls to that event.
             self.brew_event = self.assembly_basis_event
             self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
+
+        self.assembly_type = assembly_type(self.get_releases_config(), self.assembly)
 
         assembly_config_finalize(self.get_releases_config(), self.assembly, self.rpm_metas(), self.ordered_image_metas())
 

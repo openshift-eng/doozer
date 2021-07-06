@@ -1,15 +1,17 @@
 import io
 import json
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 
 import click
 import yaml
 from koji import ClientSession
 
 from doozerlib import brew, build_status_detector, exectools, rhcos, state
+from doozerlib import assembly
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.image import ImageMetadata
+from doozerlib.model import Model
 from doozerlib.runtime import Runtime
 from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yellow_print
 
@@ -25,8 +27,10 @@ from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yel
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
 @click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
               help="Architecture (brew nomenclature) to exclude from payload generation")
+@click.option("--skip-gc-tagging", default=False, is_flag=True,
+              help="By default, for a named assembly, images will be tagged to prevent garbage collection")
 @pass_runtime
-def release_gen_payload(runtime, is_name, is_namespace, organization, repository, exclude_arch):
+def release_gen_payload(runtime, is_name, is_namespace, organization, repository, exclude_arch, skip_gc_tagging):
     """Generates two sets of input files for `oc` commands to mirror
 content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
@@ -88,11 +92,14 @@ read and propagate/expose this annotation in its display of the release image.
     brew_session = runtime.build_retrying_koji_client()
     base_target = SyncTarget(  # where we will mirror and record the tags
         orgrepo=f"{organization}/{repository}",
-        istream_name=is_name if is_name else default_is_base_name(runtime.get_minor_version()),
+        istream_name=is_name if is_name else default_is_base_name(runtime),
         istream_namespace=is_namespace if is_namespace else default_is_base_namespace()
     )
 
-    gen = PayloadGenerator(runtime, brew_session, base_target, exclude_arch)
+    if runtime.assembly and runtime.assembly != 'stream' and 'art-latest' in base_target.istream_name:
+        raise ValueError('The art-latest imagestreams should not be used for non-stream assemblies')
+
+    gen = PayloadGenerator(runtime, brew_session, base_target, exclude_arch, skip_gc_tagging=skip_gc_tagging)
     latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items = gen.load_latest_builds()
     gen.write_mirror_destinations(latest_builds, mismatched_siblings)
 
@@ -133,13 +140,14 @@ class BuildRecord(object):
 
 
 class PayloadGenerator:
-    def __init__(self, runtime: Runtime, brew_session: ClientSession, base_target: SyncTarget, exclude_arches: Optional[List[str]] = None):
+    def __init__(self, runtime: Runtime, brew_session: ClientSession, base_target: SyncTarget, exclude_arches: Optional[List[str]] = None, skip_gc_tagging: bool = False):
         self.runtime = runtime
         self.brew_session = brew_session
         self.base_target = base_target
         self.exclude_arches = exclude_arches or []
         self.state = runtime.state[runtime.command] = dict(state.TEMPLATE_IMAGE)
         self.bs_detector = build_status_detector.BuildStatusDetector(brew_session, runtime.logger)
+        self.skip_gc_tagging = skip_gc_tagging
 
     def load_latest_builds(self):
         images = list(self.runtime.image_metas())
@@ -155,6 +163,9 @@ class PayloadGenerator:
         self._designate_privacy(latest_builds, images)
 
         mismatched_siblings = self._find_mismatched_siblings(latest_builds)
+        if mismatched_siblings and self.runtime.assembly_type == assembly.AssemblyTypes.CUSTOM:
+            self.runtime.logger.warning(f'There are mismatched siblings in this assembly, but it is "custom"; ignoring: {mismatched_siblings}')
+            mismatched_siblings = set()
 
         return latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items
 
@@ -170,8 +181,13 @@ class PayloadGenerator:
 
         return payload_images, non_release_items
 
-    def _get_payload_images(self, images):
-        # images is a list of image metadata - pick out payload images
+    def _get_payload_images(self, images: List[ImageMetadata]) -> Tuple[List[ImageMetadata], List[ImageMetadata]]:
+        # Iterates through a list of image metas and finds those destined for
+        # the release payload. Images which are marked for the payload but not named
+        # appropriately will be captured in a separate list.
+        # :param images: The list of metas to scan
+        # :return: Returns a tuple containing: (list of images for payload, list of incorrectly named images)
+
         payload_images = []
         invalid_name_items = []
         for image in images:
@@ -194,12 +210,26 @@ class PayloadGenerator:
         Find latest brew build (at event, if given) of each payload image.
 
         If assemblies are disabled, it will return the latest tagged brew build with the candidate brew tag.
-        If assemblies are enabled, it will return the latest tagged brew build in the given assembly. If no such build, it will fall back to the latest build in "stream" assembly.
+        If assemblies are enabled, it will return the latest tagged brew build in the given assembly.
+          If no such build, it will fall back to the latest build in "stream" assembly.
 
         :param payload_images: a list of image metadata for payload images
         :return: list of build records, list of images missing builds
         """
-        brew_latest_builds = [image_meta.get_latest_build() for image_meta in payload_images]
+        brew_latest_builds = []
+        for image_meta in payload_images:
+            latest_build: ImageMetadata = image_meta.get_latest_build()
+            if self.runtime.assembly_basis_event and not self.skip_gc_tagging:
+                # If we are preparing an assembly with a basis event, let's start getting
+                # serious and tag these images so they don't get garbage collected.
+                with self.runtime.shared_koji_client_session() as koji_api:
+                    build_nvr = latest_build['nvr']
+                    tags = {tag['name'] for tag in koji_api.listTags(build=build_nvr)}
+                    if image_meta.hotfix_brew_tag() not in tags:
+                        self.runtime.logger.info(f'Tagging {image_meta.get_component_name()} build {build_nvr} with {image_meta.hotfix_brew_tag()} to prevent garbage collection')
+                        koji_api.tagBuild(image_meta.hotfix_brew_tag(), build_nvr)
+
+            brew_latest_builds.append(latest_build)
 
         # look up the archives for each image (to get the RPMs that went into them)
         brew_build_ids = [b["id"] if b else 0 for b in brew_latest_builds]
@@ -230,6 +260,12 @@ class PayloadGenerator:
             # when public_upstreams are not configured, we assume there is no private content.
             return
 
+        if self.runtime.assembly_basis_event:
+            # If an assembly has a basis event, its content is not going to go out
+            # to a release controller. Nothing we write is going to be publicly
+            # available.
+            return
+
         # store RPM archives to BuildStatusDetector cache to limit Brew queries
         for r in latest_builds:
             self.bs_detector.archive_lists[r.build["id"]] = r.archives
@@ -254,12 +290,16 @@ class PayloadGenerator:
         for brew_arch, private in mirror_src_for_arch_and_name.keys():
             rhcos_source_for_priv_arch[private][brew_arch] = self._latest_mosc_source(brew_arch, private)
         rhcos_inconsistencies = {  # map[private] -> map[annotation] -> description
-            private: self._find_rhcos_build_inconsistencies(rhcos_source_for_priv_arch[private])
-            for private in (True, False)
+            private: self._find_rhcos_build_inconsistencies(rhcos_source_for_priv_arch[private]) for private in (True, False)
         }
 
         for dest, source_for_name in mirror_src_for_arch_and_name.items():
             brew_arch, private = dest
+
+            if self.runtime.assembly_basis_event and private:
+                self.runtime.logger.info(f"Skipping private mirroring list / imagestream for asssembly: {self.runtime.assembly}")
+                continue
+
             dest = f"{brew_arch}{'-priv' if private else ''}"
 
             # Save the default SRC=DEST input to a file for syncing by 'oc image mirror'
@@ -492,13 +532,31 @@ class PayloadGenerator:
         return tag_list
 
     def _latest_mosc_source(self, brew_arch, private):
-        stream_name = f"{brew_arch}{'-priv' if private else ''}"
-        self.runtime.logger.info(f"Getting latest RHCOS source for {stream_name}...")
+        image_stream_suffix = f"{brew_arch}{'-priv' if private else ''}"
+        runtime = self.runtime
+        runtime.logger.info(f"Getting latest RHCOS source for {image_stream_suffix}...")
+
+        assembly_rhcos_config = assembly.assembly_rhcos_config(runtime.releases_config, runtime.assembly)
+        # See if this assembly has assembly.rhcos.machine-os-content.images populated for this architecture.
+        assembly_rhcos_arch_pullspec = assembly_rhcos_config['machine-os-content'].images[brew_arch]
+        if self.runtime.assembly_basis_event and not assembly_rhcos_arch_pullspec:
+            raise Exception(f'Assembly {runtime.assembly} has a basis event but no assembly.rhcos MOSC image data for {brew_arch}; all MOSC image data must be populated for this assembly to be valid')
+
         try:
+
             version = self.runtime.get_minor_version()
-            build_id, pullspec = rhcos.latest_machine_os_content(version, brew_arch, private)
-            if not pullspec:
-                raise Exception(f"No RHCOS found for {version}")
+
+            if assembly_rhcos_arch_pullspec:
+                pullspec = assembly_rhcos_arch_pullspec
+                image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}')
+                image_info = Model(dict_to_model=json.loads(image_info_str))
+                build_id = image_info.config.config.Labels.version
+                if not build_id:
+                    raise Exception(f'Unable to determine MOSC build_id from: {pullspec}. Retrieved image info: {image_info_str}')
+            else:
+                build_id, pullspec = rhcos.latest_machine_os_content(version, brew_arch, private)
+                if not pullspec:
+                    raise Exception(f"No RHCOS found for {version}")
 
             commitmeta = rhcos.rhcos_build_meta(build_id, version, brew_arch, private, meta_type="commitmeta")
             rpm_list = commitmeta.get("rpmostree.rpmdb.pkglist")
@@ -506,7 +564,7 @@ class PayloadGenerator:
                 raise Exception(f"no pkglist in {commitmeta}")
 
         except Exception as ex:
-            problem = f"{stream_name}: {ex}"
+            problem = f"{image_stream_suffix}: {ex}"
             red_print(f"error finding RHCOS {problem}")
             # record when there is a problem; as each arch is a separate build, make an array
             self.state.setdefault("images", {}).setdefault("machine-os-content", []).append(problem)
@@ -542,7 +600,7 @@ class PayloadGenerator:
             }
         }
 
-    def _find_mismatched_siblings(self, builds):
+    def _find_mismatched_siblings(self, builds) -> Set:
         """ Sibling images are those built from the same repository. We need to throw an error if there are sibling built from different commit.
         """
         # First, loop over all builds and store their source repos and commits to a dict
@@ -577,8 +635,12 @@ class PayloadGenerator:
         return mismatched_siblings
 
 
-def default_is_base_name(version):
-    return f"{version}-art-latest"
+def default_is_base_name(runtime: Runtime):
+    version = runtime.get_minor_version()
+    if runtime.assembly == 'stream':
+        return f'{version}-art-latest'
+    else:
+        return f'{version}-art-assembly-{runtime.assembly}'
 
 
 def default_is_base_namespace():

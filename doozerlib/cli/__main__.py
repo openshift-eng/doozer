@@ -1577,10 +1577,11 @@ def config_read_group(runtime, key, as_len, as_yaml, permit_missing_group, defau
             exit(0)
         raise
 
+    group_primitive = runtime.get_group_config().primitive()
     if key is None:
-        value = runtime.raw_group_config
+        value = group_primitive
     else:
-        value = dict_get(runtime.raw_group_config, key, None)
+        value = dict_get(group_primitive, key, None)
         if value is None:
             if default is not None:
                 print(default)
