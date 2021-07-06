@@ -613,7 +613,7 @@ class Runtime(object):
         self.assembly_basis_event = assembly_basis_event(self.get_releases_config(), self.assembly)
         if self.assembly_basis_event:
             if self.brew_event:
-                raise IOError(f'Cannot run with assembly basis event {assembly_basis_event} and --brew-event at the same time.')
+                raise IOError(f'Cannot run with assembly basis event {self.assembly_basis_event} and --brew-event at the same time.')
             # If the assembly has a basis event, we constrain all brew calls to that event.
             self.brew_event = self.assembly_basis_event
             self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
