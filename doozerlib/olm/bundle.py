@@ -123,7 +123,7 @@ class OLMBundle(object):
         """
         exectools.cmd_assert('rm -rf {}'.format(self.operator_clone_path))
         exectools.cmd_assert('mkdir -p {}'.format(os.path.dirname(self.operator_clone_path)))
-        exectools.cmd_assert('rhpkg{}clone --branch {} {} {}'.format(
+        exectools.cmd_assert('rhpkg {} clone --branch {} {} {}'.format(
             self.rhpkg_opts, self.branch, self.operator_repo_name, self.operator_clone_path
         ), retries=3)
 
@@ -138,7 +138,7 @@ class OLMBundle(object):
         """
         exectools.cmd_assert('rm -rf {}'.format(self.bundle_clone_path))
         exectools.cmd_assert('mkdir -p {}'.format(os.path.dirname(self.bundle_clone_path)))
-        exectools.cmd_assert('rhpkg{}clone --branch {} {} {}'.format(
+        exectools.cmd_assert('rhpkg {} clone --branch {} {} {}'.format(
             self.rhpkg_opts, self.branch, self.bundle_repo_name, self.bundle_clone_path
         ), retries=3)
 
@@ -241,8 +241,8 @@ class OLMBundle(object):
         with pushd.Dir(self.bundle_clone_path):
             try:
                 exectools.cmd_assert('git add .')
-                exectools.cmd_assert('rhpkg{}commit -m "{}"'.format(self.rhpkg_opts, commit_msg))
-                rc, out, err = exectools.cmd_gather('rhpkg{}push'.format(self.rhpkg_opts))
+                exectools.cmd_assert('rhpkg {} commit -m "{}"'.format(self.rhpkg_opts, commit_msg))
+                rc, out, err = exectools.cmd_gather('rhpkg {} push'.format(self.rhpkg_opts))
                 return True
             except Exception:
                 return False  # Bundle repository might be already up-to-date, nothing new to commit
@@ -254,7 +254,7 @@ class OLMBundle(object):
         """
         with pushd.Dir(self.bundle_clone_path):
             rc, out, err = exectools.cmd_gather(
-                'rhpkg{}container-build --nowait --target {}'.format(self.rhpkg_opts, self.target)
+                'rhpkg {} container-build --nowait --target {}'.format(self.rhpkg_opts, self.target)
             )
 
         if rc != 0:

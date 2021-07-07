@@ -2312,7 +2312,7 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs, force=False):
 
             did_rebase = olm_bundle.rebase(nvr)
             return {
-                'success': olm_bundle.build() if did_rebase else True,
+                'success': olm_bundle.build() if did_rebase or force else True,
                 'task_url': olm_bundle.task_url if hasattr(olm_bundle, 'task_url') else None,
                 'bundle_nvr': olm_bundle.get_latest_bundle_build_nvr(),
             }
