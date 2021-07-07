@@ -637,7 +637,7 @@ class PayloadGenerator:
 
 def default_is_base_name(runtime: Runtime):
     version = runtime.get_minor_version()
-    if runtime.assembly == 'stream':
+    if runtime.assembly is None or runtime.assembly == 'stream':
         return f'{version}-art-latest'
     else:
         return f'{version}-art-assembly-{runtime.assembly}'
