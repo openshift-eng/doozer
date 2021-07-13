@@ -329,6 +329,16 @@ class ImageMetadata(Metadata):
                 # The latest brew build does not exactly match the required arches as specified in group.yml
                 return self, RebuildHint(RebuildHintCode.ARCHES_CHANGE, f'Arches of {image_nvr}: ({build_arches}) does not match target arches {target_arches}')
 
+            # Build up a map of RPMs built by this group. It is the 'latest' builds of these RPMs
+            # relative to the current assembly that matter in the forthcoming search -- not
+            # necessarily the true-latest. i.e. if we are checking for changes in a 'stream' image,
+            # we do not want to react because of an RPM build in the 'test' assembly.
+            group_rpm_builds_nvrs: Dict[str, str] = dict()  # Maps package name to latest brew build nvr
+            for rpm_meta in self.runtime.rpm_metas():
+                latest_rpm_build = rpm_meta.get_latest_build(default=None)
+                if latest_rpm_build:
+                    group_rpm_builds_nvrs[rpm_meta.get_package_name()] = latest_rpm_build['nvr']
+
             for archive in archives:
                 # Example results of listing RPMs in an given imageID:
                 # https://gist.github.com/jupierce/a8798858104dcf6dfa4bd1d6dd99d2d8
@@ -340,6 +350,14 @@ class ImageMetadata(Metadata):
                     package_name = build['package_name']
                     if package_name in changing_rpm_packages:
                         return self, RebuildHint(RebuildHintCode.PACKAGE_CHANGE, f'Image includes {package_name} which is also about to change')
+
+                    latest_assembly_build_nvr = group_rpm_builds_nvrs.get(package_name, None)
+                    if latest_assembly_build_nvr and latest_assembly_build_nvr == build['nvr']:
+                        # The latest RPM build for this assembly is already installed and we know the RPM
+                        # is not about to change. Ignore the installed package.
+                        self.logger.debug(f'Found latest assembly specific build ({latest_assembly_build_nvr}) for group package {package_name} is already installed in {dgk} archive; no tagging change search will occur')
+                        continue
+
                     # Several RPMs may belong to the same package, and each archive must use the same
                     # build of a package, so all we need to collect is the set of build_ids for the packages
                     # across all of the archives.

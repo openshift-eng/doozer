@@ -119,8 +119,8 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                     source_url = info['source']  # git://pkgs.devel.redhat.com/containers/atomic-openshift-descheduler#6fc9c31e5d9437ac19e3c4b45231be8392cdacac
                     source_commit = source_url.split('#')[1]  # isolate the commit hash
                     # Look at the digest that created THIS build. What is in head does not matter.
-                    prev_digest = meta.fetch_cgit_file('.oit/config_digest', commit_hash=source_commit).decode('utf-8')
-                    current_digest = meta.calculate_config_digest(runtime.group_config, runtime.streams)
+                    prev_digest = image_meta.fetch_cgit_file('.oit/config_digest', commit_hash=source_commit).decode('utf-8')
+                    current_digest = image_meta.calculate_config_digest(runtime.group_config, runtime.streams)
                     if current_digest.strip() != prev_digest.strip():
                         runtime.logger.info('%s config_digest %s is differing from %s', dgk, prev_digest, current_digest)
                         add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Metadata configuration change'))
