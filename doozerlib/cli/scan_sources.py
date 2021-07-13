@@ -98,21 +98,6 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
                     changing_rpm_packages.add(package_name)
 
             elif meta.meta_type == 'image':
-                if not rebuild_hint.rebuild:
-                    # If no upstream change has been detected, check configurations
-                    # like image meta, repos, and streams to see if they have changed
-                    # We detect config changes by comparing their digest changes.
-                    # The config digest of the previous build is stored at .oit/config_digest on distgit repo.
-                    try:
-                        prev_digest = meta.fetch_cgit_file('.oit/config_digest').decode('utf-8')
-                        current_digest = meta.calculate_config_digest(runtime.group_config, runtime.streams)
-                        if current_digest.strip() != prev_digest.strip():
-                            runtime.logger.info('%s config_digest %s is differing from %s', dgk, prev_digest, current_digest)
-                            rebuild_hint = RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Metadata configucation change')
-                    except exectools.RetryException:
-                        runtime.logger.info('%s config_digest cannot be retrieved; request a build', dgk)
-                        rebuild_hint = RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Unable to retrieve config_digest')
-
                 if rebuild_hint.rebuild:
                     add_image_meta_change(meta, rebuild_hint)
 
@@ -125,6 +110,24 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
         for image_meta in runtime.image_metas():
             info = image_meta.get_latest_build(default=None)
             if info is not None:
+
+                # If no upstream change has been detected, check configurations
+                # like image meta, repos, and streams to see if they have changed
+                # We detect config changes by comparing their digest changes.
+                # The config digest of the previous build is stored at .oit/config_digest on distgit repo.
+                try:
+                    source_url = info['source']  # git://pkgs.devel.redhat.com/containers/atomic-openshift-descheduler#6fc9c31e5d9437ac19e3c4b45231be8392cdacac
+                    source_commit = source_url.split('#')[1]  # isolate the commit hash
+                    # Look at the digest that created THIS build. What is in head does not matter.
+                    prev_digest = meta.fetch_cgit_file('.oit/config_digest', commit_hash=source_commit).decode('utf-8')
+                    current_digest = meta.calculate_config_digest(runtime.group_config, runtime.streams)
+                    if current_digest.strip() != prev_digest.strip():
+                        runtime.logger.info('%s config_digest %s is differing from %s', dgk, prev_digest, current_digest)
+                        add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Metadata configuration change'))
+                except exectools.RetryException:
+                    runtime.logger.info('%s config_digest cannot be retrieved; request a build', dgk)
+                    add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Unable to retrieve config_digest'))
+
                 create_event_ts = koji_api.getEvent(info['creation_event_id'])['ts']
                 if oldest_image_event_ts is None or create_event_ts < oldest_image_event_ts:
                     oldest_image_event_ts = create_event_ts
