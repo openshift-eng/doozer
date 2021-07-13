@@ -23,7 +23,7 @@ import urllib.parse
 import signal
 import io
 import pathlib
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Union
 import time
 
 from doozerlib import gitdata
@@ -754,10 +754,10 @@ class Runtime(object):
         if self.freeze_automation == FREEZE_AUTOMATION_YES:
             raise DoozerFatalError('Automation (builds / mutations) for this group is currently frozen (freeze_automation set to {}). Coordinate with the group owner to change this if you believe it is incorrect.'.format(FREEZE_AUTOMATION_YES))
 
-    def image_metas(self):
+    def image_metas(self) -> List[ImageMetadata]:
         return list(self.image_map.values())
 
-    def ordered_image_metas(self):
+    def ordered_image_metas(self) -> List[ImageMetadata]:
         return [self.image_map[dg] for dg in self.image_order]
 
     def get_global_arches(self):
@@ -812,10 +812,10 @@ class Runtime(object):
         """Returns image meta by full name, short name, or distgit"""
         return self.image_name_map.get(name, None)
 
-    def rpm_metas(self):
+    def rpm_metas(self) -> List[RPMMetadata]:
         return list(self.rpm_map.values())
 
-    def all_metas(self):
+    def all_metas(self) -> List[Union[ImageMetadata, RPMMetadata]]:
         return self.image_metas() + self.rpm_metas()
 
     def register_source_alias(self, alias, path):

@@ -24,6 +24,12 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(util.isolate_el_version_in_release('1.2.3-y.p.p1.assembly.art12398'), None)
         self.assertEqual(util.isolate_el_version_in_release('1.2.3-y.p.p1.assembly.4.7.e.8'), None)
 
+    def test_isolate_nightly_name_components(self):
+        self.assertEqual(util.isolate_nightly_name_components('4.1.0-0.nightly-2019-11-08-213727'), ('4.1', 'x86_64', False))
+        self.assertEqual(util.isolate_nightly_name_components('4.1.0-0.nightly-priv-2019-11-08-213727'), ('4.1', 'x86_64', True))
+        self.assertEqual(util.isolate_nightly_name_components('4.1.0-0.nightly-s390x-2019-11-08-213727'), ('4.1', 's390x', False))
+        self.assertEqual(util.isolate_nightly_name_components('4.9.0-0.nightly-arm64-priv-2021-06-08-213727'), ('4.9', 'aarch64', True))
+
     def test_isolate_pflag(self):
         self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p1'), 'p1')
         self.assertEqual(util.isolate_pflag_in_release('1.2.3-y.p.p1.el7'), 'p1')
