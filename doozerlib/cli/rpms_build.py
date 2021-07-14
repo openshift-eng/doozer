@@ -213,9 +213,8 @@ async def _build_rpm(runtime: Runtime, builder: RPMBuilder, rpm: RPMMetadata):
     task_ids = []
     task_urls = []
     try:
-        task_ids, task_urls = await builder.build(rpm)
-        record["version"] = rpm.version
-        record["release"] = rpm.release
+        task_ids, task_urls, nvrs = await builder.build(rpm)
+        record["nvrs"] = ",".join(nvrs)
         record["specfile"] = rpm.specfile
         record["status"] = 0
         record["message"] = "Success"

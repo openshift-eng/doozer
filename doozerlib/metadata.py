@@ -140,16 +140,15 @@ class Metadata(object):
     def determine_targets(self) -> List[str]:
         """ Determine Brew targets for building this component
         """
-        key = 'targets' if not self.runtime.hotfix else "hotfix_targets"
-        targets = self.config.get(key)
+        targets = self.config.get("targets")
         if not targets:
-            # If not specified in rpm meta, load from group config
+            # If not specified in meta config, load from group config
             profile_name = self.runtime.profile or self.runtime.group_config.get(f"default_{self.meta_type}_build_profile")
             if profile_name:
-                targets = self.runtime.group_config.build_profiles.primitive()[self.meta_type][profile_name].get(key)
+                targets = self.runtime.group_config.build_profiles.primitive()[self.meta_type][profile_name].get("targets")
         if not targets:
             # If group config doesn't define the targets either, the target name will be derived from the distgit branch name
-            targets = [self.default_brew_target()]
+            targets = [self._default_brew_target()]
         return targets
 
     def save(self):
@@ -189,10 +188,9 @@ class Metadata(object):
     def hotfix_brew_tag(self):
         return f'{self.branch()}-hotfix'
 
-    def default_brew_tag(self):
-        return self.hotfix_brew_tag() if self.runtime.hotfix else self.candidate_brew_tag()
-
-    def default_brew_target(self):
+    def _default_brew_target(self):
+        """ Returns derived brew target name from the distgit branch name
+        """
         return NotImplementedError()
 
     def candidate_brew_tags(self):
