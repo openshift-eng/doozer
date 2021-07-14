@@ -286,8 +286,14 @@ class Metadata(object):
             ret += "?" + urllib.parse.urlencode(params)
         return ret
 
-    def fetch_cgit_file(self, filename):
-        url = self.cgit_file_url(filename)
+    def fetch_cgit_file(self, filename, commit_hash: Optional[str] = None, branch: Optional[str] = None):
+        """ Retrieve the content of a cgit URL to a given file associated with the commit hash pushed to distgit
+        :param filename: a relative path
+        :param commit_hash: commit hash; None implies the current HEAD
+        :param branch: branch name; None implies the branch specified in ocp-build-data
+        :return: the content of the file
+        """
+        url = self.cgit_file_url(filename, commit_hash=commit_hash, branch=branch)
         req = exectools.retry(
             3, lambda: urllib.request.urlopen(url),
             check_f=lambda req: req.code == 200)
