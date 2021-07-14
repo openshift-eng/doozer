@@ -1207,7 +1207,8 @@ class ImageDistGitRepo(DistGitRepo):
                 return False
 
             with self.runtime.shared_koji_client_session() as koji_api:
-                build_info = koji_api.listBuilds(taskID=task_id)[0]
+                koji_api.gssapi_login()
+                build_info = koji_api.listBuilds(taskID=task_id, completeBefore=None)[0]  # this call should not be constrained by brew event
                 record["nvrs"] = build_info["nvr"]
                 if self.runtime.hotfix:
                     # Tag the image so they don't get garbage collected.

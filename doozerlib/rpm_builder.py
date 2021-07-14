@@ -242,8 +242,9 @@ class RPMBuilder:
             if not failed_tasks:
                 # All tasks complete.
                 koji_api = self._runtime.build_retrying_koji_client()
+                koji_api.gssapi_login()
                 with koji_api.multicall(strict=True) as m:
-                    multicall_tasks = [m.listBuilds(taskID=task_id) for task_id in task_ids]
+                    multicall_tasks = [m.listBuilds(taskID=task_id, completeBefore=None) for task_id in task_ids]    # this call should not be constrained by brew event
                 nvrs = [task.result[0]["nvr"] for task in multicall_tasks]
                 if self._runtime.hotfix:
                     # Tag rpms so they don't get garbage collected.
