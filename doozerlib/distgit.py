@@ -1738,7 +1738,11 @@ class ImageDistGitRepo(DistGitRepo):
         # we should not run yum update as it will fail loudly. Instead, we check the RHEL version of the
         # image at each stage at *build time* to ensure yum update only runs in appropriate stages.
         el_ver = self.metadata.branch_el_target()
-        yum_update_line = f"RUN if cat /etc/redhat-release | grep 'release {el_ver}'; then yum update -y && yum clean all; fi"
+        if el_ver == 7:
+            # For rebuild logic, we need to be able to prioritize repos; RHEL7 requires a plugin to be installed.
+            yum_update_line = f"RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi"
+        else:
+            yum_update_line = f"RUN if cat /etc/redhat-release | grep 'release {el_ver}'; then yum update -y && yum clean all; fi"
         output = io.StringIO()
         build_stage = 0
         for line in df_lines_iter:
