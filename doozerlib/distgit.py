@@ -1739,7 +1739,17 @@ class ImageDistGitRepo(DistGitRepo):
         final_stage_user = self.metadata.config.final_stage_user or 0
 
         yum_update_line_flag = "__doozer=yum-update"
-        yum_update_line = "RUN yum update -y && yum clean all"
+
+        # The yum repo supplied to the image build is going to be appropriate for the base/final image in a
+        # multistage build. If one of the stages of, for example, a RHEL8 image is a RHEL7 builder image,
+        # we should not run yum update as it will fail loudly. Instead, we check the RHEL version of the
+        # image at each stage at *build time* to ensure yum update only runs in appropriate stages.
+        el_ver = self.metadata.branch_el_target()
+        if el_ver == 7:
+            # For rebuild logic, we need to be able to prioritize repos; RHEL7 requires a plugin to be installed.
+            yum_update_line = "RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi"
+        else:
+            yum_update_line = f"RUN if cat /etc/redhat-release | grep 'release {el_ver}'; then yum update -y && yum clean all; fi"
         output = io.StringIO()
         build_stage = 0
         for line in df_lines_iter:

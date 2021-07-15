@@ -179,6 +179,16 @@ class Metadata(object):
         split = self.branch().split('-')  # e.g. ['rhaos', '4.8', 'rhel', '8']
         return split[1]
 
+    def branch_el_target(self) -> int:
+        """
+        :return: Determines what rhel-# version the distgit branch is associated with and returns the RHEL version as an int
+        """
+        target_match = re.match(r'.*-rhel-(\d+)(?:-|$)', str(self.branch()))
+        if target_match:
+            return int(target_match.group(1))
+        else:
+            raise IOError(f'Unable to determine rhel version from branch: {self.branch()}')
+
     def build_root_tag(self):
         return '{}-build'.format(self.branch())
 
@@ -310,7 +320,7 @@ class Metadata(object):
         :param build_state: 0=BUILDING, 1=COMPLETE, 2=DELETED, 3=FAILED, 4=CANCELED
         :param el_target: In the case of an RPM, which can build for multiple targets, you can specify
                             '7' for el7, '8' for el8, etc. You can also pass in a brew target that
-                            contains '....-rhel-?..' and the number will be extraced. If you want the true
+                            contains '....-rhel-?..' and the number will be extracted. If you want the true
                             latest, leave as None.
         :param honor_is: If True, and an assembly component specifies 'is', that nvr will be returned.
         :return: Returns the most recent build object from koji for this package & assembly.

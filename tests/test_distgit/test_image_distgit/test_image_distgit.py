@@ -335,12 +335,12 @@ FROM some-base-image:some-tag AS builder
 # __doozer=yum-update
 USER 0
 # __doozer=yum-update
-RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+RUN if cat /etc/redhat-release | grep 'release 8'; then yum update -y && yum clean all; fi  # set final_stage_user in ART metadata if this fails
 LABEL name=value
 RUN some-command
 FROM another-base-image:some-tag
 # __doozer=yum-update
-RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+RUN if cat /etc/redhat-release | grep 'release 8'; then yum update -y && yum clean all; fi  # set final_stage_user in ART metadata if this fails
 COPY --from=builder /some/path/a /some/path/b
         """.strip().splitlines()
         self.assertListEqual(actual, expected)
@@ -351,7 +351,7 @@ COPY --from=builder /some/path/a /some/path/b
             "key": "foo",
             'data': {
                 'name': 'openshift/foo',
-                'distgit': {'branch': 'fake-branch-rhel-8'},
+                'distgit': {'branch': 'fake-branch-rhel-7'},
                 "enabled_repos": ["repo-a", "repo-b"],
                 "final_stage_user": 1002,
             },
@@ -372,14 +372,14 @@ FROM some-base-image:some-tag AS builder
 # __doozer=yum-update
 USER 0
 # __doozer=yum-update
-RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi  # set final_stage_user in ART metadata if this fails
 LABEL name=value
 RUN some-command
 FROM another-base-image:some-tag
 # __doozer=yum-update
 USER 0
 # __doozer=yum-update
-RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
+RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi  # set final_stage_user in ART metadata if this fails
 # __doozer=yum-update
 USER 1002
 COPY --from=builder /some/path/a /some/path/b
