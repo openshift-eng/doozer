@@ -210,6 +210,7 @@ class RPMBuilder:
             # errors, task_ids, task_urls = await self._create_build_tasks(dg)
             task_ids = []
             task_urls = []
+            nvrs = []
             logger.info("Creating Brew tasks...")
             for task_id, task_url in await asyncio.gather(
                 *[self._build_target_async(rpm, target) for target in rpm.targets]
@@ -239,6 +240,19 @@ class RPMBuilder:
                     logger.warning("DRY RUN - Would have downloaded Brew logs with %s", cmd)
             failed_tasks = {task_id for task_id, error in errors.items() if error is not None}
             if not failed_tasks:
+                # All tasks complete.
+                koji_api = self._runtime.build_retrying_koji_client()
+                koji_api.gssapi_login()
+                with koji_api.multicall(strict=True) as m:
+                    multicall_tasks = [m.listBuilds(taskID=task_id, completeBefore=None) for task_id in task_ids]    # this call should not be constrained by brew event
+                nvrs = [task.result[0]["nvr"] for task in multicall_tasks]
+                if self._runtime.hotfix:
+                    # Tag rpms so they don't get garbage collected.
+                    self._runtime.logger.info(f'Tagging build(s) {nvrs} with {rpm.hotfix_brew_tag()} to prevent garbage collection')
+                    with koji_api.multicall(strict=True) as m:
+                        for nvr in nvrs:
+                            m.tagBuild(rpm.hotfix_brew_tag(), nvr)
+
                 logger.info("Successfully built rpm: %s", rpm.rpm_name)
                 rpm.build_status = True
                 break
@@ -261,7 +275,7 @@ class RPMBuilder:
                 f"Giving up after {retries} failed attempt(s): {message}",
                 (task_ids, task_urls),
             )
-        return task_ids, task_urls
+        return task_ids, task_urls, nvrs
 
     async def _golang_required(self, specfile: PathLike):
         """Returns True if this RPM requires a golang compiler"""

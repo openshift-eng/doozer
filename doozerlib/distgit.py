@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import aiofiles
 import bashlex
+from kobo.rpmlib import parse_nvr
 import requests
 import yaml
 from dockerfile_parse import DockerfileParser
@@ -912,12 +913,9 @@ class ImageDistGitRepo(DistGitRepo):
             # subsequent builds.
             push_version, push_release = ('', '')
             if not dry_run and not scratch:
-                # Use tag based get_latest_build because golang builder images don't follow the version numbering scheme like normal OCP images.
-                with self.runtime.shared_koji_client_session() as koji_api:
-                    builds = koji_api.listTagged(self.metadata.default_brew_tag(), package=self.metadata.get_component_name(), type="image", inherit=False)
-                    latest_build = util.find_latest_build(builds, self.runtime.assembly)
-                    push_version = latest_build["version"]
-                    push_release = latest_build["release"]
+                nvr = parse_nvr[record["nvrs"].split(",")[0]]
+                push_version = nvr["version"]
+                push_release = nvr["release"]
             record["message"] = "Success"
             record["status"] = 0
             self.build_status = True
@@ -1207,6 +1205,15 @@ class ImageDistGitRepo(DistGitRepo):
                 self.update_build_db(False, task_id=task_id, scratch=scratch)
                 self.logger.info("Error building image: {}, {}".format(task_url, error))
                 return False
+
+            with self.runtime.shared_koji_client_session() as koji_api:
+                koji_api.gssapi_login()
+                build_info = koji_api.listBuilds(taskID=task_id, completeBefore=None)[0]  # this call should not be constrained by brew event
+                record["nvrs"] = build_info["nvr"]
+                if self.runtime.hotfix:
+                    # Tag the image so they don't get garbage collected.
+                    self.runtime.logger.info(f'Tagging {self.metadata.get_component_name()} build {build_info["nvr"]} with {self.metadata.hotfix_brew_tag()} to prevent garbage collection')
+                    koji_api.tagBuild(self.metadata.hotfix_brew_tag(), build_info["nvr"])
 
             self.update_build_db(True, task_id=task_id, scratch=scratch)
             self.logger.info("Successfully built image: {} ; {}".format(target_image, task_url))
@@ -2248,7 +2255,7 @@ class ImageDistGitRepo(DistGitRepo):
                     "set_env": {
                         "PATH": path,
                         "BREW_EVENT": f'{self.runtime.brew_event}',
-                        "BREW_TAG": f'{self.metadata.default_brew_tag()}'
+                        "BREW_TAG": f'{self.metadata.candidate_brew_tag()}'
                     },
                     "distgit_path": self.dg_path,
                 }

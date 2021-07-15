@@ -56,7 +56,7 @@ class TestRPMsBuildCli(TestCase):
 
         runtime.rpm_metas.return_value = rpms
         builder = MockedRPMBuilder.return_value = AsyncMock()
-        builder.build.return_value = ([10001, 10002], ["https://brewweb.example.com/brew/taskinfo?taskID=10001", "https://brewweb.example.com/brew/taskinfo?taskID=10002"])
+        builder.build.return_value = ([10001, 10002], ["https://brewweb.example.com/brew/taskinfo?taskID=10001", "https://brewweb.example.com/brew/taskinfo?taskID=10002"], ["foo-1.2.3-1.el8", "foo-1.2.3-1.el7"])
 
         result = asyncio.get_event_loop().run_until_complete(_rpms_rebase_and_build(runtime, version, release, embargoed, scratch, dry_run))
 
