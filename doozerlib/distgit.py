@@ -1,5 +1,3 @@
-from __future__ import absolute_import, print_function, unicode_literals
-
 import asyncio
 import copy
 import errno
@@ -15,7 +13,7 @@ import time
 import traceback
 from datetime import date
 from multiprocessing import Event, Lock
-from typing import Any, Dict, Optional, Tuple
+from typing import Tuple
 
 import aiofiles
 import bashlex
@@ -23,18 +21,18 @@ from kobo.rpmlib import parse_nvr
 import requests
 import yaml
 from dockerfile_parse import DockerfileParser
-from tenacity import retry, retry_if_not_result, wait_fixed, stop_after_attempt, before_sleep_log
+from kobo.rpmlib import parse_nvr
+from tenacity import (before_sleep_log, retry, retry_if_not_result,
+                      stop_after_attempt, wait_fixed)
 
-from doozerlib import constants, state, util
+from doozerlib import assertion, constants, exectools, logutil, state, util
+from doozerlib.brew import get_build_objects, watch_task
 from doozerlib.dblib import Record
 from doozerlib.exceptions import DoozerFatalError
+from doozerlib.model import ListModel, Missing, Model
+from doozerlib.pushd import Dir
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib.util import convert_remote_git_to_https, yellow_print
-
-from . import assertion, exectools, logutil
-from .brew import get_build_objects, watch_task
-from .model import ListModel, Missing, Model
-from .pushd import Dir
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -1545,7 +1543,7 @@ class ImageDistGitRepo(DistGitRepo):
                             parent_build_info = build_model.extra.image.parent_image_builds[tag_pullspec]
                             if parent_build_info is Missing:
                                 raise IOError(f'Unable to resolve parent {target_parent_name} in {latest_build} for {assembly_msg}; tried {tag_pullspec}')
-                            parent_build_nvr = parent_build_info.nvr
+                            parent_build_nvr = parse_nvr(parent_build_info.nvr)
                             # Hang in there.. this is a long dance. Now that we know the NVR, we can constuct
                             # a truly unique pullspec.
                             if '@' in tag_pullspec:
@@ -1554,7 +1552,7 @@ class ImageDistGitRepo(DistGitRepo):
                                 unique_pullspec = tag_pullspec.rsplit(':', 1)[0]  # remove the tag
                             else:
                                 raise IOError(f'Unexpected pullspec format: {tag_pullspec}')
-                            unique_pullspec += f':{parent_build_nvr}'  # qualify with the pullspec using nvr as a tag; e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.15.7-202103191923.el8'
+                            unique_pullspec += f':{parent_build_nvr["version"]}-{parent_build_nvr["release"]}'  # qualify with the pullspec using nvr as a tag; e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.15.7-202103191923.el8'
                             mapped_images.append(unique_pullspec)
 
                         else:
