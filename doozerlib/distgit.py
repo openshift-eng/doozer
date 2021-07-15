@@ -1740,7 +1740,7 @@ class ImageDistGitRepo(DistGitRepo):
         el_ver = self.metadata.branch_el_target()
         if el_ver == 7:
             # For rebuild logic, we need to be able to prioritize repos; RHEL7 requires a plugin to be installed.
-            yum_update_line = f"RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi"
+            yum_update_line = "RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi"
         else:
             yum_update_line = f"RUN if cat /etc/redhat-release | grep 'release {el_ver}'; then yum update -y && yum clean all; fi"
         output = io.StringIO()
