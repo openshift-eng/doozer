@@ -1206,7 +1206,10 @@ class ImageDistGitRepo(DistGitRepo):
 
             with self.runtime.shared_koji_client_session() as koji_api:
                 koji_api.gssapi_login()
-                build_info = koji_api.listBuilds(taskID=task_id, completeBefore=None)[0]  # this call should not be constrained by brew event
+                # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
+                taskResult = koji_api.getTaskResult(task_id)
+                build_id = int(taskResult["koji_builds"][0])
+                build_info = koji_api.getBuild(build_id)
                 record["nvrs"] = build_info["nvr"]
                 if self.runtime.hotfix:
                     # Tag the image so they don't get garbage collected.
