@@ -1405,9 +1405,6 @@ class Runtime(object):
         pool.join()
         return ret
 
-    def get_default_brew_tag(self):
-        return self.branch
-
     def get_default_candidate_brew_tag(self):
         return self.branch + '-candidate' if self.branch else None
 

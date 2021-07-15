@@ -1,5 +1,3 @@
-from __future__ import absolute_import, print_function, unicode_literals
-
 import asyncio
 import copy
 import errno
@@ -15,25 +13,26 @@ import time
 import traceback
 from datetime import date
 from multiprocessing import Event, Lock
-from typing import Any, Dict, Optional, Tuple
+from typing import Tuple
 
 import aiofiles
 import bashlex
+from kobo.rpmlib import parse_nvr
 import requests
 import yaml
 from dockerfile_parse import DockerfileParser
-from tenacity import retry, retry_if_not_result, wait_fixed, stop_after_attempt, before_sleep_log
+from kobo.rpmlib import parse_nvr
+from tenacity import (before_sleep_log, retry, retry_if_not_result,
+                      stop_after_attempt, wait_fixed)
 
-from doozerlib import constants, state, util
+from doozerlib import assertion, constants, exectools, logutil, state, util
+from doozerlib.brew import get_build_objects, watch_task
 from doozerlib.dblib import Record
 from doozerlib.exceptions import DoozerFatalError
+from doozerlib.model import ListModel, Missing, Model
+from doozerlib.pushd import Dir
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib.util import convert_remote_git_to_https, yellow_print
-
-from . import assertion, exectools, logutil
-from .brew import get_build_objects, watch_task
-from .model import ListModel, Missing, Model
-from .pushd import Dir
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -912,12 +911,9 @@ class ImageDistGitRepo(DistGitRepo):
             # subsequent builds.
             push_version, push_release = ('', '')
             if not dry_run and not scratch:
-                # Use tag based get_latest_build because golang builder images don't follow the version numbering scheme like normal OCP images.
-                with self.runtime.shared_koji_client_session() as koji_api:
-                    builds = koji_api.listTagged(self.metadata.default_brew_tag(), package=self.metadata.get_component_name(), type="image", inherit=False)
-                    latest_build = util.find_latest_build(builds, self.runtime.assembly)
-                    push_version = latest_build["version"]
-                    push_release = latest_build["release"]
+                nvr = parse_nvr(record["nvrs"].split(",")[0])
+                push_version = nvr["version"]
+                push_release = nvr["release"]
             record["message"] = "Success"
             record["status"] = 0
             self.build_status = True
@@ -1207,6 +1203,18 @@ class ImageDistGitRepo(DistGitRepo):
                 self.update_build_db(False, task_id=task_id, scratch=scratch)
                 self.logger.info("Error building image: {}, {}".format(task_url, error))
                 return False
+
+            with self.runtime.shared_koji_client_session() as koji_api:
+                koji_api.gssapi_login()
+                # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
+                taskResult = koji_api.getTaskResult(task_id)
+                build_id = int(taskResult["koji_builds"][0])
+                build_info = koji_api.getBuild(build_id)
+                record["nvrs"] = build_info["nvr"]
+                if self.runtime.hotfix:
+                    # Tag the image so they don't get garbage collected.
+                    self.runtime.logger.info(f'Tagging {self.metadata.get_component_name()} build {build_info["nvr"]} with {self.metadata.hotfix_brew_tag()} to prevent garbage collection')
+                    koji_api.tagBuild(self.metadata.hotfix_brew_tag(), build_info["nvr"])
 
             self.update_build_db(True, task_id=task_id, scratch=scratch)
             self.logger.info("Successfully built image: {} ; {}".format(target_image, task_url))
@@ -1538,7 +1546,7 @@ class ImageDistGitRepo(DistGitRepo):
                             parent_build_info = build_model.extra.image.parent_image_builds[tag_pullspec]
                             if parent_build_info is Missing:
                                 raise IOError(f'Unable to resolve parent {target_parent_name} in {latest_build} for {assembly_msg}; tried {tag_pullspec}')
-                            parent_build_nvr = parent_build_info.nvr
+                            parent_build_nvr = parse_nvr(parent_build_info.nvr)
                             # Hang in there.. this is a long dance. Now that we know the NVR, we can constuct
                             # a truly unique pullspec.
                             if '@' in tag_pullspec:
@@ -1547,7 +1555,7 @@ class ImageDistGitRepo(DistGitRepo):
                                 unique_pullspec = tag_pullspec.rsplit(':', 1)[0]  # remove the tag
                             else:
                                 raise IOError(f'Unexpected pullspec format: {tag_pullspec}')
-                            unique_pullspec += f':{parent_build_nvr}'  # qualify with the pullspec using nvr as a tag; e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.15.7-202103191923.el8'
+                            unique_pullspec += f':{parent_build_nvr["version"]}-{parent_build_nvr["release"]}'  # qualify with the pullspec using nvr as a tag; e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.15.7-202103191923.el8'
                             mapped_images.append(unique_pullspec)
 
                         else:
@@ -1740,7 +1748,7 @@ class ImageDistGitRepo(DistGitRepo):
         el_ver = self.metadata.branch_el_target()
         if el_ver == 7:
             # For rebuild logic, we need to be able to prioritize repos; RHEL7 requires a plugin to be installed.
-            yum_update_line = f"RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi"
+            yum_update_line = "RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi"
         else:
             yum_update_line = f"RUN if cat /etc/redhat-release | grep 'release {el_ver}'; then yum update -y && yum clean all; fi"
         output = io.StringIO()
@@ -2265,7 +2273,7 @@ class ImageDistGitRepo(DistGitRepo):
                     "set_env": {
                         "PATH": path,
                         "BREW_EVENT": f'{self.runtime.brew_event}',
-                        "BREW_TAG": f'{self.metadata.default_brew_tag()}'
+                        "BREW_TAG": f'{self.metadata.candidate_brew_tag()}'
                     },
                     "distgit_path": self.dg_path,
                 }

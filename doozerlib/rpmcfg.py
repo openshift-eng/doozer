@@ -244,9 +244,7 @@ class RPMMetadata(Metadata):
     def candidate_brew_tags(self):
         return self.targets.copy()
 
-    def default_brew_target(self):
-        if self.runtime.hotfix:
-            target = f"{self.branch()}-hotfix"
-        else:
-            target = f"{self.branch()}-candidate"
-        return target
+    def _default_brew_target(self):
+        """ Returns derived brew target name from the distgit branch name
+        """
+        return f"{self.branch()}-candidate"

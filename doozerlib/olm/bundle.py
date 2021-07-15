@@ -103,7 +103,8 @@ class OLMBundle(object):
         return build['nvr']
 
     def get_bundle_image_name(self):
-        return 'openshift/ose-{}'.format(self.bundle_name)
+        prefix = '' if self.bundle_name.startswith('ose-') else 'ose-'
+        return 'openshift/{}{}'.format(prefix, self.bundle_name)
 
     def get_operator_buildinfo(self, nvr=None):
         """Get operator distgit repository name and commit hash used to build given operator NVR
