@@ -911,7 +911,7 @@ class ImageDistGitRepo(DistGitRepo):
             # subsequent builds.
             push_version, push_release = ('', '')
             if not dry_run and not scratch:
-                nvr = parse_nvr[record["nvrs"].split(",")[0]]
+                nvr = parse_nvr(record["nvrs"].split(",")[0])
                 push_version = nvr["version"]
                 push_release = nvr["release"]
             record["message"] = "Success"
