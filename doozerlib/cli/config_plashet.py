@@ -728,7 +728,7 @@ def from_tags(config: SimpleNamespace, brew_tag: Tuple[Tuple[str, str], ...], em
 def for_assembly(config: SimpleNamespace, image: Optional[str], rhcos: bool, el_version: Optional[int], signing_advisory_id: Optional[int], signing_advisory_mode: str, poll_for: int):
     """
     Creates a directory containing arch specific yum repository subdirectories based on RPMs explicitly listed as dependencies in the assembly
-    (whether for the whole assemble, rhcos, or a specific image, depending on the command line invocation).
+    (whether for the core assembly, rhcos, or a specific image, depending on the command line invocation).
     Note that these repos may contains 0 rpms if there are no dependencies in the assembly.
     """
     if image and rhcos:
