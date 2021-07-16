@@ -198,7 +198,7 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
             if custom:
                 # This is permitted for custom assemblies which do not need to be assembled for every
                 # architecture. The customer may just need x86_64.
-                logger.info(f'Dir not find machine-os-content image for active group architecture: {arch}')
+                logger.info(f'Did not find machine-os-content image for active group architecture: {arch}; ignoring since this is custom.')
             else:
                 exit_with_error(f'Did not find machine-os-content image for active group architecture: {arch}')
 
