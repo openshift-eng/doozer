@@ -307,7 +307,7 @@ class Metadata(object):
             check_f=lambda req: req.code == 200)
         return req.read()
 
-    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None, honor_is=True, complete_before_event: int = None):
+    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None, honor_is=True, complete_before_event: Optional[int] = None):
         """
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
         :param assembly: A non-default assembly name to search relative to. If not specified, runtime.assembly
@@ -359,14 +359,17 @@ class Metadata(object):
             if assembly is None:
                 assembly = self.runtime.assembly
 
-            if not complete_before_event:
-                # If not specified, use the brew_event in runtime. If the current assembly has a basis
-                # event, this will also be the basis event for the assembly (unless overridden on the command
-                # line).
-                complete_before_event = self.runtime.brew_event
-
-            # listBuilds accepts timestamps, not brew events, so convert brew event into seconds since the epoch
-            complete_before_ts = koji_api.getEvent(complete_before_event)['ts']
+            list_builds_kwargs = {}  # extra kwargs that will be passed to koji_api.listBuilds invocations
+            if complete_before_event:
+                # listBuilds accepts timestamps, not brew events, so convert brew event into seconds since the epoch
+                complete_before_ts = koji_api.getEvent(complete_before_event)['ts']
+                list_builds_kwargs['completeBefore'] = complete_before_ts
+            else:
+                # We cannot pass None; this indicates to our koji call wrapper that
+                # we do not want to constrain the brew event. Instead, we must not
+                # pass 'completeBefore' AT ALL. i.e. this cannot be simplified by
+                # just passing completeBefore=None to listBuilds.
+                pass
 
             def default_return():
                 msg = f"No builds detected for using prefix: '{pattern_prefix}', extra_pattern: '{extra_pattern}', assembly: '{assembly}', build_state: '{build_state.name}', el_target: '{el_target}'"
@@ -382,8 +385,8 @@ class Metadata(object):
                 builds = koji_api.listBuilds(packageID=package_id,
                                              state=None if build_state is None else build_state.value,
                                              pattern=f'{pattern_prefix}{extra_pattern}{pattern_suffix}*{rpm_suffix}',
-                                             completeBefore=complete_before_ts,
-                                             queryOpts={'limit': 1, 'order': '-creation_event_id'})
+                                             queryOpts={'limit': 1, 'order': '-creation_event_id'},
+                                             **list_builds_kwargs)
 
                 # Ensure the suffix ends the string OR at least terminated by a '.' .
                 # This latter check ensures that 'assembly.how' doesn't not match a build from
