@@ -20,6 +20,7 @@ from doozerlib.cli import cli
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.plashet import PlashetBuilder
 from doozerlib.runtime import Runtime
+from doozerlib.brew import get_builds_tags
 from doozerlib.util import (find_latest_builds, isolate_el_version_in_brew_tag,
                             mkdirs, strip_epoch, to_nvre)
 
@@ -715,21 +716,20 @@ def from_tags(config: SimpleNamespace, brew_tag: Tuple[Tuple[str, str], ...], em
     assemble_repo(config, all_nvres, event_info, extra_data=extra_data)
 
 
-@config_plashet.command('for-assembly', short_help='Collects a set of RPMs required for image builds.')
+@config_plashet.command('for-assembly', short_help='Builds repositories of RPMs explicitly listed as dependencies in the assembly.')
 @click.pass_obj
-@click.option('--image', 'image', metavar='DISTGIT_KEY', required=False, help='Include any dependencies specified in the component overrides for the assembly.')
-@click.option('--rhcos', 'rhcos', is_flag=True, help="Include any dependencies specified in the assembly's assembly.rhcos.dependencies.")
-@click.option('-t', '--brew-tag', "brew_tags", multiple=True, required=True, nargs=2, help='One or more brew tags whose RPMs should be included in the repo; format is: <tag> <product_version>')
-@click.option('--inherit', required=False, default=False, is_flag=True,
-              help='Descend into brew tag inheritance')
+@click.option('--image', metavar='DISTGIT_KEY', required=False, help='Include any dependencies specified in the component overrides for the assembly.')
+@click.option('--rhcos', is_flag=True, help="Include any dependencies specified in the assembly's assembly.rhcos.dependencies.")
+@click.option('--el-version', metavar='NUMBER', type=click.INT, required=False, help="RHEL version")
 @click.option('--signing-advisory-id', type=click.INT, required=False, help='Use this auto-signing advisory to sign RPMs if necessary.')
 @click.option('--signing-advisory-mode', required=False, default="clean", type=click.Choice(['leave', 'clean'], case_sensitive=False),
               help='clean=remove all builds on start and successful exit; leave=leave existing builds attached when attempting to sign')
 @click.option('--poll-for', default=15, type=click.INT, help='Allow up to this number of minutes for auto-signing')
-def for_assembly(config: SimpleNamespace, image: Optional[str], rhcos: bool, brew_tags: Tuple[Tuple[str, str], ...], inherit: bool, signing_advisory_id: Optional[int], signing_advisory_mode: str, poll_for: int):
+def for_assembly(config: SimpleNamespace, image: Optional[str], rhcos: bool, el_version: Optional[int], signing_advisory_id: Optional[int], signing_advisory_mode: str, poll_for: int):
     """
-    Creates a directory containing arch specific yum repository subdirectories based on a complete set of RPMs required for image builds.
-    In other words, when doozer runs brew builds for an assembly image, it should only need to pass in a single repository created by for-assembly in order for the image to build successfully.
+    Creates a directory containing arch specific yum repository subdirectories based on RPMs explicitly listed as dependencies in the assembly
+    (whether for the core assembly, rhcos, or a specific image, depending on the command line invocation).
+    Note that these repos may contains 0 rpms if there are no dependencies in the assembly.
     """
     if image and rhcos:
         raise click.BadParameter("Cannot use --image and --rhcos at the same time.")
@@ -738,7 +738,14 @@ def for_assembly(config: SimpleNamespace, image: Optional[str], rhcos: bool, bre
     runtime.initialize(mode="both", clone_source=False, clone_distgits=False, prevent_cloning=True)
     if not runtime.assembly_basis_event:
         raise DoozerFatalError("for-assembly must be run for an assembly with a basis event")
-    logger.warning(f'Constraining rpm search to stream assembly due to assembly basis event {runtime.assembly_basis_event}')
+    if not el_version:
+        if image:
+            el_version = runtime.image_map[image].branch_el_target()
+        elif rhcos:
+            el_version = 8  # FIXME: Currently RHCOS is RHEL8 based. Revisit here when this changes
+        else:
+            raise click.BadParameter("You need to specify the target RHEL version using --el-version option.")
+
     event = runtime.assembly_basis_event
     koji_proxy = runtime.build_retrying_koji_client()
     koji_proxy.gssapi_login()
@@ -747,83 +754,69 @@ def for_assembly(config: SimpleNamespace, image: Optional[str], rhcos: bool, bre
     builder = PlashetBuilder(koji_proxy, logger=logger)
 
     desired_nvres = set()  # The final set of rpm build NVREs that will be included in the plashet repo
-    signable_components = set()  # a set of RPM component names, which we are allowed to sign.
     nvr_product_version = {}  # Maps nvr to product_version for signing
 
-    for tag, product_version in brew_tags:
-        component_builds: Dict[str, Dict] = {}  # This dict stores candidate rpm builds for plashet; keys are rpm component names, values are Brew build dicts
+    component_builds: Dict[str, Dict] = {}  # This dict stores candidate rpm builds for plashet; keys are rpm component names, values are Brew build dicts
 
-        # Establishes a baseline of NVRs – most of which will be overridden by the following steps. The packages in this list which remain after the next steps are those which are not included in our images and are not built by us.
-        logger.info("Finding latest RPM builds in Brew tag %s as of the basis event %s...", tag, event)
-        tagged_builds = builder.from_tag(tag, inherit, "stream", event)
-        logger.info("Found %s RPM builds in Brew tag %s.", len(tagged_builds), tag)
-        component_builds.update(tagged_builds)
-        signable_components |= tagged_builds.keys()  # components from our tag are always signable
+    # Honors pinned NVRs by "is"
+    pinned_by_is = builder.from_pinned_by_is(el_version, runtime.assembly, runtime.get_releases_config(), runtime.rpm_map)
+    # Builds pinned by "is" should take precedence over every build from tag
+    for component, pinned_build in pinned_by_is.items():
+        if component in component_builds and pinned_build["id"] != component_builds[component]["id"]:
+            logger.warning("Swapping tagged nvr %s for pinned nvr %s...", component_builds[component]["nvr"], pinned_build["nvr"])
+    component_builds.update(pinned_by_is)  # pinned rpms take precedence over those from tags
 
-        tag_el_version = isolate_el_version_in_brew_tag(tag)
-        if tag_el_version:  # If this tag is relevant to a RHEL version
-            # Finding all rpms used in images (including all rhel/non-ocp dependencies). Those image should take take precedence over every build from the tag
-            # Note if multiple nvrs of the same rpm component exist in image_rpm_builds, which nvr goes to plashet is uncertain.
-            image_map = {distgit_key: image_meta for distgit_key, image_meta in runtime.image_map.items() if isolate_el_version_in_brew_tag(image_meta.branch()) == tag_el_version}
-            rpms_in_images = builder.from_images(image_map)
-            for _, rpm_builds in rpms_in_images.items():
-                for rpm_build in rpm_builds:
-                    component = rpm_build["name"]
-                    if component in component_builds and rpm_build["id"] != component_builds[component]["id"]:
-                        logger.warning("Swapping tagged nvr %s for image nvr %s...", component_builds[component]["nvr"], rpm_build["nvr"])
-                    component_builds[component] = rpm_build
+    # Only ART-managed rpms are always signable
+    # Determines product version for each rpm
+    tag_pv_map = runtime.gitdata.load_data(key='erratatool', replace_vars=runtime.group_config.vars).data.get('brew_tag_product_version_mapping', {})
+    nvrs = [b["nvr"] for b in pinned_by_is.values()]
+    for nvr, tags in zip(nvrs, get_builds_tags(nvrs, session=koji_proxy)):
+        tag_names = {tag["name"] for tag in tags}
+        accepted_tag_names = tag_names & tag_pv_map.keys()
+        if not accepted_tag_names:
+            raise IOError(f"RPM {nvr} has tags {tag_names}, but none of them is accepted by erratatool.yml")
+        nvr_product_version[nvr] = tag_pv_map[accepted_tag_names.pop()]
 
-            # Honors pinned NVRs by "is"
-            pinned_by_is = builder.from_pinned_by_is(tag_el_version, runtime.assembly, runtime.get_releases_config(), runtime.rpm_map)
-            # Builds pinned by "is" should take precedence over every build from tag
-            for component, pinned_build in pinned_by_is.items():
-                if component in component_builds and pinned_build["id"] != component_builds[component]["id"]:
-                    logger.warning("Swapping tagged nvr %s for pinned nvr %s...", component_builds[component]["nvr"], pinned_build["nvr"])
-            component_builds.update(pinned_by_is)  # pinned rpms take precedence over those from tags
-            signable_components |= pinned_by_is.keys()  # ART-managed rpms are always signable
+    # Honors group dependencies
+    group_deps = builder.from_group_deps(el_version, runtime.group_config, runtime.rpm_map)  # the return value doesn't include any ART managed rpms
+    # Group dependencies should take precedence over anything previously determined except those pinned by "is".
+    for component, dep_build in group_deps.items():
+        if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
+            logger.warning("Swapping tagged nvr %s for group dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
+    component_builds.update(group_deps)
 
-            # Honors group dependencies
-            group_deps = builder.from_group_deps(tag_el_version, runtime.group_config, runtime.rpm_map)  # the return value doesn't include any ART managed rpms
-            # Group dependencies should take precedence over anything previously determined except those pinned by "is".
-            for component, dep_build in group_deps.items():
+    # If "--image" is specified, the final list of package NVRs should include any dependencies specified in the component overrides for the assembly.
+    if image:
+        image_meta = runtime.image_map.get(image)
+        if not image_meta:
+            raise IOError(f"Distgit key '{image}' specified by '--image' is not found or excluded from build data.")
+        image_el_version = isolate_el_version_in_brew_tag(image_meta.branch())
+        if image_el_version is None:  # This should never happen, but be safe
+            raise ValueError(f"Distgit repo {image} uses a distgit branch {image_meta.branch()} that is irrelevant to any RHEL version.")
+        if image_el_version == el_version:
+            image_deps = builder.from_image_member_deps(image_el_version, runtime.assembly, runtime.get_releases_config(), image_meta, runtime.rpm_map)  # the return value doesn't include any ART managed rpms
+            # image member dependencies should take precedence over anything previously determined except those pinned by "is".
+            for component, dep_build in image_deps.items():
                 if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
-                    logger.warning("Swapping tagged nvr %s for group dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
-            component_builds.update(group_deps)
+                    logger.warning("Swapping tagged nvr %s for image member dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
+            component_builds.update(image_deps)
 
-            # If "--image" is specified, the final list of package NVRs should include any dependencies specified in the component overrides for the assembly.
-            if image:
-                image_meta = runtime.image_map.get(image)
-                if not image_meta:
-                    raise IOError(f"Distgit key '{image}' specified by '--image' is not found or excluded from build data.")
-                image_el_version = isolate_el_version_in_brew_tag(image_meta.branch())
-                if image_el_version is None:  # This should never happen, but be safe
-                    raise ValueError(f"Distgit repo {image} uses a distgit branch {image_meta.branch()} that is irrelevant to any RHEL version.")
-                if image_el_version == tag_el_version:
-                    image_deps = builder.from_image_member_deps(image_el_version, runtime.assembly, runtime.get_releases_config(), image_meta, runtime.rpm_map)  # the return value doesn't include any ART managed rpms
-                    # image member dependencies should take precedence over anything previously determined except those pinned by "is".
-                    for component, dep_build in image_deps.items():
-                        if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
-                            logger.warning("Swapping tagged nvr %s for image member dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
-                    component_builds.update(image_deps)
+    # If "--rhcos" argument is specified, the final list of package NVRs should include any dependencies specified in the assembly's assembly.rhcos.dependencies field.
+    elif rhcos:
+        rhcos_deps = builder.from_rhcos_deps(el_version, runtime.assembly, runtime.get_releases_config(), runtime.rpm_map)   # the return value doesn't include any ART managed rpms
+        # RHCOS dependencies should take precedence over anything previously determined except those pinned by "is".
+        for component, dep_build in rhcos_deps.items():
+            if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
+                logger.warning("Swapping tagged nvr %s for RHCOS dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
+        component_builds.update(rhcos_deps)
 
-            # If "--rhcos" argument is specified, the final list of package NVRs should include any dependencies specified in the assembly's assembly.rhcos.dependencies field.
-            elif rhcos:
-                rhcos_deps = builder.from_rhcos_deps(tag_el_version, runtime.assembly, runtime.get_releases_config(), runtime.rpm_map)   # the return value doesn't include any ART managed rpms
-                # RHCOS dependencies should take precedence over anything previously determined except those pinned by "is".
-                for component, dep_build in rhcos_deps.items():
-                    if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
-                        logger.warning("Swapping tagged nvr %s for RHCOS dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
-                component_builds.update(rhcos_deps)
-
-        for component, build in component_builds.items():
-            nvre = to_nvre(build)
-            logger.info(f'{tag} contains package: {nvre}')
-            desired_nvres.add(nvre)
-            if component in signable_components:
-                nvr_product_version[strip_epoch(nvre)] = product_version
+    for component, build in component_builds.items():
+        nvre = to_nvre(build)
+        logger.info(f'Adding package: {nvre}')
+        desired_nvres.add(nvre)
 
     # Did any of the arches require signed content?
-    if signable_components and signed_desired(config):
+    if nvr_product_version and signed_desired(config):
         logger.info('At least one architecture requires signed nvres')
 
         if signing_advisory_id:
@@ -832,8 +825,7 @@ def for_assembly(config: SimpleNamespace, image: Optional[str], rhcos: bool, bre
             nvres_for_advisory = []
 
             for nvre in desired_nvres:
-                nvre_obj = parse_nvr(nvre)
-                if nvre_obj["name"] in signable_components and not is_signed(config, nvre):
+                if strip_epoch(nvre) in nvr_product_version and not is_signed(config, nvre):
                     logger.info(f'Found an unsigned nvr (will attempt to sign): {nvre}')
                     nvres_for_advisory.append(nvre)
 
