@@ -307,7 +307,7 @@ class Metadata(object):
             check_f=lambda req: req.code == 200)
         return req.read()
 
-    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None, honor_is=True):
+    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None, honor_is=True, complete_before_event: Optional[int] = None):
         """
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
         :param assembly: A non-default assembly name to search relative to. If not specified, runtime.assembly
@@ -323,6 +323,8 @@ class Metadata(object):
                             contains '....-rhel-?..' and the number will be extracted. If you want the true
                             latest, leave as None.
         :param honor_is: If True, and an assembly component specifies 'is', that nvr will be returned.
+        :param complete_before_event: If specified, the search will be constrained to builds which completed before
+                the specified brew_event. If not specified, the search will be relative to the current assembly's basis event.
         :return: Returns the most recent build object from koji for this package & assembly.
                  Example https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
         """
@@ -357,6 +359,18 @@ class Metadata(object):
             if assembly is None:
                 assembly = self.runtime.assembly
 
+            list_builds_kwargs = {}  # extra kwargs that will be passed to koji_api.listBuilds invocations
+            if complete_before_event:
+                # listBuilds accepts timestamps, not brew events, so convert brew event into seconds since the epoch
+                complete_before_ts = koji_api.getEvent(complete_before_event)['ts']
+                list_builds_kwargs['completeBefore'] = complete_before_ts
+            else:
+                # We cannot pass None; this indicates to our koji call wrapper that
+                # we do not want to constrain the brew event. Instead, we must not
+                # pass 'completeBefore' AT ALL. i.e. this cannot be simplified by
+                # just passing completeBefore=None to listBuilds.
+                pass
+
             def default_return():
                 msg = f"No builds detected for using prefix: '{pattern_prefix}', extra_pattern: '{extra_pattern}', assembly: '{assembly}', build_state: '{build_state.name}', el_target: '{el_target}'"
                 if default != -1:
@@ -371,7 +385,8 @@ class Metadata(object):
                 builds = koji_api.listBuilds(packageID=package_id,
                                              state=None if build_state is None else build_state.value,
                                              pattern=f'{pattern_prefix}{extra_pattern}{pattern_suffix}*{rpm_suffix}',
-                                             queryOpts={'limit': 1, 'order': '-creation_event_id'})
+                                             queryOpts={'limit': 1, 'order': '-creation_event_id'},
+                                             **list_builds_kwargs)
 
                 # Ensure the suffix ends the string OR at least terminated by a '.' .
                 # This latter check ensures that 'assembly.how' doesn't not match a build from
@@ -459,13 +474,13 @@ class Metadata(object):
                             # that they are no builds for this assembly.
                             builds = []
 
-        if not builds:
-            return default_return()
+            if not builds:
+                return default_return()
 
-        found_build = builds[0]
-        # Different brew apis return different keys here; normalize to make the rest of doozer not need to change.
-        found_build['id'] = found_build['build_id']
-        return found_build
+            found_build = builds[0]
+            # Different brew apis return different keys here; normalize to make the rest of doozer not need to change.
+            found_build['id'] = found_build['build_id']
+            return found_build
 
     def get_latest_build_info(self, default=-1, **kwargs):
         """

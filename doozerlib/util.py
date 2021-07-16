@@ -357,7 +357,7 @@ def get_docker_config_json(config_dir):
         raise FileNotFoundError("Can not find the registry config file in {}".format(config_dir))
 
 
-def isolate_pflag_in_release(release: str) -> str:
+def isolate_pflag_in_release(release: str) -> Optional[str]:
     """
     Given a release field, determines whether is contains
     .p0/.p1 information. If it does, it returns the value
@@ -387,7 +387,31 @@ def split_el_suffix_in_release(release: str) -> Tuple[str, Optional[str]]:
         return release, None
 
 
-def isolate_assembly_in_release(release: str) -> str:
+def isolate_nightly_name_components(nightly_name: str) -> (str, str, bool):
+    """
+    Given a release name (e.g. 4.8.0-0.nightly-s390x-2021-07-02-143555, 4.1.0-0.nightly-priv-2019-11-08-213727),
+    return:
+     - The major.minor of the release (e.g. 4.8)
+     - The brew CPU architecture name associated with the nightly (e.g. s390x, x86_64)
+     - Whether the release is from a private release controller.
+    :param nightly_name: The name of the nightly to analyze
+    :return: (major_minor, brew_arch, is_private)
+    """
+    major_minor = '.'.join(nightly_name.split('.')[:2])
+    nightly_name = nightly_name[nightly_name.find('.nightly') + 1:]  # strip off versioning info (e.g.  4.8.0-0.)
+    components = nightly_name.split('-')
+    is_private = ('priv' in components)
+    pos = components.index('nightly')
+    possible_arch = components[pos + 1]
+    if possible_arch not in go_arches:
+        go_arch = 'x86_64'  # for historical reasons, amd64 is not included in the release name
+    else:
+        go_arch = possible_arch
+    brew_arch = brew_arch_for_go_arch(go_arch)
+    return major_minor, brew_arch, is_private
+
+
+def isolate_assembly_in_release(release: str) -> Optional[str]:
     """
     Given a release field, determines whether is contains
     an assembly name. If it does, it returns the assembly
@@ -426,7 +450,7 @@ def isolate_el_version_in_brew_tag(tag: str) -> Optional[int]:
 
 
 # https://code.activestate.com/recipes/577504/
-def total_size(o, handlers={}, verbose=False):
+def total_size(o, handlers=None, verbose=False):
     """ Returns the approximate memory footprint an object and all of its contents.
 
     Automatically finds the contents of the following builtin containers and
@@ -437,6 +461,9 @@ def total_size(o, handlers={}, verbose=False):
                     OtherContainerClass: OtherContainerClass.get_elements}
 
     """
+    if handlers is None:
+        handlers = dict()
+
     dict_handler = lambda d: chain.from_iterable(d.items())
     all_handlers = {
         tuple: iter,
@@ -491,11 +518,22 @@ def brew_arch_for_go_arch(go_arch: str) -> str:
     raise Exception(f"no such golang arch '{go_arch}' - cannot translate to brew arch")
 
 
-# imagestreams and such often began without consideration for multi-arch and then
-# added a suffix everywhere to accommodate arches (but kept the legacy location for x86).
-def go_suffix_for_arch(arch: str) -> str:
+def go_suffix_for_arch(arch: str, is_private: bool = False) -> str:
+    """
+    Imagestreams and namespaces for the release controller indicate
+    a CPU architecture and whether the release is part of the private release controller.
+    using [-<arch>][-priv] as a suffix. This method calculates that suffix
+    based on what arch and privacy you are trying to reach.
+    :param arch: The CPU architecture
+    :param is_private: True if you are looking for a private release controller
+    :return: A suffix to use when address release controller imagestreams/namespaces.
+             x86 arch is never included in the suffix (i.e. '' is used).
+    """
     arch = go_arch_for_brew_arch(arch)  # translate either incoming arch style
-    return go_arch_suffixes[go_arches.index(arch)]
+    suffix = go_arch_suffixes[go_arches.index(arch)]
+    if is_private:
+        suffix += '-priv'
+    return suffix
 
 
 def brew_suffix_for_arch(arch: str) -> str:
@@ -505,7 +543,7 @@ def brew_suffix_for_arch(arch: str) -> str:
 
 def find_latest_build(builds: List[Dict], assembly: Optional[str]) -> Optional[Dict]:
     """ Find the latest build specific to the assembly in a list of builds belonging to the same component and brew tag
-    :param brew_builds: a list of build dicts sorted by tagging event in descending order
+    :param builds: a list of build dicts sorted by tagging event in descending order
     :param assembly: the name of assembly; None if assemblies support is disabled
     :return: a brew build dict or None
     """

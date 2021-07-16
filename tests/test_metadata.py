@@ -120,7 +120,7 @@ class TestMetadata(TestCase):
         koji_mock = self.koji_mock
         now = datetime.datetime.now(datetime.timezone.utc)
 
-        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
+        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None, **kwargs):
             return self._list_builds(builds, packageID=packageID, state=state, pattern=pattern, queryOpts=queryOpts)
 
         koji_mock.listBuilds.side_effect = list_builds
@@ -216,13 +216,14 @@ class TestMetadata(TestCase):
         koji_mock = self.koji_mock
         now = datetime.datetime.now(datetime.timezone.utc)
 
-        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
+        builds = []
+
+        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None, **kwargs):
             return self._list_builds(builds, packageID=packageID, state=state, pattern=pattern, queryOpts=queryOpts)
 
         koji_mock.listBuilds.side_effect = list_builds
 
         # If listBuilds returns nothing, no build should be returned
-        builds = []
         self.assertIsNone(meta.get_latest_build(default=None))
 
         meta.meta_type = 'rpm'
@@ -258,7 +259,7 @@ class TestMetadata(TestCase):
         now = datetime.datetime.now(datetime.timezone.utc)
         then = now - datetime.timedelta(hours=5)
 
-        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
+        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None, **kwargs):
             return self._list_builds(builds, packageID=packageID, state=state, pattern=pattern, queryOpts=queryOpts)
 
         runtime.downstream_commitish_overrides = {}
@@ -322,7 +323,7 @@ class TestMetadata(TestCase):
         now = datetime.datetime.now(datetime.timezone.utc)
         then = now - datetime.timedelta(hours=5)
 
-        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
+        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None, **kwargs):
             return self._list_builds(builds, packageID=packageID, state=state, pattern=pattern, queryOpts=queryOpts)
 
         runtime.downstream_commitish_overrides = {}
@@ -395,7 +396,7 @@ class TestMetadata(TestCase):
         now = datetime.datetime.now(datetime.timezone.utc)
         then = now - datetime.timedelta(hours=5)
 
-        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None):
+        def list_builds(packageID=None, state=None, pattern=None, queryOpts=None, **kwargs):
             return self._list_builds(builds, packageID=packageID, state=state, pattern=pattern, queryOpts=queryOpts)
 
         runtime.downstream_commitish_overrides = {}

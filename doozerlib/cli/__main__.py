@@ -16,6 +16,7 @@ from doozerlib.cli.release_gen_payload import release_gen_payload
 from doozerlib.cli.detect_embargo import detect_embargo
 from doozerlib.cli.images_health import images_health
 from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
+from doozerlib.cli.release_gen_assembly import releases_gen_assembly, gen_assembly_from_nightlies
 from doozerlib.cli.scan_sources import config_scan_source_changes
 from doozerlib.cli.rpms_build import rpms_build
 from doozerlib.cli.config_plashet import config_plashet
