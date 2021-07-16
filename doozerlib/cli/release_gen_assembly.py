@@ -22,11 +22,13 @@ def releases_gen_assembly(ctx, name):
     pass
 
 
-@releases_gen_assembly.command('from-releases', short_help='Outputs assembly metadata based on a set of speified nightlies')
+@releases_gen_assembly.command('from-nightlies', short_help='Outputs assembly metadata based on a set of speified nightlies')
 @click.option('--nightly', 'nightlies', metavar='RELEASE_NAME', default=[], multiple=True, help='A nightly release name for each architecture (e.g. 4.7.0-0.nightly-2021-07-07-214918)')
+@click.option("--custom", default=False, is_flag=True,
+              help="If specified, weaker conformance criteria are applied (e.g. a nightly is not required for every arch).")
 @pass_runtime
 @click.pass_context
-def gen_assembly_from_releases(ctx, runtime, nightlies):
+def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
     runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
     logger = runtime.logger
     gen_assembly_name = ctx.obj['ASSEMBLY_NAME']  # The name of the assembly we are going to output
@@ -46,7 +48,7 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
     if not nightlies:
         exit_with_error('At least one nightly must be specified')
 
-    if len(runtime.arches) != len(nightlies):
+    if len(runtime.arches) != len(nightlies) and not custom:
         exit_with_error(f'Expected at least {len(runtime.arches)} nightlies; one for each group arch: {runtime.arches}')
 
     reference_releases_by_arch: Dict[str, str] = dict()  # Maps brew arch name to nightly name
@@ -122,7 +124,7 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
                 basis_event_ts = max(basis_event_ts, completion_ts + (60.0 * 5))
 
     # basis_event_ts should now be greater than the build completion / target tagging operation
-    # for any (non machin-os-content) image in the nightlies. Because images are built after RPMs,
+    # for any (non machine-os-content) image in the nightlies. Because images are built after RPMs,
     # it must also hold that the basis_event_ts is also greater than build completion & tagging
     # of any member RPM.
 
@@ -130,6 +132,7 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
     with runtime.shared_koji_client_session() as koji_api:
         basis_event = koji_api.getLastEvent(before=basis_event_ts)['id']
 
+    logger.info(f'Estimated basis brew event: {basis_event}')
     logger.info(f'The following image package_names were detected in the nightlies: {component_image_builds.keys()}')
 
     # That said, things happen. Let's say image component X was built in build X1 and X2.
@@ -140,7 +143,10 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
     # To avoid that, we now evaluate whether any images or RPMs defy our assumption that the nightly
     # corresponds to the basis_event_ts we have calculated. If we find something that will not be swept
     # correctly by the estimated basis event, we collect up the outliers (hopefully few in number) into
-    # a list of packages which must be included in the assembly as 'is:'.
+    # a list of packages which must be included in the assembly as 'is:'. This might happen if, for example,
+    # an artist accidentally builds an image on the command line for the stream assembly; without this logic,
+    # that build might be found by our basis event, but we will explicitly pin to the image in the nightly
+    # component's NVR as an override in the assembly definition.
     force_is: Set[str] = set()  # A set of package_names whose NVRs are not correctly sourced by the estimated basis_event
     for image_meta in runtime.image_metas():
 
@@ -167,7 +173,10 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
         # have given us an NVR which is expected to be selected by the assembly.
 
         if package_name not in component_image_builds:
-            logger.error(f'Unable to find {dgk} in nightlies despite it being marked as is_payload in ART metadata; this may mean the image does not have the proper labeling for being in the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
+            if custom:
+                logger.warning(f'Unable to find {dgk} in nightlies despite it being marked as is_payload in ART metadata; this may be because the image is not built for every arch or it is not labeled appropriately for the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
+            else:
+                logger.error(f'Unable to find {dgk} in nightlies despite it being marked as is_payload in ART metadata; this may mean the image does not have the proper labeling for being in the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
             component_image_builds[package_name] = basis_event_build
             continue
 
@@ -181,11 +190,17 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
 
         # Otherwise, the estimated basis event resolved the image nvr we found in the nightlies. The
         # image NVR does not need to be pinned. Yeah!
+        pass
 
-    # We should have found a machine-os-content for each architecture in the group
+    # We should have found a machine-os-content for each architecture in the group for a standard assembly
     for arch in runtime.arches:
         if arch not in mosc_by_arch:
-            exit_with_error(f'Did not find machine-os-content image for active group architecture: {arch}')
+            if custom:
+                # This is permitted for custom assemblies which do not need to be assembled for every
+                # architecture. The customer may just need x86_64.
+                logger.info(f'Dir not find machine-os-content image for active group architecture: {arch}')
+            else:
+                exit_with_error(f'Did not find machine-os-content image for active group architecture: {arch}')
 
     # We now have a list of image builds that should be selected by the assembly basis event
     # and those that will need to be forced with 'is'. We now need to perform a similar step
@@ -253,7 +268,7 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
             dgk = package_image_meta[package_name].distgit_key
             image_member_overrides.append({
                 'distgit_key': dgk,
-                'why': 'Query from assembly basis event failed to replicate reference nightly content exactly. Pinning to replicate.',
+                'why': 'Query from assembly basis event failed to replicate referenced nightly content exactly. Pinning to replicate.',
                 'metadata': {
                     'is': {
                         'nvr': component_image_builds[package_name]['nvr']
@@ -264,7 +279,7 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
             dgk = package_rpm_meta[package_name].distgit_key
             rpm_member_overrides.append({
                 'distgit_key': dgk,
-                'why': 'Query from assembly basis event failed to replicate reference nightly content exactly. Pinning to replicate.',
+                'why': 'Query from assembly basis event failed to replicate referenced nightly content exactly. Pinning to replicate.',
                 'metadata': {
                     'is': {
                         f'el{el_ver}': component_rpm_builds[package_name][el_ver]['nvr'] for el_ver in component_rpm_builds[package_name]
@@ -272,14 +287,31 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
                 }
             })
 
+    group_info = {}
+    if not custom:
+        group_info['advisories'] = {
+            'image': -1,
+            'rpm': -1,
+            'extras': -1,
+            'metadata': -1,
+        }
+    else:
+        # Custom payloads don't require advisories.
+        # If the user has specified fewer nightlies than is required by this
+        # group, then we need to override the group arches.
+        group_info = {
+            'arches!': list(mosc_by_arch.keys())
+        }
+
     assembly_def = {
         'releases': {
             gen_assembly_name: {
-                'type': 'standard',
+                'type': 'custom' if custom else 'standard',
                 'basis': {
                     'brew_event': basis_event,
                     'reference_releases': reference_releases_by_arch,
                 },
+                'group': group_info,
                 'rhcos': {
                     'machine-os-content': mosc_by_arch
                 },
@@ -291,6 +323,4 @@ def gen_assembly_from_releases(ctx, runtime, nightlies):
         }
     }
 
-    print('Suggested assembly definition')
-    print('=====================================================')
     print(yaml.dump(assembly_def))
