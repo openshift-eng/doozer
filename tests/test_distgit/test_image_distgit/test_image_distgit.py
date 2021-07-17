@@ -1,7 +1,6 @@
 from __future__ import absolute_import, print_function, unicode_literals
 import io
 import logging
-import pathlib
 
 import re
 import tempfile
@@ -9,20 +8,45 @@ import unittest
 from threading import Lock
 
 import flexmock
-from mock import MagicMock, Mock
-from mock.mock import patch
+from mock import MagicMock
 
 from doozerlib import distgit, model
 from doozerlib.image import ImageMetadata
+from doozerlib.assembly import AssemblyTypes
 
 from ..support import MockScanner, TestDistgit
 
 
 class TestImageDistGit(TestDistgit):
+
     def setUp(self):
         super(TestImageDistGit, self).setUp()
         self.img_dg = distgit.ImageDistGitRepo(self.md, autoclone=False)
         self.img_dg.runtime.group_config = model.Model()
+
+    @staticmethod
+    def mock_runtime(**kwargs):
+        def flexmock_defaults(**inner_kwargs):
+            params = dict(**kwargs)
+            for k, v in inner_kwargs.items():
+                if k not in params:
+                    params[k] = v
+            return flexmock(**params)
+
+        # Pass in a set of defaults to flexmock, but allow caller to override
+        # anything they want.
+        return flexmock_defaults(
+            group_config=flexmock(
+                urls=flexmock(brew_image_host="brew-img-host", brew_image_namespace="brew-img-ns"),
+                insecure_source=False,
+            ),
+            resolve_brew_image_url=lambda *_, **__: '',
+            working_dir="my-working-dir",
+            branch="some-branch",
+            command="some-command",
+            add_record=lambda *_, **__: None,
+            assembly_type=AssemblyTypes.STANDARD,
+        )
 
     def test_clone_invokes_read_master_data(self):
         """
@@ -37,7 +61,7 @@ class TestImageDistGit(TestDistgit):
             .should_receive("_read_master_data")
             .once())
 
-        metadata = flexmock(runtime=flexmock(branch="original-branch"),
+        metadata = flexmock(runtime=self.mock_runtime(),
                             config=flexmock(distgit=flexmock(branch=distgit.Missing)),
                             name="_irrelevant_",
                             logger="_irrelevant_")
@@ -46,8 +70,7 @@ class TestImageDistGit(TestDistgit):
             .clone("distgits_root_dir", "distgit_branch"))
 
     def test_image_build_method_default(self):
-        metadata = flexmock(runtime=flexmock(group_config=flexmock(default_image_build_method="default-method"),
-                                             branch="_irrelevant_"),
+        metadata = flexmock(runtime=self.mock_runtime(group_config=flexmock(default_image_build_method="default-method")),
                             config=flexmock(distgit=flexmock(branch=distgit.Missing),
                                             image_build_method=distgit.Missing,
                                             get=lambda *_: {}),
@@ -60,8 +83,7 @@ class TestImageDistGit(TestDistgit):
     def test_image_build_method_imagebuilder(self):
         get = lambda key, default: dict({"builder": "..."}) if key == "from" else default
 
-        metadata = flexmock(runtime=flexmock(group_config=flexmock(default_image_build_method="default-method"),
-                                             branch="_irrelevant_"),
+        metadata = flexmock(runtime=self.mock_runtime(group_config=flexmock(default_image_build_method="default-method")),
                             config=flexmock(distgit=flexmock(branch=distgit.Missing),
                                             image_build_method=distgit.Missing,
                                             get=get),
@@ -72,8 +94,7 @@ class TestImageDistGit(TestDistgit):
         self.assertEqual("imagebuilder", repo.image_build_method)
 
     def test_image_build_method_from_config(self):
-        metadata = flexmock(runtime=flexmock(group_config=flexmock(default_image_build_method="default-method"),
-                                             branch="_irrelevant_"),
+        metadata = flexmock(runtime=self.mock_runtime(group_config=flexmock(default_image_build_method="default-method")),
                             config=flexmock(distgit=flexmock(branch=distgit.Missing),
                                             image_build_method="config-method",
                                             get=lambda _, d: d),
@@ -100,7 +121,7 @@ class TestImageDistGit(TestDistgit):
 
         metadata = flexmock(logger=logger,
                             config=flexmock(distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(branch="_irrelevant_"),
+                            runtime=self.mock_runtime(),
                             name="_irrelevant_")
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
@@ -112,7 +133,7 @@ class TestImageDistGit(TestDistgit):
     def test_wait_for_build_with_build_status_false(self):
         metadata = flexmock(qualified_name="my-qualified-name",
                             config=flexmock(distgit=flexmock(branch="_irrelevant_")),
-                            runtime=flexmock(branch="_irrelevant_"),
+                            runtime=self.mock_runtime(),
                             name="_irrelevant_",
                             logger=flexmock(info=lambda *_: None))
 
@@ -144,9 +165,8 @@ class TestImageDistGit(TestDistgit):
             .once()
             .ordered())
 
-        metadata = flexmock(runtime=flexmock(global_opts={"rhpkg_push_timeout": 999},
-                                             branch="_irrelevant_",
-                                             get_named_semaphore=lambda *_, **__: Lock()),
+        metadata = flexmock(runtime=self.mock_runtime(global_opts={"rhpkg_push_timeout": 999},
+                                                      get_named_semaphore=lambda *_, **__: Lock()),
                             config=flexmock(distgit=flexmock(branch="_irrelevant_")),
                             name="_irrelevant_",
                             logger=flexmock(info=lambda *_: None))
@@ -166,9 +186,8 @@ class TestImageDistGit(TestDistgit):
         # pretending cmd_assert raised an IOError
         flexmock(distgit.exectools).should_receive("cmd_assert").and_raise(IOError("io-error"))
 
-        metadata = flexmock(runtime=flexmock(global_opts={"rhpkg_push_timeout": "_irrelevant_"},
-                                             branch="_irrelevant_",
-                                             get_named_semaphore=lambda *_, **__: Lock()),
+        metadata = flexmock(runtime=self.mock_runtime(global_opts={"rhpkg_push_timeout": "_irrelevant_"},
+                                                      get_named_semaphore=lambda *_, **__: Lock()),
                             config=flexmock(distgit=flexmock(branch="_irrelevant_")),
                             name="_irrelevant_",
                             logger=flexmock(info=lambda *_: None))

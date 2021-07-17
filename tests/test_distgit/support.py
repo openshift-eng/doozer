@@ -1,5 +1,8 @@
 from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
+
+from doozerlib.assembly import AssemblyTypes
+
 standard_library.install_aliases()
 import unittest
 try:
@@ -52,6 +55,7 @@ class MockRuntime(object):
         self.mutex = SimpleMockLock()
         self.missing_pkgs = set()
         self.cache_dir = None
+        self.assembly_type = AssemblyTypes.STANDARD
 
     def detect_remote_source_branch(self, _):
         pass
