@@ -33,6 +33,7 @@ from doozerlib.model import ListModel, Missing, Model
 from doozerlib.pushd import Dir
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib.util import convert_remote_git_to_https, yellow_print
+from doozerlib.assembly import AssemblyTypes
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -113,8 +114,13 @@ class DistGitRepo(object):
         self.source_date_epoch = None
         self.actual_source_url = None
         self.public_facing_source_url = None
-        # This will be set to True if the source contains embargoed (private) CVE fixes. Defaulting to None which means the value should be determined while rebasing.
+
+        # If this is a standard release, private_fix will be set to True if the source contains
+        # embargoed (private) CVE fixes. Defaulting to None which means the value should be determined while rebasing.
         self.private_fix = None
+        if self.runtime.assembly_type != AssemblyTypes.STANDARD:
+            # Only standard releases can have embargoed workflows.
+            self.private_fix = False
 
         # If we are rebasing, this map can be populated with
         # variables acquired from the source path.
