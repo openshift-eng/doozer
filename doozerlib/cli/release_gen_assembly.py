@@ -306,18 +306,20 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
     assembly_def = {
         'releases': {
             gen_assembly_name: {
-                'type': 'custom' if custom else 'standard',
-                'basis': {
-                    'brew_event': basis_event,
-                    'reference_releases': reference_releases_by_arch,
-                },
-                'group': group_info,
-                'rhcos': {
-                    'machine-os-content': mosc_by_arch
-                },
-                'members': {
-                    'rpms': rpm_member_overrides,
-                    'images': image_member_overrides,
+                "assembly": {
+                    'type': 'custom' if custom else 'standard',
+                    'basis': {
+                        'brew_event': basis_event,
+                        'reference_releases': reference_releases_by_arch,
+                    },
+                    'group': group_info,
+                    'rhcos': {
+                        'machine-os-content': mosc_by_arch
+                    },
+                    'members': {
+                        'rpms': rpm_member_overrides,
+                        'images': image_member_overrides,
+                    }
                 }
             }
         }
