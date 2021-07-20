@@ -219,7 +219,7 @@ class PayloadGenerator:
         brew_latest_builds = []
         for image_meta in payload_images:
             latest_build: ImageMetadata = image_meta.get_latest_build()
-            if self.runtime.assembly_basis_event and not self.skip_gc_tagging:
+            if self.runtime.assembly_basis_event and not self.skip_gc_tagging and self.runtime.assembly_type != assembly.AssemblyTypes.STANDARD:
                 # If we are preparing an assembly with a basis event, let's start getting
                 # serious and tag these images so they don't get garbage collected.
                 with self.runtime.shared_koji_client_session() as koji_api:
