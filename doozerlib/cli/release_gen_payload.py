@@ -1,19 +1,19 @@
 import io
 import json
-from typing import List, Optional, Tuple, Set
+from typing import List, Optional, Set, Tuple
 
 import click
 import yaml
 from koji import ClientSession
 
-from doozerlib import brew, build_status_detector, exectools, rhcos, state
-from doozerlib import assembly
+from doozerlib import (assembly, brew, build_status_detector, exectools, rhcos,
+                       state)
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.image import ImageMetadata
 from doozerlib.model import Model
 from doozerlib.runtime import Runtime
-from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yellow_print
+from doozerlib.util import go_suffix_for_arch, red_print, yellow_print
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
@@ -30,7 +30,7 @@ from doozerlib.util import find_latest_build, go_suffix_for_arch, red_print, yel
 @click.option("--skip-gc-tagging", default=False, is_flag=True,
               help="By default, for a named assembly, images will be tagged to prevent garbage collection")
 @pass_runtime
-def release_gen_payload(runtime, is_name, is_namespace, organization, repository, exclude_arch, skip_gc_tagging):
+def release_gen_payload(runtime: Runtime, is_name: Optional[str], is_namespace: Optional[str], organization: Optional[str], repository: Optional[str], exclude_arch: Tuple[str, ...], skip_gc_tagging: bool):
     """Generates two sets of input files for `oc` commands to mirror
 content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
@@ -90,6 +90,8 @@ read and propagate/expose this annotation in its display of the release image.
     """
     runtime.initialize(clone_distgits=False)
     brew_session = runtime.build_retrying_koji_client()
+    if not skip_gc_tagging:
+        brew_session.gssapi_login()
     base_target = SyncTarget(  # where we will mirror and record the tags
         orgrepo=f"{organization}/{repository}",
         istream_name=is_name if is_name else default_is_base_name(runtime),
@@ -222,12 +224,11 @@ class PayloadGenerator:
             if self.runtime.assembly_basis_event and not self.skip_gc_tagging:
                 # If we are preparing an assembly with a basis event, let's start getting
                 # serious and tag these images so they don't get garbage collected.
-                with self.runtime.shared_koji_client_session() as koji_api:
-                    build_nvr = latest_build['nvr']
-                    tags = {tag['name'] for tag in koji_api.listTags(build=build_nvr)}
-                    if image_meta.hotfix_brew_tag() not in tags:
-                        self.runtime.logger.info(f'Tagging {image_meta.get_component_name()} build {build_nvr} with {image_meta.hotfix_brew_tag()} to prevent garbage collection')
-                        koji_api.tagBuild(image_meta.hotfix_brew_tag(), build_nvr)
+                build_nvr = latest_build['nvr']
+                tags = {tag['name'] for tag in self.brew_session.listTags(build=build_nvr)}
+                if image_meta.hotfix_brew_tag() not in tags:
+                    self.runtime.logger.info(f'Tagging {image_meta.get_component_name()} build {build_nvr} with {image_meta.hotfix_brew_tag()} to prevent garbage collection')
+                    self.brew_session.tagBuild(image_meta.hotfix_brew_tag(), build_nvr)
 
             brew_latest_builds.append(latest_build)
 
