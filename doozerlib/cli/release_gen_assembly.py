@@ -314,7 +314,9 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
                     },
                     'group': group_info,
                     'rhcos': {
-                        'machine-os-content': mosc_by_arch
+                        'machine-os-content': {
+                            "images": mosc_by_arch,
+                        }
                     },
                     'members': {
                         'rpms': rpm_member_overrides,
