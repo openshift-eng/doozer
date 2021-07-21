@@ -1204,17 +1204,17 @@ class ImageDistGitRepo(DistGitRepo):
                 self.logger.info("Error building image: {}, {}".format(task_url, error))
                 return False
 
-            with self.runtime.build_retrying_koji_client() as koji_api:
-                koji_api.gssapi_login()
-                # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
-                taskResult = koji_api.getTaskResult(task_id)
-                build_id = int(taskResult["koji_builds"][0])
-                build_info = koji_api.getBuild(build_id)
-                record["nvrs"] = build_info["nvr"]
-                if self.runtime.hotfix:
-                    # Tag the image so they don't get garbage collected.
-                    self.runtime.logger.info(f'Tagging {self.metadata.get_component_name()} build {build_info["nvr"]} with {self.metadata.hotfix_brew_tag()} to prevent garbage collection')
-                    koji_api.tagBuild(self.metadata.hotfix_brew_tag(), build_info["nvr"])
+            koji_api = self.runtime.build_retrying_koji_client()
+            koji_api.gssapi_login()
+            # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
+            taskResult = koji_api.getTaskResult(task_id)
+            build_id = int(taskResult["koji_builds"][0])
+            build_info = koji_api.getBuild(build_id)
+            record["nvrs"] = build_info["nvr"]
+            if self.runtime.hotfix:
+                # Tag the image so they don't get garbage collected.
+                self.runtime.logger.info(f'Tagging {self.metadata.get_component_name()} build {build_info["nvr"]} with {self.metadata.hotfix_brew_tag()} to prevent garbage collection')
+                koji_api.tagBuild(self.metadata.hotfix_brew_tag(), build_info["nvr"])
 
             self.update_build_db(True, task_id=task_id, scratch=scratch)
             self.logger.info("Successfully built image: {} ; {}".format(target_image, task_url))
