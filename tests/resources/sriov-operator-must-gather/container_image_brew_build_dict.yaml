@@ -1,0 +1,114 @@
+# print(yaml.dump(k.getBuild(1675520),default_flow_style=False, indent=2))
+build_id: 1675520
+cg_id: 1
+cg_name: atomic-reactor
+completion_time: '2021-07-26 15:49:28.959938'
+completion_ts: 1627314568.95994
+creation_event_id: 40176633
+creation_time: '2021-07-26 15:45:58.495587'
+creation_ts: 1627314358.49559
+epoch: null
+extra:
+  container_koji_task_id: 38405241
+  image:
+    autorebuild: false
+    go:
+      modules:
+      - module: github.com/openshift/sriov-network-operator
+    help: null
+    index:
+      digests:
+        application/vnd.docker.distribution.manifest.list.v2+json: sha256:611a4934a9388fd5f5a9179da182eb9edc99b01ee78222fcd750ec035c141131
+      floating_tags:
+      - latest
+      - v4.9.0
+      - v4.9
+      - v4.9.0.20210726.153339
+      - assembly.stream
+      pull:
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather@sha256:611a4934a9388fd5f5a9179da182eb9edc99b01ee78222fcd750ec035c141131
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather:v4.9.0-202107261525.p0.git.51a98df.assembly.stream
+      tags:
+      - v4.9.0-202107261525.p0.git.51a98df.assembly.stream
+      unique_tags:
+      - rhaos-4.9-rhel-8-containers-candidate-50118-20210726154538
+    isolated: false
+    media_types:
+    - application/vnd.docker.distribution.manifest.list.v2+json
+    - application/vnd.docker.distribution.manifest.v1+json
+    - application/vnd.docker.distribution.manifest.v2+json
+    parent_build_id: 1671604
+    parent_image_builds:
+      registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.16:
+        id: 1647994
+        nvr: openshift-golang-builder-container-v1.16.4-202106291833.el8.git.83c4106
+      registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-base:v4.9.0-202107222130.p0.git.8bbec8f.assembly.stream:
+        id: 1671604
+        nvr: openshift-enterprise-base-container-v4.9.0-202107222130.p0.git.8bbec8f.assembly.stream
+    parent_images:
+    - openshift/golang-builder:rhel_8_golang_1.16
+    - openshift/ose-base:v4.9.0-202107222130.p0.git.8bbec8f.assembly.stream
+    yum_repourls:
+    - http://pkgs.devel.redhat.com/cgit/containers/sriov-network-must-gather/plain/.oit/unsigned.repo?h=rhaos-4.9-rhel-8&id=e43afce9d3812403ae54e9166551791a9a4ea550
+  osbs_build:
+    engine: imagebuilder
+    kind: container_build
+    subtypes: []
+  submitter: osbs
+  typeinfo:
+    image:
+      autorebuild: false
+      go:
+        modules:
+        - module: github.com/openshift/sriov-network-operator
+      help: null
+      index:
+        digests:
+          application/vnd.docker.distribution.manifest.list.v2+json: sha256:611a4934a9388fd5f5a9179da182eb9edc99b01ee78222fcd750ec035c141131
+        floating_tags:
+        - latest
+        - v4.9.0
+        - v4.9
+        - v4.9.0.20210726.153339
+        - assembly.stream
+        pull:
+        - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather@sha256:611a4934a9388fd5f5a9179da182eb9edc99b01ee78222fcd750ec035c141131
+        - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather:v4.9.0-202107261525.p0.git.51a98df.assembly.stream
+        tags:
+        - v4.9.0-202107261525.p0.git.51a98df.assembly.stream
+        unique_tags:
+        - rhaos-4.9-rhel-8-containers-candidate-50118-20210726154538
+      isolated: false
+      media_types:
+      - application/vnd.docker.distribution.manifest.list.v2+json
+      - application/vnd.docker.distribution.manifest.v1+json
+      - application/vnd.docker.distribution.manifest.v2+json
+      parent_build_id: 1671604
+      parent_image_builds:
+        registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.16:
+          id: 1647994
+          nvr: openshift-golang-builder-container-v1.16.4-202106291833.el8.git.83c4106
+        registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-base:v4.9.0-202107222130.p0.git.8bbec8f.assembly.stream:
+          id: 1671604
+          nvr: openshift-enterprise-base-container-v4.9.0-202107222130.p0.git.8bbec8f.assembly.stream
+      parent_images:
+      - openshift/golang-builder:rhel_8_golang_1.16
+      - openshift/ose-base:v4.9.0-202107222130.p0.git.8bbec8f.assembly.stream
+      yum_repourls:
+      - http://pkgs.devel.redhat.com/cgit/containers/sriov-network-must-gather/plain/.oit/unsigned.repo?h=rhaos-4.9-rhel-8&id=e43afce9d3812403ae54e9166551791a9a4ea550
+id: 1675520
+name: sriov-network-must-gather-container
+nvr: sriov-network-must-gather-container-v4.9.0-202107261525.p0.git.51a98df.assembly.stream
+owner_id: 4078
+owner_name: ocp-build/buildvm.openshift.eng.bos.redhat.com
+package_id: 77244
+package_name: sriov-network-must-gather-container
+release: 202107261525.p0.git.51a98df.assembly.stream
+source: git://pkgs.devel.redhat.com/containers/sriov-network-must-gather#e43afce9d3812403ae54e9166551791a9a4ea550
+start_time: '2021-07-26 15:45:58.428712'
+start_ts: 1627314358.42871
+state: 1
+task_id: null
+version: v4.9.0
+volume_id: 0
+volume_name: DEFAULT

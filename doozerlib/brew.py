@@ -10,7 +10,7 @@ import time
 import traceback
 from enum import Enum
 from multiprocessing import Lock
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, BinaryIO
 
 # 3rd party
 import koji
@@ -393,13 +393,20 @@ class KojiWrapper(koji.ClientSession):
           will return the cached value.
     """
 
-    koji_wrapper_lock = threading.Lock()
-    koji_call_counter = 0  # Increments atomically to help search logs for koji api calls
-    # Used by the KojiWrapper to cache API calls, when a call's args include a KojiWrapperOpts with caching=True.
-    # The key is either None or a brew event id to which queries are locked. The value is another dict whose
-    # key is a string respresentation of the method to be invoked and the value is the cached value returned
-    # from the server.
-    koji_wrapper_result_cache = {}
+    """
+    If caching should be enabled for all uses of this class. This is generally
+    not recommended unless you are trying to record API calls for testing purposes.
+    """
+    force_global_caching: bool = False
+
+
+    _koji_wrapper_lock = threading.Lock()
+    _koji_call_counter = 0  # Increments atomically to help search logs for koji api calls
+
+    # Used by the KojiWrapper to cache API calls, when force_global_caching or a call's args include a KojiWrapperOpts with caching=True.
+    # The key is a string a representation of the method (and all arguments) to be invoked and the value is the cached value returned
+    # from the server. This cache is shared among all instances of the wrapper.
+    _koji_wrapper_result_cache = {}
 
     # A list of methods which support receiving an event kwarg. See --brew-event CLI argument.
     methods_with_event = set([
@@ -534,37 +541,38 @@ class KojiWrapper(koji.ClientSession):
 
     @classmethod
     def clear_global_cache(cls):
-        with cls.koji_wrapper_lock:
-            cls.koji_wrapper_result_cache.clear()
+        with cls._koji_wrapper_lock:
+            cls._koji_wrapper_result_cache.clear()
 
     @classmethod
     def get_cache_size(cls):
-        with cls.koji_wrapper_lock:
-            return total_size(cls.koji_wrapper_result_cache)
+        with cls._koji_wrapper_lock:
+            return total_size(cls._koji_wrapper_result_cache)
 
     @classmethod
     def get_next_call_id(cls):
-        global koji_call_counter, koji_wrapper_lock
-        with cls.koji_wrapper_lock:
-            cid = cls.koji_call_counter
-            cls.koji_call_counter = cls.koji_call_counter + 1
+        global _koji_call_counter, _koji_wrapper_lock
+        with cls._koji_wrapper_lock:
+            cid = cls._koji_call_counter
+            cls._koji_call_counter = cls._koji_call_counter + 1
             return cid
+
+    @classmethod
+    def save_cache(cls, output: BinaryIO):
+        with KojiWrapper._koji_wrapper_lock:
+            json.dump(KojiWrapper._koji_wrapper_result_cache, output, indent=2)
 
     def _get_cache_bucket_unsafe(self):
         """Call while holding lock!"""
-        cache_bucket = KojiWrapper.koji_wrapper_result_cache.get(self.___brew_event, None)
-        if cache_bucket is None:
-            cache_bucket = {}
-            KojiWrapper.koji_wrapper_result_cache[self.___brew_event] = cache_bucket
-        return cache_bucket
+        return KojiWrapper._koji_wrapper_result_cache
 
     def _cache_result(self, api_repr, result):
-        with KojiWrapper.koji_wrapper_lock:
+        with KojiWrapper._koji_wrapper_lock:
             cache_bucket = self._get_cache_bucket_unsafe()
             cache_bucket[api_repr] = result
 
     def _get_cache_result(self, api_repr, return_on_miss):
-        with KojiWrapper.koji_wrapper_lock:
+        with KojiWrapper._koji_wrapper_lock:
             cache_bucket = self._get_cache_bucket_unsafe()
             return cache_bucket.get(api_repr, return_on_miss)
 
@@ -712,7 +720,7 @@ class KojiWrapper(koji.ClientSession):
 
                 caching_key = None
                 if use_caching:
-                    # We need a reproducible immutable key from a dict with nest dicts. json.dumps
+                    # We need a reproducible immutable key from a dict with nested dicts. json.dumps
                     # and sorting keys is a deterministic way of achieving this.
                     caching_key = json.dumps({
                         'method_name': name,

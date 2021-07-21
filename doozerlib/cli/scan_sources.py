@@ -258,9 +258,9 @@ def _detect_rhcos_status(runtime, kubeconfig) -> list:
 
 def _tagged_mosc_id(kubeconfig, version, arch, private) -> str:
     """determine what the most recently tagged machine-os-content is in given imagestream"""
-    base_name = rgp.default_is_base_name(version)
-    base_namespace = rgp.default_is_base_namespace()
-    name, namespace = rgp.is_name_and_space(base_name, base_namespace, arch, private)
+    base_name = rgp.default_imagestream_base_name(version)
+    base_namespace = rgp.default_imagestream_namespace_base_name()
+    name, namespace = rgp.payload_imagestream_name_and_namespace(base_name, base_namespace, arch, private)
     stdout, _ = exectools.cmd_assert(
         f"oc --kubeconfig '{kubeconfig}' --namespace '{namespace}' get istag '{name}:machine-os-content'"
         " --template '{{.image.dockerImageMetadata.Config.Labels.version}}'",

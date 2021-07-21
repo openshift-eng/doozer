@@ -8,8 +8,10 @@ from doozerlib import brew, util
 
 
 class BuildStatusDetector:
-    """ a BuildStatusDetector can find builds with embargoed fixes
     """
+    A BuildStatusDetector can find builds with embargoed fixes
+    """
+
     def __init__(self, session: ClientSession, logger: Optional[Logger] = None):
         """ creates a new BuildStatusDetector
         :param session: a koji client session
@@ -92,7 +94,7 @@ class BuildStatusDetector:
         """ populate self.archive_lists with any build IDs not already cached
         :param suspect_build_ids: a list of koji build ids
         """
-        build_ids = list(suspect_build_ids - self.archive_lists.keys())
+        build_ids = list(suspect_build_ids - self.archive_lists.keys())  # Only update cache with missing builds
         if build_ids:
             self.logger and self.logger.info(f"Fetching image archives for {len(build_ids)} builds...")
             archive_lists = brew.list_archives_by_builds(build_ids, "image", self.koji_session)  # if a build is not an image (e.g. rpm), Brew will return an empty archive list for that build
@@ -120,7 +122,7 @@ class BuildStatusDetector:
     cache_lock = Lock()
     unshipped_candidate_rpms_cache = {}
 
-    def find_unshipped_candidate_rpms(self, candidate_tag, event=None):
+    def find_unshipped_candidate_rpms(self, candidate_tag: str, event: Optional[int] = None):
         """ find latest RPMs in the candidate tag that have not been shipped yet.
 
         <lmeyer> i debated whether to consider builds unshipped if not shipped
@@ -129,6 +131,7 @@ class BuildStatusDetector:
         just if it's not using what we're trying to ship new.
 
         :param candidate_tag: string tag name to search for candidate builds
+        :param event: A brew event with which to limit the brew query on latest builds.
         :return: a list of brew RPMs (the contents of the builds) from unshipped latest builds
         """
         key = (candidate_tag, event)

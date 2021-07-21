@@ -1,0 +1,4670 @@
+# List of all builds associated with packages used by underlying archive ima
+745929:
+  build_id: 745929
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 07:54:06.053845'
+  completion_ts: 1534060446.05384
+  creation_event_id: 21094076
+  creation_time: '2018-08-12 07:48:15.882529'
+  creation_ts: 1534060095.88253
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libxcrypt?#39cb4db5d6921432ac58314ecbce0499b3175030
+  id: 745929
+  name: libxcrypt
+  nvr: libxcrypt-4.1.1-4.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 67791
+  package_name: libxcrypt
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/libxcrypt#39cb4db5d6921432ac58314ecbce0499b3175030
+  start_time: '2018-08-12 07:48:15.882529'
+  start_ts: 1534060095.88253
+  state: 1
+  task_id: 17778574
+  version: 4.1.1
+  volume_id: 9
+  volume_name: rhel-8
+745934:
+  build_id: 745934
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 07:55:13.376681'
+  completion_ts: 1534060513.37668
+  creation_event_id: 21094083
+  creation_time: '2018-08-12 07:48:16.919100'
+  creation_ts: 1534060096.9191
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/grep?#c300a00f9d91514feb8a5eef8d06800c4be6a03b
+  id: 745934
+  name: grep
+  nvr: grep-3.1-6.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 797
+  package_name: grep
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/grep#c300a00f9d91514feb8a5eef8d06800c4be6a03b
+  start_time: '2018-08-12 07:48:16.919100'
+  start_ts: 1534060096.9191
+  state: 1
+  task_id: 17778576
+  version: '3.1'
+  volume_id: 9
+  volume_name: rhel-8
+745941:
+  build_id: 745941
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 07:57:33.801035'
+  completion_ts: 1534060653.80103
+  creation_event_id: 21094119
+  creation_time: '2018-08-12 07:48:50.761707'
+  creation_ts: 1534060130.76171
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/bzip2?#6c320812716142f745e87c19d37aef88b455b320
+  id: 745941
+  name: bzip2
+  nvr: bzip2-1.0.6-26.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 228
+  package_name: bzip2
+  release: 26.el8
+  source: git://pkgs.devel.redhat.com/rpms/bzip2#6c320812716142f745e87c19d37aef88b455b320
+  start_time: '2018-08-12 07:48:50.761707'
+  start_ts: 1534060130.76171
+  state: 1
+  task_id: 17778572
+  version: 1.0.6
+  volume_id: 9
+  volume_name: rhel-8
+745979:
+  build_id: 745979
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 08:48:59.304322'
+  completion_ts: 1534063739.30432
+  creation_event_id: 21094765
+  creation_time: '2018-08-12 08:34:28.122113'
+  creation_ts: 1534062868.12211
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/acl?#70b98f966df90873e3b660938109a701fea4d520
+  id: 745979
+  name: acl
+  nvr: acl-2.2.53-1.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 79
+  package_name: acl
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/acl#70b98f966df90873e3b660938109a701fea4d520
+  start_time: '2018-08-12 08:34:28.122113'
+  start_ts: 1534062868.12211
+  state: 1
+  task_id: 17779252
+  version: 2.2.53
+  volume_id: 9
+  volume_name: rhel-8
+746019:
+  build_id: 746019
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 08:56:05.688880'
+  completion_ts: 1534064165.68888
+  creation_event_id: 21095063
+  creation_time: '2018-08-12 08:38:33.487185'
+  creation_ts: 1534063113.48719
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/attr?#fdfcc6e99dda82ee784f779aea1e6583d6a9114f
+  id: 746019
+  name: attr
+  nvr: attr-2.4.48-3.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 156
+  package_name: attr
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/attr#fdfcc6e99dda82ee784f779aea1e6583d6a9114f
+  start_time: '2018-08-12 08:38:33.487185'
+  start_ts: 1534063113.48719
+  state: 1
+  task_id: 17779299
+  version: 2.4.48
+  volume_id: 9
+  volume_name: rhel-8
+746023:
+  build_id: 746023
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 08:40:25.060266'
+  completion_ts: 1534063225.06027
+  creation_event_id: 21095103
+  creation_time: '2018-08-12 08:39:16.029840'
+  creation_ts: 1534063156.02984
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/basesystem?#a5396e2dfce9e5a71fa15c63cf074f949ea2677c
+  id: 746023
+  name: basesystem
+  nvr: basesystem-11-5.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 183
+  package_name: basesystem
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/basesystem#a5396e2dfce9e5a71fa15c63cf074f949ea2677c
+  start_time: '2018-08-12 08:39:16.029840'
+  start_ts: 1534063156.02984
+  state: 1
+  task_id: 17779314
+  version: '11'
+  volume_id: 9
+  volume_name: rhel-8
+746151:
+  build_id: 746151
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 09:47:12.616545'
+  completion_ts: 1534067232.61654
+  creation_event_id: 21096462
+  creation_time: '2018-08-12 09:12:52.361476'
+  creation_ts: 1534065172.36148
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/dbus-glib?#5eb05e6c24dd7ccebca79678a8bcc876ada6db0f
+  id: 746151
+  name: dbus-glib
+  nvr: dbus-glib-0.110-2.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 3370
+  package_name: dbus-glib
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/dbus-glib#5eb05e6c24dd7ccebca79678a8bcc876ada6db0f
+  start_time: '2018-08-12 09:12:52.361476'
+  start_ts: 1534065172.36148
+  state: 1
+  task_id: 17779461
+  version: '0.110'
+  volume_id: 9
+  volume_name: rhel-8
+746526:
+  build_id: 746526
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 12:58:19.089212'
+  completion_ts: 1534078699.08921
+  creation_event_id: 21101096
+  creation_time: '2018-08-12 11:18:47.516665'
+  creation_ts: 1534072727.51666
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gobject-introspection?#36eb0ce62a6550943166ca0fc6ad5819ad12acd1
+  id: 746526
+  name: gobject-introspection
+  nvr: gobject-introspection-1.56.1-1.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 14420
+  package_name: gobject-introspection
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/gobject-introspection#36eb0ce62a6550943166ca0fc6ad5819ad12acd1
+  start_time: '2018-08-12 11:18:47.516665'
+  start_ts: 1534072727.51666
+  state: 1
+  task_id: 17779936
+  version: 1.56.1
+  volume_id: 9
+  volume_name: rhel-8
+746599:
+  build_id: 746599
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 13:39:05.607625'
+  completion_ts: 1534081145.60763
+  creation_event_id: 21103702
+  creation_time: '2018-08-12 12:16:28.131995'
+  creation_ts: 1534076188.13199
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/hostname?#921430a8e173de21d01d6878929253a6d3c09291
+  id: 746599
+  name: hostname
+  nvr: hostname-3.20-6.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 33899
+  package_name: hostname
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/hostname#921430a8e173de21d01d6878929253a6d3c09291
+  start_time: '2018-08-12 12:16:28.131995'
+  start_ts: 1534076188.13199
+  state: 1
+  task_id: 17785068
+  version: '3.20'
+  volume_id: 9
+  volume_name: rhel-8
+746857:
+  build_id: 746857
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 12:44:56.534532'
+  completion_ts: 1534077896.53453
+  creation_event_id: 21105692
+  creation_time: '2018-08-12 12:43:15.087719'
+  creation_ts: 1534077795.08772
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-chardet?#bc10a725de0ebf632b9cd67735bb46c1c31df1ba
+  id: 746857
+  name: python-chardet
+  nvr: python-chardet-3.0.4-7.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 16728
+  package_name: python-chardet
+  release: 7.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-chardet#bc10a725de0ebf632b9cd67735bb46c1c31df1ba
+  start_time: '2018-08-12 12:43:15.087719'
+  start_ts: 1534077795.08772
+  state: 1
+  task_id: 17786731
+  version: 3.0.4
+  volume_id: 9
+  volume_name: rhel-8
+746941:
+  build_id: 746941
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 12:55:23.463853'
+  completion_ts: 1534078523.46385
+  creation_event_id: 21106398
+  creation_time: '2018-08-12 12:52:24.058563'
+  creation_ts: 1534078344.05856
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-decorator?#e80551f4e524f020d9b557eed072faba6e1970a8
+  id: 746941
+  name: python-decorator
+  nvr: python-decorator-4.2.1-2.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 11011
+  package_name: python-decorator
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-decorator#e80551f4e524f020d9b557eed072faba6e1970a8
+  start_time: '2018-08-12 12:52:24.058563'
+  start_ts: 1534078344.05856
+  state: 1
+  task_id: 17786739
+  version: 4.2.1
+  volume_id: 9
+  volume_name: rhel-8
+746949:
+  build_id: 746949
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 14:22:26.014249'
+  completion_ts: 1534083746.01425
+  creation_event_id: 21106450
+  creation_time: '2018-08-12 12:52:59.489932'
+  creation_ts: 1534078379.48993
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/keyutils?#1e1d1f7c7b63c45fb82fe791e56fa78739c07fdd
+  id: 746949
+  name: keyutils
+  nvr: keyutils-1.5.10-6.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 1766
+  package_name: keyutils
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/keyutils#1e1d1f7c7b63c45fb82fe791e56fa78739c07fdd
+  start_time: '2018-08-12 12:52:59.489932'
+  start_ts: 1534078379.48993
+  state: 1
+  task_id: 17785458
+  version: 1.5.10
+  volume_id: 9
+  volume_name: rhel-8
+746975:
+  build_id: 746975
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 12:59:11.858327'
+  completion_ts: 1534078751.85833
+  creation_event_id: 21106734
+  creation_time: '2018-08-12 12:56:45.113042'
+  creation_ts: 1534078605.11304
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/langpacks?#3d878a90e1c0a1d62fcea7b63aa1fc389991ab4d
+  id: 746975
+  name: langpacks
+  nvr: langpacks-1.0-12.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 66850
+  package_name: langpacks
+  release: 12.el8
+  source: git://pkgs.devel.redhat.com/rpms/langpacks#3d878a90e1c0a1d62fcea7b63aa1fc389991ab4d
+  start_time: '2018-08-12 12:56:45.113042'
+  start_ts: 1534078605.11304
+  state: 1
+  task_id: 17785484
+  version: '1.0'
+  volume_id: 9
+  volume_name: rhel-8
+747009:
+  build_id: 747009
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 13:05:15.107515'
+  completion_ts: 1534079115.10752
+  creation_event_id: 21106980
+  creation_time: '2018-08-12 13:01:26.000775'
+  creation_ts: 1534078886.00078
+  epoch: 1
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-dateutil?#e8441401ab6a860bcd370ffde42e9f605bb92e3d
+  id: 747009
+  name: python-dateutil
+  nvr: python-dateutil-2.6.1-6.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 9692
+  package_name: python-dateutil
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-dateutil#e8441401ab6a860bcd370ffde42e9f605bb92e3d
+  start_time: '2018-08-12 13:01:26.000775'
+  start_ts: 1534078886.00078
+  state: 1
+  task_id: 17786744
+  version: 2.6.1
+  volume_id: 9
+  volume_name: rhel-8
+747020:
+  build_id: 747020
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 14:34:09.006942'
+  completion_ts: 1534084449.00694
+  creation_event_id: 21107091
+  creation_time: '2018-08-12 13:03:07.114456'
+  creation_ts: 1534078987.11446
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libassuan?#3de5b0bcfc1ed6c812fd4bb6e171584655be414a
+  id: 747020
+  name: libassuan
+  nvr: libassuan-2.5.1-3.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 11689
+  package_name: libassuan
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/libassuan#3de5b0bcfc1ed6c812fd4bb6e171584655be414a
+  start_time: '2018-08-12 13:03:07.114456'
+  start_ts: 1534078987.11446
+  state: 1
+  task_id: 17785514
+  version: 2.5.1
+  volume_id: 9
+  volume_name: rhel-8
+747111:
+  build_id: 747111
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 15:08:57.071389'
+  completion_ts: 1534086537.07139
+  creation_event_id: 21108028
+  creation_time: '2018-08-12 13:22:41.029274'
+  creation_ts: 1534080161.02927
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libgpg-error?#ac00f435a46e5609f4a4504a87fed9edcd51f374
+  id: 747111
+  name: libgpg-error
+  nvr: libgpg-error-1.31-1.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 1923
+  package_name: libgpg-error
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/libgpg-error#ac00f435a46e5609f4a4504a87fed9edcd51f374
+  start_time: '2018-08-12 13:22:41.029274'
+  start_ts: 1534080161.02927
+  state: 1
+  task_id: 17785598
+  version: '1.31'
+  volume_id: 9
+  volume_name: rhel-8
+747162:
+  build_id: 747162
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 15:33:56.497199'
+  completion_ts: 1534088036.4972
+  creation_event_id: 21108620
+  creation_time: '2018-08-12 13:34:13.974343'
+  creation_ts: 1534080853.97434
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libmetalink?#9db18453d8f15058aa2ed53a91d96e95bc310122
+  id: 747162
+  name: libmetalink
+  nvr: libmetalink-0.1.3-7.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 54477
+  package_name: libmetalink
+  release: 7.el8
+  source: git://pkgs.devel.redhat.com/rpms/libmetalink#9db18453d8f15058aa2ed53a91d96e95bc310122
+  start_time: '2018-08-12 13:34:13.974343'
+  start_ts: 1534080853.97434
+  state: 1
+  task_id: 17785653
+  version: 0.1.3
+  volume_id: 9
+  volume_name: rhel-8
+747165:
+  build_id: 747165
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 15:34:31.232025'
+  completion_ts: 1534088071.23202
+  creation_event_id: 21108630
+  creation_time: '2018-08-12 13:34:25.013399'
+  creation_ts: 1534080865.0134
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libksba?#5330764c41688700b0e275abd191571061788dd5
+  id: 747165
+  name: libksba
+  nvr: libksba-1.3.5-7.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 11688
+  package_name: libksba
+  release: 7.el8
+  source: git://pkgs.devel.redhat.com/rpms/libksba#5330764c41688700b0e275abd191571061788dd5
+  start_time: '2018-08-12 13:34:25.013399'
+  start_ts: 1534080865.0134
+  state: 1
+  task_id: 17785638
+  version: 1.3.5
+  volume_id: 9
+  volume_name: rhel-8
+747178:
+  build_id: 747178
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 15:37:48.337794'
+  completion_ts: 1534088268.33779
+  creation_event_id: 21108883
+  creation_time: '2018-08-12 13:40:41.604620'
+  creation_ts: 1534081241.60462
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libmnl?#a5c8227fcb05868272b9df79acb750dae0029e2c
+  id: 747178
+  name: libmnl
+  nvr: libmnl-1.0.4-6.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 34807
+  package_name: libmnl
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/libmnl#a5c8227fcb05868272b9df79acb750dae0029e2c
+  start_time: '2018-08-12 13:40:41.604620'
+  start_ts: 1534081241.60462
+  state: 1
+  task_id: 17785659
+  version: 1.0.4
+  volume_id: 9
+  volume_name: rhel-8
+747193:
+  build_id: 747193
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 13:45:27.752106'
+  completion_ts: 1534081527.75211
+  creation_event_id: 21109056
+  creation_time: '2018-08-12 13:43:50.972875'
+  creation_ts: 1534081430.97288
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-idna?#d8344b1f29b2a1cbbd3775ae8c7c796379b583a9
+  id: 747193
+  name: python-idna
+  nvr: python-idna-2.5-5.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 54340
+  package_name: python-idna
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-idna#d8344b1f29b2a1cbbd3775ae8c7c796379b583a9
+  start_time: '2018-08-12 13:43:50.972875'
+  start_ts: 1534081430.97288
+  state: 1
+  task_id: 17786771
+  version: '2.5'
+  volume_id: 9
+  volume_name: rhel-8
+747205:
+  build_id: 747205
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 15:45:38.275190'
+  completion_ts: 1534088738.27519
+  creation_event_id: 21109127
+  creation_time: '2018-08-12 13:44:53.599159'
+  creation_ts: 1534081493.59916
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libnsl2?#3aaef48927091509dfedb2a21bf8b81f460f89e1
+  id: 747205
+  name: libnsl2
+  nvr: libnsl2-1.2.0-2.20180605git4a062cf.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 64980
+  package_name: libnsl2
+  release: 2.20180605git4a062cf.el8
+  source: git://pkgs.devel.redhat.com/rpms/libnsl2#3aaef48927091509dfedb2a21bf8b81f460f89e1
+  start_time: '2018-08-12 13:44:53.599159'
+  start_ts: 1534081493.59916
+  state: 1
+  task_id: 17785682
+  version: 1.2.0
+  volume_id: 9
+  volume_name: rhel-8
+747226:
+  build_id: 747226
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 13:53:53.917553'
+  completion_ts: 1534082033.91755
+  creation_event_id: 21109519
+  creation_time: '2018-08-12 13:51:24.556297'
+  creation_ts: 1534081884.5563
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-iniparse?#a34eb76c56747a185d15c5fb7dd44ae5a66bfcf9
+  id: 747226
+  name: python-iniparse
+  nvr: python-iniparse-0.4-31.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 4343
+  package_name: python-iniparse
+  release: 31.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-iniparse#a34eb76c56747a185d15c5fb7dd44ae5a66bfcf9
+  start_time: '2018-08-12 13:51:24.556297'
+  start_ts: 1534081884.5563
+  state: 1
+  task_id: 17786777
+  version: '0.4'
+  volume_id: 9
+  volume_name: rhel-8
+747252:
+  build_id: 747252
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 14:11:42.730069'
+  completion_ts: 1534083102.73007
+  creation_event_id: 21109997
+  creation_time: '2018-08-12 13:59:49.662407'
+  creation_ts: 1534082389.66241
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/librtas?#5bd611030a1a6478c84dcfc7a0860fb100328113
+  id: 747252
+  name: librtas
+  nvr: librtas-2.0.2-1.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 1965
+  package_name: librtas
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/librtas#5bd611030a1a6478c84dcfc7a0860fb100328113
+  start_time: '2018-08-12 13:59:49.662407'
+  start_ts: 1534082389.66241
+  state: 1
+  task_id: 17785745
+  version: 2.0.2
+  volume_id: 9
+  volume_name: rhel-8
+747270:
+  build_id: 747270
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 16:03:04.254933'
+  completion_ts: 1534089784.25493
+  creation_event_id: 21110214
+  creation_time: '2018-08-12 14:05:47.314542'
+  creation_ts: 1534082747.31454
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libsigsegv?#67798a99164bf6a86104365323cdd1e96aa481ac
+  id: 747270
+  name: libsigsegv
+  nvr: libsigsegv-2.11-5.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 14987
+  package_name: libsigsegv
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/libsigsegv#67798a99164bf6a86104365323cdd1e96aa481ac
+  start_time: '2018-08-12 14:05:47.314542'
+  start_ts: 1534082747.31454
+  state: 1
+  task_id: 17785757
+  version: '2.11'
+  volume_id: 9
+  volume_name: rhel-8
+747294:
+  build_id: 747294
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 16:11:01.829578'
+  completion_ts: 1534090261.82958
+  creation_event_id: 21110510
+  creation_time: '2018-08-12 14:13:26.044141'
+  creation_ts: 1534083206.04414
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libtasn1?#40055340ab66e9c05f1a56302a1a3e0cb25857c6
+  id: 747294
+  name: libtasn1
+  nvr: libtasn1-4.13-3.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 4563
+  package_name: libtasn1
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/libtasn1#40055340ab66e9c05f1a56302a1a3e0cb25857c6
+  start_time: '2018-08-12 14:13:26.044141'
+  start_ts: 1534083206.04414
+  state: 1
+  task_id: 17785776
+  version: '4.13'
+  volume_id: 9
+  volume_name: rhel-8
+747306:
+  build_id: 747306
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 16:16:31.803475'
+  completion_ts: 1534090591.80347
+  creation_event_id: 21110661
+  creation_time: '2018-08-12 14:16:18.320642'
+  creation_ts: 1534083378.32064
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libverto?#c208df9dbddec8fb6bfc8ad0e57d10d183166ca0
+  id: 747306
+  name: libverto
+  nvr: libverto-0.3.0-5.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 35376
+  package_name: libverto
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/libverto#c208df9dbddec8fb6bfc8ad0e57d10d183166ca0
+  start_time: '2018-08-12 14:16:18.320642'
+  start_ts: 1534083378.32064
+  state: 1
+  task_id: 17785799
+  version: 0.3.0
+  volume_id: 9
+  volume_name: rhel-8
+747310:
+  build_id: 747310
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 16:11:54.794849'
+  completion_ts: 1534090314.79485
+  creation_event_id: 21110692
+  creation_time: '2018-08-12 14:17:03.061324'
+  creation_ts: 1534083423.06132
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libutempter?#e269bbe32b6035d279754a5ee33a9e017ab337b8
+  id: 747310
+  name: libutempter
+  nvr: libutempter-1.1.6-14.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 3387
+  package_name: libutempter
+  release: 14.el8
+  source: git://pkgs.devel.redhat.com/rpms/libutempter#e269bbe32b6035d279754a5ee33a9e017ab337b8
+  start_time: '2018-08-12 14:17:03.061324'
+  start_ts: 1534083423.06132
+  state: 1
+  task_id: 17785792
+  version: 1.1.6
+  volume_id: 9
+  volume_name: rhel-8
+747381:
+  build_id: 747381
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 16:39:51.161715'
+  completion_ts: 1534091991.16172
+  creation_event_id: 21111660
+  creation_time: '2018-08-12 14:42:59.063355'
+  creation_ts: 1534084979.06335
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libyaml?#23f1a0c7bf8a0013a158d71431038038f95ca6cb
+  id: 747381
+  name: libyaml
+  nvr: libyaml-0.1.7-5.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 11185
+  package_name: libyaml
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/libyaml#23f1a0c7bf8a0013a158d71431038038f95ca6cb
+  start_time: '2018-08-12 14:42:59.063355'
+  start_ts: 1534084979.06335
+  state: 1
+  task_id: 17785867
+  version: 0.1.7
+  volume_id: 9
+  volume_name: rhel-8
+747521:
+  build_id: 747521
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 17:11:36.446563'
+  completion_ts: 1534093896.44656
+  creation_event_id: 21113326
+  creation_time: '2018-08-12 15:20:19.465758'
+  creation_ts: 1534087219.46576
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/mpfr?#7f705032792f282cb684476c9da5bcdbeaca46de
+  id: 747521
+  name: mpfr
+  nvr: mpfr-3.1.6-1.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 10903
+  package_name: mpfr
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/mpfr#7f705032792f282cb684476c9da5bcdbeaca46de
+  start_time: '2018-08-12 15:20:19.465758'
+  start_ts: 1534087219.46576
+  state: 1
+  task_id: 17786018
+  version: 3.1.6
+  volume_id: 9
+  volume_name: rhel-8
+747578:
+  build_id: 747578
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 15:37:01.933179'
+  completion_ts: 1534088221.93318
+  creation_event_id: 21113914
+  creation_time: '2018-08-12 15:34:27.314399'
+  creation_ts: 1534088067.3144
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-pysocks?#7d9d71368d52d8212cee62f3c27e446ec1ef4658
+  id: 747578
+  name: python-pysocks
+  nvr: python-pysocks-1.6.8-3.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 58390
+  package_name: python-pysocks
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-pysocks#7d9d71368d52d8212cee62f3c27e446ec1ef4658
+  start_time: '2018-08-12 15:34:27.314399'
+  start_ts: 1534088067.3144
+  state: 1
+  task_id: 17786832
+  version: 1.6.8
+  volume_id: 9
+  volume_name: rhel-8
+747600:
+  build_id: 747600
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 17:17:16.796933'
+  completion_ts: 1534094236.79693
+  creation_event_id: 21114185
+  creation_time: '2018-08-12 15:40:13.596919'
+  creation_ts: 1534088413.59692
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/npth?#a4981bb31f79089dc8b3457db23d090cfec97e2a
+  id: 747600
+  name: npth
+  nvr: npth-1.5-4.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 54480
+  package_name: npth
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/npth#a4981bb31f79089dc8b3457db23d090cfec97e2a
+  start_time: '2018-08-12 15:40:13.596919'
+  start_ts: 1534088413.59692
+  state: 1
+  task_id: 17786095
+  version: '1.5'
+  volume_id: 9
+  volume_name: rhel-8
+747717:
+  build_id: 747717
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 16:23:13.233261'
+  completion_ts: 1534090993.23326
+  creation_event_id: 21115734
+  creation_time: '2018-08-12 16:21:22.754756'
+  creation_ts: 1534090882.75476
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-six?#b3661c255a5569db674adbb27e1ffa6cd35ba017
+  id: 747717
+  name: python-six
+  nvr: python-six-1.11.0-8.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 41053
+  package_name: python-six
+  release: 8.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-six#b3661c255a5569db674adbb27e1ffa6cd35ba017
+  start_time: '2018-08-12 16:21:22.754756'
+  start_ts: 1534090882.75476
+  state: 1
+  task_id: 17786856
+  version: 1.11.0
+  volume_id: 9
+  volume_name: rhel-8
+748188:
+  build_id: 748188
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 17:24:18.931684'
+  completion_ts: 1534094658.93168
+  creation_event_id: 21119932
+  creation_time: '2018-08-12 17:22:42.041177'
+  creation_ts: 1534094562.04118
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/publicsuffix-list?#33aaa9362fba95857a515475feaff035f59b3384
+  id: 748188
+  name: publicsuffix-list
+  nvr: publicsuffix-list-20180723-1.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 59982
+  package_name: publicsuffix-list
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/publicsuffix-list#33aaa9362fba95857a515475feaff035f59b3384
+  start_time: '2018-08-12 17:22:42.041177'
+  start_ts: 1534094562.04118
+  state: 1
+  task_id: 17786703
+  version: '20180723'
+  volume_id: 9
+  volume_name: rhel-8
+748275:
+  build_id: 748275
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 19:24:46.240535'
+  completion_ts: 1534101886.24054
+  creation_event_id: 21120932
+  creation_time: '2018-08-12 17:46:49.567268'
+  creation_ts: 1534096009.56727
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/readline?#a73f0afebb2bcab9432598512ed4c166710381a4
+  id: 748275
+  name: readline
+  nvr: readline-7.0-10.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 2636
+  package_name: readline
+  release: 10.el8
+  source: git://pkgs.devel.redhat.com/rpms/readline#a73f0afebb2bcab9432598512ed4c166710381a4
+  start_time: '2018-08-12 17:46:49.567268'
+  start_ts: 1534096009.56727
+  state: 1
+  task_id: 17786949
+  version: '7.0'
+  volume_id: 9
+  volume_name: rhel-8
+748292:
+  build_id: 748292
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-12 17:53:42.725871'
+  completion_ts: 1534096422.72587
+  creation_event_id: 21121118
+  creation_time: '2018-08-12 17:52:02.639103'
+  creation_ts: 1534096322.6391
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/rootfiles?#5a644f3b114add933d247f8c8f136c41e80dd0b2
+  id: 748292
+  name: rootfiles
+  nvr: rootfiles-8.1-22.el8
+  owner_id: 1665
+  owner_name: tdawson
+  package_id: 2926
+  package_name: rootfiles
+  release: 22.el8
+  source: git://pkgs.devel.redhat.com/rpms/rootfiles#5a644f3b114add933d247f8c8f136c41e80dd0b2
+  start_time: '2018-08-12 17:52:02.639103'
+  start_ts: 1534096322.6391
+  state: 1
+  task_id: 17786974
+  version: '8.1'
+  volume_id: 9
+  volume_name: rhel-8
+753876:
+  build_id: 753876
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-08-17 20:50:29.069375'
+  completion_ts: 1534539029.06938
+  creation_event_id: 21240930
+  creation_time: '2018-08-17 20:44:58.677168'
+  creation_ts: 1534538698.67717
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libunistring#10c31f1b7221e427e7ae5925cd95860117eb0ccf
+  id: 753876
+  name: libunistring
+  nvr: libunistring-0.9.9-3.el8
+  owner_id: 1972
+  owner_name: mfabian
+  package_id: 32931
+  package_name: libunistring
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/libunistring#10c31f1b7221e427e7ae5925cd95860117eb0ccf
+  start_time: '2018-08-17 20:44:58.677168'
+  start_ts: 1534538698.67717
+  state: 1
+  task_id: 17936032
+  version: 0.9.9
+  volume_id: 9
+  volume_name: rhel-8
+761272:
+  build_id: 761272
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-09-03 10:23:16.385231'
+  completion_ts: 1535970196.38523
+  creation_event_id: 21426191
+  creation_time: '2018-09-03 10:15:29.365549'
+  creation_ts: 1535969729.36555
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/pcre#72e01e347afd513a5c84669b0fd0c5661794ac19
+  id: 761272
+  name: pcre
+  nvr: pcre-8.42-4.el8
+  owner_id: 1207
+  owner_name: ppisar
+  package_id: 2369
+  package_name: pcre
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/pcre#72e01e347afd513a5c84669b0fd0c5661794ac19
+  start_time: '2018-09-03 10:15:29.365549'
+  start_ts: 1535969729.36555
+  state: 1
+  task_id: 18137329
+  version: '8.42'
+  volume_id: 9
+  volume_name: rhel-8
+774503:
+  build_id: 774503
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-09-28 10:22:12.525048'
+  completion_ts: 1538130132.52505
+  creation_event_id: 21917849
+  creation_time: '2018-09-28 10:18:54.435901'
+  creation_ts: 1538129934.4359
+  epoch: 1
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gdbm#e60961ea5ba78ead745dc35d7982464b3fa8241a
+  id: 774503
+  name: gdbm
+  nvr: gdbm-1.18-1.el8
+  owner_id: 2769
+  owner_name: mskalick
+  package_id: 527
+  package_name: gdbm
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/gdbm#e60961ea5ba78ead745dc35d7982464b3fa8241a
+  start_time: '2018-09-28 10:18:54.435901'
+  start_ts: 1538129934.4359
+  state: 1
+  task_id: 18569332
+  version: '1.18'
+  volume_id: 9
+  volume_name: rhel-8
+782991:
+  build_id: 782991
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-10-16 14:03:23.716476'
+  completion_ts: 1539698603.71648
+  creation_event_id: 22149041
+  creation_time: '2018-10-16 13:59:22.133802'
+  creation_ts: 1539698362.1338
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/json-glib#9c5843980e980d2c8163e684ff2b81a7acf49bad
+  id: 782991
+  name: json-glib
+  nvr: json-glib-1.4.4-1.el8
+  owner_id: 3004
+  owner_name: klember
+  package_id: 14701
+  package_name: json-glib
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/json-glib#9c5843980e980d2c8163e684ff2b81a7acf49bad
+  start_time: '2018-10-16 13:59:22.133802'
+  start_ts: 1539698362.1338
+  state: 1
+  task_id: 18804462
+  version: 1.4.4
+  volume_id: 9
+  volume_name: rhel-8
+791846:
+  build_id: 791846
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-10-31 19:53:34.465925'
+  completion_ts: 1541015614.46592
+  creation_event_id: 22301407
+  creation_time: '2018-10-31 19:49:35.977170'
+  creation_ts: 1541015375.97717
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/virt-what#5408dcbf81cf0d1ef8f1abfa594f90388061005f
+  id: 791846
+  name: virt-what
+  nvr: virt-what-1.18-6.el8
+  owner_id: 555
+  owner_name: rjones
+  package_id: 30815
+  package_name: virt-what
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/virt-what#5408dcbf81cf0d1ef8f1abfa594f90388061005f
+  start_time: '2018-10-31 19:49:35.977170'
+  start_ts: 1541015375.97717
+  state: 1
+  task_id: 19000461
+  version: '1.18'
+  volume_id: 9
+  volume_name: rhel-8
+794639:
+  build_id: 794639
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-11-05 14:26:15.487245'
+  completion_ts: 1541427975.48725
+  creation_event_id: 22368087
+  creation_time: '2018-11-05 14:18:25.126513'
+  creation_ts: 1541427505.12651
+  epoch: 1
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/findutils#6f1548a04bb65985b57d417d8830c068b697dc8d
+  id: 794639
+  name: findutils
+  nvr: findutils-4.6.0-20.el8
+  owner_id: 889
+  owner_name: kdudka
+  package_id: 465
+  package_name: findutils
+  release: 20.el8
+  source: git://pkgs.devel.redhat.com/rpms/findutils#6f1548a04bb65985b57d417d8830c068b697dc8d
+  start_time: '2018-11-05 14:18:25.126513'
+  start_ts: 1541427505.12651
+  state: 1
+  task_id: 19062924
+  version: 4.6.0
+  volume_id: 9
+  volume_name: rhel-8
+800820:
+  build_id: 800820
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-11-15 10:01:21.188662'
+  completion_ts: 1542276081.18866
+  creation_event_id: 22481185
+  creation_time: '2018-11-15 09:59:48.797579'
+  creation_ts: 1542275988.79758
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-inotify#f57fac45551fa077aa273dab9780688212baef3d
+  id: 800820
+  name: python-inotify
+  nvr: python-inotify-0.9.6-13.el8
+  owner_id: 4437
+  owner_name: mmarusak
+  package_id: 16764
+  package_name: python-inotify
+  release: 13.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-inotify#f57fac45551fa077aa273dab9780688212baef3d
+  start_time: '2018-11-15 09:59:48.797579'
+  start_ts: 1542275988.79758
+  state: 1
+  task_id: 19189704
+  version: 0.9.6
+  volume_id: 9
+  volume_name: rhel-8
+802356:
+  build_id: 802356
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-11-20 10:21:17.541313'
+  completion_ts: 1542709277.54131
+  creation_event_id: 22504416
+  creation_time: '2018-11-20 10:17:23.833064'
+  creation_ts: 1542709043.83306
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/usermode#e0c5902be7b68157d7b4b7861ec6d8dde29f23e8
+  id: 802356
+  name: usermode
+  nvr: usermode-1.113-1.el8
+  owner_id: 4262
+  owner_name: jkucera
+  package_id: 1201
+  package_name: usermode
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/usermode#e0c5902be7b68157d7b4b7861ec6d8dde29f23e8
+  start_time: '2018-11-20 10:17:23.833064'
+  start_ts: 1542709043.83306
+  state: 1
+  task_id: 19224307
+  version: '1.113'
+  volume_id: 9
+  volume_name: rhel-8
+803342:
+  build_id: 803342
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-11-22 14:10:28.869324'
+  completion_ts: 1542895828.86932
+  creation_event_id: 22529207
+  creation_time: '2018-11-22 14:07:12.750976'
+  creation_ts: 1542895632.75098
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/xz#6d2e8135582cdc986dad07f7131791bb52f1c3e4
+  id: 803342
+  name: xz
+  nvr: xz-5.2.4-3.el8
+  owner_id: 1613
+  owner_name: praiskup
+  package_id: 17973
+  package_name: xz
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/xz#6d2e8135582cdc986dad07f7131791bb52f1c3e4
+  start_time: '2018-11-22 14:07:12.750976'
+  start_ts: 1542895632.75098
+  state: 1
+  task_id: 19254961
+  version: 5.2.4
+  volume_id: 9
+  volume_name: rhel-8
+804625:
+  build_id: 804625
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-11-26 15:33:41.411978'
+  completion_ts: 1543246421.41198
+  creation_event_id: 22546128
+  creation_time: '2018-11-26 15:30:28.312216'
+  creation_ts: 1543246228.31222
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/cracklib#89e354f1cbadcb79257a8d0dbe802b3aa76196b5
+  id: 804625
+  name: cracklib
+  nvr: cracklib-2.9.6-15.el8
+  owner_id: 118
+  owner_name: tmraz
+  package_id: 299
+  package_name: cracklib
+  release: 15.el8
+  source: git://pkgs.devel.redhat.com/rpms/cracklib#89e354f1cbadcb79257a8d0dbe802b3aa76196b5
+  start_time: '2018-11-26 15:30:28.312216'
+  start_ts: 1543246228.31222
+  state: 1
+  task_id: 19280802
+  version: 2.9.6
+  volume_id: 9
+  volume_name: rhel-8
+812275:
+  build_id: 812275
+  cg_id: null
+  cg_name: null
+  completion_time: '2018-12-10 14:13:46.931799'
+  completion_ts: 1544451226.9318
+  creation_event_id: 22776805
+  creation_time: '2018-12-10 14:09:52.821324'
+  creation_ts: 1544450992.82132
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-ethtool#09b4f96cbd43bf2affc1963331e1662db1ecb919
+  id: 812275
+  name: python-ethtool
+  nvr: python-ethtool-0.14-3.el8
+  owner_id: 3705
+  owner_name: lbalhar
+  package_id: 4494
+  package_name: python-ethtool
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-ethtool#09b4f96cbd43bf2affc1963331e1662db1ecb919
+  start_time: '2018-12-10 14:09:52.821324'
+  start_ts: 1544450992.82132
+  state: 1
+  task_id: 19437546
+  version: '0.14'
+  volume_id: 9
+  volume_name: rhel-8
+829223:
+  build_id: 829223
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-01-16 13:08:30.340147'
+  completion_ts: 1547644110.34015
+  creation_event_id: 23087255
+  creation_time: '2019-01-16 13:00:55.009040'
+  creation_ts: 1547643655.00904
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/ncurses#3a9407e31f9f866583b7775b9cbc994b5aa754bd
+  id: 829223
+  name: ncurses
+  nvr: ncurses-6.1-7.20180224.el8
+  owner_id: 172
+  owner_name: mlichvar
+  package_id: 2238
+  package_name: ncurses
+  release: 7.20180224.el8
+  source: git://pkgs.devel.redhat.com/rpms/ncurses#3a9407e31f9f866583b7775b9cbc994b5aa754bd
+  start_time: '2019-01-16 13:00:55.009040'
+  start_ts: 1547643655.00904
+  state: 1
+  task_id: 19830598
+  version: '6.1'
+  volume_id: 9
+  volume_name: rhel-8
+893483:
+  build_id: 893483
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-05-08 09:56:39.081111'
+  completion_ts: 1557309399.08111
+  creation_event_id: 24525155
+  creation_time: '2019-05-08 09:55:08.411640'
+  creation_ts: 1557309308.41164
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-dmidecode#0000a651a46c5b2f01f1e9d33377c02174768c43
+  id: 893483
+  name: python-dmidecode
+  nvr: python-dmidecode-3.12.2-15.el8
+  owner_id: 4214
+  owner_name: lijiang
+  package_id: 11220
+  package_name: python-dmidecode
+  release: 15.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-dmidecode#0000a651a46c5b2f01f1e9d33377c02174768c43
+  start_time: '2019-05-08 09:55:08.411640'
+  start_ts: 1557309308.41164
+  state: 1
+  task_id: 21564533
+  version: 3.12.2
+  volume_id: 9
+  volume_name: rhel-8
+906174:
+  build_id: 906174
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-06-03 15:47:11.751637'
+  completion_ts: 1559576831.75164
+  creation_event_id: 24912887
+  creation_time: '2019-06-03 15:44:10.717077'
+  creation_ts: 1559576650.71708
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/lua#5cbfdee3d1907f553f0998853facb24e52016982
+  id: 906174
+  name: lua
+  nvr: lua-5.3.4-11.el8
+  owner_id: 230
+  owner_name: ffesti
+  package_id: 10836
+  package_name: lua
+  release: 11.el8
+  source: git://pkgs.devel.redhat.com/rpms/lua#5cbfdee3d1907f553f0998853facb24e52016982
+  start_time: '2019-06-03 15:44:10.717077'
+  start_ts: 1559576650.71708
+  state: 1
+  task_id: 21962566
+  version: 5.3.4
+  volume_id: 9
+  volume_name: rhel-8
+907679:
+  build_id: 907679
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-06-06 12:00:16.593984'
+  completion_ts: 1559822416.59398
+  creation_event_id: 25010765
+  creation_time: '2019-06-06 11:53:25.307384'
+  creation_ts: 1559822005.30738
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/dbus-python#45e35d535a5cd8f48ab9394b495dbf673eb903cd
+  id: 907679
+  name: dbus-python
+  nvr: dbus-python-1.2.4-15.el8
+  owner_id: 1687
+  owner_name: jboyer
+  package_id: 3371
+  package_name: dbus-python
+  release: 15.el8
+  source: git://pkgs.devel.redhat.com/rpms/dbus-python#45e35d535a5cd8f48ab9394b495dbf673eb903cd
+  start_time: '2019-06-06 11:53:25.307384'
+  start_ts: 1559822005.30738
+  state: 1
+  task_id: 22041041
+  version: 1.2.4
+  volume_id: 9
+  volume_name: rhel-8
+908277:
+  build_id: 908277
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-06-07 12:52:59.135102'
+  completion_ts: 1559911979.1351
+  creation_event_id: 25028133
+  creation_time: '2019-06-07 12:50:42.711481'
+  creation_ts: 1559911842.71148
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python36?#0107d5ea1b25775a09477c8be7605229a0a136bd
+  id: 908277
+  name: python36
+  nvr: python36-3.6.8-2.module+el8.1.0+3334+5cb623d7
+  owner_id: 4066
+  owner_name: mbs
+  package_id: 67639
+  package_name: python36
+  release: 2.module+el8.1.0+3334+5cb623d7
+  source: git://pkgs.devel.redhat.com/rpms/python36#0107d5ea1b25775a09477c8be7605229a0a136bd
+  start_time: '2019-06-07 12:50:42.711481'
+  start_ts: 1559911842.71148
+  state: 1
+  task_id: 22057214
+  version: 3.6.8
+  volume_id: 9
+  volume_name: rhel-8
+909244:
+  build_id: 909244
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-06-10 10:27:43.028174'
+  completion_ts: 1560162463.02817
+  creation_event_id: 25054431
+  creation_time: '2019-06-10 10:23:05.764166'
+  creation_ts: 1560162185.76417
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libidn2#844711723d62e709fb16cc01b988468b226e9659
+  id: 909244
+  name: libidn2
+  nvr: libidn2-2.2.0-1.el8
+  owner_id: 172
+  owner_name: mlichvar
+  package_id: 54476
+  package_name: libidn2
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/libidn2#844711723d62e709fb16cc01b988468b226e9659
+  start_time: '2019-06-10 10:23:05.764166'
+  start_ts: 1560162185.76417
+  state: 1
+  task_id: 22083916
+  version: 2.2.0
+  volume_id: 9
+  volume_name: rhel-8
+911719:
+  build_id: 911719
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-06-14 08:48:36.844035'
+  completion_ts: 1560502116.84403
+  creation_event_id: 25111640
+  creation_time: '2019-06-14 08:37:52.154271'
+  creation_ts: 1560501472.15427
+  epoch: 1
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gmp#4dc17181317221d892edd8c38de60467f6470d07
+  id: 911719
+  name: gmp
+  nvr: gmp-6.1.2-10.el8
+  owner_id: 3340
+  owner_name: jamartis
+  package_id: 589
+  package_name: gmp
+  release: 10.el8
+  source: git://pkgs.devel.redhat.com/rpms/gmp#4dc17181317221d892edd8c38de60467f6470d07
+  start_time: '2019-06-14 08:37:52.154271'
+  start_ts: 1560501472.15427
+  state: 1
+  task_id: 22149338
+  version: 6.1.2
+  volume_id: 9
+  volume_name: rhel-8
+919146:
+  build_id: 919146
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-06-26 19:20:43.090664'
+  completion_ts: 1561576843.09066
+  creation_event_id: 25326462
+  creation_time: '2019-06-26 19:11:16.627506'
+  creation_ts: 1561576276.62751
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libuser#5eebab5dfa0d39e3dd3890d45e682fce480ea006
+  id: 919146
+  name: libuser
+  nvr: libuser-0.62-23.el8
+  owner_id: 510
+  owner_name: jhrozek
+  package_id: 1987
+  package_name: libuser
+  release: 23.el8
+  source: git://pkgs.devel.redhat.com/rpms/libuser#5eebab5dfa0d39e3dd3890d45e682fce480ea006
+  start_time: '2019-06-26 19:11:16.627506'
+  start_ts: 1561576276.62751
+  state: 1
+  task_id: 22374785
+  version: '0.62'
+  volume_id: 9
+  volume_name: rhel-8
+936936:
+  build_id: 936936
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-07-24 16:05:32.675439'
+  completion_ts: 1563984332.67544
+  creation_event_id: 25687802
+  creation_time: '2019-07-24 16:00:00.245179'
+  creation_ts: 1563984000.24518
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libtirpc#143bca6dbc5bd42050fd3e111c82015530a93eb4
+  id: 936936
+  name: libtirpc
+  nvr: libtirpc-1.1.4-4.el8
+  owner_id: 150
+  owner_name: steved
+  package_id: 3434
+  package_name: libtirpc
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/libtirpc#143bca6dbc5bd42050fd3e111c82015530a93eb4
+  start_time: '2019-07-24 16:00:00.245179'
+  start_ts: 1563984000.24518
+  state: 1
+  task_id: 22767704
+  version: 1.1.4
+  volume_id: 9
+  volume_name: rhel-8
+989775:
+  build_id: 989775
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-10-17 08:02:31.286600'
+  completion_ts: 1571299351.2866
+  creation_event_id: 26818880
+  creation_time: '2019-10-17 07:59:25.575231'
+  creation_ts: 1571299165.57523
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-requests#0698f7814c7835c323828c7e1aa90e768593077b
+  id: 989775
+  name: python-requests
+  nvr: python-requests-2.20.0-2.1.el8_1
+  owner_id: 3344
+  owner_name: torsava
+  package_id: 33623
+  package_name: python-requests
+  release: 2.1.el8_1
+  source: git://pkgs.devel.redhat.com/rpms/python-requests#0698f7814c7835c323828c7e1aa90e768593077b
+  start_time: '2019-10-17 07:59:25.575231'
+  start_ts: 1571299165.57523
+  state: 1
+  task_id: 24110892
+  version: 2.20.0
+  volume_id: 9
+  volume_name: rhel-8
+1003002:
+  build_id: 1003002
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-11-05 08:39:32.245771'
+  completion_ts: 1572943172.24577
+  creation_event_id: 27119019
+  creation_time: '2019-11-05 08:35:23.342872'
+  creation_ts: 1572942923.34287
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libcap-ng#be0aa33305de7a4b9f74302d747537888178229f
+  id: 1003002
+  name: libcap-ng
+  nvr: libcap-ng-0.7.9-5.el8
+  owner_id: 4293
+  owner_name: mtamasko
+  package_id: 18016
+  package_name: libcap-ng
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/libcap-ng#be0aa33305de7a4b9f74302d747537888178229f
+  start_time: '2019-11-05 08:35:23.342872'
+  start_ts: 1572942923.34287
+  state: 1
+  task_id: 24455905
+  version: 0.7.9
+  volume_id: 9
+  volume_name: rhel-8
+1013911:
+  build_id: 1013911
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-11-19 10:55:07.943336'
+  completion_ts: 1574160907.94334
+  creation_event_id: 27382174
+  creation_time: '2019-11-19 10:51:05.700563'
+  creation_ts: 1574160665.70056
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/which#cf53e48c5c92672744f3b24d4e52cb5014cef416
+  id: 1013911
+  name: which
+  nvr: which-2.21-12.el8
+  owner_id: 67
+  owner_name: than
+  package_id: 1146
+  package_name: which
+  release: 12.el8
+  source: git://pkgs.devel.redhat.com/rpms/which#cf53e48c5c92672744f3b24d4e52cb5014cef416
+  start_time: '2019-11-19 10:51:05.700563'
+  start_ts: 1574160665.70056
+  state: 1
+  task_id: 24801756
+  version: '2.21'
+  volume_id: 9
+  volume_name: rhel-8
+1014155:
+  build_id: 1014155
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-11-19 14:27:12.981518'
+  completion_ts: 1574173632.98152
+  creation_event_id: 27433335
+  creation_time: '2019-11-19 14:19:22.389985'
+  creation_ts: 1574173162.38999
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/diffutils#c4f2935585b7b1c45abf59a440cf0d815142412d
+  id: 1014155
+  name: diffutils
+  nvr: diffutils-3.6-6.el8
+  owner_id: 67
+  owner_name: than
+  package_id: 356
+  package_name: diffutils
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/diffutils#c4f2935585b7b1c45abf59a440cf0d815142412d
+  start_time: '2019-11-19 14:19:22.389985'
+  start_ts: 1574173162.38999
+  state: 1
+  task_id: 24825939
+  version: '3.6'
+  volume_id: 9
+  volume_name: rhel-8
+1020741:
+  build_id: 1020741
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-11-26 19:44:04.083845'
+  completion_ts: 1574797444.08384
+  creation_event_id: 27562774
+  creation_time: '2019-11-26 19:34:22.084826'
+  creation_ts: 1574796862.08483
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libnl3#149d8419697353dee2482e3bbdadacb8d4c30ab8
+  id: 1020741
+  name: libnl3
+  nvr: libnl3-3.5.0-1.el8
+  owner_id: 2354
+  owner_name: thaller
+  package_id: 35441
+  package_name: libnl3
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/libnl3#149d8419697353dee2482e3bbdadacb8d4c30ab8
+  start_time: '2019-11-26 19:34:22.084826'
+  start_ts: 1574796862.08483
+  state: 1
+  task_id: 24972427
+  version: 3.5.0
+  volume_id: 9
+  volume_name: rhel-8
+1025058:
+  build_id: 1025058
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-12-01 06:42:31.381703'
+  completion_ts: 1575182551.3817
+  creation_event_id: 27630958
+  creation_time: '2019-12-01 06:38:44.299844'
+  creation_ts: 1575182324.29984
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/socat#44d3115c3c618ba1c5faea85adcaf9bf84b82825
+  id: 1025058
+  name: socat
+  nvr: socat-1.7.3.3-2.el8
+  owner_id: 2118
+  owner_name: pwouters
+  package_id: 17221
+  package_name: socat
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/socat#44d3115c3c618ba1c5faea85adcaf9bf84b82825
+  start_time: '2019-12-01 06:38:44.299844'
+  start_ts: 1575182324.29984
+  state: 1
+  task_id: 25059933
+  version: 1.7.3.3
+  volume_id: 9
+  volume_name: rhel-8
+1037354:
+  build_id: 1037354
+  cg_id: null
+  cg_name: null
+  completion_time: '2019-12-13 18:43:13.265169'
+  completion_ts: 1576262593.26517
+  creation_event_id: 27885611
+  creation_time: '2019-12-13 18:39:21.549473'
+  creation_ts: 1576262361.54947
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/passwd#be05db5f2a0a043b0b12f06ca58b84387c73bdf4
+  id: 1037354
+  name: passwd
+  nvr: passwd-0.80-3.el8
+  owner_id: 4262
+  owner_name: jkucera
+  package_id: 2359
+  package_name: passwd
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/passwd#be05db5f2a0a043b0b12f06ca58b84387c73bdf4
+  start_time: '2019-12-13 18:39:21.549473'
+  start_ts: 1576262361.54947
+  state: 1
+  task_id: 25364321
+  version: '0.80'
+  volume_id: 9
+  volume_name: rhel-8
+1054304:
+  build_id: 1054304
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-01-08 16:54:00.010013'
+  completion_ts: 1578502440.01001
+  creation_event_id: 28415791
+  creation_time: '2020-01-08 16:49:15.232077'
+  creation_ts: 1578502155.23208
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/audit#18705603a57530fef869f81f1e677ea7e7a397e7
+  id: 1054304
+  name: audit
+  nvr: audit-3.0-0.17.20191104git1c2f876.el8
+  owner_id: 117
+  owner_name: sgrubb
+  package_id: 159
+  package_name: audit
+  release: 0.17.20191104git1c2f876.el8
+  source: git://pkgs.devel.redhat.com/rpms/audit#18705603a57530fef869f81f1e677ea7e7a397e7
+  start_time: '2020-01-08 16:49:15.232077'
+  start_ts: 1578502155.23208
+  state: 1
+  task_id: 25670541
+  version: '3.0'
+  volume_id: 9
+  volume_name: rhel-8
+1054659:
+  build_id: 1054659
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-01-09 10:20:54.048176'
+  completion_ts: 1578565254.04818
+  creation_event_id: 28422252
+  creation_time: '2020-01-09 10:15:13.702952'
+  creation_ts: 1578564913.70295
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/texinfo#f70619ed3b9835ab3a476eb89c00c753384a31dc
+  id: 1054659
+  name: texinfo
+  nvr: texinfo-6.5-6.el8
+  owner_id: 502
+  owner_name: vcrhonek
+  package_id: 1303
+  package_name: texinfo
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/texinfo#f70619ed3b9835ab3a476eb89c00c753384a31dc
+  start_time: '2020-01-09 10:15:13.702952'
+  start_ts: 1578564913.70295
+  state: 1
+  task_id: 25678403
+  version: '6.5'
+  volume_id: 9
+  volume_name: rhel-8
+1147995:
+  build_id: 1147995
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-03-26 13:03:32.964368'
+  completion_ts: 1585227812.96437
+  creation_event_id: 30360056
+  creation_time: '2020-03-26 12:59:39.514315'
+  creation_ts: 1585227579.51431
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-setuptools#427ea974e8d8dec25bf3e3bdd65c37eeeff8a99e
+  id: 1147995
+  name: python-setuptools
+  nvr: python-setuptools-39.2.0-6.el8
+  owner_id: 3286
+  owner_name: cstratak
+  package_id: 3226
+  package_name: python-setuptools
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-setuptools#427ea974e8d8dec25bf3e3bdd65c37eeeff8a99e
+  start_time: '2020-03-26 12:59:39.514315'
+  start_ts: 1585227579.51431
+  state: 1
+  task_id: 27503294
+  version: 39.2.0
+  volume_id: 9
+  volume_name: rhel-8
+1157209:
+  build_id: 1157209
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-04-03 11:14:28.869960'
+  completion_ts: 1585912468.86996
+  creation_event_id: 30563219
+  creation_time: '2020-04-03 11:00:45.434658'
+  creation_ts: 1585911645.43466
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/wget#554cfcca2dda86c49eed4be11fb911357d74abc8
+  id: 1157209
+  name: wget
+  nvr: wget-1.19.5-10.el8
+  owner_id: 1900
+  owner_name: thozza
+  package_id: 1147
+  package_name: wget
+  release: 10.el8
+  source: git://pkgs.devel.redhat.com/rpms/wget#554cfcca2dda86c49eed4be11fb911357d74abc8
+  start_time: '2020-04-03 11:00:45.434658'
+  start_ts: 1585911645.43466
+  state: 1
+  task_id: 27696577
+  version: 1.19.5
+  volume_id: 9
+  volume_name: rhel-8
+1165793:
+  build_id: 1165793
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-04-14 12:19:27.782641'
+  completion_ts: 1586866767.78264
+  creation_event_id: 30823996
+  creation_time: '2020-04-14 12:10:24.443835'
+  creation_ts: 1586866224.44384
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/coreutils#4baab245c3fda3410c84eff776bbea8561c56e1e
+  id: 1165793
+  name: coreutils
+  nvr: coreutils-8.30-8.el8
+  owner_id: 889
+  owner_name: kdudka
+  package_id: 294
+  package_name: coreutils
+  release: 8.el8
+  source: git://pkgs.devel.redhat.com/rpms/coreutils#4baab245c3fda3410c84eff776bbea8561c56e1e
+  start_time: '2020-04-14 12:10:24.443835'
+  start_ts: 1586866224.44384
+  state: 1
+  task_id: 27915058
+  version: '8.30'
+  volume_id: 9
+  volume_name: rhel-8
+1166694:
+  build_id: 1166694
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-04-15 09:43:27.571423'
+  completion_ts: 1586943807.57142
+  creation_event_id: 30843063
+  creation_time: '2020-04-15 09:41:49.904787'
+  creation_ts: 1586943709.90479
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/setup#e1ce54d3a8c72177b4bfce208870f507b21e56f9
+  id: 1166694
+  name: setup
+  nvr: setup-2.12.2-6.el8
+  owner_id: 2110
+  owner_name: pzhukov
+  package_id: 3006
+  package_name: setup
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/setup#e1ce54d3a8c72177b4bfce208870f507b21e56f9
+  start_time: '2020-04-15 09:41:49.904787'
+  start_ts: 1586943709.90479
+  state: 1
+  task_id: 27941114
+  version: 2.12.2
+  volume_id: 9
+  volume_name: rhel-8
+1168710:
+  build_id: 1168710
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-04-17 07:50:07.511639'
+  completion_ts: 1587109807.51164
+  creation_event_id: 30920639
+  creation_time: '2020-04-17 07:42:24.644955'
+  creation_ts: 1587109344.64495
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/chkconfig#53ee67e595df3f2ab047b17e5f8da21cda83fe16
+  id: 1168710
+  name: chkconfig
+  nvr: chkconfig-1.13-2.el8
+  owner_id: 4969
+  owner_name: jamacku
+  package_id: 251
+  package_name: chkconfig
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/chkconfig#53ee67e595df3f2ab047b17e5f8da21cda83fe16
+  start_time: '2020-04-17 07:42:24.644955'
+  start_ts: 1587109344.64495
+  state: 1
+  task_id: 28006097
+  version: '1.13'
+  volume_id: 9
+  volume_name: rhel-8
+1172035:
+  build_id: 1172035
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-04-20 11:29:59.371259'
+  completion_ts: 1587382199.37126
+  creation_event_id: 30997072
+  creation_time: '2020-04-20 11:26:51.611900'
+  creation_ts: 1587382011.6119
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/lsof#6d2ecfc02bfac758043581543fffff77df26a5f1
+  id: 1172035
+  name: lsof
+  nvr: lsof-4.93.2-1.el8
+  owner_id: 3430
+  owner_name: jrybar
+  package_id: 2040
+  package_name: lsof
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/lsof#6d2ecfc02bfac758043581543fffff77df26a5f1
+  start_time: '2020-04-20 11:26:51.611900'
+  start_ts: 1587382011.6119
+  state: 1
+  task_id: 28065929
+  version: 4.93.2
+  volume_id: 9
+  volume_name: rhel-8
+1175627:
+  build_id: 1175627
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-04-23 06:28:24.524952'
+  completion_ts: 1587623304.52495
+  creation_event_id: 31077586
+  creation_time: '2020-04-23 06:24:35.509740'
+  creation_ts: 1587623075.50974
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/filesystem#7c0cf9bff649b2c714ca6155dcfb7adaf6876e84
+  id: 1175627
+  name: filesystem
+  nvr: filesystem-3.8-3.el8
+  owner_id: 2110
+  owner_name: pzhukov
+  package_id: 463
+  package_name: filesystem
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/filesystem#7c0cf9bff649b2c714ca6155dcfb7adaf6876e84
+  start_time: '2020-04-23 06:24:35.509740'
+  start_ts: 1587623075.50974
+  state: 1
+  task_id: 28134908
+  version: '3.8'
+  volume_id: 9
+  volume_name: rhel-8
+1177309:
+  build_id: 1177309
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-04-24 15:32:00.725367'
+  completion_ts: 1587742320.72537
+  creation_event_id: 31106025
+  creation_time: '2020-04-24 15:27:27.719736'
+  creation_ts: 1587742047.71974
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/expat#8a586ebd7d27bd3e43ce1a63be713686b3fc1195
+  id: 1177309
+  name: expat
+  nvr: expat-2.2.5-4.el8
+  owner_id: 113
+  owner_name: jorton
+  package_id: 446
+  package_name: expat
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/expat#8a586ebd7d27bd3e43ce1a63be713686b3fc1195
+  start_time: '2020-04-24 15:27:27.719736'
+  start_ts: 1587742047.71974
+  state: 1
+  task_id: 28167275
+  version: 2.2.5
+  volume_id: 9
+  volume_name: rhel-8
+1184235:
+  build_id: 1184235
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-05-04 16:38:55.899519'
+  completion_ts: 1588610335.89952
+  creation_event_id: 31275935
+  creation_time: '2020-05-04 16:31:46.220026'
+  creation_ts: 1588609906.22003
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gnupg2#db5b2a68a75a1ebf713564b974ff4e1158f539eb
+  id: 1184235
+  name: gnupg2
+  nvr: gnupg2-2.2.20-2.el8
+  owner_id: 118
+  owner_name: tmraz
+  package_id: 11685
+  package_name: gnupg2
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/gnupg2#db5b2a68a75a1ebf713564b974ff4e1158f539eb
+  start_time: '2020-05-04 16:31:46.220026'
+  start_ts: 1588609906.22003
+  state: 1
+  task_id: 28358990
+  version: 2.2.20
+  volume_id: 9
+  volume_name: rhel-8
+1188151:
+  build_id: 1188151
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-05-07 17:44:02.769939'
+  completion_ts: 1588873442.76994
+  creation_event_id: 31340664
+  creation_time: '2020-05-07 17:34:57.540994'
+  creation_ts: 1588872897.54099
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/cyrus-sasl#c0c907dee86d26e3a3a04cc5c7097ab4cf9bffaf
+  id: 1188151
+  name: cyrus-sasl
+  nvr: cyrus-sasl-2.1.27-5.el8
+  owner_id: 500
+  owner_name: ssorce
+  package_id: 321
+  package_name: cyrus-sasl
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/cyrus-sasl#c0c907dee86d26e3a3a04cc5c7097ab4cf9bffaf
+  start_time: '2020-05-07 17:34:57.540994'
+  start_ts: 1588872897.54099
+  state: 1
+  task_id: 28440565
+  version: 2.1.27
+  volume_id: 9
+  volume_name: rhel-8
+1192639:
+  build_id: 1192639
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-05-13 18:44:38.136252'
+  completion_ts: 1589395478.13625
+  creation_event_id: 31461780
+  creation_time: '2020-05-13 18:40:33.735809'
+  creation_ts: 1589395233.73581
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libffi#2fa2de3fbfa5af6e65710811e9e24493da78b3f8
+  id: 1192639
+  name: libffi
+  nvr: libffi-3.1-22.el8
+  owner_id: 665
+  owner_name: dj
+  package_id: 1894
+  package_name: libffi
+  release: 22.el8
+  source: git://pkgs.devel.redhat.com/rpms/libffi#2fa2de3fbfa5af6e65710811e9e24493da78b3f8
+  start_time: '2020-05-13 18:40:33.735809'
+  start_ts: 1589395233.73581
+  state: 1
+  task_id: 28562281
+  version: '3.1'
+  volume_id: 9
+  volume_name: rhel-8
+1197484:
+  build_id: 1197484
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-05-19 10:30:36.443429'
+  completion_ts: 1589884236.44343
+  creation_event_id: 31568626
+  creation_time: '2020-05-19 10:25:15.586164'
+  creation_ts: 1589883915.58616
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/sed#240d31e9fa458dbec445d5b401ccf5e3b61e7860
+  id: 1197484
+  name: sed
+  nvr: sed-4.5-2.el8
+  owner_id: 3340
+  owner_name: jamartis
+  package_id: 2987
+  package_name: sed
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/sed#240d31e9fa458dbec445d5b401ccf5e3b61e7860
+  start_time: '2020-05-19 10:25:15.586164'
+  start_ts: 1589883915.58616
+  state: 1
+  task_id: 28675560
+  version: '4.5'
+  volume_id: 9
+  volume_name: rhel-8
+1199395:
+  build_id: 1199395
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-05-20 20:19:47.714044'
+  completion_ts: 1590005987.71404
+  creation_event_id: 31610858
+  creation_time: '2020-05-20 20:12:44.224013'
+  creation_ts: 1590005564.22401
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libmodulemd#33d6c648f9f382edf5f5a5bd19064846a01fefba
+  id: 1199395
+  name: libmodulemd
+  nvr: libmodulemd-2.9.4-2.el8
+  owner_id: 1014
+  owner_name: sgallagh
+  package_id: 66634
+  package_name: libmodulemd
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/libmodulemd#33d6c648f9f382edf5f5a5bd19064846a01fefba
+  start_time: '2020-05-20 20:12:44.224013'
+  start_ts: 1590005564.22401
+  state: 1
+  task_id: 28728246
+  version: 2.9.4
+  volume_id: 9
+  volume_name: rhel-8
+1201127:
+  build_id: 1201127
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-05-22 11:47:01.135038'
+  completion_ts: 1590148021.13504
+  creation_event_id: 31636603
+  creation_time: '2020-05-22 11:43:37.897300'
+  creation_ts: 1590147817.8973
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libcap#a9adb530869e5daea60e6843b25ad9366ce1e461
+  id: 1201127
+  name: libcap
+  nvr: libcap-2.26-4.el8
+  owner_id: 3737
+  owner_name: jvymazal
+  package_id: 1879
+  package_name: libcap
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/libcap#a9adb530869e5daea60e6843b25ad9366ce1e461
+  start_time: '2020-05-22 11:43:37.876637'
+  start_ts: 1590147817.87664
+  state: 1
+  task_id: 28755520
+  version: '2.26'
+  volume_id: 9
+  volume_name: rhel-8
+1207296:
+  build_id: 1207296
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-05-28 17:07:58.443299'
+  completion_ts: 1590685678.4433
+  creation_event_id: 31753614
+  creation_time: '2020-05-28 16:59:06.106200'
+  creation_ts: 1590685146.1062
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/pcre2#883d23d3f0c3e873fd4cf0e8d312f7f88d65c922
+  id: 1207296
+  name: pcre2
+  nvr: pcre2-10.32-2.el8
+  owner_id: 1207
+  owner_name: ppisar
+  package_id: 61793
+  package_name: pcre2
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/pcre2#883d23d3f0c3e873fd4cf0e8d312f7f88d65c922
+  start_time: '2020-05-28 16:59:06.086978'
+  start_ts: 1590685146.08698
+  state: 1
+  task_id: 28891915
+  version: '10.32'
+  volume_id: 9
+  volume_name: rhel-8
+1213699:
+  build_id: 1213699
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-03 09:17:51.389797'
+  completion_ts: 1591175871.3898
+  creation_event_id: 31910138
+  creation_time: '2020-06-03 09:05:05.660670'
+  creation_ts: 1591175105.66067
+  epoch: 2
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/vim#fdc3ac9d1ef5d34358fb91217d31697cb542cf7a
+  id: 1213699
+  name: vim
+  nvr: vim-8.0.1763-15.el8
+  owner_id: 3328
+  owner_name: zdohnal
+  package_id: 1179
+  package_name: vim
+  release: 15.el8
+  source: git://pkgs.devel.redhat.com/rpms/vim#fdc3ac9d1ef5d34358fb91217d31697cb542cf7a
+  start_time: '2020-06-03 09:05:05.655534'
+  start_ts: 1591175105.65553
+  state: 1
+  task_id: 29032476
+  version: 8.0.1763
+  volume_id: 9
+  volume_name: rhel-8
+1215600:
+  build_id: 1215600
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-04 17:16:35.980679'
+  completion_ts: 1591290995.98068
+  creation_event_id: 31947308
+  creation_time: '2020-06-04 17:11:49.737302'
+  creation_ts: 1591290709.7373
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libpsl#752b285122bce7c00a05be51e81f253d6ee8c00a
+  id: 1215600
+  name: libpsl
+  nvr: libpsl-0.20.2-6.el8
+  owner_id: 889
+  owner_name: kdudka
+  package_id: 59664
+  package_name: libpsl
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/libpsl#752b285122bce7c00a05be51e81f253d6ee8c00a
+  start_time: '2020-06-04 17:11:49.731555'
+  start_ts: 1591290709.73155
+  state: 1
+  task_id: 29076641
+  version: 0.20.2
+  volume_id: 9
+  volume_name: rhel-8
+1216822:
+  build_id: 1216822
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-05 09:26:22.557467'
+  completion_ts: 1591349182.55747
+  creation_event_id: 31980500
+  creation_time: '2020-06-05 09:19:41.200397'
+  creation_ts: 1591348781.2004
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/zstd#41d137254dabfa495e5585021335d646538846d8
+  id: 1216822
+  name: zstd
+  nvr: zstd-1.4.4-1.el8
+  owner_id: 3340
+  owner_name: jamartis
+  package_id: 63328
+  package_name: zstd
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/zstd#41d137254dabfa495e5585021335d646538846d8
+  start_time: '2020-06-05 09:19:41.186356'
+  start_ts: 1591348781.18636
+  state: 1
+  task_id: 29104995
+  version: 1.4.4
+  volume_id: 9
+  volume_name: rhel-8
+1220066:
+  build_id: 1220066
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-08 10:37:16.749987'
+  completion_ts: 1591612636.74999
+  creation_event_id: 32047437
+  creation_time: '2020-06-08 09:39:57.016657'
+  creation_ts: 1591609197.01666
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/e2fsprogs#d1d411f01b969d28a07c0f6116572ede4a293147
+  id: 1220066
+  name: e2fsprogs
+  nvr: e2fsprogs-1.45.6-1.el8
+  owner_id: 1304
+  owner_name: lczerner
+  package_id: 395
+  package_name: e2fsprogs
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/e2fsprogs#d1d411f01b969d28a07c0f6116572ede4a293147
+  start_time: '2020-06-08 09:39:56.956868'
+  start_ts: 1591609196.95687
+  state: 1
+  task_id: 29165228
+  version: 1.45.6
+  volume_id: 9
+  volume_name: rhel-8
+1221242:
+  build_id: 1221242
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-09 08:49:27.280149'
+  completion_ts: 1591692567.28015
+  creation_event_id: 32106194
+  creation_time: '2020-06-09 08:44:36.982270'
+  creation_ts: 1591692276.98227
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libmaxminddb#859e23b7d126fb01c87498e423c42d48e1b8cee1
+  id: 1221242
+  name: libmaxminddb
+  nvr: libmaxminddb-1.2.0-10.el8
+  owner_id: 3573
+  owner_name: mruprich
+  package_id: 69923
+  package_name: libmaxminddb
+  release: 10.el8
+  source: git://pkgs.devel.redhat.com/rpms/libmaxminddb#859e23b7d126fb01c87498e423c42d48e1b8cee1
+  start_time: '2020-06-09 08:44:36.966792'
+  start_ts: 1591692276.96679
+  state: 1
+  task_id: 29204790
+  version: 1.2.0
+  volume_id: 9
+  volume_name: rhel-8
+1221598:
+  build_id: 1221598
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-09 11:39:15.562387'
+  completion_ts: 1591702755.56239
+  creation_event_id: 32123679
+  creation_time: '2020-06-09 11:28:03.068684'
+  creation_ts: 1591702083.06868
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/nghttp2#eea201c136d170f4497695a3bfa4ce716780d2ea
+  id: 1221598
+  name: nghttp2
+  nvr: nghttp2-1.33.0-3.el8_2.1
+  owner_id: 889
+  owner_name: kdudka
+  package_id: 54911
+  package_name: nghttp2
+  release: 3.el8_2.1
+  source: git://pkgs.devel.redhat.com/rpms/nghttp2#eea201c136d170f4497695a3bfa4ce716780d2ea
+  start_time: '2020-06-09 11:28:03.019533'
+  start_ts: 1591702083.01953
+  state: 1
+  task_id: 29212718
+  version: 1.33.0
+  volume_id: 9
+  volume_name: rhel-8
+1224593:
+  build_id: 1224593
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-11 20:05:24.883890'
+  completion_ts: 1591905924.88389
+  creation_event_id: 32259719
+  creation_time: '2020-06-11 19:59:07.755955'
+  creation_ts: 1591905547.75595
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/pygobject3#53477796225e557d49a99871db8dcf8728f900b6
+  id: 1224593
+  name: pygobject3
+  nvr: pygobject3-3.28.3-2.el8
+  owner_id: 61
+  owner_name: rstrode
+  package_id: 34038
+  package_name: pygobject3
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/pygobject3#53477796225e557d49a99871db8dcf8728f900b6
+  start_time: '2020-06-11 19:59:07.721206'
+  start_ts: 1591905547.72121
+  state: 1
+  task_id: 29336571
+  version: 3.28.3
+  volume_id: 9
+  volume_name: rhel-8
+1225800:
+  build_id: 1225800
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-15 16:27:31.342045'
+  completion_ts: 1592238451.34205
+  creation_event_id: 32326633
+  creation_time: '2020-06-15 16:19:40.180879'
+  creation_ts: 1592237980.18088
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libgcrypt#87f3355e783bc163915dfee59b7d8f51b370b339
+  id: 1225800
+  name: libgcrypt
+  nvr: libgcrypt-1.8.5-4.el8
+  owner_id: 118
+  owner_name: tmraz
+  package_id: 1904
+  package_name: libgcrypt
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/libgcrypt#87f3355e783bc163915dfee59b7d8f51b370b339
+  start_time: '2020-06-15 16:19:40.176100'
+  start_ts: 1592237980.1761
+  state: 1
+  task_id: 29402410
+  version: 1.8.5
+  volume_id: 9
+  volume_name: rhel-8
+1229781:
+  build_id: 1229781
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-19 10:32:11.223455'
+  completion_ts: 1592562731.22345
+  creation_event_id: 32545449
+  creation_time: '2020-06-19 10:13:38.679219'
+  creation_ts: 1592561618.67922
+  epoch: 2
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/tar#cdd5b9f08090db9739f730ef2b8389d4a8df7dfb
+  id: 1229781
+  name: tar
+  nvr: tar-1.30-5.el8
+  owner_id: 4932
+  owner_name: odubaj
+  package_id: 3151
+  package_name: tar
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/tar#cdd5b9f08090db9739f730ef2b8389d4a8df7dfb
+  start_time: '2020-06-19 10:13:38.673642'
+  start_ts: 1592561618.67364
+  state: 1
+  task_id: 29547629
+  version: '1.30'
+  volume_id: 9
+  volume_name: rhel-8
+1234030:
+  build_id: 1234030
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-22 23:19:38.583148'
+  completion_ts: 1592867978.58315
+  creation_event_id: 32609334
+  creation_time: '2020-06-22 23:18:07.421725'
+  creation_ts: 1592867887.42173
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/ca-certificates#08eaaed43b44f1cf81d1d3ff73133f69d2fc1f38
+  id: 1234030
+  name: ca-certificates
+  nvr: ca-certificates-2020.2.41-80.0.el8_2
+  owner_id: 360
+  owner_name: rrelyea
+  package_id: 11840
+  package_name: ca-certificates
+  release: 80.0.el8_2
+  source: git://pkgs.devel.redhat.com/rpms/ca-certificates#08eaaed43b44f1cf81d1d3ff73133f69d2fc1f38
+  start_time: '2020-06-22 23:18:07.416595'
+  start_ts: 1592867887.41659
+  state: 1
+  task_id: 29618121
+  version: 2020.2.41
+  volume_id: 9
+  volume_name: rhel-8
+1237213:
+  build_id: 1237213
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-06-25 14:22:16.664270'
+  completion_ts: 1593094936.66427
+  creation_event_id: 32663242
+  creation_time: '2020-06-25 14:07:37.871224'
+  creation_ts: 1593094057.87122
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libssh#a81cda4aa0c730dcc426de8ceebd961670e2d3af
+  id: 1237213
+  name: libssh
+  nvr: libssh-0.9.4-2.el8
+  owner_id: 4150
+  owner_name: ansasaki
+  package_id: 33952
+  package_name: libssh
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/libssh#a81cda4aa0c730dcc426de8ceebd961670e2d3af
+  start_time: '2020-06-25 14:07:37.864731'
+  start_ts: 1593094057.86473
+  state: 1
+  task_id: 29685939
+  version: 0.9.4
+  volume_id: 9
+  volume_name: rhel-8
+1286148:
+  build_id: 1286148
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-08-12 14:34:14.997549'
+  completion_ts: 1597242854.99755
+  creation_event_id: 33648373
+  creation_time: '2020-08-12 14:31:02.399050'
+  creation_ts: 1597242662.39905
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libusbx#ca5dec750fe81d6a60c442ecbffb1bde77a86d94
+  id: 1286148
+  name: libusbx
+  nvr: libusbx-1.0.23-4.el8
+  owner_id: 3238
+  owner_name: vtosodec
+  package_id: 36467
+  package_name: libusbx
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/libusbx#ca5dec750fe81d6a60c442ecbffb1bde77a86d94
+  start_time: '2020-08-12 14:31:02.392819'
+  start_ts: 1597242662.39282
+  state: 1
+  task_id: 30721770
+  version: 1.0.23
+  volume_id: 9
+  volume_name: rhel-8
+1290417:
+  build_id: 1290417
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-08-19 06:48:46.550598'
+  completion_ts: 1597819726.5506
+  creation_event_id: 33751900
+  creation_time: '2020-08-19 06:37:14.064441'
+  creation_ts: 1597819034.06444
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libreport#cd702428f310bfec7ef6fb24f959a8ba3d1e7a99
+  id: 1290417
+  name: libreport
+  nvr: libreport-2.9.5-15.el8
+  owner_id: 4797
+  owner_name: ekulik
+  package_id: 32834
+  package_name: libreport
+  release: 15.el8
+  source: git://pkgs.devel.redhat.com/rpms/libreport#cd702428f310bfec7ef6fb24f959a8ba3d1e7a99
+  start_time: '2020-08-19 06:37:14.060331'
+  start_ts: 1597819034.06033
+  state: 1
+  task_id: 30816496
+  version: 2.9.5
+  volume_id: 9
+  volume_name: rhel-8
+1334981:
+  build_id: 1334981
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-09-30 00:21:26.728041'
+  completion_ts: 1601425286.72804
+  creation_event_id: 34707588
+  creation_time: '2020-09-29 20:21:17.715392'
+  creation_ts: 1601410877.71539
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gcc#8b8dbee58106c1b73a08e8a91cd2f4f401e4dd15
+  id: 1334981
+  name: gcc
+  nvr: gcc-8.4.1-1.el8
+  owner_id: 1497
+  owner_name: mpolacek
+  package_id: 517
+  package_name: gcc
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/gcc#8b8dbee58106c1b73a08e8a91cd2f4f401e4dd15
+  start_time: '2020-09-29 20:21:17.711629'
+  start_ts: 1601410877.71163
+  state: 1
+  task_id: 31615248
+  version: 8.4.1
+  volume_id: 9
+  volume_name: rhel-8
+1335853:
+  build_id: 1335853
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-09-30 10:25:55.332614'
+  completion_ts: 1601461555.33261
+  creation_event_id: 34720247
+  creation_time: '2020-09-30 10:11:41.821247'
+  creation_ts: 1601460701.82125
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libarchive#84a8f604ce571b3698f3322f0383f4b818c472ca
+  id: 1335853
+  name: libarchive
+  nvr: libarchive-3.3.3-1.el8
+  owner_id: 4932
+  owner_name: odubaj
+  package_id: 12084
+  package_name: libarchive
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/libarchive#84a8f604ce571b3698f3322f0383f4b818c472ca
+  start_time: '2020-09-30 10:11:41.818030'
+  start_ts: 1601460701.81803
+  state: 1
+  task_id: 31634303
+  version: 3.3.3
+  volume_id: 9
+  volume_name: rhel-8
+1337704:
+  build_id: 1337704
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-10-01 16:27:04.163015'
+  completion_ts: 1601569624.16301
+  creation_event_id: 34750702
+  creation_time: '2020-10-01 16:09:28.733223'
+  creation_ts: 1601568568.73322
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/brotli#1c0ee161fd58068d9081ef1f9825adc72e88500b
+  id: 1337704
+  name: brotli
+  nvr: brotli-1.0.6-3.el8
+  owner_id: 2247
+  owner_name: erathke
+  package_id: 67794
+  package_name: brotli
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/brotli#1c0ee161fd58068d9081ef1f9825adc72e88500b
+  start_time: '2020-10-01 16:09:28.729507'
+  start_ts: 1601568568.72951
+  state: 1
+  task_id: 31688078
+  version: 1.0.6
+  volume_id: 9
+  volume_name: rhel-8
+1360527:
+  build_id: 1360527
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-10-21 09:54:10.426015'
+  completion_ts: 1603274050.42601
+  creation_event_id: 35195605
+  creation_time: '2020-10-21 09:48:50.102242'
+  creation_ts: 1603273730.10224
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libselinux#d0a79ace0fcde3fb0fe43a8820eb388704c4bafb
+  id: 1360527
+  name: libselinux
+  nvr: libselinux-2.9-5.el8
+  owner_id: 3775
+  owner_name: vmojzis
+  package_id: 1968
+  package_name: libselinux
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/libselinux#d0a79ace0fcde3fb0fe43a8820eb388704c4bafb
+  start_time: '2020-10-21 09:48:50.098524'
+  start_ts: 1603273730.09852
+  state: 1
+  task_id: 32252659
+  version: '2.9'
+  volume_id: 9
+  volume_name: rhel-8
+1364758:
+  build_id: 1364758
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-10-26 13:14:10.389231'
+  completion_ts: 1603718050.38923
+  creation_event_id: 35274639
+  creation_time: '2020-10-26 13:07:59.894691'
+  creation_ts: 1603717679.89469
+  epoch: 2
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/shadow-utils#00e92f722fdd6cec58227696ecc40e957e09d2ae
+  id: 1364758
+  name: shadow-utils
+  nvr: shadow-utils-4.6-12.el8
+  owner_id: 5361
+  owner_name: ipedrosa
+  package_id: 3014
+  package_name: shadow-utils
+  release: 12.el8
+  source: git://pkgs.devel.redhat.com/rpms/shadow-utils#00e92f722fdd6cec58227696ecc40e957e09d2ae
+  start_time: '2020-10-26 13:07:59.891490'
+  start_ts: 1603717679.89149
+  state: 1
+  task_id: 32416211
+  version: '4.6'
+  volume_id: 9
+  volume_name: rhel-8
+1366387:
+  build_id: 1366387
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-10-27 08:54:51.812744'
+  completion_ts: 1603788891.81274
+  creation_event_id: 35290050
+  creation_time: '2020-10-27 08:48:02.330320'
+  creation_ts: 1603788482.33032
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/zlib#d393f921436401f7b30f4cfb29bf7c4998cc49df
+  id: 1366387
+  name: zlib
+  nvr: zlib-1.2.11-17.el8
+  owner_id: 4932
+  owner_name: odubaj
+  package_id: 558
+  package_name: zlib
+  release: 17.el8
+  source: git://pkgs.devel.redhat.com/rpms/zlib#d393f921436401f7b30f4cfb29bf7c4998cc49df
+  start_time: '2020-10-27 08:48:02.302262'
+  start_ts: 1603788482.30226
+  state: 1
+  task_id: 32456883
+  version: 1.2.11
+  volume_id: 9
+  volume_name: rhel-8
+1374200:
+  build_id: 1374200
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-11-02 15:26:16.890714'
+  completion_ts: 1604330776.89071
+  creation_event_id: 35442772
+  creation_time: '2020-11-02 15:23:05.969998'
+  creation_ts: 1604330585.97
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/pciutils#d060686d3b588a7aade75a36b5adb75980963ad2
+  id: 1374200
+  name: pciutils
+  nvr: pciutils-3.7.0-1.el8
+  owner_id: 746
+  owner_name: mhlavink
+  package_id: 2366
+  package_name: pciutils
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/pciutils#d060686d3b588a7aade75a36b5adb75980963ad2
+  start_time: '2020-11-02 15:23:05.965475'
+  start_ts: 1604330585.96548
+  state: 1
+  task_id: 32737176
+  version: 3.7.0
+  volume_id: 9
+  volume_name: rhel-8
+1378172:
+  build_id: 1378172
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-11-05 15:27:59.307483'
+  completion_ts: 1604590079.30748
+  creation_event_id: 35529717
+  creation_time: '2020-11-05 15:13:05.507792'
+  creation_ts: 1604589185.50779
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/pam#4cee47851bcbf235fcd9802532cdc5b06ffdf9cd
+  id: 1378172
+  name: pam
+  nvr: pam-1.3.1-14.el8
+  owner_id: 5361
+  owner_name: ipedrosa
+  package_id: 2346
+  package_name: pam
+  release: 14.el8
+  source: git://pkgs.devel.redhat.com/rpms/pam#4cee47851bcbf235fcd9802532cdc5b06ffdf9cd
+  start_time: '2020-11-05 15:13:05.502248'
+  start_ts: 1604589185.50225
+  state: 1
+  task_id: 32890512
+  version: 1.3.1
+  volume_id: 9
+  volume_name: rhel-8
+1380689:
+  build_id: 1380689
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-11-09 17:22:25.231753'
+  completion_ts: 1604942545.23175
+  creation_event_id: 35596123
+  creation_time: '2020-11-09 17:20:04.727623'
+  creation_ts: 1604942404.72762
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-urllib3#0b1830c33ef40cacf0f51d8846e3cb4bde424766
+  id: 1380689
+  name: python-urllib3
+  nvr: python-urllib3-1.24.2-5.el8
+  owner_id: 3286
+  owner_name: cstratak
+  package_id: 41051
+  package_name: python-urllib3
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-urllib3#0b1830c33ef40cacf0f51d8846e3cb4bde424766
+  start_time: '2020-11-09 17:20:04.702284'
+  start_ts: 1604942404.70228
+  state: 1
+  task_id: 32981671
+  version: 1.24.2
+  volume_id: 9
+  volume_name: rhel-8
+1389452:
+  build_id: 1389452
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-11-20 18:08:30.749499'
+  completion_ts: 1605895710.7495
+  creation_event_id: 35751472
+  creation_time: '2020-11-20 18:03:49.133273'
+  creation_ts: 1605895429.13327
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/tpm2-tss#ae9a7b37402c1e3b75dd2bddfb3b495294cf0197
+  id: 1389452
+  name: tpm2-tss
+  nvr: tpm2-tss-2.3.2-3.el8
+  owner_id: 2698
+  owner_name: jsnitsel
+  package_id: 61807
+  package_name: tpm2-tss
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/tpm2-tss#ae9a7b37402c1e3b75dd2bddfb3b495294cf0197
+  start_time: '2020-11-20 18:03:49.129148'
+  start_ts: 1605895429.12915
+  state: 1
+  task_id: 33189327
+  version: 2.3.2
+  volume_id: 9
+  volume_name: rhel-8
+1397463:
+  build_id: 1397463
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-01 14:22:47.854695'
+  completion_ts: 1606832567.8547
+  creation_event_id: 35933105
+  creation_time: '2020-12-01 14:00:27.235925'
+  creation_ts: 1606831227.23592
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/sqlite#662a0a380806095e01673bcec1a4e7f9edce676f
+  id: 1397463
+  name: sqlite
+  nvr: sqlite-3.26.0-13.el8
+  owner_id: 4932
+  owner_name: odubaj
+  package_id: 3060
+  package_name: sqlite
+  release: 13.el8
+  source: git://pkgs.devel.redhat.com/rpms/sqlite#662a0a380806095e01673bcec1a4e7f9edce676f
+  start_time: '2020-12-01 14:00:27.191538'
+  start_ts: 1606831227.19154
+  state: 1
+  task_id: 33410864
+  version: 3.26.0
+  volume_id: 9
+  volume_name: rhel-8
+1397548:
+  build_id: 1397548
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-01 16:27:41.737017'
+  completion_ts: 1606840061.73702
+  creation_event_id: 35936192
+  creation_time: '2020-12-01 16:23:09.769626'
+  creation_ts: 1606839789.76963
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/procps-ng#9962caeb9791fb12757360b5e00828a0e93a8e89
+  id: 1397548
+  name: procps-ng
+  nvr: procps-ng-3.3.15-6.el8
+  owner_id: 3430
+  owner_name: jrybar
+  package_id: 36198
+  package_name: procps-ng
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/procps-ng#9962caeb9791fb12757360b5e00828a0e93a8e89
+  start_time: '2020-12-01 16:23:09.765062'
+  start_ts: 1606839789.76506
+  state: 1
+  task_id: 33417732
+  version: 3.3.15
+  volume_id: 9
+  volume_name: rhel-8
+1399757:
+  build_id: 1399757
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-03 11:50:32.467102'
+  completion_ts: 1606996232.4671
+  creation_event_id: 35966854
+  creation_time: '2020-12-03 11:39:14.054588'
+  creation_ts: 1606995554.05459
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libdb#8717bfe6169a46bfcec5e65e17809f26c8aed7af
+  id: 1399757
+  name: libdb
+  nvr: libdb-5.3.28-40.el8
+  owner_id: 4932
+  owner_name: odubaj
+  package_id: 33932
+  package_name: libdb
+  release: 40.el8
+  source: git://pkgs.devel.redhat.com/rpms/libdb#8717bfe6169a46bfcec5e65e17809f26c8aed7af
+  start_time: '2020-12-03 11:39:14.048302'
+  start_ts: 1606995554.0483
+  state: 1
+  task_id: 33461014
+  version: 5.3.28
+  volume_id: 9
+  volume_name: rhel-8
+1399824:
+  build_id: 1399824
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-03 12:21:31.141746'
+  completion_ts: 1606998091.14175
+  creation_event_id: 35967593
+  creation_time: '2020-12-03 12:11:16.993122'
+  creation_ts: 1606997476.99312
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gawk#faa14eb18c14ef1a43ab2eb1e5b2b56ee92e1547
+  id: 1399824
+  name: gawk
+  nvr: gawk-4.2.1-2.el8
+  owner_id: 3340
+  owner_name: jamartis
+  package_id: 516
+  package_name: gawk
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/gawk#faa14eb18c14ef1a43ab2eb1e5b2b56ee92e1547
+  start_time: '2020-12-03 12:11:16.986877'
+  start_ts: 1606997476.98688
+  state: 1
+  task_id: 33462304
+  version: 4.2.1
+  volume_id: 9
+  volume_name: rhel-8
+1410760:
+  build_id: 1410760
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-10 03:12:27.982399'
+  completion_ts: 1607569947.9824
+  creation_event_id: 36154674
+  creation_time: '2020-12-10 03:10:49.326038'
+  creation_ts: 1607569849.32604
+  epoch: 1
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/dmidecode#5edb51cabe6f5056adacd84ac37bad35fa9512ff
+  id: 1410760
+  name: dmidecode
+  nvr: dmidecode-3.2-8.el8
+  owner_id: 4214
+  owner_name: lijiang
+  package_id: 366
+  package_name: dmidecode
+  release: 8.el8
+  source: git://pkgs.devel.redhat.com/rpms/dmidecode#5edb51cabe6f5056adacd84ac37bad35fa9512ff
+  start_time: '2020-12-10 03:10:49.319947'
+  start_ts: 1607569849.31995
+  state: 1
+  task_id: 33628891
+  version: '3.2'
+  volume_id: 9
+  volume_name: rhel-8
+1412741:
+  build_id: 1412741
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-12 02:57:04.865218'
+  completion_ts: 1607741824.86522
+  creation_event_id: 36203691
+  creation_time: '2020-12-12 02:42:29.359230'
+  creation_ts: 1607740949.35923
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gdb#5918bab7267adffac488745ee7970fe855837dce
+  id: 1412741
+  name: gdb
+  nvr: gdb-8.2-15.el8
+  owner_id: 146
+  owner_name: keiths
+  package_id: 526
+  package_name: gdb
+  release: 15.el8
+  source: git://pkgs.devel.redhat.com/rpms/gdb#5918bab7267adffac488745ee7970fe855837dce
+  start_time: '2020-12-12 02:42:29.351780'
+  start_ts: 1607740949.35178
+  state: 1
+  task_id: 33691660
+  version: '8.2'
+  volume_id: 9
+  volume_name: rhel-8
+1416620:
+  build_id: 1416620
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-15 10:11:36.533911'
+  completion_ts: 1608027096.53391
+  creation_event_id: 36242750
+  creation_time: '2020-12-15 10:05:49.874670'
+  creation_ts: 1608026749.87467
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/librepo#8907bca4369588b7112aef9b868fafc37a220025
+  id: 1416620
+  name: librepo
+  nvr: librepo-1.12.0-3.el8
+  owner_id: 4410
+  owner_name: mblaha
+  package_id: 49263
+  package_name: librepo
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/librepo#8907bca4369588b7112aef9b868fafc37a220025
+  start_time: '2020-12-15 10:05:49.857962'
+  start_ts: 1608026749.85796
+  state: 1
+  task_id: 33746487
+  version: 1.12.0
+  volume_id: 9
+  volume_name: rhel-8
+1419017:
+  build_id: 1419017
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-16 18:06:30.899134'
+  completion_ts: 1608141990.89913
+  creation_event_id: 36279850
+  creation_time: '2020-12-16 17:45:58.635682'
+  creation_ts: 1608140758.63568
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/krb5#7abc81559d6414aee36f3b6f035df28198643eec
+  id: 1419017
+  name: krb5
+  nvr: krb5-1.18.2-8.el8
+  owner_id: 2717
+  owner_name: rharwood
+  package_id: 1793
+  package_name: krb5
+  release: 8.el8
+  source: git://pkgs.devel.redhat.com/rpms/krb5#7abc81559d6414aee36f3b6f035df28198643eec
+  start_time: '2020-12-16 17:45:58.529935'
+  start_ts: 1608140758.52993
+  state: 1
+  task_id: 33796689
+  version: 1.18.2
+  volume_id: 9
+  volume_name: rhel-8
+1420642:
+  build_id: 1420642
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-17 12:53:13.424415'
+  completion_ts: 1608209593.42442
+  creation_event_id: 36307241
+  creation_time: '2020-12-17 12:45:12.296502'
+  creation_ts: 1608209112.2965
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/elfutils#73ccdc951fee0d506177d895d249ef75dfd8a283
+  id: 1420642
+  name: elfutils
+  nvr: elfutils-0.182-3.el8
+  owner_id: 395
+  owner_name: mwielaar
+  package_id: 420
+  package_name: elfutils
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/elfutils#73ccdc951fee0d506177d895d249ef75dfd8a283
+  start_time: '2020-12-17 12:45:12.060111'
+  start_ts: 1608209112.06011
+  state: 1
+  task_id: 33819891
+  version: '0.182'
+  volume_id: 9
+  volume_name: rhel-8
+1421942:
+  build_id: 1421942
+  cg_id: null
+  cg_name: null
+  completion_time: '2020-12-18 06:41:10.367971'
+  completion_ts: 1608273670.36797
+  creation_event_id: 36318247
+  creation_time: '2020-12-18 06:36:34.147472'
+  creation_ts: 1608273394.14747
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/rsync#cb7e5a599cc10c8e7a0da30d45e2737ae9d17781
+  id: 1421942
+  name: rsync
+  nvr: rsync-3.1.3-12.el8
+  owner_id: 3573
+  owner_name: mruprich
+  package_id: 2941
+  package_name: rsync
+  release: 12.el8
+  source: git://pkgs.devel.redhat.com/rpms/rsync#cb7e5a599cc10c8e7a0da30d45e2737ae9d17781
+  start_time: '2020-12-18 06:36:34.052827'
+  start_ts: 1608273394.05283
+  state: 1
+  task_id: 33841144
+  version: 3.1.3
+  volume_id: 9
+  volume_name: rhel-8
+1441861:
+  build_id: 1441861
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-04 11:43:07.335715'
+  completion_ts: 1609760587.33572
+  creation_event_id: 36476628
+  creation_time: '2021-01-04 11:36:38.661474'
+  creation_ts: 1609760198.66147
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gpgme#383c7aef4eb4b098c7494e42020052d5d2db418d
+  id: 1441861
+  name: gpgme
+  nvr: gpgme-1.13.1-7.el8
+  owner_id: 4262
+  owner_name: jkucera
+  package_id: 4527
+  package_name: gpgme
+  release: 7.el8
+  source: git://pkgs.devel.redhat.com/rpms/gpgme#383c7aef4eb4b098c7494e42020052d5d2db418d
+  start_time: '2021-01-04 11:36:38.623596'
+  start_ts: 1609760198.6236
+  state: 1
+  task_id: 34032760
+  version: 1.13.1
+  volume_id: 9
+  volume_name: rhel-8
+1446215:
+  build_id: 1446215
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-06 12:39:38.352243'
+  completion_ts: 1609936778.35224
+  creation_event_id: 36558158
+  creation_time: '2021-01-06 12:36:21.713333'
+  creation_ts: 1609936581.71333
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/librhsm#9036432438dda92a768177ec4545cfceda312fa3
+  id: 1446215
+  name: librhsm
+  nvr: librhsm-0.0.3-4.el8
+  owner_id: 4410
+  owner_name: mblaha
+  package_id: 61543
+  package_name: librhsm
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/librhsm#9036432438dda92a768177ec4545cfceda312fa3
+  start_time: '2021-01-06 12:36:21.680685'
+  start_ts: 1609936581.68069
+  state: 1
+  task_id: 34098445
+  version: 0.0.3
+  volume_id: 9
+  volume_name: rhel-8
+1446322:
+  build_id: 1446322
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-06 14:07:00.851927'
+  completion_ts: 1609942020.85193
+  creation_event_id: 36560058
+  creation_time: '2021-01-06 14:05:25.905127'
+  creation_ts: 1609941925.90513
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-ply#13c839c62a399cd2399143992de93eb55d5fddbf
+  id: 1446322
+  name: python-ply
+  nvr: python-ply-3.9-9.el8
+  owner_id: 3048
+  owner_name: cheimes
+  package_id: 16804
+  package_name: python-ply
+  release: 9.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-ply#13c839c62a399cd2399143992de93eb55d5fddbf
+  start_time: '2021-01-06 14:05:25.851546'
+  start_ts: 1609941925.85155
+  state: 1
+  task_id: 34099703
+  version: '3.9'
+  volume_id: 9
+  volume_name: rhel-8
+1446652:
+  build_id: 1446652
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-06 17:19:33.790688'
+  completion_ts: 1609953573.79069
+  creation_event_id: 36566987
+  creation_time: '2021-01-06 17:14:34.830868'
+  creation_ts: 1609953274.83087
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/fstrm#8c34b476f3a9702e9b612cd95804afc5ce06ca72
+  id: 1446652
+  name: fstrm
+  nvr: fstrm-0.6.0-3.el8.1
+  owner_id: 3655
+  owner_name: pemensik
+  package_id: 77498
+  package_name: fstrm
+  release: 3.el8.1
+  source: git://pkgs.devel.redhat.com/rpms/fstrm#8c34b476f3a9702e9b612cd95804afc5ce06ca72
+  start_time: '2021-01-06 17:14:34.824012'
+  start_ts: 1609953274.82401
+  state: 1
+  task_id: 34103674
+  version: 0.6.0
+  volume_id: 9
+  volume_name: rhel-8
+1447539:
+  build_id: 1447539
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-07 11:06:22.084826'
+  completion_ts: 1610017582.08483
+  creation_event_id: 36576559
+  creation_time: '2021-01-07 11:03:22.772967'
+  creation_ts: 1610017402.77297
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/popt#63b1c8ea59d934997b71b3970a8581528a6e40bf
+  id: 1447539
+  name: popt
+  nvr: popt-1.18-1.el8
+  owner_id: 537
+  owner_name: pmatilai
+  package_id: 2525
+  package_name: popt
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/popt#63b1c8ea59d934997b71b3970a8581528a6e40bf
+  start_time: '2021-01-07 11:03:22.724670'
+  start_ts: 1610017402.72467
+  state: 1
+  task_id: 34118303
+  version: '1.18'
+  volume_id: 9
+  volume_name: rhel-8
+1449200:
+  build_id: 1449200
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-08 10:59:42.640682'
+  completion_ts: 1610103582.64068
+  creation_event_id: 36590629
+  creation_time: '2021-01-08 10:57:21.043452'
+  creation_ts: 1610103441.04345
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python-pip#e28abc34ae1c3309c5bc37d169a77b382deaa376
+  id: 1449200
+  name: python-pip
+  nvr: python-pip-9.0.3-19.el8
+  owner_id: 3705
+  owner_name: lbalhar
+  package_id: 34258
+  package_name: python-pip
+  release: 19.el8
+  source: git://pkgs.devel.redhat.com/rpms/python-pip#e28abc34ae1c3309c5bc37d169a77b382deaa376
+  start_time: '2021-01-08 10:57:21.036696'
+  start_ts: 1610103441.0367
+  state: 1
+  task_id: 34140209
+  version: 9.0.3
+  volume_id: 9
+  volume_name: rhel-8
+1449225:
+  build_id: 1449225
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-08 11:29:24.459670'
+  completion_ts: 1610105364.45967
+  creation_event_id: 36591114
+  creation_time: '2021-01-08 11:25:22.716972'
+  creation_ts: 1610105122.71697
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/kmod#cc419f40db03fa17ce729f831a679657f7a6e996
+  id: 1449225
+  name: kmod
+  nvr: kmod-25-17.el8
+  owner_id: 3579
+  owner_name: ykaliuta
+  package_id: 35350
+  package_name: kmod
+  release: 17.el8
+  source: git://pkgs.devel.redhat.com/rpms/kmod#cc419f40db03fa17ce729f831a679657f7a6e996
+  start_time: '2021-01-08 11:25:22.710240'
+  start_ts: 1610105122.71024
+  state: 1
+  task_id: 34140599
+  version: '25'
+  volume_id: 9
+  volume_name: rhel-8
+1449855:
+  build_id: 1449855
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-08 17:15:23.090999'
+  completion_ts: 1610126123.091
+  creation_event_id: 36611782
+  creation_time: '2021-01-08 17:12:01.906838'
+  creation_ts: 1610125921.90684
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libsepol#24175e0aa569dffad49262186406ef6fb469a36b
+  id: 1449855
+  name: libsepol
+  nvr: libsepol-2.9-2.el8
+  owner_id: 3775
+  owner_name: vmojzis
+  package_id: 1970
+  package_name: libsepol
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/libsepol#24175e0aa569dffad49262186406ef6fb469a36b
+  start_time: '2021-01-08 17:12:01.874650'
+  start_ts: 1610125921.87465
+  state: 1
+  task_id: 34147749
+  version: '2.9'
+  volume_id: 9
+  volume_name: rhel-8
+1453279:
+  build_id: 1453279
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-11 13:58:52.160978'
+  completion_ts: 1610373532.16098
+  creation_event_id: 36639562
+  creation_time: '2021-01-11 13:54:03.975043'
+  creation_ts: 1610373243.97504
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/p11-kit#0c8b48a11122293fefbc43a65c1be9bb7818ad49
+  id: 1453279
+  name: p11-kit
+  nvr: p11-kit-0.23.22-1.el8
+  owner_id: 1285
+  owner_name: dueno
+  package_id: 33978
+  package_name: p11-kit
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/p11-kit#0c8b48a11122293fefbc43a65c1be9bb7818ad49
+  start_time: '2021-01-11 13:54:03.967840'
+  start_ts: 1610373243.96784
+  state: 1
+  task_id: 34185446
+  version: 0.23.22
+  volume_id: 9
+  volume_name: rhel-8
+1454801:
+  build_id: 1454801
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-12 09:57:30.322813'
+  completion_ts: 1610445450.32281
+  creation_event_id: 36652890
+  creation_time: '2021-01-12 09:52:51.543210'
+  creation_ts: 1610445171.54321
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gzip#2d7e87992607a67b1ad96db8a12925212c5f0655
+  id: 1454801
+  name: gzip
+  nvr: gzip-1.9-12.el8
+  owner_id: 3340
+  owner_name: jamartis
+  package_id: 851
+  package_name: gzip
+  release: 12.el8
+  source: git://pkgs.devel.redhat.com/rpms/gzip#2d7e87992607a67b1ad96db8a12925212c5f0655
+  start_time: '2021-01-12 09:52:51.526169'
+  start_ts: 1610445171.52617
+  state: 1
+  task_id: 34206962
+  version: '1.9'
+  volume_id: 9
+  volume_name: rhel-8
+1460531:
+  build_id: 1460531
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-15 11:25:45.102434'
+  completion_ts: 1610709945.10243
+  creation_event_id: 36743981
+  creation_time: '2021-01-15 11:19:46.568332'
+  creation_ts: 1610709586.56833
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libsolv#eda39344511208e6e90800b758d69800050f34f5
+  id: 1460531
+  name: libsolv
+  nvr: libsolv-0.7.16-2.el8
+  owner_id: 5503
+  owner_name: nsella
+  package_id: 46512
+  package_name: libsolv
+  release: 2.el8
+  source: git://pkgs.devel.redhat.com/rpms/libsolv#eda39344511208e6e90800b758d69800050f34f5
+  start_time: '2021-01-15 11:19:46.559440'
+  start_ts: 1610709586.55944
+  state: 1
+  task_id: 34290856
+  version: 0.7.16
+  volume_id: 9
+  volume_name: rhel-8
+1460547:
+  build_id: 1460547
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-15 11:42:05.647677'
+  completion_ts: 1610710925.64768
+  creation_event_id: 36744135
+  creation_time: '2021-01-15 11:36:37.619327'
+  creation_ts: 1610710597.61933
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libcomps#e7940a4e7370ad64147746863ef8769fb2e3a2dc
+  id: 1460547
+  name: libcomps
+  nvr: libcomps-0.1.11-5.el8
+  owner_id: 5503
+  owner_name: nsella
+  package_id: 49510
+  package_name: libcomps
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/libcomps#e7940a4e7370ad64147746863ef8769fb2e3a2dc
+  start_time: '2021-01-15 11:36:37.508646'
+  start_ts: 1610710597.50865
+  state: 1
+  task_id: 34291084
+  version: 0.1.11
+  volume_id: 9
+  volume_name: rhel-8
+1465270:
+  build_id: 1465270
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-19 09:45:38.703938'
+  completion_ts: 1611049538.70394
+  creation_event_id: 36790695
+  creation_time: '2021-01-19 09:41:17.073064'
+  creation_ts: 1611049277.07306
+  epoch: 14
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libpcap#deaa9c0a61150c6be089c2c35a2560c7af8ecb0f
+  id: 1465270
+  name: libpcap
+  nvr: libpcap-1.9.1-5.el8
+  owner_id: 3573
+  owner_name: mruprich
+  package_id: 1953
+  package_name: libpcap
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/libpcap#deaa9c0a61150c6be089c2c35a2560c7af8ecb0f
+  start_time: '2021-01-19 09:41:17.065493'
+  start_ts: 1611049277.06549
+  state: 1
+  task_id: 34357844
+  version: 1.9.1
+  volume_id: 9
+  volume_name: rhel-8
+1465282:
+  build_id: 1465282
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-19 09:56:09.396365'
+  completion_ts: 1611050169.39636
+  creation_event_id: 36790858
+  creation_time: '2021-01-19 09:49:46.125794'
+  creation_ts: 1611049786.12579
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/util-linux#8135cbb40c14e0ab2a68a32391216d5aa216f2c1
+  id: 1465282
+  name: util-linux
+  nvr: util-linux-2.32.1-27.el8
+  owner_id: 148
+  owner_name: kzak
+  package_id: 1197
+  package_name: util-linux
+  release: 27.el8
+  source: git://pkgs.devel.redhat.com/rpms/util-linux#8135cbb40c14e0ab2a68a32391216d5aa216f2c1
+  start_time: '2021-01-19 09:49:46.095307'
+  start_ts: 1611049786.09531
+  state: 1
+  task_id: 34358042
+  version: 2.32.1
+  volume_id: 9
+  volume_name: rhel-8
+1473607:
+  build_id: 1473607
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-25 16:31:55.129287'
+  completion_ts: 1611592315.12929
+  creation_event_id: 36903833
+  creation_time: '2021-01-25 16:28:55.385468'
+  creation_ts: 1611592135.38547
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/tzdata#6c957bbd5068cc19b01658b1e8a8f664c929f96b
+  id: 1473607
+  name: tzdata
+  nvr: tzdata-2021a-1.el8
+  owner_id: 1849
+  owner_name: pfrankli
+  package_id: 1228
+  package_name: tzdata
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/tzdata#6c957bbd5068cc19b01658b1e8a8f664c929f96b
+  start_time: '2021-01-25 16:28:55.359733'
+  start_ts: 1611592135.35973
+  state: 1
+  task_id: 34499125
+  version: 2021a
+  volume_id: 9
+  volume_name: rhel-8
+1476759:
+  build_id: 1476759
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-27 11:54:52.706672'
+  completion_ts: 1611748492.70667
+  creation_event_id: 36961019
+  creation_time: '2021-01-27 11:48:28.795077'
+  creation_ts: 1611748108.79508
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/iptables#9256ac2eeae54b0683faa03acfd9c70ec4a5527c
+  id: 1476759
+  name: iptables
+  nvr: iptables-1.8.4-17.el8
+  owner_id: 3021
+  owner_name: psutter
+  package_id: 912
+  package_name: iptables
+  release: 17.el8
+  source: git://pkgs.devel.redhat.com/rpms/iptables#9256ac2eeae54b0683faa03acfd9c70ec4a5527c
+  start_time: '2021-01-27 11:48:28.783767'
+  start_ts: 1611748108.78377
+  state: 1
+  task_id: 34553295
+  version: 1.8.4
+  volume_id: 9
+  volume_name: rhel-8
+1479079:
+  build_id: 1479079
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-29 16:53:10.186657'
+  completion_ts: 1611939190.18666
+  creation_event_id: 37010296
+  creation_time: '2021-01-29 16:25:28.236029'
+  creation_ts: 1611937528.23603
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/curl#2007787e348366296c4a41ff31f2cdfcc162f104
+  id: 1479079
+  name: curl
+  nvr: curl-7.61.1-18.el8
+  owner_id: 889
+  owner_name: kdudka
+  package_id: 317
+  package_name: curl
+  release: 18.el8
+  source: git://pkgs.devel.redhat.com/rpms/curl#2007787e348366296c4a41ff31f2cdfcc162f104
+  start_time: '2021-01-29 16:25:28.164774'
+  start_ts: 1611937528.16477
+  state: 1
+  task_id: 34613445
+  version: 7.61.1
+  volume_id: 9
+  volume_name: rhel-8
+1479677:
+  build_id: 1479677
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-29 04:12:38.994899'
+  completion_ts: 1611893558.9949
+  creation_event_id: 37001117
+  creation_time: '2021-01-29 04:07:09.834862'
+  creation_ts: 1611893229.83486
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/rdma-core#0b57141a99179ff811630c6019de43d134c40547
+  id: 1479677
+  name: rdma-core
+  nvr: rdma-core-32.0-4.el8
+  owner_id: 1864
+  owner_name: honli
+  package_id: 61658
+  package_name: rdma-core
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/rdma-core#0b57141a99179ff811630c6019de43d134c40547
+  start_time: '2021-01-29 04:07:09.827114'
+  start_ts: 1611893229.82711
+  state: 1
+  task_id: 34602425
+  version: '32.0'
+  volume_id: 9
+  volume_name: rhel-8
+1480523:
+  build_id: 1480523
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-01-29 16:24:25.477678'
+  completion_ts: 1611937465.47768
+  creation_event_id: 37010242
+  creation_time: '2021-01-29 16:21:05.954792'
+  creation_ts: 1611937265.95479
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/file#629a8f659a4248bafc1ca32e0f7a2c0653045f3b
+  id: 1480523
+  name: file
+  nvr: file-5.33-16.el8_3.1
+  owner_id: 5393
+  owner_name: vmihalko
+  package_id: 461
+  package_name: file
+  release: 16.el8_3.1
+  source: git://pkgs.devel.redhat.com/rpms/file#629a8f659a4248bafc1ca32e0f7a2c0653045f3b
+  start_time: '2021-01-29 16:21:05.916473'
+  start_ts: 1611937265.91647
+  state: 1
+  task_id: 34613348
+  version: '5.33'
+  volume_id: 9
+  volume_name: rhel-8
+1483913:
+  build_id: 1483913
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-02-01 18:52:53.966715'
+  completion_ts: 1612205573.96672
+  creation_event_id: 37047283
+  creation_time: '2021-02-01 18:47:52.166672'
+  creation_ts: 1612205272.16667
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libsemanage#02837b9e403facefc3b16fca38368ea712bc3ae8
+  id: 1483913
+  name: libsemanage
+  nvr: libsemanage-2.9-6.el8
+  owner_id: 830
+  owner_name: plautrba
+  package_id: 1969
+  package_name: libsemanage
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/libsemanage#02837b9e403facefc3b16fca38368ea712bc3ae8
+  start_time: '2021-02-01 18:47:52.134767'
+  start_ts: 1612205272.13477
+  state: 1
+  task_id: 34657477
+  version: '2.9'
+  volume_id: 9
+  volume_name: rhel-8
+1487216:
+  build_id: 1487216
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-02-03 13:56:52.067591'
+  completion_ts: 1612360612.06759
+  creation_event_id: 37100388
+  creation_time: '2021-02-03 13:51:18.731669'
+  creation_ts: 1612360278.73167
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/protobuf-c#3d19b62f289344c10f8e0f6bbde99030f09bfbe1
+  id: 1487216
+  name: protobuf-c
+  nvr: protobuf-c-1.3.0-6.el8
+  owner_id: 3655
+  owner_name: pemensik
+  package_id: 51740
+  package_name: protobuf-c
+  release: 6.el8
+  source: git://pkgs.devel.redhat.com/rpms/protobuf-c#3d19b62f289344c10f8e0f6bbde99030f09bfbe1
+  start_time: '2021-02-03 13:51:18.716342'
+  start_ts: 1612360278.71634
+  state: 1
+  task_id: 34709866
+  version: 1.3.0
+  volume_id: 9
+  volume_name: rhel-8
+1487471:
+  build_id: 1487471
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-02-03 16:56:19.545659'
+  completion_ts: 1612371379.54566
+  creation_event_id: 37104107
+  creation_time: '2021-02-03 16:51:14.612819'
+  creation_ts: 1612371074.61282
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/json-c#090abf73dd48ab4fbdc6a73407ea1e787d65e778
+  id: 1487471
+  name: json-c
+  nvr: json-c-0.13.1-0.4.el8
+  owner_id: 3655
+  owner_name: pemensik
+  package_id: 35466
+  package_name: json-c
+  release: 0.4.el8
+  source: git://pkgs.devel.redhat.com/rpms/json-c#090abf73dd48ab4fbdc6a73407ea1e787d65e778
+  start_time: '2021-02-03 16:51:14.600887'
+  start_ts: 1612371074.60089
+  state: 1
+  task_id: 34714482
+  version: 0.13.1
+  volume_id: 9
+  volume_name: rhel-8
+1495269:
+  build_id: 1495269
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-02-08 11:34:51.083447'
+  completion_ts: 1612784091.08345
+  creation_event_id: 37204765
+  creation_time: '2021-02-08 11:33:18.301800'
+  creation_ts: 1612783998.3018
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/hwdata#4a773954c091ddf39441304f3d6619099f3ea99f
+  id: 1495269
+  name: hwdata
+  nvr: hwdata-0.314-8.8.el8
+  owner_id: 502
+  owner_name: vcrhonek
+  package_id: 879
+  package_name: hwdata
+  release: 8.8.el8
+  source: git://pkgs.devel.redhat.com/rpms/hwdata#4a773954c091ddf39441304f3d6619099f3ea99f
+  start_time: '2021-02-08 11:33:18.294667'
+  start_ts: 1612783998.29467
+  state: 1
+  task_id: 34819848
+  version: '0.314'
+  volume_id: 9
+  volume_name: rhel-8
+1500241:
+  build_id: 1500241
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-02-11 17:17:34.664917'
+  completion_ts: 1613063854.66492
+  creation_event_id: 37281553
+  creation_time: '2021-02-11 17:14:19.227790'
+  creation_ts: 1613063659.22779
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/crypto-policies#f081a2999a117e367f383e9041086d7307ce2811
+  id: 1500241
+  name: crypto-policies
+  nvr: crypto-policies-20210209-1.gitbfb6bed.el8_3
+  owner_id: 5079
+  owner_name: asosedki
+  package_id: 54430
+  package_name: crypto-policies
+  release: 1.gitbfb6bed.el8_3
+  source: git://pkgs.devel.redhat.com/rpms/crypto-policies#f081a2999a117e367f383e9041086d7307ce2811
+  start_time: '2021-02-11 17:14:19.217782'
+  start_ts: 1613063659.21778
+  state: 1
+  task_id: 34898082
+  version: '20210209'
+  volume_id: 9
+  volume_name: rhel-8
+1507689:
+  build_id: 1507689
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-02-18 16:26:33.315918'
+  completion_ts: 1613665593.31592
+  creation_event_id: 37391783
+  creation_time: '2021-02-18 16:22:45.439103'
+  creation_ts: 1613665365.4391
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/cryptsetup#14c84f57c07c12494595951d8d499a40eaf1c3be
+  id: 1507689
+  name: cryptsetup
+  nvr: cryptsetup-2.3.3-4.el8
+  owner_id: 2012
+  owner_name: okozina
+  package_id: 311
+  package_name: cryptsetup
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/cryptsetup#14c84f57c07c12494595951d8d499a40eaf1c3be
+  start_time: '2021-02-18 16:22:45.366038'
+  start_ts: 1613665365.36604
+  state: 1
+  task_id: 35017179
+  version: 2.3.3
+  volume_id: 9
+  volume_name: rhel-8
+1508952:
+  build_id: 1508952
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-02-19 10:46:23.737790'
+  completion_ts: 1613731583.73779
+  creation_event_id: 37411922
+  creation_time: '2021-02-19 10:40:57.344866'
+  creation_ts: 1613731257.34487
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libseccomp#815c1a3025fc9e48846eef3e966e6b035df536ec
+  id: 1508952
+  name: libseccomp
+  nvr: libseccomp-2.5.1-1.el8
+  owner_id: 3112
+  owner_name: rsroka
+  package_id: 37539
+  package_name: libseccomp
+  release: 1.el8
+  source: git://pkgs.devel.redhat.com/rpms/libseccomp#815c1a3025fc9e48846eef3e966e6b035df536ec
+  start_time: '2021-02-19 10:40:57.338312'
+  start_ts: 1613731257.33831
+  state: 1
+  task_id: 35033564
+  version: 2.5.1
+  volume_id: 9
+  volume_name: rhel-8
+1509562:
+  build_id: 1509562
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-02-19 16:49:43.091014'
+  completion_ts: 1613753383.09101
+  creation_event_id: 37421515
+  creation_time: '2021-02-19 16:43:07.089072'
+  creation_ts: 1613752987.08907
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/ima-evm-utils#14ff723c10237225d71585ee05524248b63a05e2
+  id: 1509562
+  name: ima-evm-utils
+  nvr: ima-evm-utils-1.3.2-12.el8
+  owner_id: 3895
+  owner_name: brdeoliv
+  package_id: 59574
+  package_name: ima-evm-utils
+  release: 12.el8
+  source: git://pkgs.devel.redhat.com/rpms/ima-evm-utils#14ff723c10237225d71585ee05524248b63a05e2
+  start_time: '2021-02-19 16:43:07.039449'
+  start_ts: 1613752987.03945
+  state: 1
+  task_id: 35043586
+  version: 1.3.2
+  volume_id: 9
+  volume_name: rhel-8
+1513957:
+  build_id: 1513957
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-02-22 14:57:18.655365'
+  completion_ts: 1614005838.65536
+  creation_event_id: 37475682
+  creation_time: '2021-02-22 14:51:50.470724'
+  creation_ts: 1614005510.47072
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libpwquality#32c8c111a806d667c1e5484816cc94650f16c740
+  id: 1513957
+  name: libpwquality
+  nvr: libpwquality-1.4.4-3.el8
+  owner_id: 5834
+  owner_name: dbelyavs
+  package_id: 35375
+  package_name: libpwquality
+  release: 3.el8
+  source: git://pkgs.devel.redhat.com/rpms/libpwquality#32c8c111a806d667c1e5484816cc94650f16c740
+  start_time: '2021-02-22 14:51:50.448676'
+  start_ts: 1614005510.44868
+  state: 1
+  task_id: 35092050
+  version: 1.4.4
+  volume_id: 9
+  volume_name: rhel-8
+1525173:
+  build_id: 1525173
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-03-05 13:16:36.268740'
+  completion_ts: 1614950196.26874
+  creation_event_id: 37685493
+  creation_time: '2021-03-05 13:10:28.804600'
+  creation_ts: 1614949828.8046
+  epoch: 8
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/lvm2#bd49fd403dcbaf7f2fa8c879dd98f0f6a595ad8e
+  id: 1525173
+  name: lvm2
+  nvr: lvm2-2.03.11-5.el8
+  owner_id: 846
+  owner_name: mcsontos
+  package_id: 2069
+  package_name: lvm2
+  release: 5.el8
+  source: git://pkgs.devel.redhat.com/rpms/lvm2#bd49fd403dcbaf7f2fa8c879dd98f0f6a595ad8e
+  start_time: '2021-03-05 13:10:28.789762'
+  start_ts: 1614949828.78976
+  state: 1
+  task_id: 35281619
+  version: 2.03.11
+  volume_id: 9
+  volume_name: rhel-8
+1525306:
+  build_id: 1525306
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-03-05 17:53:19.659292'
+  completion_ts: 1614966799.65929
+  creation_event_id: 37686805
+  creation_time: '2021-03-05 16:44:50.205432'
+  creation_ts: 1614962690.20543
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/glibc#63da7b9e0994c5238ea6ea59e164ba51f35268b2
+  id: 1525306
+  name: glibc
+  nvr: glibc-2.28-151.el8
+  owner_id: 5739
+  owner_name: sipoyare
+  package_id: 556
+  package_name: glibc
+  release: 151.el8
+  source: git://pkgs.devel.redhat.com/rpms/glibc#63da7b9e0994c5238ea6ea59e164ba51f35268b2
+  start_time: '2021-03-05 16:44:50.153672'
+  start_ts: 1614962690.15367
+  state: 1
+  task_id: 35284275
+  version: '2.28'
+  volume_id: 9
+  volume_name: rhel-8
+1528091:
+  build_id: 1528091
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-03-08 15:15:28.372666'
+  completion_ts: 1615216528.37267
+  creation_event_id: 37722910
+  creation_time: '2021-03-08 15:12:29.191653'
+  creation_ts: 1615216349.19165
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/dnf-plugins-core#f3bce87bcd8c4af17b88c2b685d7517b520f9b3f
+  id: 1528091
+  name: dnf-plugins-core
+  nvr: dnf-plugins-core-4.0.18-4.el8
+  owner_id: 4410
+  owner_name: mblaha
+  package_id: 56986
+  package_name: dnf-plugins-core
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/dnf-plugins-core#f3bce87bcd8c4af17b88c2b685d7517b520f9b3f
+  start_time: '2021-03-08 15:12:29.183199'
+  start_ts: 1615216349.1832
+  state: 1
+  task_id: 35315384
+  version: 4.0.18
+  volume_id: 9
+  volume_name: rhel-8
+1528104:
+  build_id: 1528104
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-03-08 15:45:56.126670'
+  completion_ts: 1615218356.12667
+  creation_event_id: 37723265
+  creation_time: '2021-03-08 15:39:45.430686'
+  creation_ts: 1615217985.43069
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libdnf#bb594554f0a925a437fb155587595d1f39dca917
+  id: 1528104
+  name: libdnf
+  nvr: libdnf-0.55.0-7.el8
+  owner_id: 4410
+  owner_name: mblaha
+  package_id: 61544
+  package_name: libdnf
+  release: 7.el8
+  source: git://pkgs.devel.redhat.com/rpms/libdnf#bb594554f0a925a437fb155587595d1f39dca917
+  start_time: '2021-03-08 15:39:45.420951'
+  start_ts: 1615217985.42095
+  state: 1
+  task_id: 35316202
+  version: 0.55.0
+  volume_id: 9
+  volume_name: rhel-8
+1528106:
+  build_id: 1528106
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-03-08 15:43:55.706655'
+  completion_ts: 1615218235.70666
+  creation_event_id: 37723286
+  creation_time: '2021-03-08 15:40:42.292736'
+  creation_ts: 1615218042.29274
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/dnf#334c7faa543afd6517af971b46b747e57d3563ac
+  id: 1528106
+  name: dnf
+  nvr: dnf-4.4.2-11.el8
+  owner_id: 4410
+  owner_name: mblaha
+  package_id: 54433
+  package_name: dnf
+  release: 11.el8
+  source: git://pkgs.devel.redhat.com/rpms/dnf#334c7faa543afd6517af971b46b747e57d3563ac
+  start_time: '2021-03-08 15:40:42.271603'
+  start_ts: 1615218042.2716
+  state: 1
+  task_id: 35316295
+  version: 4.4.2
+  volume_id: 9
+  volume_name: rhel-8
+1533934:
+  build_id: 1533934
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-03-12 19:03:21.477817'
+  completion_ts: 1615575801.47782
+  creation_event_id: 37851411
+  creation_time: '2021-03-12 18:58:46.425411'
+  creation_ts: 1615575526.42541
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/iproute#beecdecf03aa13344f1b442b22e21dfbeb4cd5e1
+  id: 1533934
+  name: iproute
+  nvr: iproute-5.9.0-4.el8
+  owner_id: 4597
+  owner_name: aclaudi
+  package_id: 909
+  package_name: iproute
+  release: 4.el8
+  source: git://pkgs.devel.redhat.com/rpms/iproute#beecdecf03aa13344f1b442b22e21dfbeb4cd5e1
+  start_time: '2021-03-12 18:58:46.418984'
+  start_ts: 1615575526.41898
+  state: 1
+  task_id: 35409181
+  version: 5.9.0
+  volume_id: 9
+  volume_name: rhel-8
+1540243:
+  build_id: 1540243
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-03-18 14:07:22.325214'
+  completion_ts: 1616076442.32521
+  creation_event_id: 37952460
+  creation_time: '2021-03-18 12:48:50.595531'
+  creation_ts: 1616071730.59553
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/python3#e4fe9c47cd47708c11eb95c1d35340f972b3f36c
+  id: 1540243
+  name: python3
+  nvr: python3-3.6.8-37.el8
+  owner_id: 2481
+  owner_name: pviktori
+  package_id: 34040
+  package_name: python3
+  release: 37.el8
+  source: git://pkgs.devel.redhat.com/rpms/python3#e4fe9c47cd47708c11eb95c1d35340f972b3f36c
+  start_time: '2021-03-18 12:48:50.492675'
+  start_ts: 1616071730.49268
+  state: 1
+  task_id: 35537646
+  version: 3.6.8
+  volume_id: 9
+  volume_name: rhel-8
+1550360:
+  build_id: 1550360
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-03-25 16:56:18.405268'
+  completion_ts: 1616691378.40527
+  creation_event_id: 38129940
+  creation_time: '2021-03-25 16:44:48.853425'
+  creation_ts: 1616690688.85343
+  epoch: 1
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/openssl#7153cdebc8daa4e7ceff3e62dd9d5f83150a06c2
+  id: 1550360
+  name: openssl
+  nvr: openssl-1.1.1g-15.el8_3
+  owner_id: 5442
+  owner_name: shebburn
+  package_id: 2328
+  package_name: openssl
+  release: 15.el8_3
+  source: git://pkgs.devel.redhat.com/rpms/openssl#7153cdebc8daa4e7ceff3e62dd9d5f83150a06c2
+  start_time: '2021-03-25 16:44:48.846116'
+  start_ts: 1616690688.84612
+  state: 1
+  task_id: 35735826
+  version: 1.1.1g
+  volume_id: 9
+  volume_name: rhel-8
+1557760:
+  build_id: 1557760
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-03-31 08:29:05.204259'
+  completion_ts: 1617179345.20426
+  creation_event_id: 38245879
+  creation_time: '2021-03-31 08:26:22.649030'
+  creation_ts: 1617179182.64903
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/redhat-release#24314447f685baa975ee85f855e9d1277af48058
+  id: 1557760
+  name: redhat-release
+  nvr: redhat-release-8.4-0.6.el8
+  owner_id: 3646
+  owner_name: asabadra
+  package_id: 2672
+  package_name: redhat-release
+  release: 0.6.el8
+  source: git://pkgs.devel.redhat.com/rpms/redhat-release#24314447f685baa975ee85f855e9d1277af48058
+  start_time: '2021-03-31 08:26:22.642598'
+  start_ts: 1617179182.6426
+  state: 1
+  task_id: 35862702
+  version: '8.4'
+  volume_id: 9
+  volume_name: rhel-8
+1559858:
+  build_id: 1559858
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-04-01 13:25:50.129799'
+  completion_ts: 1617283550.1298
+  creation_event_id: 38268596
+  creation_time: '2021-04-01 13:13:09.041592'
+  creation_ts: 1617282789.04159
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/gnutls#eb82699c90579d58fe78ef70b9c2ec46014334b3
+  id: 1559858
+  name: gnutls
+  nvr: gnutls-3.6.14-8.el8_3
+  owner_id: 1285
+  owner_name: dueno
+  package_id: 770
+  package_name: gnutls
+  release: 8.el8_3
+  source: git://pkgs.devel.redhat.com/rpms/gnutls#eb82699c90579d58fe78ef70b9c2ec46014334b3
+  start_time: '2021-04-01 13:13:09.035190'
+  start_ts: 1617282789.03519
+  state: 1
+  task_id: 35905549
+  version: 3.6.14
+  volume_id: 9
+  volume_name: rhel-8
+1565615:
+  build_id: 1565615
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-04-07 07:58:14.895444'
+  completion_ts: 1617782294.89544
+  creation_event_id: 38376341
+  creation_time: '2021-04-07 07:54:10.862751'
+  creation_ts: 1617782050.86275
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/nettle#f0d45c2112f0974adc4bf19e6e91de2d74629b2c
+  id: 1565615
+  name: nettle
+  nvr: nettle-3.4.1-4.el8_3
+  owner_id: 1285
+  owner_name: dueno
+  package_id: 15400
+  package_name: nettle
+  release: 4.el8_3
+  source: git://pkgs.devel.redhat.com/rpms/nettle#f0d45c2112f0974adc4bf19e6e91de2d74629b2c
+  start_time: '2021-04-07 07:54:10.855748'
+  start_ts: 1617782050.85575
+  state: 1
+  task_id: 36008850
+  version: 3.4.1
+  volume_id: 9
+  volume_name: rhel-8
+1573801:
+  build_id: 1573801
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-04-14 13:16:27.961567'
+  completion_ts: 1618406187.96157
+  creation_event_id: 38507660
+  creation_time: '2021-04-14 13:10:58.466253'
+  creation_ts: 1618405858.46625
+  epoch: 1
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/dbus#a56167ce437451f6155e7308e9fa5b1057ff1839
+  id: 1573801
+  name: dbus
+  nvr: dbus-1.12.8-12.el8_4.2
+  owner_id: 2473
+  owner_name: dking
+  package_id: 333
+  package_name: dbus
+  release: 12.el8_4.2
+  source: git://pkgs.devel.redhat.com/rpms/dbus#a56167ce437451f6155e7308e9fa5b1057ff1839
+  start_time: '2021-04-14 13:10:58.459518'
+  start_ts: 1618405858.45952
+  state: 1
+  task_id: 36139274
+  version: 1.12.8
+  volume_id: 9
+  volume_name: rhel-8
+1584181:
+  build_id: 1584181
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-04-21 14:11:13.264549'
+  completion_ts: 1619014273.26455
+  creation_event_id: 38647555
+  creation_time: '2021-04-21 14:04:15.803634'
+  creation_ts: 1619013855.80363
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/bash#4cbab69537d8401a4c9b3c326f25fa95c5f6f6ee
+  id: 1584181
+  name: bash
+  nvr: bash-4.4.20-1.el8_4
+  owner_id: 2577
+  owner_name: svashish
+  package_id: 184
+  package_name: bash
+  release: 1.el8_4
+  source: git://pkgs.devel.redhat.com/rpms/bash#4cbab69537d8401a4c9b3c326f25fa95c5f6f6ee
+  start_time: '2021-04-21 14:04:15.787763'
+  start_ts: 1619013855.78776
+  state: 1
+  task_id: 36339137
+  version: 4.4.20
+  volume_id: 9
+  volume_name: rhel-8
+1588980:
+  build_id: 1588980
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-04-27 12:18:28.827034'
+  completion_ts: 1619525908.82703
+  creation_event_id: 38733748
+  creation_time: '2021-04-27 11:57:59.558447'
+  creation_ts: 1619524679.55845
+  epoch: 32
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/bind#02a491a40f730da0f92c5fc889356efb03c13967
+  id: 1588980
+  name: bind
+  nvr: bind-9.11.26-4.el8_4
+  owner_id: 3655
+  owner_name: pemensik
+  package_id: 194
+  package_name: bind
+  release: 4.el8_4
+  source: git://pkgs.devel.redhat.com/rpms/bind#02a491a40f730da0f92c5fc889356efb03c13967
+  start_time: '2021-04-27 11:57:59.548680'
+  start_ts: 1619524679.54868
+  state: 1
+  task_id: 36462188
+  version: 9.11.26
+  volume_id: 9
+  volume_name: rhel-8
+1606778:
+  build_id: 1606778
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-05-19 08:16:44.799300'
+  completion_ts: 1621412204.7993
+  creation_event_id: 39049458
+  creation_time: '2021-05-19 08:12:11.166673'
+  creation_ts: 1621411931.16667
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/libxml2#8f5beded7ceddbc9441c6b5e41fbc2fbb56cde65
+  id: 1606778
+  name: libxml2
+  nvr: libxml2-2.9.7-9.el8_4.2
+  owner_id: 2473
+  owner_name: dking
+  package_id: 2004
+  package_name: libxml2
+  release: 9.el8_4.2
+  source: git://pkgs.devel.redhat.com/rpms/libxml2#8f5beded7ceddbc9441c6b5e41fbc2fbb56cde65
+  start_time: '2021-05-19 08:12:11.160591'
+  start_ts: 1621411931.16059
+  state: 1
+  task_id: 36883709
+  version: 2.9.7
+  volume_id: 9
+  volume_name: rhel-8
+1608370:
+  build_id: 1608370
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-05-21 07:15:58.933742'
+  completion_ts: 1621581358.93374
+  creation_event_id: 39076218
+  creation_time: '2021-05-20 22:13:21.428272'
+  creation_ts: 1621548801.42827
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/glib2#79643c78fe48c086b29f9e738a3546256d38485e
+  id: 1608370
+  name: glib2
+  nvr: glib2-2.56.4-10.el8_4
+  owner_id: 5512
+  owner_name: mcatanza
+  package_id: 555
+  package_name: glib2
+  release: 10.el8_4
+  source: git://pkgs.devel.redhat.com/rpms/glib2#79643c78fe48c086b29f9e738a3546256d38485e
+  start_time: '2021-05-20 22:13:21.421200'
+  start_ts: 1621548801.4212
+  state: 1
+  task_id: 36918454
+  version: 2.56.4
+  volume_id: 9
+  volume_name: rhel-8
+1615115:
+  build_id: 1615115
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-05-27 13:18:30.864959'
+  completion_ts: 1622121510.86496
+  creation_event_id: 39161160
+  creation_time: '2021-05-27 13:15:29.456743'
+  creation_ts: 1622121329.45674
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/lz4#f024e0067da0f2157c0108391673fae4d952d283
+  id: 1615115
+  name: lz4
+  nvr: lz4-1.8.3-3.el8_4
+  owner_id: 3340
+  owner_name: jamartis
+  package_id: 57477
+  package_name: lz4
+  release: 3.el8_4
+  source: git://pkgs.devel.redhat.com/rpms/lz4#f024e0067da0f2157c0108391673fae4d952d283
+  start_time: '2021-05-27 13:15:29.449674'
+  start_ts: 1622121329.44967
+  state: 1
+  task_id: 37027429
+  version: 1.8.3
+  volume_id: 9
+  volume_name: rhel-8
+1618827:
+  build_id: 1618827
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-05-31 16:44:31.298900'
+  completion_ts: 1622479471.2989
+  creation_event_id: 39234176
+  creation_time: '2021-05-31 16:40:45.974329'
+  creation_ts: 1622479245.97433
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/rpm#3370d597ef5d1e41d311ad4efa9b1a16524e31f6
+  id: 1618827
+  name: rpm
+  nvr: rpm-4.14.3-14.el8_4
+  owner_id: 1943
+  owner_name: mdomonko
+  package_id: 2930
+  package_name: rpm
+  release: 14.el8_4
+  source: git://pkgs.devel.redhat.com/rpms/rpm#3370d597ef5d1e41d311ad4efa9b1a16524e31f6
+  start_time: '2021-05-31 16:40:45.967819'
+  start_ts: 1622479245.96782
+  state: 1
+  task_id: 37103202
+  version: 4.14.3
+  volume_id: 9
+  volume_name: rhel-8
+1627034:
+  build_id: 1627034
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-06-08 19:15:07.716501'
+  completion_ts: 1623179707.7165
+  creation_event_id: 39364609
+  creation_time: '2021-06-08 19:08:40.922153'
+  creation_ts: 1623179320.92215
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/subscription-manager#e551d789914bdbb36e9f29367672d5433e5de898
+  id: 1627034
+  name: subscription-manager
+  nvr: subscription-manager-1.28.13-3.el8_4
+  owner_id: 3172
+  owner_name: csnyder
+  package_id: 19375
+  package_name: subscription-manager
+  release: 3.el8_4
+  source: git://pkgs.devel.redhat.com/rpms/subscription-manager#e551d789914bdbb36e9f29367672d5433e5de898
+  start_time: '2021-06-08 19:08:40.915614'
+  start_ts: 1623179320.91561
+  state: 1
+  task_id: 37306646
+  version: 1.28.13
+  volume_id: 9
+  volume_name: rhel-8
+1636355:
+  build_id: 1636355
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-06-16 14:48:18.527894'
+  completion_ts: 1623854898.52789
+  creation_event_id: 39508991
+  creation_time: '2021-06-16 14:41:25.372093'
+  creation_ts: 1623854485.37209
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/openldap#8a5dee772c9c6640fc365d58e03cb535970e3d22
+  id: 1636355
+  name: openldap
+  nvr: openldap-2.4.46-17.el8_4
+  owner_id: 3050
+  owner_name: spichugi
+  package_id: 2313
+  package_name: openldap
+  release: 17.el8_4
+  source: git://pkgs.devel.redhat.com/rpms/openldap#8a5dee772c9c6640fc365d58e03cb535970e3d22
+  start_time: '2021-06-16 14:41:25.365186'
+  start_ts: 1623854485.36519
+  state: 1
+  task_id: 37526628
+  version: 2.4.46
+  volume_id: 9
+  volume_name: rhel-8
+1647417:
+  build_id: 1647417
+  cg_id: null
+  cg_name: null
+  completion_time: '2021-06-29 09:36:29.009603'
+  completion_ts: 1624959389.0096
+  creation_event_id: 39708408
+  creation_time: '2021-06-29 09:27:15.563251'
+  creation_ts: 1624958835.56325
+  epoch: null
+  extra:
+    source:
+      original_url: git://pkgs.devel.redhat.com/rpms/systemd#b2dc96a5cda3b98a8ea4d329f8452a95d4f86ad5
+  id: 1647417
+  name: systemd
+  nvr: systemd-239-45.el8_4.2
+  owner_id: 4969
+  owner_name: jamacku
+  package_id: 34071
+  package_name: systemd
+  release: 45.el8_4.2
+  source: git://pkgs.devel.redhat.com/rpms/systemd#b2dc96a5cda3b98a8ea4d329f8452a95d4f86ad5
+  start_time: '2021-06-29 09:27:15.533669'
+  start_ts: 1624958835.53367
+  state: 1
+  task_id: 37783997
+  version: '239'
+  volume_id: 9
+  volume_name: rhel-8

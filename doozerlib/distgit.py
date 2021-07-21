@@ -1552,8 +1552,8 @@ class ImageDistGitRepo(DistGitRepo):
                             parent_build_info = build_model.extra.image.parent_image_builds[tag_pullspec]
                             if parent_build_info is Missing:
                                 raise IOError(f'Unable to resolve parent {target_parent_name} in {latest_build} for {assembly_msg}; tried {tag_pullspec}')
-                            parent_build_nvr = parse_nvr(parent_build_info.nvr)
-                            # Hang in there.. this is a long dance. Now that we know the NVR, we can constuct
+                            parent_build_nvr = parse_nvr(parent_build_info._nvr)
+                            # Hang in there.. this is a long dance. Now that we know the NVR, we can construct
                             # a truly unique pullspec.
                             if '@' in tag_pullspec:
                                 unique_pullspec = tag_pullspec.rsplit('@', 1)[0]  # remove the sha

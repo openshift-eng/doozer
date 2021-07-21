@@ -72,9 +72,9 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
         if not release_info.references.spec.tags:
             exit_with_error(f'Could not find tags in nightly {nightly}')
 
-        for component_tags in release_info.references.spec.tags:
-            payload_tag_name = component_tags.name  # e.g. "aws-ebs-csi-driver"
-            payload_tag_pullspec = component_tags['from'].name  # quay pullspec
+        for component_tag in release_info.references.spec.tags:
+            payload_tag_name = component_tag.name  # e.g. "aws-ebs-csi-driver"
+            payload_tag_pullspec = component_tag['from'].name  # quay pullspec
 
             if payload_tag_name == 'machine-os-content':
                 mosc_by_arch[brew_cpu_arch] = payload_tag_pullspec

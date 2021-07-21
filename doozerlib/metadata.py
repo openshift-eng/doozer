@@ -19,6 +19,7 @@ from .distgit import ImageDistGitRepo, RPMDistGitRepo
 from . import exectools
 from . import logutil
 from .brew import BuildStates
+from .util import isolate_el_version_in_brew_tag
 
 from .model import Model, Missing
 from doozerlib.assembly import assembly_metadata_config, assembly_basis_event
@@ -150,6 +151,19 @@ class Metadata(object):
             # If group config doesn't define the targets either, the target name will be derived from the distgit branch name
             targets = [self._default_brew_target()]
         return targets
+
+    def determine_rhel_targets(self) -> List[int]:
+        """
+        For each build target for the component, return the rhel version it is for. For example,
+        if an RPM builds for both rhel-7 and rhel-8 targets, return [7,8]
+        """
+        el_targets: List[int] = []
+        for target in self.determine_targets():
+            el_ver = isolate_el_version_in_brew_tag(target)
+            if not el_ver:
+                raise IOError(f'Unable to determine RHEL version from build target {target} in {self.distgit_key}')
+            el_targets.append(el_ver)
+        return el_targets
 
     def save(self):
         self.data_obj.data = self.config.primitive()
@@ -437,7 +451,7 @@ class Metadata(object):
                     # included in the "-i" doozer argument). We need it to find the pinned NVR
                     # to place in its Dockerfile.
                     # Pinning also informs gen-payload when attempting to assemble a release.
-                    is_nvr = isd.nvr
+                    is_nvr = isd._nvr
                     if not is_nvr:
                         raise ValueError(f'Did not find nvr field in pinned Image component {self.distgit_key}')
 

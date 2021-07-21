@@ -44,7 +44,8 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 from doozerlib import util
 from doozerlib import brew
-from doozerlib.assembly import assembly_group_config, assembly_config_finalize, assembly_basis_event, assembly_type, AssemblyTypes
+from doozerlib.assembly import assembly_group_config, assembly_basis_event, assembly_type, AssemblyTypes
+from doozerlib.build_status_detector import BuildStatusDetector
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -118,17 +119,15 @@ SourceResolution = namedtuple('SourceResolution', [
 ])
 
 
-# ============================================================================
-# Runtime object definition
-# ============================================================================
-
-
 class Runtime(object):
     # Use any time it is necessary to synchronize feedback from multiple threads.
     mutex = RLock()
 
     # Serialize access to the shared koji session
     koji_lock = RLock()
+
+    # Build status detector lock
+    bs_lock = RLock()
 
     # Serialize access to the console, and record log
     log_lock = Lock()
@@ -152,6 +151,7 @@ class Runtime(object):
         self.assembly_type = None
         self.releases_config = None
         self.assembly = 'test'
+        self._build_status_detector = None
 
         self.stream: List[str] = []  # Click option. A list of image stream overrides from the command line.
         self.stream_overrides: Dict[str, str] = {}  # Dict of stream name -> pullspec from command line.
@@ -195,6 +195,9 @@ class Runtime(object):
 
         # Map of dist-git repo name -> RPMMetadata object. Populated when group is set.
         self.rpm_map: Dict[str, RPMMetadata] = {}
+
+        # Maps component name to the Image or RPM Metadata responsible for the component
+        self.component_map: Dict[str, Union[ImageMetadata, RPMMetadata]] = dict()
 
         # Map of source code repo aliases (e.g. "ose") to a tuple representing the source resolution cache.
         # See registry_repo.
@@ -315,6 +318,8 @@ class Runtime(object):
         if self.quiet and self.verbose:
             click.echo("Flags --quiet and --verbose are mutually exclusive")
             exit(1)
+
+        self.mode = mode
 
         # We could mark these as required and the click library would do this for us,
         # but this seems to prevent getting help from the various commands (unless you
@@ -573,6 +578,7 @@ class Runtime(object):
                 for i in image_data.values():
                     metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
                     self.image_map[metadata.distgit_key] = metadata
+                    self.component_map[metadata.get_component_name()] = metadata
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
 
@@ -594,6 +600,7 @@ class Runtime(object):
                         clone_source = True
                     metadata = RPMMetadata(self, r, self.upstream_commitish_overrides.get(r.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
                     self.rpm_map[metadata.distgit_key] = metadata
+                    self.component_map[metadata.get_component_name()] = metadata
                 if not self.rpm_map:
                     self.logger.warning("No rpm metadata directories found for given options within: {}".format(self.group_dir))
 
@@ -620,8 +627,6 @@ class Runtime(object):
             self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
 
         self.assembly_type = assembly_type(self.get_releases_config(), self.assembly)
-
-        assembly_config_finalize(self.get_releases_config(), self.assembly, self.rpm_metas(), self.ordered_image_metas())
 
         if not self.brew_event:
             with self.shared_koji_client_session() as koji_session:
@@ -698,11 +703,23 @@ class Runtime(object):
         manager giving your thread exclusive access. The lock is reentrant, so don't worry about
         call a method that acquires the same lock while you hold it.
         Honors doozer --brew-event.
+        Do not rerun gssapi_login on this client. We've observed client instability when this happens.
         """
         with self.koji_lock:
             if self._koji_client_session is None:
                 self._koji_client_session = self.build_retrying_koji_client()
+                self._koji_client_session.gssapi_login()
             yield self._koji_client_session
+
+    @contextmanager
+    def shared_build_status_detector(self) -> 'BuildStatusDetector':
+        """
+        Yields a shared build status detector within context.
+        """
+        with self.bs_lock:
+            if self._build_status_detector is None:
+                self._build_status_detector = BuildStatusDetector(self.build_retrying_koji_client(), self.logger)
+            yield self._build_status_detector
 
     @contextmanager
     def pooled_koji_client_session(self):
@@ -817,6 +834,37 @@ class Runtime(object):
 
     def all_metas(self) -> List[Union[ImageMetadata, RPMMetadata]]:
         return self.image_metas() + self.rpm_metas()
+
+    def get_payload_image_metas(self) -> List[ImageMetadata]:
+        """
+        :return: Returns a list of ImageMetadata that are destined for the OCP release payload. Payload images must
+                    follow the correct naming convention or an exception will be thrown.
+        """
+        payload_images = []
+        for image_meta in self.image_metas():
+            if image_meta.is_payload:
+                """
+                <Tim Bielawa> note to self: is only for `ose-` prefixed images
+                <Clayton Coleman> Yes, Get with the naming system or get out of town
+                """
+                if not image_meta.image_name_short.startswith("ose-"):
+                    raise ValueError(f"{image_meta.distgit_key} does not conform to payload naming convention with image name: {image_meta.image_name_short}")
+
+                payload_images.append(image_meta)
+
+        return payload_images
+
+    def get_for_release_image_metas(self) -> List[ImageMetadata]:
+        """
+        :return: Returns a list of ImageMetada which are configured to be released by errata.
+        """
+        return filter(lambda meta: meta.for_release, self.image_metas())
+
+    def get_non_release_image_metas(self) -> List[ImageMetadata]:
+        """
+        :return: Returns a list of ImageMetada which are not meant to be released by errata.
+        """
+        return filter(lambda meta: not meta.for_release, self.image_metas())
 
     def register_source_alias(self, alias, path):
         self.logger.info("Registering source alias %s: %s" % (alias, path))

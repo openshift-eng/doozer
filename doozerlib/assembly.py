@@ -7,9 +7,10 @@ from doozerlib.model import Missing, Model
 
 
 class AssemblyTypes(Enum):
-    STANDARD = 0  # All constraints / checks enforced (e.g. consistent RPMs / siblings)
-    CUSTOM = 1  # No constraints enforced
-    CANDIDATE = 2  # Release candidate or feature candidate
+    STREAM = "stream"  # Default assembly type - indicates continuous build and no basis event
+    STANDARD = "standard"  # All constraints / checks enforced (e.g. consistent RPMs / siblings)
+    CANDIDATE = "candidate"  # Indicates releaes or feature candidate
+    CUSTOM = "custom"  # No constraints enforced
 
 
 def merger(a, b):
@@ -75,19 +76,24 @@ def _check_recursion(releases_config: Model, assembly: str):
 def assembly_type(releases_config: Model, assembly: str) -> AssemblyTypes:
 
     if not assembly or not isinstance(releases_config, Model):
-        return AssemblyTypes.STANDARD
+        return AssemblyTypes.STREAM
 
     target_assembly = releases_config.releases[assembly].assembly
+
+    if not target_assembly:
+        # If the assembly is not defined in releases.yml, it defaults to stream
+        return AssemblyTypes.STREAM
+
     str_type = target_assembly['type']
-    if not str_type or str_type == "standard":
-        # Assemblies are standard by default
+    if not str_type:
+        # Assemblies which are defined in releases.yml default to standard
         return AssemblyTypes.STANDARD
-    elif str_type == "custom":
-        return AssemblyTypes.CUSTOM
-    elif str_type == "candidate":
-        return AssemblyTypes.CANDIDATE
-    else:
-        raise ValueError(f'Unknown assembly type: {str_type}')
+
+    for assem_type in AssemblyTypes:
+        if str_type == assem_type.value:
+            return assem_type
+
+    raise ValueError(f'Unknown assembly type: {str_type}')
 
 
 def assembly_group_config(releases_config: Model, assembly: str, group_config: Model) -> Model:
@@ -184,16 +190,19 @@ def assembly_basis_event(releases_config: Model, assembly: str) -> typing.Option
     return assembly_basis_event(releases_config, target_assembly.basis.assembly)
 
 
-def assembly_config_finalize(releases_config: Model, assembly: str, rpm_metas, ordered_image_metas):
+def assembly_basis(releases_config: Model, assembly: str) -> typing.Optional[Model]:
     """
-    Some metadata cannot be finalized until all metadata is read in by doozer. This method
-    uses that interpreted metadata set to go through and adjust assembly information
-    within it.
-    :param releases_config: The releases.yml Model
-    :param assembly: The name of the assembly to apply
-    :param rpm_metas: A list of rpm metadata to update relative to the assembly.
-    :param ordered_image_metas: A list of image metadata to update relative to the assembly.
-    :return: N/A. Metas are updated in-place. Only call during runtime.initialize.
+    :param releases_config: The content of releases.yml in Model form.
+    :param assembly: The name of the assembly to assess
+    Returns the basis dict for a given assembly. If the assembly has no basis,
+    None is returned.
     """
+    if not assembly or not isinstance(releases_config, Model):
+        return None
+
     _check_recursion(releases_config, assembly)
-    pass
+    target_assembly = releases_config.releases[assembly].assembly
+    if target_assembly.basis:
+        return target_assembly.basis
+
+    return assembly_basis(releases_config, target_assembly.basis.assembly)
