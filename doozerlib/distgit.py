@@ -1204,7 +1204,7 @@ class ImageDistGitRepo(DistGitRepo):
                 self.logger.info("Error building image: {}, {}".format(task_url, error))
                 return False
 
-            with self.runtime.shared_koji_client_session() as koji_api:
+            with self.runtime.build_retrying_koji_client() as koji_api:
                 koji_api.gssapi_login()
                 # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
                 taskResult = koji_api.getTaskResult(task_id)
