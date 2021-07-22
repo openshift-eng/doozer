@@ -8,6 +8,7 @@ import unittest
 import flexmock
 
 from doozerlib import distgit
+from doozerlib.assembly import AssemblyTypes
 
 
 class TestImageDistGitRepoPushImage(unittest.TestCase):
@@ -24,6 +25,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
             branch="some-branch",
             command="some-command",
             add_record=lambda *_, **__: None,
+            assembly_type=AssemblyTypes.STANDARD,
         )
 
     def test_push_image_is_late_push(self):

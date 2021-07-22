@@ -44,7 +44,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 from doozerlib import util
 from doozerlib import brew
-from doozerlib.assembly import assembly_group_config, assembly_config_finalize, assembly_basis_event, assembly_type
+from doozerlib.assembly import assembly_group_config, assembly_config_finalize, assembly_basis_event, assembly_type, AssemblyTypes
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -1111,6 +1111,26 @@ class Runtime(object):
         cmd.append(target_dir)
         exectools.cmd_assert(cmd, retries=3, on_retry=["rm", "-rf", target_dir], set_env=set_env)
 
+    def is_branch_commit_hash(self, branch):
+        """
+        When building custom assemblies, it is sometimes useful to
+        pin upstream sources to specific git commits. This cannot
+        be done with standard assemblies which should be built from
+        branches.
+        :param branch: A branch name in rpm or image metadata.
+        :returns: Returns True if the specified branch name is actually a commit hash for a custom assembly.
+        """
+        if self.assembly_type == AssemblyTypes.STANDARD:
+            # Hashes are not permitted for standard assemblies
+            return False
+        if len(branch) >= 7:  # The hash must be sufficiently unique
+            try:
+                int(branch, 16)   # A hash must be a valid hex number
+                return True
+            except ValueError:
+                pass
+        return False
+
     def resolve_source(self, meta):
         """
         Looks up a source alias and returns a path to the directory containing
@@ -1199,11 +1219,17 @@ class Runtime(object):
             try:
                 self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
                 # clone all branches as we must sometimes reference master /OWNERS for maintainer information
-                gitargs = [
-                    '--no-single-branch', '--branch', clone_branch
-                ]
+
+                if self.is_branch_commit_hash(branch=clone_branch):
+                    gitargs = []
+                else:
+                    gitargs = ['--no-single-branch', '--branch', clone_branch]
 
                 self.git_clone(url, source_dir, gitargs=gitargs, set_env=constants.GIT_NO_PROMPTS)
+
+                if self.is_branch_commit_hash(branch=clone_branch):
+                    with Dir(source_dir):
+                        exectools.cmd_assert(f'git checkout {clone_branch}')
 
                 # fetch public upstream source
                 if meta.public_upstream_branch:
@@ -1232,7 +1258,7 @@ class Runtime(object):
         git_url = source_details["url"]
         branches = source_details["branch"]
 
-        branch = branches["target"]
+        branch = branches["target"]  # This is a misnomer as it can also be a git commit hash an not just a branch name.
         fallback_branch = branches.get("fallback", None)
         if self.group_config.use_source_fallback_branch == "always" and fallback_branch:
             # only use the fallback (unless none is given)
@@ -1262,14 +1288,23 @@ class Runtime(object):
         raise DoozerFatalError('Requested fallback branch {} does not exist'.format(branch))
 
     def _get_remote_branch_ref(self, git_url, branch):
-        """Detect whether a single branch exists on a remote repo; returns git hash if found"""
+        """
+        Detect whether a single branch exists on a remote repo; returns git hash if found
+        :param git_url: The URL to the git repo to check.
+        :param branch: The name of the branch. If the name is not a branch and appears to be a commit
+                hash, the hash will be returned without modification.
+        """
         self.logger.info('Checking if target branch {} exists in {}'.format(branch, git_url))
         try:
             out, _ = exectools.cmd_assert('git ls-remote --heads {} {}'.format(git_url, branch), retries=3)
         except Exception as err:
-            self.logger.error('Unable to check if target branch {} exists: {}'.format(branch, err))
+            # We don't expect and exception if the branch does not exist; just an empty string
+            self.logger.error('Error attempting to find target branch {} hash: {}'.format(branch, err))
             return None
-        result = out.strip()  # any result means the branch is found
+        result = out.strip()  # any result means the branch is found; e.g. "7e66b10fbcd6bb4988275ffad0a69f563695901f	refs/heads/some_branch")
+        if not result and self.is_branch_commit_hash(branch):
+            return branch  # It is valid hex; just return it
+
         return result.split()[0] if result else None
 
     def resolve_source_head(self, meta):
