@@ -413,7 +413,7 @@ class Metadata(object):
                     tag_prefix = self.branch().rsplit('-', 1)[0] + '-'   # String off the rhel version.
                     accepted_tags = [name for name in tags if name.startswith(tag_prefix)]
                     if not accepted_tags:
-                        raise IOError(f'Expected to find at least one tag starting with {self.branch()} on latest build {check_nvr} but found [{tags}]; something has changed tags in an unexpected way')
+                        self.logger.warning(f'Expected to find at least one tag starting with {self.branch()} on latest build {check_nvr} but found [{tags}]; tagging failed after build or something has changed tags in an unexpected way')
 
                 return refined
 
