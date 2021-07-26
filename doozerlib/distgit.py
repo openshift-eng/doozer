@@ -1794,11 +1794,15 @@ class ImageDistGitRepo(DistGitRepo):
 
     def _get_csv_file_and_refs(self, csv_config):
         gvars = self.runtime.group_config.vars
-        subdir = csv_config.get('bundle-dir', f'{gvars["MAJOR"]}.{gvars["MINOR"]}')
-        manifests = os.path.join(self.distgit_dir, csv_config['manifests-dir'], subdir)
+        bundle_dir = csv_config.get('bundle-dir', f'{gvars["MAJOR"]}.{gvars["MINOR"]}')
+        manifests_dir = csv_config.get('manifests-dir')
+        bundle_manifests_dir = os.path.join(manifests_dir, bundle_dir)
 
         refs = None
-        ref_candidates = [os.path.join(path, 'image-references') for path in [csv_config['manifests-dir'], subdir, manifests]]
+        ref_candidates = [
+            os.path.join(self.distgit_dir, dirpath, 'image-references')
+            for dirpath in [bundle_dir, manifests_dir, bundle_manifests_dir]
+        ]
         for cand in ref_candidates:
             if os.path.isfile(cand):
                 refs = cand
@@ -1811,6 +1815,7 @@ class ImageDistGitRepo(DistGitRepo):
         if not image_refs:
             raise DoozerFatalError('Data in {} not valid'.format(refs))
 
+        manifests = os.path.join(self.distgit_dir, manifests_dir, bundle_dir)
         csvs = list(pathlib.Path(manifests).glob('*.clusterserviceversion.yaml'))
         if len(csvs) < 1:
             raise DoozerFatalError('{}: did not find a *.clusterserviceversion.yaml file @ {}'.format(self.metadata.distgit_key, manifests))
