@@ -1797,9 +1797,14 @@ class ImageDistGitRepo(DistGitRepo):
         subdir = csv_config.get('bundle-dir', f'{gvars["MAJOR"]}.{gvars["MINOR"]}')
         manifests = os.path.join(self.distgit_dir, csv_config['manifests-dir'], subdir)
 
-        refs = os.path.join(manifests, 'image-references')
-        if not os.path.isfile(refs):
-            raise DoozerFatalError('{}: file does not exist: {}'.format(self.metadata.distgit_key, refs))
+        refs = None
+        ref_candidates = [os.path.join(path, 'image-references') for path in [csv_config['manifests-dir'], subdir, manifests]]
+        for cand in ref_candidates:
+            if os.path.isfile(cand):
+                refs = cand
+        if not refs:
+            raise DoozerFatalError('{}: image-references file not found in any location: {}'.format(self.metadata.distgit_key, ref_candidates))
+
         with io.open(refs, 'r', encoding="utf-8") as f_ref:
             ref_data = yaml.full_load(f_ref)
         image_refs = ref_data.get('spec', {}).get('tags', {})
