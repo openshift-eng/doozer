@@ -1794,18 +1794,28 @@ class ImageDistGitRepo(DistGitRepo):
 
     def _get_csv_file_and_refs(self, csv_config):
         gvars = self.runtime.group_config.vars
-        subdir = csv_config.get('bundle-dir', f'{gvars["MAJOR"]}.{gvars["MINOR"]}')
-        manifests = os.path.join(self.distgit_dir, csv_config['manifests-dir'], subdir)
+        bundle_dir = csv_config.get('bundle-dir', f'{gvars["MAJOR"]}.{gvars["MINOR"]}')
+        manifests_dir = csv_config.get('manifests-dir')
+        bundle_manifests_dir = os.path.join(manifests_dir, bundle_dir)
 
-        refs = os.path.join(manifests, 'image-references')
-        if not os.path.isfile(refs):
-            raise DoozerFatalError('{}: file does not exist: {}'.format(self.metadata.distgit_key, refs))
+        refs = None
+        ref_candidates = [
+            os.path.join(self.distgit_dir, dirpath, 'image-references')
+            for dirpath in [bundle_dir, manifests_dir, bundle_manifests_dir]
+        ]
+        for cand in ref_candidates:
+            if os.path.isfile(cand):
+                refs = cand
+        if not refs:
+            raise DoozerFatalError('{}: image-references file not found in any location: {}'.format(self.metadata.distgit_key, ref_candidates))
+
         with io.open(refs, 'r', encoding="utf-8") as f_ref:
             ref_data = yaml.full_load(f_ref)
         image_refs = ref_data.get('spec', {}).get('tags', {})
         if not image_refs:
             raise DoozerFatalError('Data in {} not valid'.format(refs))
 
+        manifests = os.path.join(self.distgit_dir, manifests_dir, bundle_dir)
         csvs = list(pathlib.Path(manifests).glob('*.clusterserviceversion.yaml'))
         if len(csvs) < 1:
             raise DoozerFatalError('{}: did not find a *.clusterserviceversion.yaml file @ {}'.format(self.metadata.distgit_key, manifests))
