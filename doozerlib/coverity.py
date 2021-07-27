@@ -4,6 +4,7 @@ import os
 import hashlib
 import pathlib
 import json
+from typing import List, Optional
 
 from dockerfile_parse import DockerfileParser
 from doozerlib import exectools
@@ -18,10 +19,10 @@ COVSCAN_WAIVED_FILENAME = 'waived.flag'
 
 class CoverityContext(object):
 
-    def __init__(self, image, dg_commit_hash, result_archive, repo_type='unsigned',
-                 local_repo_rhel_7=[], local_repo_rhel_8=[], force_analysis=False,
-                 ignore_waived=False):
-        self.image = image
+    def __init__(self, image, dg_commit_hash: str, result_archive: str, repo_type: str = 'unsigned',
+                 local_repo_rhel_7: List[str] = [], local_repo_rhel_8: List[str] = [], force_analysis: bool = False,
+                 ignore_waived: bool = False):
+        self.image = image  # ImageMetadata
         self.dg_commit_hash = dg_commit_hash
         self.result_archive_path = pathlib.Path(result_archive)
         self.tmp_path = self.result_archive_path.joinpath('tmp')
@@ -52,7 +53,7 @@ class CoverityContext(object):
         self.cov_root_path.mkdir(exist_ok=True, parents=True)
         self.dg_path = image.distgit_repo().dg_path
 
-    def find_nearest_waived_cov_root_path(self) -> pathlib.Path:
+    def find_nearest_waived_cov_root_path(self) -> Optional[pathlib.Path]:
         # Search backwards through commit history; try to find a has for this distgit that has been scanned before
         if self.ignore_waived:
             return None
@@ -67,7 +68,7 @@ class CoverityContext(object):
                     return cov_root_path
         return None
 
-    def get_nearest_waived_cov_path(self, nearest_waived_cov_root_path: pathlib.Path, stage_number) -> pathlib.Path:
+    def get_nearest_waived_cov_path(self, nearest_waived_cov_root_path: pathlib.Path, stage_number) -> Optional[pathlib.Path]:
         if not nearest_waived_cov_root_path:
             return None
 
@@ -456,7 +457,7 @@ RUN rm -rf {cc.container_stage_cov_path(stage_number)}/emit
                     # For each new stage, we also need to make sure we have the appropriate repos enabled for this image
                     df_out.write(f'''
 # Ensure that the build process can access the same RPMs that the build can during a brew build
-RUN curl {cc.image.cgit_url(".oit/" + cc.repo_type + ".repo")} --output /etc/yum.repos.d/oit.repo 2>&1
+RUN curl {cc.image.cgit_file_url(".oit/" + cc.repo_type + ".repo")} --output /etc/yum.repos.d/oit.repo 2>&1
 ''')
                     continue
 
