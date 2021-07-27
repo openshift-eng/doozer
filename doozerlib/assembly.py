@@ -9,6 +9,7 @@ from doozerlib.model import Missing, Model
 class AssemblyTypes(Enum):
     STANDARD = 0  # All constraints / checks enforced (e.g. consistent RPMs / siblings)
     CUSTOM = 1  # No constraints enforced
+    CANDIDATE = 2  # Release candidate or feature candidate
 
 
 def merger(a, b):
@@ -83,6 +84,8 @@ def assembly_type(releases_config: Model, assembly: str) -> AssemblyTypes:
         return AssemblyTypes.STANDARD
     elif str_type == "custom":
         return AssemblyTypes.CUSTOM
+    elif str_type == "candidate":
+        return AssemblyTypes.CANDIDATE
     else:
         raise ValueError(f'Unknown assembly type: {str_type}')
 
