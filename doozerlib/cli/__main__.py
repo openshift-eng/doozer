@@ -15,6 +15,7 @@ from doozerlib.cli import cli, pass_runtime, validate_semver_major_minor_patch
 from doozerlib.cli.release_gen_payload import release_gen_payload
 from doozerlib.cli.detect_embargo import detect_embargo
 from doozerlib.cli.images_health import images_health
+from doozerlib.cli.images_upstreampulls import images_upstreampulls
 from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
 from doozerlib.cli.release_gen_assembly import releases_gen_assembly, gen_assembly_from_nightlies
 from doozerlib.cli.scan_sources import config_scan_source_changes
