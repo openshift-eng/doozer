@@ -336,7 +336,7 @@ LABEL name=value
 RUN some-command
 FROM another-base-image:some-tag
 # __doozer=yum-update
-RUN if cat /etc/redhat-release | grep 'release 8'; then yum update -y && yum clean all; fi  # set final_stage_user in ART metadata if this fails
+RUN yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
 COPY --from=builder /some/path/a /some/path/b
         """.strip().splitlines()
         self.assertListEqual(actual, expected)
@@ -371,7 +371,7 @@ FROM another-base-image:some-tag
 # __doozer=yum-update
 USER 0
 # __doozer=yum-update
-RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi  # set final_stage_user in ART metadata if this fails
+RUN yum install -y yum-plugin-priorities && yum update -y && yum clean all  # set final_stage_user in ART metadata if this fails
 # __doozer=yum-update
 USER 1002
 COPY --from=builder /some/path/a /some/path/b
