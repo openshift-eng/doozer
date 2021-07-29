@@ -1757,7 +1757,7 @@ class ImageDistGitRepo(DistGitRepo):
             # For rebuild logic, we need to be able to prioritize repos; RHEL7 requires a plugin to be installed.
             yum_update_line = "RUN yum install -y yum-plugin-priorities && yum update -y && yum clean all"
         else:
-            yum_update_line = f"RUN yum update -y && yum clean all"
+            yum_update_line = "RUN yum update -y && yum clean all"
         output = io.StringIO()
         build_stage = 0
         for line in df_lines_iter:
