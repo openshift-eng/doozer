@@ -953,6 +953,9 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
 
     if not runtime.local:
         threads = None
+        with runtime.shared_koji_client_session() as koji_api:
+            if not koji_api.logged_in:
+                koji_api.gssapi_login()
 
     # load active build profile
     profiles = runtime.group_config.build_profiles
