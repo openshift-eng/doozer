@@ -246,7 +246,7 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
 @click.option("--force-yum-updates", is_flag=True, default=False,
-              help="Inject \"yum update -y\" in each stage. This ensures the component image will be able to override RPMs it is inheriting from its parent image using RPMs in the rebuild plashet.")
+              help="Inject \"yum update -y\" in the final stage of an image build. This ensures the component image will be able to override RPMs it is inheriting from its parent image using RPMs in the rebuild plashet.")
 @option_commit_message
 @option_push
 @pass_runtime
@@ -504,7 +504,7 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
 @click.option("--force-yum-updates", is_flag=True, default=False,
-              help="Inject \"yum update -y\" in each stage. This ensures the component image will be able to override RPMs it is inheriting from its parent image using RPMs in the rebuild plashet.")
+              help="Inject \"yum update -y\" in the final stage of an image build. This ensures the component image will be able to override RPMs it is inheriting from its parent image using RPMs in the rebuild plashet.")
 @option_commit_message
 @option_push
 @pass_runtime

@@ -1728,7 +1728,7 @@ class ImageDistGitRepo(DistGitRepo):
             return version, release
 
     def _update_yum_update_commands(self, force_yum_updates: bool, df_fileobj: io.TextIOBase) -> io.StringIO:
-        """ If force_yum_updates is True, inject "yum updates -y" in each stage; Otherwise, remove the lines we injected.
+        """ If force_yum_updates is True, inject "yum updates -y" in the final build stage; Otherwise, remove the lines we injected.
         Returns an in-memory text stream for the new Dockerfile content
         """
         if force_yum_updates and not self.config.get('enabled_repos'):
@@ -1754,9 +1754,9 @@ class ImageDistGitRepo(DistGitRepo):
         el_ver = self.metadata.branch_el_target()
         if el_ver == 7:
             # For rebuild logic, we need to be able to prioritize repos; RHEL7 requires a plugin to be installed.
-            yum_update_line = "RUN if cat /etc/redhat-release | grep 'release 7'; then yum install -y yum-plugin-priorities && yum update -y && yum clean all; fi"
+            yum_update_line = "RUN yum install -y yum-plugin-priorities && yum update -y && yum clean all"
         else:
-            yum_update_line = f"RUN if cat /etc/redhat-release | grep 'release {el_ver}'; then yum update -y && yum clean all; fi"
+            yum_update_line = f"RUN yum update -y && yum clean all"
         output = io.StringIO()
         build_stage = 0
         for line in df_lines_iter:
@@ -1768,18 +1768,25 @@ class ImageDistGitRepo(DistGitRepo):
             if not force_yum_updates or not line.startswith('FROM '):
                 continue
             build_stage += 1
-            # If the curent user inherited from the base image for this stage is not root, `yum update -y` will fail.
-            # We need to change the current user to root.
-            # For non-final stages, it should be safe to inject "USER 0" before `yum update -y`.
-            # However for the final stage, injecting "USER 0" without changing the user back may cause unexpected behavior.
-            # Per https://github.com/openshift/doozer/pull/428#issuecomment-861795424, introduce a new metadata `final_stage_user` for images so we can switch the user back later.
-            if build_stage < build_stage_num or final_stage_user:
+
+            if build_stage != build_stage_num:
+                # If this is not the final stage, ignore this FROM
+                continue
+
+            # This should be directly after the last 'FROM' (i.e. in the final stage of the Dockerfile).
+            # If the current user inherited from the base image for this stage is not root, `yum update -y` will fail
+            # and we must change the user to be root.
+            # However for the final stage, injecting "USER 0" without changing the original base image user
+            # may cause unexpected behavior if the container makes assumption about the user at runtime.
+            # Per https://github.com/openshift/doozer/pull/428#issuecomment-861795424,
+            # introduce a new metadata `final_stage_user` for images so we can switch the user back later.
+            if final_stage_user:
                 output.write(f"# {yum_update_line_flag}\nUSER 0\n")
             else:
                 self.logger.warning("Will not inject `USER 0` before `yum update -y` for the final build stage because `final_stage_user` is missing (or 0) in image meta."
                                     " If this build fails with `yum update -y` permission denied error, please set correct `final_stage_user` and rebase again.")
             output.write(f"# {yum_update_line_flag}\n{yum_update_line}  # set final_stage_user in ART metadata if this fails\n")
-            if build_stage == build_stage_num and final_stage_user:
+            if final_stage_user:
                 output.write(f"# {yum_update_line_flag}\nUSER {final_stage_user}\n")
         output.seek(0)
         return output
