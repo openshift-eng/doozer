@@ -22,8 +22,7 @@ class MockRuntime(object):
 class TestBrewBuildImageInspector(unittest.TestCase):
 
     def setUp(self):
-        logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger()
+        self.logger = MagicMock(spec=logging.Logger)
 
         runtime = MockRuntime(self.logger)
         koji_mock = Mock()

@@ -273,7 +273,6 @@ def list_image_rpms(image_ids: List[int], session: koji.ClientSession) -> List[O
     :param session: instance of Brew session
     :return: a list of Koji/Brew RPM lists
     """
-    tasks = []
     with session.multicall(strict=True) as m:
         tasks = [m.listRPMs(imageID=image_id) for image_id in image_ids]
     return [task.result for task in tasks]
@@ -285,7 +284,6 @@ def list_build_rpms(build_ids: List[int], session: koji.ClientSession) -> List[O
     :param session: instance of Brew session
     :return: a list of Koji/Brew RPM lists
     """
-    tasks = []
     with session.multicall(strict=True) as m:
         tasks = [m.listBuildRPMs(build) for build in build_ids]
     return [task.result for task in tasks]
@@ -537,6 +535,7 @@ class KojiWrapper(koji.ClientSession):
         self.___brew_event = None if not brew_event else int(brew_event)
         super(KojiWrapper, self).__init__(*koji_session_args)
         self.force_instance_caching = force_instance_caching
+        self._gss_logged_in: bool = False  # Tracks whether this instance has authenticated
         self.___before_timestamp = None
         if brew_event:
             self.___before_timestamp = self.getEvent(self.___brew_event)['ts']
@@ -553,7 +552,6 @@ class KojiWrapper(koji.ClientSession):
 
     @classmethod
     def get_next_call_id(cls):
-        global _koji_call_counter, _koji_wrapper_lock
         with cls._koji_wrapper_lock:
             cid = cls._koji_call_counter
             cls._koji_call_counter = cls._koji_call_counter + 1
@@ -759,8 +757,9 @@ class KojiWrapper(koji.ClientSession):
 
     def gssapi_login(self, principal=None, keytab=None, ccache=None, proxyuser=None):
         # Prevent redundant logins for shared sessions.
-        if super().logged_in:
+        if self._gss_logged_in:
             if logger:
-                logger.warning(f'Attempted to login to already logged in KojiWrapper instance')
+                logger.warning('Attempted to login to already logged in KojiWrapper instance')
             return True
-        return super().gssapi_login(principal=principal, keytab=keytab, ccache=ccache, proxyuser=proxyuser)
+        self._gss_logged_in = super().gssapi_login(principal=principal, keytab=keytab, ccache=ccache, proxyuser=proxyuser)
+        return self._gss_logged_in

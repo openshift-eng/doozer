@@ -25,6 +25,7 @@ import io
 import pathlib
 from typing import Optional, List, Dict, Tuple, Union
 import time
+import re
 
 from doozerlib import gitdata
 from . import logutil
@@ -723,7 +724,7 @@ class Runtime(object):
         """
         with self.bs_lock:
             if self._build_status_detector is None:
-                self._build_status_detector = BuildStatusDetector(self.build_retrying_koji_client(), self.logger)
+                self._build_status_detector = BuildStatusDetector(self, self.logger)
             yield self._build_status_detector
 
     @contextmanager
@@ -1493,8 +1494,22 @@ class Runtime(object):
         pool.join()
         return ret
 
-    def get_default_candidate_brew_tag(self):
-        return self.branch + '-candidate' if self.branch else None
+    def get_el_targeted_default_branch(self, el_target: Optional[Union[str, int]] = None):
+        if not self.branch:
+            return None
+        if not el_target:
+            return self.branch
+        # Otherwise, the caller is asking us to determine the branch for
+        # a specific RHEL version. Pull apart the default group branch
+        # and replace it wth the targeted version.
+        el_ver: int = util.isolate_el_version_in_brew_tag(el_target)
+        match = re.match(r'^(.*)rhel-\d+(.*)$', self.branch)
+        el_specific_branch: str = f'{match.group(1)}rhel-{el_ver}{match.group(2)}'
+        return el_specific_branch
+
+    def get_default_candidate_brew_tag(self, el_target: Optional[Union[str, int]] = None):
+        branch = self.get_el_targeted_default_branch(el_target=el_target)
+        return branch + '-candidate' if branch else None
 
     def get_candidate_brew_tags(self):
         """Return a set of known candidate tags relevant to this group"""

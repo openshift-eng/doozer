@@ -3,11 +3,14 @@ from __future__ import absolute_import, print_function, unicode_literals
 import json
 from typing import Dict, List, Tuple, Optional
 
+from kobo.rpmlib import parse_nvr
+
 from tenacity import retry, stop_after_attempt, wait_fixed
 from urllib import request
 from doozerlib.util import brew_suffix_for_arch, isolate_el_version_in_release
 from doozerlib import exectools
 from doozerlib.model import Model
+from doozerlib import brew
 
 RHCOS_BASE_URL = "https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases"
 
@@ -202,7 +205,7 @@ class RHCOSBuildInspector:
         with self.runtime.pooled_koji_client_session() as koji_api:
             for nvra in self.get_rpm_nvras():
                 rpm_def = koji_api.getRPM(nvra, strict=True)
-                package_build = koji_api.getBuild(rpm_def['build_id'], strict=True)
+                package_build = koji_api.getBuild(rpm_def['build_id'], brew.KojiWrapperOpts(caching=True), strict=True)
                 package_name = package_build['package_name']
                 aggregate[package_name] = package_build
 
@@ -234,22 +237,26 @@ class RHCOSBuildInspector:
         """
         return self._build_meta['oscontainer']['digest']
 
-    def find_non_latest_rpms(self) -> List[str]:
+    def find_non_latest_rpms(self) -> List[Tuple[str, str]]:
         """
         If the packages installed in this image overlap packages in the candidate tag,
         return NVRs of the latest candidate builds that are not also installed in this image.
         This indicates that the image has not picked up the latest from candidate.
 
         Note that this is completely normal for non-STREAM assemblies. In fact, it is
-        normal for any assembly other than the assembly used for nightlies. In the age of
-        a thorough config:scan-sources, if this method returns anything, scan-sources is
-        likely broken.
+        normal for any assembly other than the assembly used for nightlies.
 
-        :return: Returns a list of NVRs from the "latest" state of the specified candidate tag
+        Unfortunately, rhcos builds are not performed in sync with all other builds.
+        Thus, it is natural for them to lag behind when RPMs change. The should catch
+        up with the next RHCOS build.
+
+        :return: Returns a list of Tuple[INSTALLED_NVRs, NEWEST_NVR] where
+        newest is from the "latest" state of the specified candidate tag
         if same the package installed into this archive is not the same NVR.
         """
 
-        candidate_brew_tag = self.runtime.get_default_candidate_brew_tag()
+        # Find the default candidate tag appropriate for the RHEL version used by this RHCOS build.
+        candidate_brew_tag = self.runtime.get_default_candidate_brew_tag(el_target=self.get_rhel_base_version())
 
         # N.B. the "rpms" installed in an image archive are individual RPMs, not brew rpm package builds.
         # we compare against the individual RPMs from latest candidate rpm package builds.
@@ -260,12 +267,16 @@ class RHCOSBuildInspector:
                 bs_detector.find_unshipped_candidate_rpms(candidate_brew_tag, self.runtime.brew_event)
             }
 
-        old_nvrs = []
-        installed_package_builds: Dict[str, Dict] = self.get_package_build_objects()  # Maps package name to build dict.
+        old_nvrs: List[Tuple[str, str]] = []
+        # Translate the package builds into a list of individual RPMs. Build dict[rpm_name] -> nvr for every NVR installed
+        # in this RHCOS build.
+        installed_nvr_map: Dict[str, str] = {parse_nvr(installed_nvr)['name']: installed_nvr for installed_nvr in self.get_rpm_nvrs()}
         # we expect only a few unshipped candidates most of the the time, so we'll just search for those.
         for name, rpm in candidate_rpms.items():
-            build_dict = installed_package_builds.get(name)
-            if build_dict and rpm != build_dict['nvr']:
-                old_nvrs.append(build_dict['nvr'])
+            rpm_nvr = rpm['nvr']
+            if name in installed_nvr_map:
+                installed_nvr = installed_nvr_map[name]
+                if rpm_nvr != installed_nvr:
+                    old_nvrs.append((installed_nvr, rpm_nvr))
 
         return old_nvrs

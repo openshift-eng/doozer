@@ -3,7 +3,7 @@ import copy
 
 from enum import Enum
 
-from doozerlib.model import Missing, Model
+from doozerlib.model import Missing, Model, ListModel
 
 
 class AssemblyTypes(Enum):
@@ -11,6 +11,37 @@ class AssemblyTypes(Enum):
     STANDARD = "standard"  # All constraints / checks enforced (e.g. consistent RPMs / siblings)
     CANDIDATE = "candidate"  # Indicates releaes or feature candidate
     CUSTOM = "custom"  # No constraints enforced
+
+
+class AssemblyIssueCode(Enum):
+    IMPERMISSIBLE = 0
+    CONFLICTING_INHERITED_DEPENDENCY = 1
+    CONFLICTING_GROUP_RPM_INSTALLED = 2
+    MISMATCHED_SIBLINGS = 3
+    OUTDATED_RPMS_IN_STREAM_BUILD = 4
+    INCONSISTENT_RHCOS_RPMS = 5
+
+
+class AssemblyIssue:
+    """
+    An encapsulation of an issue with an assembly. Some issues are critical for any
+    assembly and some are on relevant for assemblies we intend for GA.
+    """
+    def __init__(self, msg: str, component: str, code: AssemblyIssueCode = AssemblyIssueCode.IMPERMISSIBLE):
+        """
+        :param msg: A human readable message describing the issue.
+        :param component: The name of the entity associated with the issue, if any.
+        :param code: A code that that classifies the issue. Assembly definitions can optionally permit some of these codes.
+        """
+        self.msg: str = msg
+        self.component: str = component or 'general'
+        self.code = code
+
+    def __str__(self):
+        return self.msg
+
+    def __repr__(self):
+        return self.msg
 
 
 def merger(a, b):
@@ -153,23 +184,37 @@ def assembly_metadata_config(releases_config: Model, assembly: str, meta_type: s
     return Model(dict_to_model=config_dict)
 
 
-def assembly_rhcos_config(releases_config: Model, assembly: str) -> Model:
+def _assembly_config_struct(releases_config: Model, assembly: str, key: str, default):
     """
-    :param releases_config: The content of releases.yml in Model form.
-    :param assembly: The name of the assembly to assess
-    Returns the a computed rhcos config model for a given assembly.
+    If a key is directly under the 'assembly' (e.g. rhcos), then this method will
+    recurse the inheritance tree to build you a final version of that key's value.
+    The key may refer to a list or dict (set default value appropriately).
     """
     if not assembly or not isinstance(releases_config, Model):
         return Missing
 
     _check_recursion(releases_config, assembly)
     target_assembly = releases_config.releases[assembly].assembly
-    rhcos_config_dict = target_assembly.get("rhcos", {})
+    key_struct = target_assembly.get(key, default)
     if target_assembly.basis.assembly:  # Does this assembly inherit from another?
         # Recursive apply ancestor assemblies
-        basis_rhcos_config = assembly_rhcos_config(releases_config, target_assembly.basis.assembly)
-        rhcos_config_dict = merger(rhcos_config_dict, basis_rhcos_config.primitive())
-    return Model(dict_to_model=rhcos_config_dict)
+        parent_config_struct = _assembly_config_struct(releases_config, target_assembly.basis.assembly, key, default)
+        key_struct = merger(key_struct, parent_config_struct.primitive())
+    if isinstance(default, dict):
+        return Model(dict_to_model=key_struct)
+    elif isinstance(default, list):
+        return ListModel(list_to_model=key_struct)
+    else:
+        raise ValueError(f'Unknown how to derive for default type: {type(default)}')
+
+
+def assembly_rhcos_config(releases_config: Model, assembly: str) -> Model:
+    """
+    :param releases_config: The content of releases.yml in Model form.
+    :param assembly: The name of the assembly to assess
+    Returns the a computed rhcos config model for a given assembly.
+    """
+    return _assembly_config_struct(releases_config, assembly, 'rhcos', {})
 
 
 def assembly_basis_event(releases_config: Model, assembly: str) -> typing.Optional[int]:
@@ -190,21 +235,33 @@ def assembly_basis_event(releases_config: Model, assembly: str) -> typing.Option
     return assembly_basis_event(releases_config, target_assembly.basis.assembly)
 
 
-def assembly_basis(releases_config: Model, assembly: str) -> typing.Optional[Model]:
+def assembly_basis(releases_config: Model, assembly: str) -> Model:
     """
     :param releases_config: The content of releases.yml in Model form.
     :param assembly: The name of the assembly to assess
     Returns the basis dict for a given assembly. If the assembly has no basis,
-    None is returned.
+    Model({}) is returned.
     """
-    if not assembly or not isinstance(releases_config, Model):
-        return None
+    return _assembly_config_struct(releases_config, assembly, 'basis', {})
 
-    _check_recursion(releases_config, assembly)
-    target_assembly = releases_config.releases[assembly].assembly
-    target_basis_config_dict = target_assembly.get("basis", {})
-    if target_assembly.basis.assembly:  # Does this assembly inherit from another?
-        # Recursive apply ancestor assemblies
-        basis_basis_config = assembly_basis(releases_config, target_assembly.basis.assembly)
-        target_basis_config_dict = merger(target_basis_config_dict, basis_basis_config.primitive())
-    return Model(dict_to_model=target_basis_config_dict)
+
+def assembly_permits(releases_config: Model, assembly: str) -> ListModel:
+    """
+    :param releases_config: The content of releases.yml in Model form.
+    :param assembly: The name of the assembly to assess
+    Returns the a computed permits config model for a given assembly. If no
+    permits are defined ListModel([]) is returned.
+    """
+    defined_permits = _assembly_config_struct(releases_config, assembly, 'permits', [])
+
+    # Do some basic validation here to fail fast
+    if assembly_type(releases_config, assembly) == AssemblyTypes.STANDARD:
+        if defined_permits:
+            raise ValueError(f'STANDARD assemblies like {assembly} do not allow "permits"')
+
+    for permit in defined_permits:
+        if permit.code == AssemblyIssueCode.IMPERMISSIBLE.name:
+            raise ValueError(f'IMPERMISSIBLE cannot be permitted in any assembly (assembly: {assembly})')
+        if permit.code not in ['*', *[aic.name for aic in AssemblyIssueCode]]:
+            raise ValueError(f'Undefined permit code in assembly {assembly}: {permit.code}')
+    return defined_permits

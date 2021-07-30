@@ -30,7 +30,7 @@ class ImageMetadata(Metadata):
         if clone_source:
             runtime.resolve_source(self)
 
-    def get_assembly_rpm_package_dependencies(self, el_ver: int) -> Dict[str, str]:
+    def get_assembly_rpm_package_dependencies(self, el_ver: int) -> Tuple[Dict[str, str], Dict[str, str]]:
         """
         An assembly can define RPMs which should be installed into a given member
         image. Those dependencies can be specified at either the individual member
@@ -38,21 +38,31 @@ class ImageMetadata(Metadata):
         Dict[package_name] -> nvr for any package that should be installed due to
         these overrides.
         :param el_ver: Which version of RHEL to check
-        :return: Returns Dict[package_name] -> nvr for any assembly induced overrides.
+        :return: Returns a tuple with two Dict[package_name] -> nvr for any assembly induced overrides.
+                 The first entry in the Tuple are dependencies directly specified in the member.
+                 The second entry are dependencies specified in the group and member.
         """
-        aggregate: Dict[str, str] = dict()  # Map package_name -> nvr
+        direct_member_deps: Dict[str, str] = dict()  # Map package_name -> nvr
+        aggregate_deps: Dict[str, str] = dict()  # Map package_name -> nvr
         eltag = f'el{el_ver}'
         group_deps = self.runtime.get_group_config().dependencies.rpms or []
         member_deps = self.config.dependencies.rpms or []
-        full = []
-        full.extend(group_deps)
-        full.extend(member_deps)  # Will will process things such that late entries override early
-        for rpm_entry in full:
+
+        for rpm_entry in group_deps:
             if eltag in rpm_entry:  # This entry has something for the requested RHEL version
                 nvr = rpm_entry[eltag]
                 package_name = parse_nvr(nvr)['name']
-                aggregate[package_name] = nvr
-        return aggregate
+                aggregate_deps[package_name] = nvr
+
+        # Perform the same process, but only for dependencies directly listed for the member
+        for rpm_entry in member_deps:
+            if eltag in rpm_entry:  # This entry has something for the requested RHEL version
+                nvr = rpm_entry[eltag]
+                package_name = parse_nvr(nvr)['name']
+                direct_member_deps[package_name] = nvr
+                aggregate_deps[package_name] = nvr  # Override anything at the group level
+
+        return direct_member_deps, aggregate_deps
 
     def is_ancestor(self, image):
         """
@@ -115,11 +125,17 @@ class ImageMetadata(Metadata):
 
     @property
     def is_payload(self):
-        return self.config.get('for_payload', False)
+        val = self.config.get('for_payload', False)
+        if val and self.base_only:
+            raise ValueError(f'{self.distgit_key} claims to be for_payload and base_only')
+        return val
 
     @property
     def for_release(self):
-        return self.config.get('for_release', True)
+        val = self.config.get('for_release', True)
+        if val and self.base_only:
+            raise ValueError(f'{self.distgit_key} claims to be for_release and base_only')
+        return val
 
     def get_payload_tag_info(self) -> Tuple[str, bool]:
         """
@@ -577,7 +593,7 @@ class ArchiveImageInspector:
     Represents and returns information about an archive image associated with a brew build.
     """
 
-    def __init__(self, runtime, archive: Dict, brew_build_inspector: 'BrewBuildImageInspector' =None):
+    def __init__(self, runtime, archive: Dict, brew_build_inspector: 'BrewBuildImageInspector' = None):
         """
         :param runtime: The brew build inspector associated with the build that created this archive.
         :param archive: The raw archive dict from brew.
@@ -603,7 +619,7 @@ class ArchiveImageInspector:
         """
         return self._archive['id']
 
-    def get_image_envs(self) -> Dict[str, str]:
+    def get_image_envs(self) -> Dict[str, Optional[str]]:
         """
         :return: Returns a dictionary of environment variables set for this image.
         """
@@ -746,6 +762,12 @@ class BrewBuildImageInspector:
         :return: Returns the koji build id for this image.
         """
         return self._brew_build_id
+
+    def get_brew_build_webpage_url(self):
+        """
+        :return: Returns a link for humans to go look at details for this brew build.
+        """
+        return f'https://brewweb.engineering.redhat.com/brew/buildinfo?buildID={self._brew_build_id}'
 
     def get_brew_build_dict(self) -> Dict:
         """
@@ -926,9 +948,7 @@ class BrewBuildImageInspector:
         """
         arch = brew_arch_for_go_arch(arch)  # Make sure this is a brew arch
         found = filter(lambda ai: ai.image_arch() == arch, self.get_image_archive_inspectors())
-        if not found:
-            return None
-        return list(found)[0]
+        return next(found, None)
 
     def is_under_embargo(self) -> bool:
         """
@@ -946,7 +966,7 @@ class BrewBuildImageInspector:
 
         return self._cache[cn]
 
-    def find_non_latest_rpms(self) -> List[str]:
+    def find_non_latest_rpms(self) -> List[Tuple[str, str]]:
         """
         If the packages installed in this image overlap packages in the candidate tag,
         return NVRs of the latest candidate builds that are not also installed in this image.
@@ -961,7 +981,7 @@ class BrewBuildImageInspector:
         if same the package installed into this archive is not the same NVR.
         """
 
-        candidate_brew_tag = self.runtime.get_default_candidate_brew_tag()
+        candidate_brew_tag = self.get_image_meta().candidate_brew_tag()
 
         # N.B. the "rpms" installed in an image archive are individual RPMs, not brew rpm package builds.
         # we compare against the individual RPMs from latest candidate rpm package builds.
@@ -972,12 +992,12 @@ class BrewBuildImageInspector:
                 bs_detector.find_unshipped_candidate_rpms(candidate_brew_tag, self.runtime.brew_event)
             }
 
-        old_nvrs = []
+        old_nvrs: List[Tuple[str, str]] = []
         archive_rpms = {rpm['name']: rpm for rpm in self.get_all_installed_rpm_dicts()}
         # we expect only a few unshipped candidates most of the the time, so we'll just search for those.
         for name, rpm in candidate_rpms.items():
             archive_rpm = archive_rpms.get(name)
             if archive_rpm and rpm['nvr'] != archive_rpm['nvr']:
-                old_nvrs.append(archive_rpm['nvr'])
+                old_nvrs.append((archive_rpm['nvr'], rpm['nvr']))
 
         return old_nvrs

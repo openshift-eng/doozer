@@ -7,7 +7,7 @@ from doozerlib import rhcos, Runtime
 from doozerlib import util
 from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
-from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes
+from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, AssemblyIssueCode
 
 
 class AssemblyInspector:
@@ -20,6 +20,7 @@ class AssemblyInspector:
 
         self.assembly_rhcos_config = assembly_rhcos_config(self.runtime.releases_config, self.runtime.assembly)
         self._rpm_build_cache: Dict[int, Dict[str, Optional[Dict]]] = {}  # Dict[rhel_ver] -> Dict[distgit_key] -> Optional[BuildDict]
+        self._permits = assembly_permits(self.runtime.releases_config, self.runtime.assembly)
 
         # If an image component has a latest build, an ImageInspector associated with the image.
         self._release_image_inspectors: Dict[str, Optional[BrewBuildImageInspector]] = dict()
@@ -30,7 +31,22 @@ class AssemblyInspector:
             else:
                 self._release_image_inspectors[image_meta.distgit_key] = None
 
-    def check_rhcos_consistency(self, rhcos_build: rhcos.RHCOSBuildInspector) -> List[str]:
+    def does_permit(self, issue: AssemblyIssue) -> bool:
+        """
+        Checks all permits for this assembly definition to see if a given issue
+        is actually permitted when it is time to construct a payload.
+        :return: Returns True if the issue is permitted to exist in the assembly payload.
+        """
+        for permit in self._permits:
+            if issue.code == AssemblyIssueCode.IMPERMISSIBLE:
+                # permitting '*' still doesn't permit impermissible
+                return False
+            if permit.code == '*' or issue.code.name == permit.code:
+                if permit.component == '*' or issue.component == permit.component:
+                    return True
+        return False
+
+    def check_rhcos_issues(self, rhcos_build: rhcos.RHCOSBuildInspector) -> List[AssemblyIssue]:
         """
         Analyzes an RHCOS build to check whether the installed packages are consistent with:
         1. package NVRs defined at the group dependency level
@@ -41,25 +57,42 @@ class AssemblyInspector:
         """
         self.runtime.logger.info(f'Checking RHCOS build for consistency: {str(rhcos_build)}...')
 
-        issues: List[str] = []
-        desired_packages: Dict[str, str] = dict()  # Dict[package_name] -> nvr
-        assembly_overrides = []
-        assembly_overrides.extend(self.runtime.get_group_config().dependencies or [])
-        assembly_overrides.extend(self.assembly_rhcos_config.dependencies or [])
-        for package_entry in assembly_overrides:
-            if 'el8' in package_entry:  # TODO: how to make group aware of RHCOS RHEL base?
-                nvr = package_entry['el8']
+        issues: List[AssemblyIssue] = []
+        required_packages: Dict[str, str] = dict()  # Dict[package_name] -> nvr  # Dependency specified in 'rhcos' in assembly definition
+        desired_packages: Dict[str, str] = dict()  # Dict[package_name] -> nvr  # Dependency specified at group level
+        el_tag = f'el{rhcos_build.get_rhel_base_version()}'
+        for package_entry in (self.runtime.get_group_config().dependencies or []):
+            if el_tag in package_entry:
+                nvr = package_entry[el_tag]
                 package_name = parse_nvr(nvr)['name']
                 desired_packages[package_name] = nvr
 
-        installed_packages = rhcos_build.get_package_build_objects()
-        for package_name, build_dict in installed_packages.items():
-            if package_name in assembly_overrides:
-                required_nvr = assembly_overrides[package_name]
-                installed_nvr = build_dict['nvr']
-                if installed_nvr != required_nvr:
-                    issues.append(f'Expected {required_nvr} in RHCOS build but found {installed_nvr}')
+        for package_entry in (self.assembly_rhcos_config.dependencies or []):
+            if el_tag in package_entry:
+                nvr = package_entry[el_tag]
+                package_name = parse_nvr(nvr)['name']
+                required_packages[package_name] = nvr
+                desired_packages[package_name] = nvr  # Override if something else was at the group level
 
+        installed_packages = rhcos_build.get_package_build_objects()
+        for package_name, desired_nvr in desired_packages.items():
+
+            if package_name in required_packages and package_name not in installed_packages:
+                # If the dependency is specified in the 'rhcos' section of the assembly, we must find it or raise an issue.
+                # This is impermissible because it can simply be fixed in the assembly definition.
+                issues.append(AssemblyIssue(f'Expected assembly defined rhcos dependency {desired_nvr} to be installed in {rhcos_build.build_id} but that package was not installed', component='rhcos'))
+
+            if package_name in installed_packages:
+                installed_build_dict = installed_packages[package_name]
+                installed_nvr = installed_build_dict['nvr']
+                if installed_nvr != desired_nvr:
+                    # We could consider permitting this in AssemblyTypes.CUSTOM, but it means that the RHCOS build
+                    # could not be effectively reproduced by the rebuild job.
+                    issues.append(AssemblyIssue(f'Expected {desired_nvr} to be installed in RHCOS build {rhcos_build.build_id} but found {installed_nvr}', component='rhcos', code=AssemblyIssueCode.CONFLICTING_INHERITED_DEPENDENCY))
+
+        """
+        If the rhcos build has RPMs from this group installed, make sure they match the NVRs associated with this assembly.
+        """
         for dgk, assembly_rpm_build in self.get_group_rpm_build_dicts(el_ver=rhcos_build.get_rhel_base_version()).items():
             if not assembly_rpm_build:
                 continue
@@ -68,11 +101,13 @@ class AssemblyInspector:
             if package_name in installed_packages:
                 installed_nvr = installed_packages[package_name]['nvr']
                 if assembly_nvr != installed_nvr:
-                    issues.append(f'Expected {rhcos_build.build_id} image to contain assembly selected RPM build {assembly_nvr} but found {installed_nvr} installed')
+                    # We could consider permitting this in AssemblyTypes.CUSTOM, but it means that the RHCOS build
+                    # could not be effectively reproduced by the rebuild job.
+                    issues.append(AssemblyIssue(f'Expected {rhcos_build.build_id}/{rhcos_build.brew_arch} image to contain assembly selected RPM build {assembly_nvr} but found {installed_nvr} installed', component='rhcos', code=AssemblyIssueCode.CONFLICTING_GROUP_RPM_INSTALLED))
 
         return issues
 
-    def check_group_rpm_package_consistency(self, rpm_meta: RPMMetadata) -> List[str]:
+    def check_group_rpm_package_consistency(self, rpm_meta: RPMMetadata) -> List[AssemblyIssue]:
         """
         Evaluate the current assembly builds of RPMs in the group and check whether they are consistent with
         the assembly definition.
@@ -80,14 +115,15 @@ class AssemblyInspector:
         :return: Returns a (potentially empty) list of reasons the rpm should be rebuilt.
         """
         self.runtime.logger.info(f'Checking group RPM for consistency: {rpm_meta.distgit_key}...')
-        issues: List[str] = []
+        issues: List[AssemblyIssue] = []
 
         for rpm_meta in self.runtime.rpm_metas():
             dgk = rpm_meta.distgit_key
             for el_ver in rpm_meta.determine_rhel_targets():
                 brew_build_dict = self.get_group_rpm_build_dicts(el_ver=el_ver)[dgk]
                 if not brew_build_dict:
-                    issues.append(f'Did not find rhel-{el_ver} build for {dgk}')
+                    # Impermissible. The RPM should be built for each target.
+                    issues.append(AssemblyIssue(f'Did not find rhel-{el_ver} build for {dgk}', component=dgk))
                     continue
 
                 """
@@ -114,7 +150,8 @@ class AssemblyInspector:
                             # the desired commit.
                             build_nvr = brew_build_dict['nvr']
                             if target_branch[:7] not in build_nvr:
-                                issues.append(f'{dgk} build for rhel-{el_ver} did not find git commit {target_branch[:7]} in package RPM NVR {build_nvr}')
+                                # Impermissible because the assembly definition can simply be changed.
+                                issues.append(AssemblyIssue(f'{dgk} build for rhel-{el_ver} did not find git commit {target_branch[:7]} in package RPM NVR {build_nvr}', component=dgk))
                     except ValueError:
                         # The meta's target branch a normal branch name
                         # and not a git commit. When this is the case,
@@ -124,7 +161,7 @@ class AssemblyInspector:
 
         return issues
 
-    def check_group_image_consistency(self, build_inspector: BrewBuildImageInspector) -> List[str]:
+    def check_group_image_consistency(self, build_inspector: BrewBuildImageInspector) -> List[AssemblyIssue]:
         """
         Evaluate the current assembly build and an image in the group and check whether they are consistent with
         :param build_inspector: The brew build to check
@@ -132,9 +169,10 @@ class AssemblyInspector:
         """
         image_meta = build_inspector.get_image_meta()
         self.runtime.logger.info(f'Checking group image for consistency: {image_meta.distgit_key}...')
-        issues: List[str] = []
+        issues: List[AssemblyIssue] = []
 
         installed_packages = build_inspector.get_all_installed_package_build_dicts()
+        dgk = build_inspector.get_image_meta().distgit_key
 
         """
         If the assembly defined any RPM package dependencies at the group or image
@@ -144,14 +182,20 @@ class AssemblyInspector:
         RPMs. Both assemblies and this method deal with the package level - not
         individual RPMs.
         """
-        package_overrides: Dict[str, str] = image_meta.get_assembly_rpm_package_dependencies(el_ver=image_meta.branch_el_target())
-        if package_overrides:
-            for package_name, required_nvr in package_overrides.items():
+        member_package_overrides, all_package_overrides = image_meta.get_assembly_rpm_package_dependencies(el_ver=image_meta.branch_el_target())
+        if member_package_overrides or all_package_overrides:
+            for package_name, required_nvr in all_package_overrides.items():
+                if package_name in member_package_overrides and package_name not in installed_packages:
+                    # A dependency was defined explicitly in an assembly member, but it is not installed.
+                    # i.e. the artists expected something to be installed, but it wasn't. Raise an issue.
+                    # Tis is impermissible because the assembly definition can easily be changed to remove the explicit dep.
+                    issues.append(AssemblyIssue(f'Expected image to contain assembly member override dependencies NVR {required_nvr} but it was not installed', component=dgk))
+
                 if package_name in installed_packages:
                     installed_build_dict: Dict = installed_packages[package_name]
                     installed_nvr = installed_build_dict['nvr']
                     if required_nvr != installed_nvr:
-                        issues.append(f'Expected image to contain assembly override dependencies NVR {required_nvr} but found {installed_nvr} installed')
+                        issues.append(AssemblyIssue(f'Expected image to contain assembly override dependencies NVR {required_nvr} but found {installed_nvr} installed', component=dgk, code=AssemblyIssueCode.CONFLICTING_INHERITED_DEPENDENCY))
 
         """
         If an image contains an RPM from the doozer group, make sure it is the current
@@ -168,7 +212,7 @@ class AssemblyInspector:
                 if package_name in installed_packages:
                     installed_nvr = installed_packages[package_name]['nvr']
                     if installed_nvr != assembly_nvr:
-                        issues.append(f'Expected image to contain assembly RPM build {assembly_nvr} but found {installed_nvr} installed')
+                        issues.append(AssemblyIssue(f'Expected image to contain assembly RPM build {assembly_nvr} but found {installed_nvr} installed', component=dgk, code=AssemblyIssueCode.CONFLICTING_GROUP_RPM_INSTALLED))
 
         """
         Assess whether the image build has the upstream
@@ -181,7 +225,8 @@ class AssemblyInspector:
             content_git_url, _ = self.runtime.get_public_upstream(util.convert_remote_git_to_https(content_git_url))
             build_git_url = util.convert_remote_git_to_https(build_inspector.get_source_git_url())
             if content_git_url != build_git_url:
-                issues.append(f'Expected image build git source from metadata {content_git_url} but found {build_git_url} as the source of the build')
+                # Impermissible as artist can just fix upstream git source in assembly definition
+                issues.append(AssemblyIssue(f'Expected image git source from metadata {content_git_url} but found {build_git_url} as the upstream source of the brew build', component=dgk))
 
             try:
                 target_branch = image_meta.config.content.source.git.branch.target
@@ -192,7 +237,8 @@ class AssemblyInspector:
                     # it perfectly matches what we find in the assembly build.
                     build_commit = build_inspector.get_source_git_commit()
                     if target_branch != build_commit:
-                        issues.append(f'Expected image build git commit {target_branch} but {build_commit} was found in the build')
+                        # Impermissible as artist can just fix the assembly definition.
+                        issues.append(AssemblyIssue(f'Expected image build git commit {target_branch} but {build_commit} was found in the build', component=dgk))
             except ValueError:
                 # The meta's target branch a normal branch name
                 # and not a git commit. When this is the case,

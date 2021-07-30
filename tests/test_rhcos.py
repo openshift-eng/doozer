@@ -31,8 +31,7 @@ def _urlopen_json_cm(mock_urlopen, content, rc=200):
 class TestRhcos(unittest.TestCase):
 
     def setUp(self):
-        logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger()
+        self.logger = MagicMock(spec=logging.Logger)
 
         runtime = MockRuntime(self.logger)
         koji_mock = Mock()

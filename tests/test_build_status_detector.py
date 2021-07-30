@@ -113,14 +113,15 @@ class TestBuildStatusDetector(TestCase):
             self.assertEqual(actual, expected)
 
     def test_find_unshipped_candidate_rpms(self):
-        latest = [dict(id=1), dict(id=2), dict(id=3)]
+        latest = [dict(id=1, package_name='p1'), dict(id=2, package_name='p2'), dict(id=3, package_name='p3')]
         shipped_ids = {2}
         rpms = [  # just need to get the same thing back, not inspect contents
             [object(), object()],
             [object()],
         ]
-        session = MagicMock()
-        detector = BuildStatusDetector(session, MagicMock())
+        runtime = MagicMock()
+        detector = BuildStatusDetector(runtime, MagicMock())
+        session = detector.koji_session
         session.getLatestBuilds.return_value = latest
         with patch.object(detector, 'find_shipped_builds') as find_shipped_builds, \
              patch("doozerlib.brew.list_build_rpms") as list_build_rpms:
@@ -140,6 +141,7 @@ class TestBuildStatusDetector(TestCase):
     def test_rpms_in_embargoed_tag(self):
         session = MagicMock()
         detector = BuildStatusDetector(session, MagicMock())
+        session = detector.koji_session
         session.listTagged.return_value = [{"id": 42}]
 
         expected = {42}

@@ -2,8 +2,6 @@ from logging import Logger
 from multiprocessing import Lock
 from typing import Dict, List, Optional, Set, Iterable
 
-from koji import ClientSession
-
 from doozerlib import brew, util
 
 
@@ -12,12 +10,13 @@ class BuildStatusDetector:
     A BuildStatusDetector can find builds with embargoed fixes
     """
 
-    def __init__(self, session: ClientSession, logger: Optional[Logger] = None):
+    def __init__(self, runtime, logger: Optional[Logger] = None):
         """ creates a new BuildStatusDetector
-        :param session: a koji client session
+        :param runtime: The doozer runtime
         :param logger: a logger
         """
-        self.koji_session = session
+        self.runtime = runtime
+        self.koji_session = runtime.build_retrying_koji_client()
         self.logger = logger
         self.shipping_statuses: Dict[int, bool] = {}  # a dict for caching build shipping statues. key is build id, value is True if shipped.
         self.archive_lists: Dict[int, List[Dict]] = {}  # a dict for caching archive lists. key is build id, value is a list of archives associated with that build.
@@ -132,14 +131,31 @@ class BuildStatusDetector:
 
         :param candidate_tag: string tag name to search for candidate builds
         :param event: A brew event with which to limit the brew query on latest builds.
-        :return: a list of brew RPMs (the contents of the builds) from unshipped latest builds
+        :return: a list of brew RPMs records (not the package build dicts) from unshipped latest builds
         """
         key = (candidate_tag, event)
         with self.cache_lock:
             if key not in self.unshipped_candidate_rpms_cache:
-                latest = self.koji_session.getLatestBuilds(candidate_tag, event=event, type="rpm")
-                shipped_ids = self.find_shipped_builds([b["id"] for b in latest])
-                unshipped_build_ids = [build["id"] for build in latest if build["id"] not in shipped_ids]
+                latest_in_tag: List[Dict] = self.koji_session.getLatestBuilds(candidate_tag, event=event, type="rpm")
+                latest_by_package: Dict[str, Dict] = {b['package_name']: b for b in latest_in_tag}
+
+                # Due to assemblies existing in their own conceptual build streams,
+                # We need to check any group members for their latest build in the
+                # current assembly. This may be different than what is in the tag.
+                for rpm_meta in self.runtime.rpm_metas():
+                    assembly_build_dict = rpm_meta.get_latest_build(default=None, el_target=candidate_tag)
+                    if not assembly_build_dict:
+                        # Likely this RPM has not been built for this RHEL version.
+                        continue
+                    package_name = assembly_build_dict['package_name']
+                    if package_name in latest_by_package:
+                        # Override the package with whatever is latest for this assembly
+                        latest_by_package[package_name] = assembly_build_dict
+
+                latest_for_assembly = latest_by_package.values()  # Actual latest builds with respect to assembly
+
+                shipped_ids = self.find_shipped_builds([b["id"] for b in latest_for_assembly])
+                unshipped_build_ids = [build["id"] for build in latest_for_assembly if build["id"] not in shipped_ids]
                 rpms_lists = brew.list_build_rpms(unshipped_build_ids, self.koji_session)
                 self.unshipped_candidate_rpms_cache[key] = [r for rpms in rpms_lists for r in rpms]
 
