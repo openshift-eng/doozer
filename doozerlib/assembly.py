@@ -202,7 +202,9 @@ def assembly_basis(releases_config: Model, assembly: str) -> typing.Optional[Mod
 
     _check_recursion(releases_config, assembly)
     target_assembly = releases_config.releases[assembly].assembly
-    if target_assembly.basis:
-        return target_assembly.basis
-
-    return assembly_basis(releases_config, target_assembly.basis.assembly)
+    target_basis_config_dict = target_assembly.get("basis", {})
+    if target_assembly.basis.assembly:  # Does this assembly inherit from another?
+        # Recursive apply ancestor assemblies
+        basis_basis_config = assembly_basis(releases_config, target_assembly.basis.assembly)
+        target_basis_config_dict = merger(target_basis_config_dict, basis_basis_config.primitive())
+    return Model(dict_to_model=target_basis_config_dict)

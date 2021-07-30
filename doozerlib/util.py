@@ -10,7 +10,7 @@ from itertools import chain
 from os.path import abspath
 from pathlib import Path
 from sys import getsizeof, stderr
-from typing import Dict, Iterable, List, Optional, Tuple, NamedTuple
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import click
 import yaml
@@ -439,12 +439,21 @@ def isolate_el_version_in_release(release: str) -> Optional[int]:
     return None
 
 
-def isolate_el_version_in_brew_tag(tag: str) -> Optional[int]:
+def isolate_el_version_in_brew_tag(tag: Union[str, int]) -> Optional[int]:
     """
     Given a brew tag (target) name, determines whether is contains
     a RHEL version. If it does, it returns the version value.
-    If it is not found, None is returned.
+    If it is not found, None is returned. If an int is passed in,
+    the int is just returned.
     """
+    if isinstance(tag, int):
+        # If this is already an int, just use it.
+        return tag
+    else:
+        try:
+            return int(str(tag))  # int as a str?
+        except ValueError:
+            pass
     el_version_match = re.search(r"rhel-(\d+)", tag)
     return int(el_version_match[1]) if el_version_match else None
 

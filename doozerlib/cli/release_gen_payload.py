@@ -143,8 +143,9 @@ read and propagate/expose this annotation in its display of the release image.
     report['release_images'] = [image_meta.distgit_key for image_meta in runtime.get_for_release_image_metas()]
     report['mismatched_siblings'] = [build_image_inspector.get_nvr() for build_image_inspector in mismatched_siblings]
     report['missing_image_builds'] = [dgk for (dgk, ii) in assembly_inspector.get_group_release_images().items() if ii is None]  # A list of metas where the assembly did not find a build
-    inconsistencies_report: Dict[str, List[str]] = dict()
-    report['assembly_inconsistencies'] = inconsistencies_report
+    payload_entry_inconsistencies: Dict[str, List[str]] = dict()  # Payload tag -> list of issue strings
+    report['payload_entry_inconsistencies'] = payload_entry_inconsistencies
+    report['assembly_issues'] = assembly_wide_inconsistencies  # Any overall gripes with the payload
 
     if runtime.assembly_type is AssemblyTypes.STREAM:
         # Only nightlies have the concept of private and public payloads
@@ -235,7 +236,7 @@ read and propagate/expose this annotation in its display of the release image.
                 raise IOError(f'Unsupported PayloadEntry: {payload_entry}')
             # Report any inconsistencies to in the final yaml output
             if payload_entry.inconsistencies:
-                inconsistencies_report[tag] = payload_entry.inconsistencies
+                payload_entry_inconsistencies[tag] = payload_entry.inconsistencies
 
         # Save the default SRC=DEST input to a file for syncing by 'oc image mirror'. Why is
         # there no '-priv'? The true images for the assembly are what we are syncing -
@@ -283,6 +284,7 @@ read and propagate/expose this annotation in its display of the release image.
         msg = 'Nightlies in reference-releases did not match constructed payload:\n' + yaml.dump(nightly_match_issues)
         if permit_invalid_reference_releases:
             red_print(msg)
+            assembly_wide_inconsistencies.extend(nightly_match_issues)
         else:
             # Artist must remove nightly references or fix the assembly definition.
             raise IOError(msg)
@@ -296,6 +298,9 @@ class PayloadGenerator:
 
         # The destination pullspec
         dest_pullspec: str
+
+        # Append any inconsistencies found for the entry
+        inconsistencies: List[str]
 
         """
         If the entry is for an image in this doozer group, these values will be set.
@@ -311,9 +316,6 @@ class PayloadGenerator:
         If the entry is for machine-os-content, this value will be set
         """
         rhcos_build: Optional[RHCOSBuildInspector] = None
-
-        # Append any inconsistencies found for the entry
-        inconsistencies: List[str] = list()
 
     @staticmethod
     def find_mismatched_siblings(build_image_inspectors: Iterable[Optional[BrewBuildImageInspector]]) -> List[BrewBuildImageInspector]:
@@ -411,7 +413,8 @@ class PayloadGenerator:
                 image_meta=archive_inspector.get_image_meta(),
                 build_inspector=archive_inspector.get_brew_build_inspector(),
                 archive_inspector=archive_inspector,
-                dest_pullspec=PayloadGenerator.get_mirroring_destination(archive_inspector, dest_repo)
+                dest_pullspec=PayloadGenerator.get_mirroring_destination(archive_inspector, dest_repo),
+                inconsistencies=list(),
             )
 
         # members now contains a complete map of payload tag keys, but some values may be None. This is an
@@ -435,9 +438,10 @@ class PayloadGenerator:
                 final_members[tag_name] = pod_entry
 
         rhcos_build: RHCOSBuildInspector = assembly_inspector.get_rhcos_build(arch)
-        members['machine-os-content'] = PayloadGenerator.PayloadEntry(
+        final_members['machine-os-content'] = PayloadGenerator.PayloadEntry(
             dest_pullspec=rhcos_build.get_image_pullspec(),
             rhcos_build=rhcos_build,
+            inconsistencies=list(),
         )
 
         # Final members should have all tags populated.
@@ -525,14 +529,15 @@ class PayloadGenerator:
             image_meta: ImageMetadata = assembly_inspector.runtime.image_map[dgk]
 
             if not image_meta.is_payload:
-                # Nothing to for images not in the payload
-                continue
-
-            if arch not in image_meta.get_arches():
-                # If this image is not meant for this architecture
+                # Nothing to do for images which are not in the payload
                 continue
 
             tag_name, explicit = image_meta.get_payload_tag_info()  # The tag that will be used in the imagestreams and whether it was explicitly declared.
+
+            if arch not in image_meta.get_arches():
+                # If this image is not meant for this architecture
+                members[tag_name] = None  # We still need a placeholder in the tag mapping
+                continue
 
             if tag_name in members and not explicit:
                 # If we have already found an entry, there is a precedence we honor for
@@ -577,8 +582,8 @@ class PayloadGenerator:
         while retries > 0:
             rc, release_json_str, err = exectools.cmd_gather(f'oc adm release info {pullspec} -o=json')
             if rc == 0:
-                runtime.logger.warn(f'Error accessing nightly release info for {pullspec}:  {err}')
                 break
+            runtime.logger.warn(f'Error accessing nightly release info for {pullspec}:  {err}')
             retries -= 1
 
         if rc != 0:

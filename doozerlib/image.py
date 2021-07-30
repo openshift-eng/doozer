@@ -741,10 +741,19 @@ class BrewBuildImageInspector:
             self._build_pullspec = self._brew_build_obj['extra']['image']['index']['pull'][0]
             self._brew_build_id = self._brew_build_obj['id']
 
-    def get_brew_build_id(self):
+    def get_brew_build_id(self) -> int:
+        """
+        :return: Returns the koji build id for this image.
+        """
         return self._brew_build_id
 
-    def get_nvr(self):
+    def get_brew_build_dict(self) -> Dict:
+        """
+        :return: Returns the koji getBuild dictionary for this iamge.
+        """
+        return self._brew_build_obj
+
+    def get_nvr(self) -> str:
         return self._nvr
 
     def __str__(self):
@@ -771,7 +780,7 @@ class BrewBuildImageInspector:
         """
         return self.get_image_archive_inspector(arch).get_image_labels()
 
-    def get_env(self, arch='amd64') -> Dict[str, str]:
+    def get_envs(self, arch='amd64') -> Dict[str, str]:
         """
         :param arch: The image architecture to check.
         :return: Returns a dictionary of environment variables set for the image.
@@ -780,6 +789,9 @@ class BrewBuildImageInspector:
 
     def get_component_name(self) -> str:
         return self.get_labels()['com.redhat.component']
+
+    def get_package_name(self) -> str:
+        return self.get_component_name()
 
     def get_image_meta(self) -> Optional[ImageMetadata]:
         """
@@ -821,7 +833,7 @@ class BrewBuildImageInspector:
                 public source a customer should be able to find the source of the component.
                 If the component does not have a ART-style SOURCE_GIT_URL, None is returned.
         """
-        return self.get_env().get('SOURCE_GIT_URL', None)
+        return self.get_envs().get('SOURCE_GIT_URL', None)
 
     def get_source_git_commit(self) -> Optional[str]:
         """
@@ -829,7 +841,7 @@ class BrewBuildImageInspector:
                 public source a customer should be able to find the source of the component.
                 If the component does not have a ART-style SOURCE_GIT_COMMIT, None is returned.
         """
-        return self.get_env().get('SOURCE_GIT_COMMIT', None)
+        return self.get_envs().get('SOURCE_GIT_COMMIT', None)
 
     def get_arch_archives(self) -> Dict[str, ArchiveImageInspector]:
         """
@@ -837,7 +849,7 @@ class BrewBuildImageInspector:
         """
         return {a.image_arch(): a for a in self.get_image_archive_inspectors()}
 
-    def get_build_pullspec(self):
+    def get_build_pullspec(self) -> str:
         """
         :return: Returns an internal pullspec for the overall build. Usually this would be a manifest list with architecture specific archives.
                     To get achive pullspecs, use get_archive_pullspec.

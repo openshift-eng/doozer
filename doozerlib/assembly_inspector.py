@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from typing import List, Dict, Optional
 
 from koji import ClientSession
@@ -7,7 +5,7 @@ from kobo.rpmlib import parse_nvr
 
 from doozerlib import rhcos, Runtime
 from doozerlib import util
-from doozerlib.image import ImageMetadata, BrewBuildImageInspector
+from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes
 
@@ -55,7 +53,7 @@ class AssemblyInspector:
                 desired_packages[package_name] = nvr
 
         installed_packages = rhcos_build.get_package_build_objects()
-        for package_name, build_dict in installed_packages:
+        for package_name, build_dict in installed_packages.items():
             if package_name in assembly_overrides:
                 required_nvr = assembly_overrides[package_name]
                 installed_nvr = build_dict['nvr']
@@ -68,9 +66,9 @@ class AssemblyInspector:
             package_name = assembly_rpm_build['package_name']
             assembly_nvr = assembly_rpm_build['nvr']
             if package_name in installed_packages:
-                installed_nvr = installed_packages['package']['nvr']
+                installed_nvr = installed_packages[package_name]['nvr']
                 if assembly_nvr != installed_nvr:
-                    issues.append(f'Expected image to contain assembly RPM build {assembly_nvr} but found {installed_nvr} installed')
+                    issues.append(f'Expected {rhcos_build.build_id} image to contain assembly selected RPM build {assembly_nvr} but found {installed_nvr} installed')
 
         return issues
 
@@ -148,7 +146,7 @@ class AssemblyInspector:
         """
         package_overrides: Dict[str, str] = image_meta.get_assembly_rpm_package_dependencies(el_ver=image_meta.branch_el_target())
         if package_overrides:
-            for package_name, required_nvr in package_overrides:
+            for package_name, required_nvr in package_overrides.items():
                 if package_name in installed_packages:
                     installed_build_dict: Dict = installed_packages[package_name]
                     installed_nvr = installed_build_dict['nvr']

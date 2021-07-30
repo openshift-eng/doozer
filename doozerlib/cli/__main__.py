@@ -27,13 +27,10 @@ from doozerlib import exectools
 from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
 from doozerlib.util import analyze_debug_timing, get_cincinnati_channels, extract_version_fields, get_docker_config_json, go_arch_for_brew_arch
 from doozerlib import operator_metadata
-from doozerlib import brew
 import click
 import os
-import time
 import shutil
 import yaml
-import collections
 import sys
 import subprocess
 import urllib.request, urllib.parse, urllib.error
@@ -43,9 +40,7 @@ import koji
 import io
 import json
 import functools
-import datetime
 from typing import Dict, List, Optional
-import re
 import semver
 import urllib
 import pathlib
@@ -53,7 +48,6 @@ from numbers import Number
 from multiprocessing.pool import ThreadPool
 from multiprocessing import cpu_count
 from dockerfile_parse import DockerfileParser
-from doozerlib import dotconfig
 from doozerlib import gitdata
 from doozerlib.olm.bundle import OLMBundle
 

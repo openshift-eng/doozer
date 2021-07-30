@@ -270,8 +270,13 @@ class Runtime(object):
             return self.releases_config
 
         load = self.gitdata.load_data(key='releases')
+        data = load.data
+        if self.releases:  # override filename specified on command line.
+            rcp = pathlib.Path(self.releases)
+            data = yaml.safe_load(rcp.read_text())
+
         if load:
-            self.releases_config = Model(load.data)
+            self.releases_config = Model(data)
         else:
             self.releases_config = Model()
 
