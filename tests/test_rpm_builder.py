@@ -142,7 +142,7 @@ class TestRPMBuilder(unittest.TestCase):
             task_id: None for task_id in task_ids})
         mocked_cmd_gather_async.return_value = (0, "some stdout", "some stderr")
         dg.resolve_specfile_async = mock.AsyncMock(return_value=(dg.dg_path / "foo.spec", ("foo", "1.2.3", "1"), source_sha))
-        koji_api = runtime.build_retrying_koji_client.return_value
+        koji_api = runtime.shared_koji_client_session.return_value.__enter__.return_value
         koji_api.multicall.return_value.__enter__.return_value.listBuilds.side_effect = lambda taskID, completeBefore: {
             10001: mock.MagicMock(result=[{"nvr": "foo-1.2.3-1.el8"}]),
             10002: mock.MagicMock(result=[{"nvr": "foo-1.2.3-1.el7"}]),

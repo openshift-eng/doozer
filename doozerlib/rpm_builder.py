@@ -241,17 +241,18 @@ class RPMBuilder:
             failed_tasks = {task_id for task_id, error in errors.items() if error is not None}
             if not failed_tasks:
                 # All tasks complete.
-                koji_api = self._runtime.build_retrying_koji_client()
-                koji_api.gssapi_login()
-                with koji_api.multicall(strict=True) as m:
-                    multicall_tasks = [m.listBuilds(taskID=task_id, completeBefore=None) for task_id in task_ids]    # this call should not be constrained by brew event
-                nvrs = [task.result[0]["nvr"] for task in multicall_tasks]
-                if self._runtime.hotfix:
-                    # Tag rpms so they don't get garbage collected.
-                    self._runtime.logger.info(f'Tagging build(s) {nvrs} with {rpm.hotfix_brew_tag()} to prevent garbage collection')
+                with self._runtime.shared_koji_client_session() as koji_api:
+                    if not koji_api.logged_in:
+                        koji_api.gssapi_login()
                     with koji_api.multicall(strict=True) as m:
-                        for nvr in nvrs:
-                            m.tagBuild(rpm.hotfix_brew_tag(), nvr)
+                        multicall_tasks = [m.listBuilds(taskID=task_id, completeBefore=None) for task_id in task_ids]    # this call should not be constrained by brew event
+                    nvrs = [task.result[0]["nvr"] for task in multicall_tasks]
+                    if self._runtime.hotfix:
+                        # Tag rpms so they don't get garbage collected.
+                        self._runtime.logger.info(f'Tagging build(s) {nvrs} with {rpm.hotfix_brew_tag()} to prevent garbage collection')
+                        with koji_api.multicall(strict=True) as m:
+                            for nvr in nvrs:
+                                m.tagBuild(rpm.hotfix_brew_tag(), nvr)
 
                 logger.info("Successfully built rpm: %s", rpm.rpm_name)
                 rpm.build_status = True

@@ -54,6 +54,10 @@ async def _rpms_rebase_and_build(runtime: Runtime, version: str, release: str, e
         for rpm in rpms:
             rpm.private_fix = True
 
+    with runtime.shared_koji_client_session() as koji_api:
+        if not koji_api.logged_in:
+            koji_api.gssapi_login()
+
     builder = RPMBuilder(runtime, dry_run=dry_run, scratch=scratch)
 
     async def _rebase_and_build(rpm: RPMMetadata):
@@ -187,6 +191,10 @@ async def _rpms_build(runtime: Runtime, scratch: bool, dry_run: bool):
     if not rpms:
         runtime.logger.error("No RPMs found. Check the arguments.")
         exit(0)
+
+    with runtime.shared_koji_client_session() as koji_api:
+        if not koji_api.logged_in:
+            koji_api.gssapi_login()
 
     builder = RPMBuilder(runtime, dry_run=dry_run, scratch=scratch)
     tasks = [asyncio.ensure_future(_build_rpm(runtime, builder, rpm)) for rpm in rpms]
