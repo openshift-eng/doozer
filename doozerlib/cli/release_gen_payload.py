@@ -1,7 +1,7 @@
 import io
 import sys
 import json
-from typing import List, Optional, Tuple, Dict, NamedTuple, Iterable, Set
+from typing import List, Optional, Tuple, Dict, NamedTuple, Iterable, Set, Any
 
 import click
 import yaml
@@ -12,7 +12,7 @@ from doozerlib.cli import cli, pass_runtime
 from doozerlib.image import ImageMetadata, BrewBuildImageInspector, ArchiveImageInspector
 from doozerlib.assembly_inspector import AssemblyInspector
 from doozerlib.runtime import Runtime
-from doozerlib.util import red_print, go_suffix_for_arch, brew_arch_for_go_arch, isolate_nightly_name_components
+from doozerlib.util import red_print, go_suffix_for_arch, brew_arch_for_go_arch, isolate_nightly_name_components, isolate_el_version_in_brew_tag
 from doozerlib.assembly import AssemblyTypes, assembly_basis, AssemblyIssue, AssemblyIssueCode
 from doozerlib import exectools
 from doozerlib.model import Model
@@ -50,10 +50,12 @@ def payload_imagestream_name_and_namespace(base_imagestream_name: str, base_name
               help="Quay ORGANIZATION to mirror into.\ndefault=openshift-release-dev")
 @click.option("--repository", metavar='REPO', required=False, default='ocp-v4.0-art-dev',
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
+@click.option("--skip-gc-tagging", default=False, is_flag=True,
+              help="By default, for a named assembly, images will be tagged to prevent garbage collection")
 @click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
               help="Architecture (brew nomenclature) to exclude from payload generation")
 @pass_runtime
-def release_gen_payload(runtime: Runtime, is_name: Optional[str], is_namespace: Optional[str], organization: Optional[str], repository: Optional[str], exclude_arch: Tuple[str, ...]):
+def release_gen_payload(runtime: Runtime, is_name: Optional[str], is_namespace: Optional[str], organization: Optional[str], repository: Optional[str], exclude_arch: Tuple[str, ...], skip_gc_tagging: bool):
     """Generates two sets of input files for `oc` commands to mirror
 content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
@@ -111,7 +113,6 @@ relevant image istag (these are publicly visible; ref. https://bit.ly/37cseC1)
 and in more detail in state.yaml. The release-controller, per ART-2195, will
 read and propagate/expose this annotation in its display of the release image.
     """
-
     runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
     logger = runtime.logger
     brew_session = runtime.build_retrying_koji_client()
@@ -154,15 +155,74 @@ read and propagate/expose this annotation in its display of the release image.
     }
 
     """
-    We will be using the shared build status detector in runtime for these images. Warm up its cache.
+    Collect a list of builds we to tag in order to prevent garbage collection.
+    Note: we also use this list to warm up caches, so don't wrap this section
+    with `if not skip_gc_tagging`.
+
+    To prevent garbage collection for custom
+    assemblies (which won't normally be released via errata tool, triggering
+    the traditional garbage collection prevention), we must tag these builds
+    explicitly to prevent their GC. It is necessary to prevent GC, because
+    we want to be able to build custom releases off of custom releases, and
+    so on. If we loose images and builds for custom releases in brew due
+    to garbage collection, we will not be able to construct derivative
+    release payloads.
     """
-    build_ids: Set[int] = set()
-    for bbii in assembly_inspector.get_group_release_images().values():
-        if bbii:
-            build_ids.add(bbii.get_brew_build_id())
+    assembly_build_ids: Set[int] = set()  # This list of builds associated with the group/assembly will be used to warm up caches
+
+    list_tags_tasks: Dict[Tuple[int, str], Any] = dict()  # Maps (build_id, tag) tuple to multicall task to list tags
+    with runtime.pooled_koji_client_session() as pcs:
+        with pcs.multicall(strict=True) as m:
+            for bbii in assembly_inspector.get_group_release_images().values():
+                if bbii:
+                    build_id = bbii.get_brew_build_id()
+                    assembly_build_ids.add(build_id)  # Collect up build ids for cache warm up
+                    hotfix_tag = bbii.get_image_meta().hotfix_brew_tag()
+                    list_tags_tasks[(build_id, hotfix_tag)] = m.listTags(build=build_id)
+
+            # RPMs can build for multiple versions of RHEL. For example, a single RPM
+            # metadata can target 7 & 8.
+            # For each rhel version targeted by our RPMs, build a list of RPMs
+            # appropriate for the RHEL version with respect to the group/assembly.
+            rhel_version_scanned_for_rpms: Dict[int, bool] = dict()  # Maps rhel version -> bool indicating whether we have processed that rhel version
+            for rpm_meta in runtime.rpm_metas():
+                for el_ver in rpm_meta.determine_rhel_targets():
+                    if el_ver in rhel_version_scanned_for_rpms:
+                        # We've already processed this RHEL version.
+                        continue
+                    hotfix_tag = runtime.get_default_hotfix_brew_tag(el_target=el_ver)
+                    # Otherwise, query the assembly for this rhel version now.
+                    for dgk, rpm_build_dict in assembly_inspector.get_group_rpm_build_dicts(el_ver=el_ver).items():
+                        if not rpm_build_dict:
+                            # RPM not built for this rhel version
+                            continue
+                        build_id = rpm_build_dict['id']
+                        assembly_build_ids.add(build_id)  # For cache warm up later.
+                        list_tags_tasks[(build_id, hotfix_tag)] = m.listTags(build=build_id)
+                    # Record that we are done for this rhel version.
+                    rhel_version_scanned_for_rpms[el_ver] = True
+
+    # Tasks should now contain tag list information for all builds associated with this assembly.
+    # and assembly_build_ids should contain ids for builds that should be cached.
+
+    # We have a list of image and RPM builds associated with this assembly.
+    # Tag them unless we have been told not to from the command line.
+    if runtime.assembly_type != AssemblyTypes.STREAM and not skip_gc_tagging:
+        with runtime.shared_koji_client_session() as koji_api:
+            koji_api.gssapi_login()  # Tagging requires authentication
+            with koji_api.multicall() as m:
+                for tup, list_tag_task in list_tags_tasks.items():
+                    build_id = tup[0]
+                    desired_tag = tup[1]
+                    current_tags = [tag_entry['name'] for tag_entry in list_tag_task.result]
+                    if desired_tag not in current_tags:
+                        # The hotfix tag is missing, so apply it.
+                        runtime.logger.info(f'Adding tag {desired_tag} to build: {build_id} to prevent garbage collection.')
+                        m.tagBuild(desired_tag, build_id)
+
     with runtime.shared_build_status_detector() as bsd:
-        bsd.populate_archive_lists(build_ids)
-        bsd.find_shipped_builds(build_ids)
+        bsd.populate_archive_lists(assembly_build_ids)
+        bsd.find_shipped_builds(assembly_build_ids)
 
     """
     Make sure that RPMs belonging to this assembly/group are consistent with the assembly definition.

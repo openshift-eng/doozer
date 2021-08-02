@@ -966,6 +966,23 @@ class BrewBuildImageInspector:
 
         return self._cache[cn]
 
+    def list_brew_tags(self) -> List[Dict]:
+        """
+        :return: Returns a list of tag definitions which are applied on this build.
+        """
+        cn = 'list_brew_tags'
+        if cn not in self._cache:
+            with self.runtime.pooled_koji_client_session() as koji_api:
+                self._cache[cn] = koji_api.listTags(self._brew_build_id)
+
+        return self._cache[cn]
+
+    def list_brew_tag_names(self) -> List[str]:
+        """
+        :return: Returns the list of tag names which are applied to this build.
+        """
+        return [t['name'] for t in self.list_brew_tags()]
+
     def find_non_latest_rpms(self) -> List[Tuple[str, str]]:
         """
         If the packages installed in this image overlap packages in the candidate tag,

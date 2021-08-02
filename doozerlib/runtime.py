@@ -1511,6 +1511,10 @@ class Runtime(object):
         branch = self.get_el_targeted_default_branch(el_target=el_target)
         return branch + '-candidate' if branch else None
 
+    def get_default_hotfix_brew_tag(self, el_target: Optional[Union[str, int]] = None):
+        branch = self.get_el_targeted_default_branch(el_target=el_target)
+        return branch + '-hotfix' if branch else None
+
     def get_candidate_brew_tags(self):
         """Return a set of known candidate tags relevant to this group"""
         tag = self.get_default_candidate_brew_tag()
@@ -1523,22 +1527,6 @@ class Runtime(object):
     def get_minor_version(self):
         # only applicable if appropriate vars are defined in group config
         return '.'.join(str(self.group_config.vars[v]) for v in ('MAJOR', 'MINOR'))
-
-    def builds_for_group_branch(self):
-        # return a dict of all the latest builds for this group, according to
-        # the branch's candidate tag in brew. each entry is name => tuple(version, release).
-        tag = self.get_default_candidate_brew_tag()
-        output, _ = exectools.cmd_assert(
-            "brew list-tagged --quiet --latest {}".format(tag),
-            retries=3,
-        )
-        builds = [
-            # each line like "build tag owner" split into build NVR
-            line.split()[0].rsplit("-", 2)
-            for line in output.strip().split("\n")
-            if line.strip()
-        ]
-        return {n: (v, r) for n, v, r in builds}
 
     def scan_for_upstream_changes(self) -> List[Tuple[Metadata, RebuildHint]]:
         """
