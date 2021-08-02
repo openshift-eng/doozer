@@ -22,13 +22,14 @@ def releases_gen_assembly(ctx, name):
     pass
 
 
-@releases_gen_assembly.command('from-nightlies', short_help='Outputs assembly metadata based on a set of speified nightlies')
-@click.option('--nightly', 'nightlies', metavar='RELEASE_NAME', default=[], multiple=True, help='A nightly release name for each architecture (e.g. 4.7.0-0.nightly-2021-07-07-214918)')
+@releases_gen_assembly.command('from-releases', short_help='Outputs assembly metadata based on a set of specified releases')
+@click.option('--nightly', 'nightlies', metavar='NIGHTLY_NAME', default=[], multiple=True, help='A nightly release name for each architecture (e.g. 4.7.0-0.nightly-2021-07-07-214918)')
+@click.option('--standard', 'standards', metavar='4.y.z-ARCH', default=[], multiple=True, help='The name and arch of an official release (e.g. 4.8.3-x86_64) where ARCH in [x86_64, s390x, ppc64le, aarch64].')
 @click.option("--custom", default=False, is_flag=True,
               help="If specified, weaker conformance criteria are applied (e.g. a nightly is not required for every arch).")
 @pass_runtime
 @click.pass_context
-def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
+def gen_assembly_from_releases(ctx, runtime, nightlies, standards, custom):
     runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
     logger = runtime.logger
     gen_assembly_name = ctx.obj['ASSEMBLY_NAME']  # The name of the assembly we are going to output
@@ -43,32 +44,48 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
     if runtime.assembly != 'stream':
         exit_with_error('--assembly must be "stream" in order to populate an assembly definition from nightlies')
 
-    if not nightlies:
-        exit_with_error('At least one nightly must be specified')
+    if not nightlies and not standards:
+        exit_with_error('At least one release (--nightly or --standard) must be specified')
 
-    if len(runtime.arches) != len(nightlies) and not custom:
+    if len(runtime.arches) != len(nightlies) + len(standards) and not custom:
         exit_with_error(f'Expected at least {len(runtime.arches)} nightlies; one for each group arch: {runtime.arches}')
 
     reference_releases_by_arch: Dict[str, str] = dict()  # Maps brew arch name to nightly name
     mosc_by_arch: Dict[str, str] = dict()  # Maps brew arch name to machine-os-content pullspec from nightly
     component_image_builds: Dict[str, BrewBuildImageInspector] = dict()  # Maps component package_name to brew build dict found for nightly
-    component_rpm_builds: Dict[str, Dict[int, Dict]] = dict()  # package_name -> Dict[ el? -> brew build dict ]
+    component_rpm_builds: Dict[str, Dict[int, Dict]] = dict()  # Dict[ package_name ] -> Dict[ el? ] -> brew build dict
     basis_event_ts: float = 0.0
-    for nightly in nightlies:
-        runtime.logger.info(f'Processing nightly: {nightly}')
-        major_minor, brew_cpu_arch, priv = util.isolate_nightly_name_components(nightly)
-        reference_releases_by_arch[brew_cpu_arch] = nightly
 
+    release_pullspecs: Dict[str, str] = dict()
+    for nightly_name in nightlies:
+        major_minor, brew_cpu_arch, priv = util.isolate_nightly_name_components(nightly_name)
         if major_minor != runtime.get_minor_version():
-            exit_with_error(f'Specified nightly {nightly} does not match group major.minor')
-
+            exit_with_error(f'Specified nightly {nightly_name} does not match group major.minor')
+        reference_releases_by_arch[brew_cpu_arch] = nightly_name
         rc_suffix = util.go_suffix_for_arch(brew_cpu_arch, priv)
+        nightly_pullspec = f'registry.ci.openshift.org/ocp{rc_suffix}/release{rc_suffix}:{nightly_name}'
+        if brew_cpu_arch in release_pullspecs:
+            raise ValueError(f'Cannot process {nightly_name} since {release_pullspecs[brew_cpu_arch]} is already included')
+        release_pullspecs[brew_cpu_arch] = nightly_pullspec
 
-        release_json_str, _ = exectools.cmd_assert(f'oc adm release info registry.ci.openshift.org/ocp{rc_suffix}/release{rc_suffix}:{nightly} -o=json', retries=3)
+    for standard_release_name in standards:
+        version, brew_cpu_arch = standard_release_name.split('-')  # 4.7.22-s390x => ['4.7.22', 's390x']
+        major_minor = '.'.join(version.split('.')[:2])  # isolate just x.y from version names like '4.77.22' and '4.8.0-rc.3'
+        if major_minor != runtime.get_minor_version():
+            exit_with_error(f'Specified release {standard_release_name} does not match group major.minor')
+        standard_pullspec = f'quay.io/openshift-release-dev/ocp-release:{standard_release_name}'
+        if brew_cpu_arch in release_pullspecs:
+            raise ValueError(f'Cannot process {standard_release_name} since {release_pullspecs[brew_cpu_arch]} is already included')
+        release_pullspecs[brew_cpu_arch] = standard_pullspec
+
+    for brew_cpu_arch, pullspec in release_pullspecs.items():
+        runtime.logger.info(f'Processing release: {pullspec}')
+
+        release_json_str, _ = exectools.cmd_assert(f'oc adm release info {pullspec} -o=json', retries=3)
         release_info = Model(dict_to_model=json.loads(release_json_str))
 
         if not release_info.references.spec.tags:
-            exit_with_error(f'Could not find tags in nightly {nightly}')
+            exit_with_error(f'Could not find any imagestream tags in release: {pullspec}')
 
         for component_tag in release_info.references.spec.tags:
             payload_tag_name = component_tag.name  # e.g. "aws-ebs-csi-driver"
@@ -84,12 +101,12 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
             package_name = brew_build_inspector.get_package_name()
             build_nvr = brew_build_inspector.get_nvr()
             if package_name in component_image_builds:
-                # If we have already encountered this package once in the list of nightlies we are
+                # If we have already encountered this package once in the list of releases we are
                 # processing, then make sure that the original NVR we found matches the new NVR.
-                # We want the nightlies to be populated with identical builds.
+                # We want the releases to be populated with identical builds.
                 existing_nvr = component_image_builds[package_name].get_nvr()
                 if build_nvr != existing_nvr:
-                    exit_with_error(f'Found disparate nvrs between nightlies; {existing_nvr} in processed and {build_nvr} in nightly')
+                    exit_with_error(f'Found disparate nvrs between releases; {existing_nvr} in processed and {build_nvr} in {pullspec}')
             else:
                 # Otherwise, record the build as the first time we've seen an NVR for this
                 # package.
@@ -124,7 +141,7 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
         basis_event = koji_api.getLastEvent(before=basis_event_ts)['id']
 
     logger.info(f'Estimated basis brew event: {basis_event}')
-    logger.info(f'The following image package_names were detected in the nightlies: {component_image_builds.keys()}')
+    logger.info(f'The following image package_names were detected in the specified releases: {component_image_builds.keys()}')
 
     # That said, things happen. Let's say image component X was built in build X1 and X2.
     # Image component Y was build in Y1. Let's say that the ordering was X1, X2, Y1 and, for
@@ -166,17 +183,17 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
 
         if package_name not in component_image_builds:
             if custom:
-                logger.warning(f'Unable to find {dgk} in nightlies despite it being marked as is_payload in ART metadata; this may be because the image is not built for every arch or it is not labeled appropriately for the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
+                logger.warning(f'Unable to find {dgk} in releases despite it being marked as is_payload in ART metadata; this may be because the image is not built for every arch or it is not labeled appropriately for the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
             else:
-                logger.error(f'Unable to find {dgk} in nightlies despite it being marked as is_payload in ART metadata; this may mean the image does not have the proper labeling for being in the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
+                logger.error(f'Unable to find {dgk} in releases despite it being marked as is_payload in ART metadata; this may mean the image does not have the proper labeling for being in the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
             component_image_builds[package_name] = basis_event_build_dict
             continue
 
-        nightlies_component_build = component_image_builds[package_name]
-        nightlies_component_build_nvr = nightlies_component_build.get_nvr()
+        ref_releases_component_build = component_image_builds[package_name]
+        ref_nightlies_component_build_nvr = ref_releases_component_build.get_nvr()
 
-        if basis_event_build_nvr != nightlies_component_build_nvr:
-            logger.info(f'{dgk} build {basis_event_build_nvr} was selected by estimated basis event. That is not what is in the specified nightlies, so this image will be pinned.')
+        if basis_event_build_nvr != ref_nightlies_component_build_nvr:
+            logger.info(f'{dgk} build {basis_event_build_nvr} was selected by estimated basis event. That is not what is in the specified releases, so this image will be pinned.')
             force_is.add(package_name)
             continue
 
@@ -204,19 +221,19 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
 
         archive_lists = brew.list_archives_by_builds([b.get_brew_build_id() for b in component_image_builds.values()], "image", koji_api)
         rpm_build_ids = {rpm["build_id"] for archives in archive_lists for ar in archives for rpm in ar["rpms"]}
-        logger.info("Querying Brew build build information for %s RPM builds...", len(rpm_build_ids))
+        logger.info("Querying Brew build information for %s RPM builds...", len(rpm_build_ids))
         # We now have a list of all RPM builds which have been installed into the various images which
         # ART builds. Specifically the ART builds which went into composing the nightlies.
-        nightly_rpm_builds: List[Dict] = brew.get_build_objects(rpm_build_ids, koji_api)
+        ref_releases_rpm_builds: List[Dict] = brew.get_build_objects(rpm_build_ids, koji_api)
 
-        for nightly_rpm_build in nightly_rpm_builds:
-            package_name = nightly_rpm_build['package_name']
+        for ref_releases_rpm_build in ref_releases_rpm_builds:
+            package_name = ref_releases_rpm_build['package_name']
             if package_name in package_rpm_meta:  # Does ART build this package?
                 rpm_meta = package_rpm_meta[package_name]
                 dgk = rpm_meta.distgit_key
-                rpm_build_nvr = nightly_rpm_build['nvr']
+                rpm_build_nvr = ref_releases_rpm_build['nvr']
                 # If so, what RHEL version is this build for?
-                el_ver = util.isolate_el_version_in_release(nightly_rpm_build['release'])
+                el_ver = util.isolate_el_version_in_release(ref_releases_rpm_build['release'])
                 if not el_ver:
                     exit_with_error(f'Unable to isolate el? version in {rpm_build_nvr}')
 
@@ -239,12 +256,12 @@ def gen_assembly_from_nightlies(ctx, runtime, nightlies, custom):
                     # We've already logged a build for this el version before
                     continue
 
-                component_rpm_builds[package_name][el_ver] = nightly_rpm_build
+                component_rpm_builds[package_name][el_ver] = ref_releases_rpm_build
                 basis_event_build_nvr = basis_event_build_dict['nvr']
                 logger.info(f'{dgk} build {basis_event_build_nvr} selected by scan against estimated basis event')
-                if basis_event_build_nvr != nightly_rpm_build['nvr']:
+                if basis_event_build_nvr != ref_releases_rpm_build['nvr']:
                     # The basis event estimate did not find the RPM from the nightlies. We have to pin the package.
-                    logger.info(f'{dgk} build {basis_event_build_nvr} was selected by estimated basis event. That is not what is in the specified nightlies, so this RPM will be pinned.')
+                    logger.info(f'{dgk} build {basis_event_build_nvr} was selected by estimated basis event. That is not what is in the specified releases, so this RPM will be pinned.')
                     force_is.add(package_name)
 
     # component_image_builds now contains a mapping of package_name -> BrewBuildImageInspector for all images that should be included

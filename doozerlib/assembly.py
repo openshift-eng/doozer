@@ -252,7 +252,24 @@ def assembly_permits(releases_config: Model, assembly: str) -> ListModel:
     Returns the a computed permits config model for a given assembly. If no
     permits are defined ListModel([]) is returned.
     """
-    defined_permits = _assembly_config_struct(releases_config, assembly, 'permits', [])
+
+    defined_permits = _assembly_config_struct(releases_config, assembly, 'permits', {})
+
+    if not defined_permits and (assembly == 'stream' or not assembly):  # If assembly is None, this a group without assemblies enabled
+        # TODO: Address this formally with https://issues.redhat.com/browse/ART-3162 .
+        # In the short term, we need to allow certain inconsistencies for stream.
+        # We don't want common pre-GA issues to stop all nightlies.
+        default_stream_permits = [
+            {
+                'code': 'OUTDATED_RPMS_IN_STREAM_BUILD',
+                'component': '*'
+            },
+            {
+                'code': 'CONFLICTING_GROUP_RPM_INSTALLED',
+                'component': 'rhcos'
+            }
+        ]
+        return ListModel(list_to_model=default_stream_permits)
 
     # Do some basic validation here to fail fast
     if assembly_type(releases_config, assembly) == AssemblyTypes.STANDARD:
