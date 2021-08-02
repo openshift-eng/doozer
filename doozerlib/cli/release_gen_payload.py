@@ -286,12 +286,17 @@ read and propagate/expose this annotation in its display of the release image.
         # there no '-priv'? The true images for the assembly are what we are syncing -
         # it is what we update in the imagestream that defines whether the image will be
         # part of a public release.
+        dests: Set[str] = set()  # Prevents writing the same destination twice (not supported by oc)
         with io.open(f"src_dest.{arch}", "w+", encoding="utf-8") as out_file:
             for payload_entry in entries.values():
                 if not payload_entry.archive_inspector:
                     # Nothing to mirror (e.g. machine-os-content)
                     continue
+                if payload_entry.dest_pullspec in dests:
+                    # Don't write the same destination twice.
+                    continue
                 out_file.write(f"{payload_entry.archive_inspector.get_archive_pullspec()}={payload_entry.dest_pullspec}\n")
+                dests.add(payload_entry.dest_pullspec)
 
         for private_mode in privacy_modes:
             logger.info(f'Building payload files for architecture: {arch}; private: {private_mode}')
