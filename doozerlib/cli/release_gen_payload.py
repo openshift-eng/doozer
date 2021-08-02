@@ -1,19 +1,44 @@
 import io
+import sys
 import json
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Tuple, Dict, NamedTuple, Iterable, Set, Any
 
 import click
 import yaml
-from koji import ClientSession
+from kobo.rpmlib import parse_nvr
 
-from doozerlib import (assembly, brew, build_status_detector, exectools, rhcos,
-                       state)
+from doozerlib.rhcos import RHCOSBuildInspector
 from doozerlib.cli import cli, pass_runtime
-from doozerlib.exceptions import DoozerFatalError
-from doozerlib.image import ImageMetadata
-from doozerlib.model import Model
+from doozerlib.image import ImageMetadata, BrewBuildImageInspector, ArchiveImageInspector
+from doozerlib.assembly_inspector import AssemblyInspector
 from doozerlib.runtime import Runtime
-from doozerlib.util import go_suffix_for_arch, red_print, yellow_print
+from doozerlib.util import red_print, go_suffix_for_arch, brew_arch_for_go_arch, isolate_nightly_name_components, isolate_el_version_in_brew_tag
+from doozerlib.assembly import AssemblyTypes, assembly_basis, AssemblyIssue, AssemblyIssueCode
+from doozerlib import exectools
+from doozerlib.model import Model
+
+
+def default_imagestream_base_name(runtime: Runtime) -> str:
+    version = runtime.get_minor_version()
+    if runtime.assembly is None or runtime.assembly == 'stream':
+        return f'{version}-art-latest'
+    else:
+        return f'{version}-art-assembly-{runtime.assembly}'
+
+
+def default_imagestream_namespace_base_name() -> str:
+    return "ocp"
+
+
+def payload_imagestream_name_and_namespace(base_imagestream_name: str, base_namespace: str, brew_arch: str, private: bool) -> Tuple[str, str]:
+    """
+    :return: Returns the imagestream name and namespace to which images for the specified CPU arch and privacy mode should be synced.
+    """
+    arch_suffix = go_suffix_for_arch(brew_arch)
+    priv_suffix = "-priv" if private else ""
+    name = f"{base_imagestream_name}{arch_suffix}{priv_suffix}"
+    namespace = f"{base_namespace}{arch_suffix}{priv_suffix}"
+    return name, namespace
 
 
 @cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
@@ -25,12 +50,15 @@ from doozerlib.util import go_suffix_for_arch, red_print, yellow_print
               help="Quay ORGANIZATION to mirror into.\ndefault=openshift-release-dev")
 @click.option("--repository", metavar='REPO', required=False, default='ocp-v4.0-art-dev',
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
-@click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
-              help="Architecture (brew nomenclature) to exclude from payload generation")
 @click.option("--skip-gc-tagging", default=False, is_flag=True,
               help="By default, for a named assembly, images will be tagged to prevent garbage collection")
+@click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
+              help="Architecture (brew nomenclature) to exclude from payload generation")
+@click.option("--emergency-ignore-issues", default=False, is_flag=True,
+              help="If you must get this command to permit an assembly despite issues. Do not use without approval.")
 @pass_runtime
-def release_gen_payload(runtime: Runtime, is_name: Optional[str], is_namespace: Optional[str], organization: Optional[str], repository: Optional[str], exclude_arch: Tuple[str, ...], skip_gc_tagging: bool):
+def release_gen_payload(runtime: Runtime, is_name: Optional[str], is_namespace: Optional[str], organization: Optional[str],
+                        repository: Optional[str], exclude_arch: Tuple[str, ...], skip_gc_tagging: bool, emergency_ignore_issues: bool):
     """Generates two sets of input files for `oc` commands to mirror
 content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
@@ -88,569 +116,581 @@ relevant image istag (these are publicly visible; ref. https://bit.ly/37cseC1)
 and in more detail in state.yaml. The release-controller, per ART-2195, will
 read and propagate/expose this annotation in its display of the release image.
     """
-    runtime.initialize(clone_distgits=False)
+    runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
+    logger = runtime.logger
     brew_session = runtime.build_retrying_koji_client()
-    if not skip_gc_tagging:
-        brew_session.gssapi_login()
-    base_target = SyncTarget(  # where we will mirror and record the tags
-        orgrepo=f"{organization}/{repository}",
-        istream_name=is_name if is_name else default_is_base_name(runtime),
-        istream_namespace=is_namespace if is_namespace else default_is_base_namespace()
-    )
 
-    if runtime.assembly and runtime.assembly != 'stream' and 'art-latest' in base_target.istream_name:
-        raise ValueError('The art-latest imagestreams should not be used for non-stream assemblies')
+    base_imagestream_name: str = is_name if is_name else default_imagestream_base_name(runtime)
+    base_istream_namespace: str = is_namespace if is_namespace else default_imagestream_namespace_base_name()
 
-    gen = PayloadGenerator(runtime, brew_session, base_target, exclude_arch, skip_gc_tagging=skip_gc_tagging)
-    latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items = gen.load_latest_builds()
-    gen.write_mirror_destinations(latest_builds, mismatched_siblings)
+    if runtime.assembly and runtime.assembly != 'stream' and 'art-latest' in base_imagestream_name:
+        raise ValueError('The art-latest imagestreams should not be used for an assembly other than "stream"')
 
-    if non_release_items:
-        yellow_print("Images skipped due to non_release tag:")
-        for img in sorted(non_release_items):
-            click.echo("   {}".format(img))
+    logger.info(f'Collecting latest information associated with the assembly: {runtime.assembly}')
+    assembly_inspector = AssemblyInspector(runtime, brew_session)
+    logger.info('Checking for mismatched siblings...')
+    mismatched_siblings = PayloadGenerator.find_mismatched_siblings(assembly_inspector.get_group_release_images().values())
 
-    if invalid_name_items:
-        yellow_print("Images skipped due to invalid naming:")
-        for img in sorted(invalid_name_items):
-            click.echo("   {}".format(img))
+    # A list of strings that denote inconsistencies across all payloads generated
+    assembly_issues: List[AssemblyIssue] = list()
 
-    if images_missing_builds:
-        yellow_print("No builds found for:")
-        for img in sorted(images_missing_builds, key=lambda img: img.image_name_short):
-            click.echo("   {}".format(img.image_name_short))
+    for mismatched_bbii, sibling_bbi in mismatched_siblings:
+        mismatch_issue = AssemblyIssue(f'{mismatched_bbii.get_nvr()} was built from a different upstream source commit ({mismatched_bbii.get_source_git_commit()[:7]}) than one of its siblings {sibling_bbi.get_nvr()} from {sibling_bbi.get_source_git_commit()[:7]}',
+                                       component=mismatched_bbii.get_image_meta().distgit_key,
+                                       code=AssemblyIssueCode.MISMATCHED_SIBLINGS)
+        assembly_issues.append(mismatch_issue)
 
-    if mismatched_siblings:
-        yellow_print("Images skipped due to siblings mismatch:")
-        for img in sorted(mismatched_siblings):
-            click.echo("   {}".format(img))
+    report = dict()
+    report['non_release_images'] = [image_meta.distgit_key for image_meta in runtime.get_non_release_image_metas()]
+    report['release_images'] = [image_meta.distgit_key for image_meta in runtime.get_for_release_image_metas()]
+    report['missing_image_builds'] = [dgk for (dgk, ii) in assembly_inspector.get_group_release_images().items() if ii is None]  # A list of metas where the assembly did not find a build
 
+    if runtime.assembly_type is AssemblyTypes.STREAM:
+        # Only nightlies have the concept of private and public payloads
+        privacy_modes = [False, True]
+    else:
+        privacy_modes = [False]
 
-class SyncTarget(object):
-    def __init__(self, orgrepo=None, istream_name=None, istream_namespace=None):
-        self.orgrepo = orgrepo
-        self.istream_name = istream_name
-        self.istream_namespace = istream_namespace
+    # Structure to record rhcos builds we use so that they can be analyzed for inconsistencies
+    targeted_rhcos_builds: Dict[bool, List[RHCOSBuildInspector]] = {
+        False: [],
+        True: []
+    }
 
+    """
+    Collect a list of builds we to tag in order to prevent garbage collection.
+    Note: we also use this list to warm up caches, so don't wrap this section
+    with `if not skip_gc_tagging`.
 
-class BuildRecord(object):
-    def __init__(self, image=None, build=None, archives=None, private=False):
-        self.image = image
-        self.build = build
-        self.archives = archives
-        self.private = private
+    To prevent garbage collection for custom
+    assemblies (which won't normally be released via errata tool, triggering
+    the traditional garbage collection prevention), we must tag these builds
+    explicitly to prevent their GC. It is necessary to prevent GC, because
+    we want to be able to build custom releases off of custom releases, and
+    so on. If we loose images and builds for custom releases in brew due
+    to garbage collection, we will not be able to construct derivative
+    release payloads.
+    """
+    assembly_build_ids: Set[int] = set()  # This list of builds associated with the group/assembly will be used to warm up caches
+
+    list_tags_tasks: Dict[Tuple[int, str], Any] = dict()  # Maps (build_id, tag) tuple to multicall task to list tags
+    with runtime.pooled_koji_client_session() as pcs:
+        with pcs.multicall(strict=True) as m:
+            for bbii in assembly_inspector.get_group_release_images().values():
+                if bbii:
+                    build_id = bbii.get_brew_build_id()
+                    assembly_build_ids.add(build_id)  # Collect up build ids for cache warm up
+                    hotfix_tag = bbii.get_image_meta().hotfix_brew_tag()
+                    list_tags_tasks[(build_id, hotfix_tag)] = m.listTags(build=build_id)
+
+            # RPMs can build for multiple versions of RHEL. For example, a single RPM
+            # metadata can target 7 & 8.
+            # For each rhel version targeted by our RPMs, build a list of RPMs
+            # appropriate for the RHEL version with respect to the group/assembly.
+            rhel_version_scanned_for_rpms: Dict[int, bool] = dict()  # Maps rhel version -> bool indicating whether we have processed that rhel version
+            for rpm_meta in runtime.rpm_metas():
+                for el_ver in rpm_meta.determine_rhel_targets():
+                    if el_ver in rhel_version_scanned_for_rpms:
+                        # We've already processed this RHEL version.
+                        continue
+                    hotfix_tag = runtime.get_default_hotfix_brew_tag(el_target=el_ver)
+                    # Otherwise, query the assembly for this rhel version now.
+                    for dgk, rpm_build_dict in assembly_inspector.get_group_rpm_build_dicts(el_ver=el_ver).items():
+                        if not rpm_build_dict:
+                            # RPM not built for this rhel version
+                            continue
+                        build_id = rpm_build_dict['id']
+                        assembly_build_ids.add(build_id)  # For cache warm up later.
+                        list_tags_tasks[(build_id, hotfix_tag)] = m.listTags(build=build_id)
+                    # Record that we are done for this rhel version.
+                    rhel_version_scanned_for_rpms[el_ver] = True
+
+    # Tasks should now contain tag list information for all builds associated with this assembly.
+    # and assembly_build_ids should contain ids for builds that should be cached.
+
+    # We have a list of image and RPM builds associated with this assembly.
+    # Tag them unless we have been told not to from the command line.
+    if runtime.assembly_type != AssemblyTypes.STREAM and not skip_gc_tagging:
+        with runtime.shared_koji_client_session() as koji_api:
+            koji_api.gssapi_login()  # Tagging requires authentication
+            with koji_api.multicall() as m:
+                for tup, list_tag_task in list_tags_tasks.items():
+                    build_id = tup[0]
+                    desired_tag = tup[1]
+                    current_tags = [tag_entry['name'] for tag_entry in list_tag_task.result]
+                    if desired_tag not in current_tags:
+                        # The hotfix tag is missing, so apply it.
+                        runtime.logger.info(f'Adding tag {desired_tag} to build: {build_id} to prevent garbage collection.')
+                        m.tagBuild(desired_tag, build_id)
+
+    with runtime.shared_build_status_detector() as bsd:
+        bsd.populate_archive_lists(assembly_build_ids)
+        bsd.find_shipped_builds(assembly_build_ids)
+
+    """
+    Make sure that RPMs belonging to this assembly/group are consistent with the assembly definition.
+    """
+    for rpm_meta in runtime.rpm_metas():
+        issues = assembly_inspector.check_group_rpm_package_consistency(rpm_meta)
+        assembly_issues.extend(issues)
+
+    """
+    If this is a stream assembly, images which are not using the latest builds should not reach
+    the release controller. Other assemblies are meant to be constructed from non-latest.
+    """
+    if runtime.assembly == 'stream':
+        for dgk, build_inspector in assembly_inspector.get_group_release_images().items():
+            if build_inspector:
+                non_latest_rpm_nvrs = build_inspector.find_non_latest_rpms()
+                dgk = build_inspector.get_image_meta().distgit_key
+                for installed_nvr, newest_nvr in non_latest_rpm_nvrs:
+                    # This indicates an issue with scan-sources or that an image is no longer successfully building.
+                    # Impermissible as this speaks to a potentially deeper issue of images not being rebuilt
+                    outdated_issue = AssemblyIssue(f'Found outdated RPM ({installed_nvr}) installed in {build_inspector.get_nvr()} when {newest_nvr} was available', component=dgk, code=AssemblyIssueCode.OUTDATED_RPMS_IN_STREAM_BUILD)
+                    assembly_issues.append(outdated_issue)  # Add to overall issues
+
+    """
+    Make sure image build selected by this assembly/group are consistent with the assembly definition.
+    """
+    for dgk, bbii in assembly_inspector.get_group_release_images().items():
+        if bbii:
+            issues = assembly_inspector.check_group_image_consistency(bbii)
+            assembly_issues.extend(issues)
+
+    for arch in runtime.arches:
+        if arch in exclude_arch:
+            logger.info(f'Excluding payload files architecture: {arch}')
+            continue
+
+        # Whether private or public, the assembly's canonical payload content is the same.
+        entries: Dict[str, PayloadGenerator.PayloadEntry] = PayloadGenerator.find_payload_entries(assembly_inspector, arch, f'quay.io/{organization}/{repository}')  # Key of this dict is release payload tag name
+
+        for tag, payload_entry in entries.items():
+            if payload_entry.image_meta:
+                # We already stored inconsistencies for each image_meta; look them up if there are any.
+                payload_entry.issues.extend(filter(lambda ai: ai.component == payload_entry.image_meta.distgit_key, assembly_issues))
+            elif payload_entry.rhcos_build:
+                assembly_issues.extend(assembly_inspector.check_rhcos_issues(payload_entry.rhcos_build))
+                payload_entry.issues.extend(filter(lambda ai: ai.component == 'rhcos', assembly_issues))
+                if runtime.assembly == 'stream':
+                    # For stream alone, we want to enforce that the very latest RPMs are installed.
+                    non_latest_rpm_nvrs = payload_entry.rhcos_build.find_non_latest_rpms()
+                    for installed_nvr, newest_nvr in non_latest_rpm_nvrs:
+                        assembly_issues.append(AssemblyIssue(f'Found outdated RPM ({installed_nvr}) installed in {payload_entry.rhcos_build} when {newest_nvr} is available',
+                                                             component='rhcos',
+                                                             code=AssemblyIssueCode.OUTDATED_RPMS_IN_STREAM_BUILD))
+            else:
+                raise IOError(f'Unsupported PayloadEntry: {payload_entry}')
+
+        # Save the default SRC=DEST input to a file for syncing by 'oc image mirror'. Why is
+        # there no '-priv'? The true images for the assembly are what we are syncing -
+        # it is what we update in the imagestream that defines whether the image will be
+        # part of a public release.
+        with io.open(f"src_dest.{arch}", "w+", encoding="utf-8") as out_file:
+            for payload_entry in entries.values():
+                if not payload_entry.archive_inspector:
+                    # Nothing to mirror (e.g. machine-os-content)
+                    continue
+                out_file.write(f"{payload_entry.archive_inspector.get_archive_pullspec()}={payload_entry.dest_pullspec}\n")
+
+        for private_mode in privacy_modes:
+            logger.info(f'Building payload files for architecture: {arch}; private: {private_mode}')
+
+            file_suffix = arch + '-priv' if private_mode else arch
+            with io.open(f"image_stream.{file_suffix}.yaml", "w+", encoding="utf-8") as out_file:
+                istags: List[Dict] = []
+                for payload_tag_name, payload_entry in entries.items():
+                    if payload_entry.build_inspector and payload_entry.build_inspector.is_under_embargo() and private_mode is False:
+                        # Don't send this istag update to the public release controller
+                        continue
+                    istags.append(PayloadGenerator.build_payload_istag(payload_tag_name, payload_entry))
+
+                imagestream_name, imagestream_namespace = payload_imagestream_name_and_namespace(
+                    base_imagestream_name,
+                    base_istream_namespace,
+                    arch, private_mode)
+
+                istream_spec = PayloadGenerator.build_payload_imagestream(imagestream_name, imagestream_namespace, istags, assembly_issues)
+                yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
+
+    # Now make sure that all of the RHCOS builds contain consistent RPMs
+    for private_mode in privacy_modes:
+        rhcos_builds = targeted_rhcos_builds[private_mode]
+        rhcos_inconsistencies: Dict[str, List[str]] = PayloadGenerator.find_rhcos_build_rpm_inconsistencies(rhcos_builds)
+        if rhcos_inconsistencies:
+            assembly_issues.append(AssemblyIssue(f'Found RHCOS inconsistencies in builds {targeted_rhcos_builds}: {rhcos_inconsistencies}', component='rhcos', code=AssemblyIssueCode.INCONSISTENT_RHCOS_RPMS))
+
+    # If the assembly claims to have reference nightlies, assert that our payload
+    # matches them exactly.
+    nightly_match_issues = PayloadGenerator.check_nightlies_consistency(assembly_inspector)
+    if nightly_match_issues:
+        assembly_issues.extend(nightly_match_issues)
+
+    assembly_issues_report: Dict[str, List[Dict]] = dict()
+    report['assembly_issues'] = assembly_issues_report
+
+    overall_permitted = True
+    for ai in assembly_issues:
+        permitted = assembly_inspector.does_permit(ai)
+        overall_permitted &= permitted  # If anything is not permitted, exit with an error
+        assembly_issues_report.setdefault(ai.component, []).append({
+            'code': ai.code.name,
+            'msg': ai.msg,
+            'permitted': permitted
+        })
+
+    report['viable'] = overall_permitted
+
+    print(yaml.dump(report, default_flow_style=False, indent=2))
+    if not overall_permitted:
+        red_print('DO NOT PROCEED WITH THIS ASSEMBLY PAYLOAD -- not all detected issues are permitted.', file=sys.stderr)
+        if not emergency_ignore_issues:
+            exit(1)
+    exit(0)
 
 
 class PayloadGenerator:
-    def __init__(self, runtime: Runtime, brew_session: ClientSession, base_target: SyncTarget, exclude_arches: Optional[List[str]] = None, skip_gc_tagging: bool = False):
-        self.runtime = runtime
-        self.brew_session = brew_session
-        self.base_target = base_target
-        self.exclude_arches = exclude_arches or []
-        self.state = runtime.state[runtime.command] = dict(state.TEMPLATE_IMAGE)
-        self.bs_detector = build_status_detector.BuildStatusDetector(brew_session, runtime.logger)
-        self.skip_gc_tagging = skip_gc_tagging
 
-    def load_latest_builds(self):
-        images = list(self.runtime.image_metas())
-        self.state['total_images'] = len(images)
+    class PayloadEntry(NamedTuple):
 
-        self.runtime.logger.info("Fetching latest image builds from Brew...")
-        payload_images, invalid_name_items = self._get_payload_images(images)
-        release_payload_images, non_release_items = self._get_payload_and_non_release_images(payload_images)
-        self.state['payload_images'] = len(release_payload_images)
+        # The destination pullspec
+        dest_pullspec: str
 
-        latest_builds, images_missing_builds = self._get_latest_builds(release_payload_images)
-        self.runtime.logger.info("Determining if image builds have embargoed contents...")
-        self._designate_privacy(latest_builds, images)
+        # Append any issues for the assembly
+        issues: List[AssemblyIssue]
 
-        mismatched_siblings = self._find_mismatched_siblings(latest_builds)
-        if mismatched_siblings and self.runtime.assembly_type == assembly.AssemblyTypes.CUSTOM:
-            self.runtime.logger.warning(f'There are mismatched siblings in this assembly, but it is "custom"; ignoring: {mismatched_siblings}')
-            mismatched_siblings = set()
-
-        return latest_builds, invalid_name_items, images_missing_builds, mismatched_siblings, non_release_items
-
-    def _get_payload_and_non_release_images(self, images):
-        payload_images = []
-        non_release_items = []
-        for image in images:
-            if image.for_release:
-                payload_images.append(image)
-                continue
-            non_release_items.append(image.image_name_short)
-            red_print(f"NOT adding to IS (non_release: true): {image.image_name_short}")
-
-        return payload_images, non_release_items
-
-    def _get_payload_images(self, images: List[ImageMetadata]) -> Tuple[List[ImageMetadata], List[ImageMetadata]]:
-        # Iterates through a list of image metas and finds those destined for
-        # the release payload. Images which are marked for the payload but not named
-        # appropriately will be captured in a separate list.
-        # :param images: The list of metas to scan
-        # :return: Returns a tuple containing: (list of images for payload, list of incorrectly named images)
-
-        payload_images = []
-        invalid_name_items = []
-        for image in images:
-            if image.is_payload:
-                """
-                <Tim Bielawa> note to self: is only for `ose-` prefixed images
-                <Clayton Coleman> Yes, Get with the naming system or get out of town
-                """
-                if image.image_name_short.startswith("ose-"):
-                    payload_images.append(image)
-                    continue
-
-                invalid_name_items.append(image.image_name_short)
-                red_print(f"NOT adding to IS (does not meet name/version conventions): {image.image_name_short}")
-
-        return payload_images, invalid_name_items
-
-    def _get_latest_builds(self, payload_images: List[ImageMetadata]) -> Tuple[List[BuildRecord], List[ImageMetadata]]:
         """
-        Find latest brew build (at event, if given) of each payload image.
-
-        If assemblies are disabled, it will return the latest tagged brew build with the candidate brew tag.
-        If assemblies are enabled, it will return the latest tagged brew build in the given assembly.
-          If no such build, it will fall back to the latest build in "stream" assembly.
-
-        :param payload_images: a list of image metadata for payload images
-        :return: list of build records, list of images missing builds
+        If the entry is for an image in this doozer group, these values will be set.
         """
-        brew_latest_builds = []
-        for image_meta in payload_images:
-            latest_build: ImageMetadata = image_meta.get_latest_build()
-            if self.runtime.assembly_basis_event and not self.skip_gc_tagging:
-                # If we are preparing an assembly with a basis event, let's start getting
-                # serious and tag these images so they don't get garbage collected.
-                build_nvr = latest_build['nvr']
-                tags = {tag['name'] for tag in self.brew_session.listTags(build=build_nvr)}
-                if image_meta.hotfix_brew_tag() not in tags:
-                    self.runtime.logger.info(f'Tagging {image_meta.get_component_name()} build {build_nvr} with {image_meta.hotfix_brew_tag()} to prevent garbage collection')
-                    self.brew_session.tagBuild(image_meta.hotfix_brew_tag(), build_nvr)
+        # The image metadata which associated with the payload
+        image_meta: Optional[ImageMetadata] = None
+        # An inspector associated with the overall brew build (manifest list) found for the release
+        build_inspector: Optional[BrewBuildImageInspector] = None
+        # The brew build archive (arch specific image) that should be tagged into the payload
+        archive_inspector: Optional[ArchiveImageInspector] = None
 
-            brew_latest_builds.append(latest_build)
-
-        # look up the archives for each image (to get the RPMs that went into them)
-        brew_build_ids = [b["id"] if b else 0 for b in brew_latest_builds]
-        archives_list = brew.list_archives_by_builds(brew_build_ids, "image", self.brew_session)
-
-        # at this point payload_images, brew_latest_builds, and archives_list should be matching lists;
-        # combine them into dict build records.
-        latest_builds, missing_images = [], []
-        for image, build, archives in zip(payload_images, brew_latest_builds, archives_list):
-            if build and archives:
-                latest_builds.append(BuildRecord(image, build, archives))
-            else:
-                missing_images.append(image)
-                state.record_image_fail(self.state, image, f"Unable to find build for: {image.image_name_short}", self.runtime.logger)
-
-        self.state["builds_missing"] = len(missing_images)
-        self.state["builds_found"] = len(latest_builds)
-        return latest_builds, missing_images
-
-    def _designate_privacy(self, latest_builds, images):
         """
-        For a list of build records, determine if they have private contents. If
-        so, then set "private" to True for that build record. This is done for a
-        whole set of builds since we have to look up parents and we would like to
-        cache those lookups.
+        If the entry is for machine-os-content, this value will be set
         """
-        if not self.runtime.group_config.public_upstreams:
-            # when public_upstreams are not configured, we assume there is no private content.
-            return
-
-        if self.runtime.assembly_basis_event:
-            # If an assembly has a basis event, its content is not going to go out
-            # to a release controller. Nothing we write is going to be publicly
-            # available.
-            return
-
-        # store RPM archives to BuildStatusDetector cache to limit Brew queries
-        for r in latest_builds:
-            self.bs_detector.archive_lists[r.build["id"]] = r.archives
-
-        # determine if each image build is embargoed (or otherwise "private")
-        embargoed_build_ids = self.bs_detector.find_embargoed_builds(
-            [r.build for r in latest_builds],
-            {image.candidate_brew_tag() for image in images}
-        )
-        for r in latest_builds:
-            if r.build["id"] in embargoed_build_ids:
-                r.private = True
-
-    def write_mirror_destinations(self, latest_builds, mismatched_siblings):
-        self.runtime.logger.info("Creating mirroring lists...")
-
-        # returns map[(brew_arch, private)] -> map[image_name] -> { version: release: image_src: digest: build_record: }
-        mirror_src_for_arch_and_name = self._get_mirror_sources(latest_builds, mismatched_siblings)
-
-        # we need to evaluate rhcos inconsistencies across architectures (separate builds)
-        rhcos_source_for_priv_arch = {False: {}, True: {}}  # map[private][brew_arch] -> source
-        for brew_arch, private in mirror_src_for_arch_and_name.keys():
-            rhcos_source_for_priv_arch[private][brew_arch] = self._latest_mosc_source(brew_arch, private)
-        rhcos_inconsistencies = {  # map[private] -> map[annotation] -> description
-            private: self._find_rhcos_build_inconsistencies(rhcos_source_for_priv_arch[private]) for private in (True, False)
-        }
-
-        for dest, source_for_name in mirror_src_for_arch_and_name.items():
-            brew_arch, private = dest
-
-            if self.runtime.assembly_basis_event and private:
-                self.runtime.logger.info(f"Skipping private mirroring list / imagestream for asssembly: {self.runtime.assembly}")
-                continue
-
-            dest = f"{brew_arch}{'-priv' if private else ''}"
-
-            # Save the default SRC=DEST input to a file for syncing by 'oc image mirror'
-            with io.open(f"src_dest.{dest}", "w+", encoding="utf-8") as out_file:
-                for source in source_for_name.values():
-                    mirror_dest = self._build_dest_name(source, self.base_target.orgrepo)
-                    out_file.write(f"{source['image_src']}={mirror_dest}\n")
-
-            # build the local tag target from the base
-            name, namespace = is_name_and_space(
-                self.base_target.istream_name,
-                self.base_target.istream_namespace,
-                brew_arch, private)
-            target = SyncTarget(self.base_target.orgrepo, name, namespace)
-            x86_source_for_name = mirror_src_for_arch_and_name[('x86_64', private)]
-            istream_spec = self._get_istream_spec(
-                brew_arch, private, target,
-                source_for_name, x86_source_for_name,
-                rhcos_source_for_priv_arch[private][brew_arch], rhcos_inconsistencies[private]
-            )
-            with io.open(f"image_stream.{dest}.yaml", "w+", encoding="utf-8") as out_file:
-                yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
-
-    def _find_rhcos_build_inconsistencies(self, rhcos_source_for_arch):
-        inconsistencies = {}
-
-        # gather a list of all rpms used in every arch of rhcos build
-        nvrs_for_rpm = {}
-        for brew_arch, source in rhcos_source_for_arch.items():
-            if not source:  # sometimes could be missing e.g. browser outage; just note that here
-                annotation = f"Could not retrieve RHCOS for {brew_arch}"
-                inconsistencies[annotation] = annotation  # not much more to explain
-                continue
-            for rpm in source['archive']['rpms']:
-                nvrs_for_rpm.setdefault(rpm['name'], set()).add(rpm['nvr'])
-        for name, nvrs in nvrs_for_rpm.items():
-            if len(nvrs) > 1:
-                annotation = f"Multiple versions of RPM {name} used"
-                description = f"RPM {name} has multiple versions across arches: {list(nvrs)}"
-                inconsistencies[annotation] = description
-
-        return inconsistencies
-
-    def _get_mirror_sources(self, latest_builds, mismatched_siblings):
-        """
-        Determine the image sources to mirror to each arch-private-specific imagestream,
-        excluding mismatched siblings; also record success/failure per state.
-
-        :return: map[(brew_arch, private)] -> map[image_name] -> { version: release: image_src: digest: build_record: }
-        """
-        mirroring = {}
-        for record in latest_builds:
-            image = record.image
-            error = None
-            if image.distgit_key in mismatched_siblings:
-                error = "Siblings built from different commits"
-            else:
-                # The tag that will be used in the imagestreams
-                payload_name = image.config.get("payload_name")
-                if payload_name:
-                    tag_name = payload_name
-                else:
-                    tag_name = image.image_name_short[4:] if image.image_name_short.startswith("ose-") else image.image_name_short  # it _should_ but... to be safe
-                for archive in record.archives:
-                    brew_arch = archive["arch"]
-                    if brew_arch in self.exclude_arches:
-                        continue
-                    pullspecs = archive["extra"]["docker"]["repositories"]
-                    if not pullspecs or ":" not in pullspecs[-1]:  # in case of no pullspecs or invalid format
-                        error = f"Unable to find pullspecs for: {image.image_name_short}"
-                        red_print(error)
-                        state.record_image_fail(self.state, image, error, self.runtime.logger)
-                        continue
-                    digest = archive["extra"]['docker']['digests']['application/vnd.docker.distribution.manifest.v2+json']
-                    if not digest.startswith("sha256:"):  # It should start with sha256: for now. Let's raise an error if this changes.
-                        raise ValueError(f"Received unrecognized digest {digest} for image {pullspecs[-1]}")
-
-                    mirroring_value = dict(
-                        version=record.build["version"],
-                        release=record.build["release"],
-                        image_src=pullspecs[-1],
-                        digest=digest,
-                        build_record=record,
-                        archive=archive,
-                    )
-
-                    if record.private:  # exclude embargoed images from the ocp[-arch] imagestreams
-                        yellow_print(f"Omitting embargoed image {pullspecs[-1]}")
-                    else:
-                        mirroring_list = mirroring.setdefault((brew_arch, False), {})
-                        if tag_name not in mirroring_list or payload_name:
-                            # if multiple images in arch have the same tag, only explicit payload_name overwrites (https://issues.redhat.com/browse/ART-2823
-                            self.runtime.logger.info(f"Adding {brew_arch} image {pullspecs[-1]} to the public mirroring list with imagestream tag {tag_name}...")
-                            mirroring_list[tag_name] = mirroring_value
-
-                    if self.runtime.group_config.public_upstreams:
-                        # when public_upstreams are configured, both embargoed and non-embargoed images should be included in the ocp[-arch]-priv imagestreams
-                        mirroring_list = mirroring.setdefault((brew_arch, True), {})
-                        if tag_name not in mirroring_list or payload_name:
-                            # if multiple images in arch have the same tag, only explicit payload_name overwrites (https://issues.redhat.com/browse/ART-2823
-                            self.runtime.logger.info(f"Adding {brew_arch} image {pullspecs[-1]} to the private mirroring list with imagestream tag {tag_name}...")
-                            mirroring_list[tag_name] = mirroring_value
-
-            # per build, record in the state whether we can successfully mirror it
-            if error:
-                red_print(error)
-                state.record_image_fail(self.state, image, error, self.runtime.logger)
-            else:
-                state.record_image_success(self.state, image)
-
-        return mirroring
+        rhcos_build: Optional[RHCOSBuildInspector] = None
 
     @staticmethod
-    def _build_dest_name(source, orgrepo):
-        tag = source["digest"].replace(":", "-")  # sha256:abcdef -> sha256-abcdef
-        return f"quay.io/{orgrepo}:{tag}"
+    def find_mismatched_siblings(build_image_inspectors: Iterable[Optional[BrewBuildImageInspector]]) -> List[Tuple[BrewBuildImageInspector, BrewBuildImageInspector]]:
+        """
+        Sibling images are those built from the same repository. We need to throw an error
+        if there are sibling built from different commits.
+        :return: Returns a list of (BrewBuildImageInspector,BrewBuildImageInspector) where the first item is a mismatched sibling of the second
+        """
+        class RepoBuildRecord(NamedTuple):
+            build_image_inspector: BrewBuildImageInspector
+            source_git_commit: str
 
-    def _get_istream_spec(self, brew_arch, private, target, source_for_name, x86_source_for_name,
-                          rhcos_source, rhcos_inconsistencies):
-        # Write tag specs for the image stream. The name of each tag
-        # spec does not include the 'ose-' prefix. This keeps them
-        # consistent between OKD and OCP.
+        # Maps SOURCE_GIT_URL -> RepoBuildRecord(SOURCE_GIT_COMMIT, DISTGIT_KEY, NVR). Where the Tuple is the first build
+        # encountered claiming it is sourced from the SOURCE_GIT_URL
+        repo_builds: Dict[str, RepoBuildRecord] = dict()
 
-        # Template Base Image Stream object.
-        tag_list = []
-        istream_spec = {
+        mismatched_siblings: List[Tuple[BrewBuildImageInspector, BrewBuildImageInspector]] = []
+        for build_image_inspector in build_image_inspectors:
+
+            if not build_image_inspector:
+                # No build for this component at present.
+                continue
+
+            source_url = build_image_inspector.get_source_git_url()
+            source_git_commit = build_image_inspector.get_source_git_commit()
+            if not source_url or not source_git_commit:
+                # This is true for distgit only components.
+                continue
+
+            potential_conflict: RepoBuildRecord = repo_builds.get(source_url, None)
+            if potential_conflict:
+                # Another component has build from this repo before. Make
+                # sure it built from the same commit.
+                if potential_conflict.source_git_commit != source_git_commit:
+                    mismatched_siblings.append((build_image_inspector, potential_conflict.build_image_inspector))
+                    red_print(f"The following NVRs are siblings but built from different commits: {potential_conflict.build_image_inspector.get_nvr()} and {build_image_inspector.get_nvr()}", file=sys.stderr)
+            else:
+                # No conflict, so this is our first encounter for this repo; add it to our tracking dict.
+                repo_builds[source_url] = RepoBuildRecord(build_image_inspector=build_image_inspector, source_git_commit=source_git_commit)
+
+        return mismatched_siblings
+
+    @staticmethod
+    def find_rhcos_build_rpm_inconsistencies(rhcos_builds: List[RHCOSBuildInspector]) -> Dict[str, List[str]]:
+        """
+        Looks through a set of RHCOS builds and finds if any of those builds contains a package version that
+        is inconsistent with the same package in another RHCOS build.
+        :return: Returns Dict[inconsistent_rpm_name] -> [inconsistent_nvrs, ...]. The Dictionary will be empty
+                 if there are no inconsistencies detected.
+        """
+        rpm_uses: Dict[str, Set[str]] = {}
+
+        for rhcos_build in rhcos_builds:
+            for nvr in rhcos_build.get_rpm_nvrs():
+                rpm_name = parse_nvr(nvr)['name']
+                if rpm_name not in rpm_uses:
+                    rpm_uses[rpm_name] = set()
+                rpm_uses[rpm_name].add(nvr)
+
+        # Report back rpm name keys which were associated with more than one NVR in the set of RHCOS builds.
+        return {rpm_name: nvr_list for rpm_name, nvr_list in rpm_uses.items() if len(nvr_list) > 1}
+
+    @staticmethod
+    def get_mirroring_destination(archive_inspector: ArchiveImageInspector, dest_repo: str) -> str:
+        """
+        :param archive_inspector: The archive to analyze for mirroring.
+        :param dest_repo: A pullspec to mirror to, except for the tag. This include registry, organization, and repo.
+        :return: Returns the external (quay) image location to which this image should be mirrored in order
+                 to be included in an nightly release payload. These tags are meant to leak no information
+                 to users watching the quay repo. The image must have a tag or it will be garbage collected.
+        """
+        tag = archive_inspector.get_archive_digest().replace(":", "-")  # sha256:abcdef -> sha256-abcdef
+        return f"{dest_repo}:{tag}"
+
+    @staticmethod
+    def find_payload_entries(assembly_inspector: AssemblyInspector, arch: str, dest_repo: str) -> Dict[str, PayloadEntry]:
+        """
+        Returns a list of images which should be included in the architecture specific release payload.
+        This includes images for our group's image metadata as well as machine-os-content.
+        :param assembly_inspector: An analyzer for the assembly to generate entries for.
+        :param arch: The brew architecture name to create the list for.
+        :param dest_repo: The registry/org/repo into which the image should be mirrored.
+        :return: Map[payload_tag_name] -> PayloadEntry.
+        """
+        members: Dict[str, Optional[PayloadGenerator.PayloadEntry]] = dict()  # Maps release payload tag name to the PayloadEntry for the image.
+        for payload_tag, archive_inspector in PayloadGenerator.get_group_payload_tag_mapping(assembly_inspector, arch).items():
+            if not archive_inspector:
+                # There is no build for this payload tag for this CPU arch. This
+                # will be filled in later in this method for the final list.
+                members[payload_tag] = None
+                continue
+
+            members[payload_tag] = PayloadGenerator.PayloadEntry(
+                image_meta=archive_inspector.get_image_meta(),
+                build_inspector=archive_inspector.get_brew_build_inspector(),
+                archive_inspector=archive_inspector,
+                dest_pullspec=PayloadGenerator.get_mirroring_destination(archive_inspector, dest_repo),
+                issues=list(),
+            )
+
+        # members now contains a complete map of payload tag keys, but some values may be None. This is an
+        # indication that the architecture did not have a build of one of our group images.
+        # The tricky bit is that all architecture specific release payloads contain the same set of tags
+        # or 'oc adm release new' will have trouble assembling it. i.e. an imagestream tag 'X' may not be
+        # necessary on s390x, bit we need to populate that tag with something.
+
+        # To do this, we replace missing images with the 'pod' image for the architecture. This should
+        # be available for every CPU architecture. As such, we must find pod to proceed.
+
+        pod_entry = members.get('pod', None)
+        if not pod_entry:
+            raise IOError(f'Unable to find pod image archive for architecture: {arch}; unable to construct payload')
+
+        final_members: Dict[str, PayloadGenerator.PayloadEntry] = dict()
+        for tag_name, entry in members.items():
+            if entry:
+                final_members[tag_name] = entry
+            else:
+                final_members[tag_name] = pod_entry
+
+        rhcos_build: RHCOSBuildInspector = assembly_inspector.get_rhcos_build(arch)
+        final_members['machine-os-content'] = PayloadGenerator.PayloadEntry(
+            dest_pullspec=rhcos_build.get_image_pullspec(),
+            rhcos_build=rhcos_build,
+            issues=list(),
+        )
+
+        # Final members should have all tags populated.
+        return final_members
+
+    @staticmethod
+    def build_payload_istag(payload_tag_name: str, payload_entry: PayloadEntry) -> Dict:
+        """
+        :param payload_tag_name: The name of the payload tag for which to create an istag.
+        :param payload_entry: The payload entry to serialize into an imagestreamtag.
+        :return: Returns a imagestreamtag dict for a release payload imagestream.
+        """
+        return {
+            'annotations': PayloadGenerator._build_inconsistency_annotation(payload_entry.issues),
+            'name': payload_tag_name,
+            'from': {
+                'kind': 'DockerImage',
+                'name': payload_entry.dest_pullspec,
+            }
+        }
+
+    @staticmethod
+    def build_payload_imagestream(imagestream_name: str, imagestream_namespace: str, payload_istags: Iterable[Dict], assembly_wide_inconsistencies: Iterable[AssemblyIssue]) -> Dict:
+        """
+        Builds a definition for a release payload imagestream from a set of payload istags.
+        :param imagestream_name: The name of the imagstream to generate.
+        :param imagestream_namespace: The nemspace in which the imagestream should be created.
+        :param payload_istags: A list of istags generated by build_payload_istag.
+        :param assembly_wide_inconsistencies: Any inconsistency information to embed in the imagestream.
+        :return: Returns a definition for an imagestream for the release payload.
+        """
+
+        istream_obj = {
             'kind': 'ImageStream',
             'apiVersion': 'image.openshift.io/v1',
             'metadata': {
-                'name': target.istream_name,
-                'namespace': target.istream_namespace,
+                'name': imagestream_name,
+                'namespace': imagestream_namespace,
+                'annotations': PayloadGenerator._build_inconsistency_annotation(assembly_wide_inconsistencies)
             },
             'spec': {
-                'tags': tag_list,
+                'tags': list(payload_istags),
             }
         }
 
-        for tag_name, source in source_for_name.items():
-            tag_list.append(self._get_istag_spec(tag_name, source, target))
+        return istream_obj
 
-        # add in rhcos tag
-        if rhcos_source:  # missing rhcos should not prevent syncing everything else
-            mosc_istag = self._get_mosc_istag_spec(rhcos_source, rhcos_inconsistencies)
-            tag_list.append(mosc_istag)
-
-        tag_list.extend(self._extra_dummy_tags(brew_arch, private, source_for_name, x86_source_for_name, target))
-
-        return istream_spec
-
-    def _get_istag_spec(self, tag_name, source, target):
-        record = source['build_record']
-        inconsistencies = self._find_rpm_inconsistencies(source['archive'], record.image.candidate_brew_tag())
-        if inconsistencies:  # format {annotation: description}
-            inc_state = self.state.setdefault('inconsistencies', {}).setdefault(tag_name, [])
-            # de-duplicate -- most will be repeated for each arch
-            inc_state.extend([val for val in inconsistencies.values() if val not in inc_state])
-
-        return {
-            'annotations': self._inconsistency_annotation(inconsistencies.keys()),
-            'name': tag_name,
-            'from': {
-                'kind': 'DockerImage',
-                'name': self._build_dest_name(source, target.orgrepo),
-            }
-        }
-
-    def _find_rpm_inconsistencies(self, archive, candidate_tag):
-        # returns a dict describing latest candidate rpms that are mismatched with build contents
-
-        # N.B. the "rpms" installed in an image archive are individual RPMs, not brew rpm package builds.
-        # we compare against the individual RPMs from latest candidate rpm package builds.
-        candidate_rpms = {
-            # the RPMs are collected by name mainly to de-duplicate (same RPM, multiple arches)
-            rpm['name']: rpm for rpm in
-            self.bs_detector.find_unshipped_candidate_rpms(candidate_tag, self.runtime.brew_event)
-        }
-
-        inconsistencies = {}
-        archive_rpms = {rpm['name']: rpm for rpm in archive['rpms']}
-        # we expect only a few unshipped candidates most of the the time, so we'll just search for those.
-        for name, rpm in candidate_rpms.items():
-            archive_rpm = archive_rpms.get(name)
-            if archive_rpm and rpm['nvr'] != archive_rpm['nvr']:
-                inconsistencies[f"Contains outdated RPM {rpm['name']}"] = (
-                    f"RPM {archive_rpm['nvr']} is installed in image build {archive['build_id']} but"
-                    f" {rpm['nvr']} from package build {rpm['build_id']} is latest candidate"
-                )
-
-        return inconsistencies  # {annotation: description}
-
-    def _inconsistency_annotation(self, inconsistencies):
+    @staticmethod
+    def _build_inconsistency_annotation(inconsistencies: Iterable[AssemblyIssue]):
+        """
+        :param inconsistencies: A list of strings to report as inconsistencies within an annotation.
+        :return: Returns a dict containing an inconsistency annotation out of the specified str.
+                 Returns emtpy {} if there are no inconsistencies in the parameter.
+        """
         # given a list of strings, build the annotation for inconsistencies
         if not inconsistencies:
             return {}
 
-        inconsistencies = sorted(inconsistencies)
-        if len(inconsistencies) > 5:
+        msgs = sorted([i.msg for i in inconsistencies])
+        if len(msgs) > 5:
             # an exhaustive list of the problems may be too large; that goes in the state file.
-            inconsistencies[5:] = ["(...and more)"]
-        return {"release.openshift.io/inconsistency": json.dumps(inconsistencies)}
+            msgs[5:] = ["(...and more)"]
+        return {"release.openshift.io/inconsistency": json.dumps(msgs)}
 
-    def _extra_dummy_tags(self, brew_arch, private, source_for_name, x86_source_for_name, target, stand_in_tag="pod"):
+    @staticmethod
+    def get_group_payload_tag_mapping(assembly_inspector: AssemblyInspector, arch: str) -> Dict[str, Optional[ArchiveImageInspector]]:
         """
-        For non-x86 arches, not all images are built (e.g. kuryr), but they may
-        be mentioned in CVO image references. Thus, make sure there is a tag for
-        every tag we find in x86_64 and provide a dummy image to stand in if needed.
-
-        :return: a list of tag specs for the payload images not built in this arch.
+        Each payload tag name used to map exactly to one release imagemeta. With the advent of '-alt' images,
+        we need some logic to determine which images map to which payload tags for a given architecture.
+        :return: Returns a map[payload_tag_name] -> ArchiveImageInspector containing an image for the payload. The value may be
+                 None if there is no arch specific build for the tag. This does not include machine-os-content since that
+                 is not a member of the group.
         """
-        tag_list = []
-        if stand_in_tag in source_for_name:  # stand_in_tag image serves as the dummy image for the replacement
-            extra_tags = x86_source_for_name.keys() - source_for_name.keys()
-            for tag_name in extra_tags:
-                yellow_print('Unable to find tag {} for arch {} ; substituting {} image'.format(tag_name, brew_arch, stand_in_tag))
-                tag_list.append({
-                    'name': tag_name,
-                    'from': {
-                        'kind': 'DockerImage',
-                        'name': self._build_dest_name(source_for_name[stand_in_tag], target.orgrepo)
-                    }
-                })
-        elif self.runtime.group_config.public_upstreams and not private:
-            # If stand_in_tag is embargoed, it is expected that stand_in_tag is missing in any non *-priv imagestreams.
-            self.runtime.logger.warning(f"Unable to find {stand_in_tag} tag from {brew_arch} imagestream. Is {stand_in_tag} image embargoed or out of sync with siblings?")
-        else:
-            # if CVE embargoes supporting is disabled or the stand_in_tag image is also
-            # missing in *-priv namespaces, an error will be raised.
-            raise DoozerFatalError(f"A dummy image is required for arch {brew_arch}, but {stand_in_tag} image is not available to stand in")
+        brew_arch = brew_arch_for_go_arch(arch)  # Make certain this is brew arch nomenclature
+        members: Dict[str, Optional[ArchiveImageInspector]] = dict()  # Maps release payload tag name to the archive which should populate it
+        for dgk, build_inspector in assembly_inspector.get_group_release_images().items():
 
-        return tag_list
+            if build_inspector is None:
+                # There was no build for this image found associated with the assembly.
+                # In this case, don't put the tag_name into the imagestream. This is not good,
+                # so be verbose.
+                red_print(f'Unable to find build for {dgk} for {assembly_inspector.get_assembly_name()}', file=sys.stderr)
+                continue
 
-    def _latest_mosc_source(self, brew_arch, private):
-        image_stream_suffix = f"{brew_arch}{'-priv' if private else ''}"
-        runtime = self.runtime
-        runtime.logger.info(f"Getting latest RHCOS source for {image_stream_suffix}...")
+            image_meta: ImageMetadata = assembly_inspector.runtime.image_map[dgk]
 
-        assembly_rhcos_config = assembly.assembly_rhcos_config(runtime.releases_config, runtime.assembly)
-        # See if this assembly has assembly.rhcos.machine-os-content.images populated for this architecture.
-        assembly_rhcos_arch_pullspec = assembly_rhcos_config['machine-os-content'].images[brew_arch]
-        if self.runtime.assembly_basis_event and not assembly_rhcos_arch_pullspec:
-            raise Exception(f'Assembly {runtime.assembly} has a basis event but no assembly.rhcos MOSC image data for {brew_arch}; all MOSC image data must be populated for this assembly to be valid')
+            if not image_meta.is_payload:
+                # Nothing to do for images which are not in the payload
+                continue
 
-        try:
+            tag_name, explicit = image_meta.get_payload_tag_info()  # The tag that will be used in the imagestreams and whether it was explicitly declared.
 
-            version = self.runtime.get_minor_version()
+            if arch not in image_meta.get_arches():
+                # If this image is not meant for this architecture
+                members[tag_name] = None  # We still need a placeholder in the tag mapping
+                continue
 
-            if assembly_rhcos_arch_pullspec:
-                pullspec = assembly_rhcos_arch_pullspec
-                image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}')
-                image_info = Model(dict_to_model=json.loads(image_info_str))
-                build_id = image_info.config.config.Labels.version
-                if not build_id:
-                    raise Exception(f'Unable to determine MOSC build_id from: {pullspec}. Retrieved image info: {image_info_str}')
+            if tag_name in members and not explicit:
+                # If we have already found an entry, there is a precedence we honor for
+                # "-alt" images. Specifically, if a imagemeta declares its payload tag
+                # name explicitly, it will take precedence over any other entries
+                # https://issues.redhat.com/browse/ART-2823
+                # This was tag not explicitly declared, so ignore the duplicate image.
+                continue
+
+            archive_inspector = build_inspector.get_image_archive_inspector(brew_arch)
+
+            if not archive_inspector:
+                # There is no build for this CPU architecture for this image_meta/build. This finding
+                # conflicts with the `arch not in image_meta.get_arches()` check above.
+                # Best to fail.
+                raise IOError(f'{dgk} claims to be built for {image_meta.get_arches()} but did not find {brew_arch} build for {build_inspector.get_brew_build_webpage_url()}')
+
+            members[tag_name] = archive_inspector
+
+        return members
+
+    @staticmethod
+    def _check_nightly_consistency(assembly_inspector: AssemblyInspector, nightly: str, arch: str) -> List[AssemblyIssue]:
+        runtime = assembly_inspector.runtime
+
+        def terminal_issue(msg: str) -> List[AssemblyIssue]:
+            return [AssemblyIssue(msg, component='reference-releases')]
+
+        issues: List[str]
+        runtime.logger.info(f'Processing nightly: {nightly}')
+        major_minor, brew_cpu_arch, priv = isolate_nightly_name_components(nightly)
+
+        if major_minor != runtime.get_minor_version():
+            return terminal_issue(f'Specified nightly {nightly} does not match group major.minor')
+
+        rc_suffix = go_suffix_for_arch(brew_cpu_arch, priv)
+
+        retries: int = 3
+        release_json_str = ''
+        rc = -1
+        pullspec = f'registry.ci.openshift.org/ocp{rc_suffix}/release{rc_suffix}:{nightly}'
+        while retries > 0:
+            rc, release_json_str, err = exectools.cmd_gather(f'oc adm release info {pullspec} -o=json')
+            if rc == 0:
+                break
+            runtime.logger.warn(f'Error accessing nightly release info for {pullspec}:  {err}')
+            retries -= 1
+
+        if rc != 0:
+            return terminal_issue(f'Unable to gather nightly release info details: {pullspec}; garbage collected?')
+
+        release_info = Model(dict_to_model=json.loads(release_json_str))
+        if not release_info.references.spec.tags:
+            return terminal_issue(f'Could not find tags in nightly {nightly}')
+
+        issues: List[AssemblyIssue] = list()
+        payload_entries: Dict[str, PayloadGenerator.PayloadEntry] = PayloadGenerator.find_payload_entries(assembly_inspector, arch, '')
+        for component_tag in release_info.references.spec.tags:  # For each tag in the imagestream
+            payload_tag_name: str = component_tag.name  # e.g. "aws-ebs-csi-driver"
+            payload_tag_pullspec: str = component_tag['from'].name  # quay pullspec
+            if '@' not in payload_tag_pullspec:
+                # This speaks to an invalid nightly, so raise and exception
+                raise IOError(f'Expected pullspec in {nightly}:{payload_tag_name} to be sha digest but found invalid: {payload_tag_pullspec}')
+
+            pullspec_sha = payload_tag_pullspec.rsplit('@', 1)[-1]
+            entry = payload_entries.get(payload_tag_name, None)
+
+            if not entry:
+                raise IOError(f'Did not find {nightly} payload tag {payload_tag_name} in computed assembly payload')
+
+            if entry.archive_inspector:
+                if entry.archive_inspector.get_archive_digest() != pullspec_sha:
+                    # Impermissible because the artist should remove the reference nightlies from the assembly definition
+                    issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed archive: {entry.archive_inspector.get_archive_id()} and {entry.archive_inspector.get_archive_pullspec()}',
+                                                component='reference-releases'))
+            elif entry.rhcos_build:
+                if entry.rhcos_build.get_machine_os_content_digest() != pullspec_sha:
+                    # Impermissible because the artist should remove the reference nightlies from the assembly definition
+                    issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed rhcos: {entry.rhcos_build} and {entry.rhcos_build.get_machine_os_content_digest()}',
+                                                component='reference-releases'))
             else:
-                build_id, pullspec = rhcos.latest_machine_os_content(version, brew_arch, private)
-                if not pullspec:
-                    raise Exception(f"No RHCOS found for {version}")
+                raise IOError(f'Unsupported payload entry {entry}')
 
-            commitmeta = rhcos.rhcos_build_meta(build_id, version, brew_arch, private, meta_type="commitmeta")
-            rpm_list = commitmeta.get("rpmostree.rpmdb.pkglist")
-            if not rpm_list:
-                raise Exception(f"no pkglist in {commitmeta}")
+        return issues
 
-        except Exception as ex:
-            problem = f"{image_stream_suffix}: {ex}"
-            red_print(f"error finding RHCOS {problem}")
-            # record when there is a problem; as each arch is a separate build, make an array
-            self.state.setdefault("images", {}).setdefault("machine-os-content", []).append(problem)
-            return None
-
-        # create fake brew image archive to be analyzed later for rpm inconsistencies
-        archive = dict(
-            build_id=f"({brew_arch}){build_id}",
-            rpms=[dict(name=r[0], epoch=r[1], nvr=f"{r[0]}-{r[2]}-{r[3]}") for r in rpm_list],
-            # nothing else should be needed - if we need more, will have to fake it here
-        )
-
-        return dict(
-            archive=archive,
-            image_src=pullspec,
-            # nothing else should be needed - if we need more, will have to fake it here
-        )
-
-    def _get_mosc_istag_spec(self, source, inconsistencies):
-        inc = dict(inconsistencies)  # make a copy so original is not altered
-        inc.update(self._find_rpm_inconsistencies(source['archive'], rhcos.rhcos_content_tag(self.runtime)))
-        if inc:  # format {annotation: description}
-            inc_state = self.state.setdefault('inconsistencies', {}).setdefault('machine-os-content', [])
-            inc_state.extend([desc for desc in inc.values() if desc not in inc_state])
-
-        return {
-            'annotations': self._inconsistency_annotation(inc.keys()),
-            'name': "machine-os-content",
-            'from': {
-                'kind': 'DockerImage',
-                # unlike other images, m-os-c originates in quay, does not need mirroring
-                'name': source['image_src'],
-            }
-        }
-
-    def _find_mismatched_siblings(self, builds) -> Set:
-        """ Sibling images are those built from the same repository. We need to throw an error if there are sibling built from different commit.
+    @staticmethod
+    def check_nightlies_consistency(assembly_inspector: AssemblyInspector) -> List[AssemblyIssue]:
         """
-        # First, loop over all builds and store their source repos and commits to a dict
-        repo_commit_nvrs = {}  # key is source repo url, value is another dict that key is commit hash and value is a set of nvrs.
-        # Second, build a dict with keys are NVRs and values are the ImageMetadata objects. ImageMetadatas are used for logging state.
-        nvr_images = {}
+        If this assembly has reference-releases, check whether the current images selected by the
+        assembly are an exact match for the nightly contents.
+        """
+        basis = assembly_basis(assembly_inspector.runtime.get_releases_config(), assembly_inspector.runtime.assembly)
+        if not basis or not basis.reference_releases:
+            return []
 
-        for record in builds:
-            # source repo url and commit hash are stored in image's environment variables.
-            ar = record.archives[0]  # the build is a manifest list, let's look at the first architecture
-            envs = ar["extra"]["docker"]["config"]["config"].get("Env", [])
-            source_repo_entry = list(filter(lambda env: env.startswith("SOURCE_GIT_URL="), envs))
-            source_commit_entry = list(filter(lambda env: env.startswith("SOURCE_GIT_COMMIT="), envs))
-            if not source_repo_entry or not source_commit_entry:
-                continue  # this image doesn't have required environment variables. is it a dist-git only image?
-            source_repo = source_repo_entry[0][source_repo_entry[0].find("=") + 1:]  # SOURCE_GIT_URL=https://example.com => https://example.com
-            source_commit = source_commit_entry[0][source_commit_entry[0].find("=") + 1:]  # SOURCE_GIT_COMMIT=abc => abc
-            nvrs = repo_commit_nvrs.setdefault(source_repo, {}).setdefault(source_commit, set())
-            nvrs.add(record.build["nvr"])
-            nvr_images[record.build["nvr"]] = record.image
+        issues: List[AssemblyIssue] = []
+        for arch, nightly in basis.reference_releases.primitive().items():
+            issues.extend(PayloadGenerator._check_nightly_consistency(assembly_inspector, nightly, arch))
 
-        # Finally, look at the dict and print an error if one repo has 2 or more commits
-        mismatched_siblings = set()
-        for repo, commit_nvrs in repo_commit_nvrs.items():
-            if len(commit_nvrs) >= 2:
-                red_print("The following NVRs are siblings but built from different commits:")
-                for commit, nvrs in commit_nvrs.items():
-                    for nvr in nvrs:
-                        image = nvr_images[nvr]
-                        mismatched_siblings.add(image.distgit_key)
-                        red_print(f"{nvr}\t{image.distgit_key}\t{repo}\t{commit}")
-        return mismatched_siblings
-
-
-def default_is_base_name(runtime: Runtime):
-    version = runtime.get_minor_version()
-    if runtime.assembly is None or runtime.assembly == 'stream':
-        return f'{version}-art-latest'
-    else:
-        return f'{version}-art-assembly-{runtime.assembly}'
-
-
-def default_is_base_namespace():
-    return "ocp"
-
-
-def is_name_and_space(base_name, base_namespace, brew_arch, private):
-    arch_suffix = go_suffix_for_arch(brew_arch)
-    priv_suffix = "-priv" if private else ""
-    name = f"{base_name}{arch_suffix}{priv_suffix}"
-    namespace = f"{base_namespace}{arch_suffix}{priv_suffix}"
-    return name, namespace
+        return issues

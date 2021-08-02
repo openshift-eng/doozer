@@ -25,6 +25,7 @@ import io
 import pathlib
 from typing import Optional, List, Dict, Tuple, Union
 import time
+import re
 
 from doozerlib import gitdata
 from . import logutil
@@ -44,7 +45,8 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 from doozerlib import util
 from doozerlib import brew
-from doozerlib.assembly import assembly_group_config, assembly_config_finalize, assembly_basis_event, assembly_type, AssemblyTypes
+from doozerlib.assembly import assembly_group_config, assembly_basis_event, assembly_type, AssemblyTypes
+from doozerlib.build_status_detector import BuildStatusDetector
 
 # Values corresponds to schema for group.yml: freeze_automation. When
 # 'yes', doozer itself will inhibit build/rebase related activity
@@ -118,17 +120,15 @@ SourceResolution = namedtuple('SourceResolution', [
 ])
 
 
-# ============================================================================
-# Runtime object definition
-# ============================================================================
-
-
 class Runtime(object):
     # Use any time it is necessary to synchronize feedback from multiple threads.
     mutex = RLock()
 
     # Serialize access to the shared koji session
     koji_lock = RLock()
+
+    # Build status detector lock
+    bs_lock = RLock()
 
     # Serialize access to the console, and record log
     log_lock = Lock()
@@ -152,6 +152,7 @@ class Runtime(object):
         self.assembly_type = None
         self.releases_config = None
         self.assembly = 'test'
+        self._build_status_detector = None
 
         self.stream: List[str] = []  # Click option. A list of image stream overrides from the command line.
         self.stream_overrides: Dict[str, str] = {}  # Dict of stream name -> pullspec from command line.
@@ -195,6 +196,9 @@ class Runtime(object):
 
         # Map of dist-git repo name -> RPMMetadata object. Populated when group is set.
         self.rpm_map: Dict[str, RPMMetadata] = {}
+
+        # Maps component name to the Image or RPM Metadata responsible for the component
+        self.component_map: Dict[str, Union[ImageMetadata, RPMMetadata]] = dict()
 
         # Map of source code repo aliases (e.g. "ose") to a tuple representing the source resolution cache.
         # See registry_repo.
@@ -267,8 +271,13 @@ class Runtime(object):
             return self.releases_config
 
         load = self.gitdata.load_data(key='releases')
+        data = load.data if load else {}
+        if self.releases:  # override filename specified on command line.
+            rcp = pathlib.Path(self.releases)
+            data = yaml.safe_load(rcp.read_text())
+
         if load:
-            self.releases_config = Model(load.data)
+            self.releases_config = Model(data)
         else:
             self.releases_config = Model()
 
@@ -315,6 +324,8 @@ class Runtime(object):
         if self.quiet and self.verbose:
             click.echo("Flags --quiet and --verbose are mutually exclusive")
             exit(1)
+
+        self.mode = mode
 
         # We could mark these as required and the click library would do this for us,
         # but this seems to prevent getting help from the various commands (unless you
@@ -573,6 +584,7 @@ class Runtime(object):
                 for i in image_data.values():
                     metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
                     self.image_map[metadata.distgit_key] = metadata
+                    self.component_map[metadata.get_component_name()] = metadata
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
 
@@ -594,6 +606,7 @@ class Runtime(object):
                         clone_source = True
                     metadata = RPMMetadata(self, r, self.upstream_commitish_overrides.get(r.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
                     self.rpm_map[metadata.distgit_key] = metadata
+                    self.component_map[metadata.get_component_name()] = metadata
                 if not self.rpm_map:
                     self.logger.warning("No rpm metadata directories found for given options within: {}".format(self.group_dir))
 
@@ -620,8 +633,6 @@ class Runtime(object):
             self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
 
         self.assembly_type = assembly_type(self.get_releases_config(), self.assembly)
-
-        assembly_config_finalize(self.get_releases_config(), self.assembly, self.rpm_metas(), self.ordered_image_metas())
 
         if not self.brew_event:
             with self.shared_koji_client_session() as koji_session:
@@ -698,11 +709,23 @@ class Runtime(object):
         manager giving your thread exclusive access. The lock is reentrant, so don't worry about
         call a method that acquires the same lock while you hold it.
         Honors doozer --brew-event.
+        Do not rerun gssapi_login on this client. We've observed client instability when this happens.
         """
         with self.koji_lock:
             if self._koji_client_session is None:
                 self._koji_client_session = self.build_retrying_koji_client()
+                self._koji_client_session.gssapi_login()
             yield self._koji_client_session
+
+    @contextmanager
+    def shared_build_status_detector(self) -> 'BuildStatusDetector':
+        """
+        Yields a shared build status detector within context.
+        """
+        with self.bs_lock:
+            if self._build_status_detector is None:
+                self._build_status_detector = BuildStatusDetector(self, self.logger)
+            yield self._build_status_detector
 
     @contextmanager
     def pooled_koji_client_session(self):
@@ -817,6 +840,37 @@ class Runtime(object):
 
     def all_metas(self) -> List[Union[ImageMetadata, RPMMetadata]]:
         return self.image_metas() + self.rpm_metas()
+
+    def get_payload_image_metas(self) -> List[ImageMetadata]:
+        """
+        :return: Returns a list of ImageMetadata that are destined for the OCP release payload. Payload images must
+                    follow the correct naming convention or an exception will be thrown.
+        """
+        payload_images = []
+        for image_meta in self.image_metas():
+            if image_meta.is_payload:
+                """
+                <Tim Bielawa> note to self: is only for `ose-` prefixed images
+                <Clayton Coleman> Yes, Get with the naming system or get out of town
+                """
+                if not image_meta.image_name_short.startswith("ose-"):
+                    raise ValueError(f"{image_meta.distgit_key} does not conform to payload naming convention with image name: {image_meta.image_name_short}")
+
+                payload_images.append(image_meta)
+
+        return payload_images
+
+    def get_for_release_image_metas(self) -> List[ImageMetadata]:
+        """
+        :return: Returns a list of ImageMetada which are configured to be released by errata.
+        """
+        return filter(lambda meta: meta.for_release, self.image_metas())
+
+    def get_non_release_image_metas(self) -> List[ImageMetadata]:
+        """
+        :return: Returns a list of ImageMetada which are not meant to be released by errata.
+        """
+        return filter(lambda meta: not meta.for_release, self.image_metas())
 
     def register_source_alias(self, alias, path):
         self.logger.info("Registering source alias %s: %s" % (alias, path))
@@ -1440,8 +1494,26 @@ class Runtime(object):
         pool.join()
         return ret
 
-    def get_default_candidate_brew_tag(self):
-        return self.branch + '-candidate' if self.branch else None
+    def get_el_targeted_default_branch(self, el_target: Optional[Union[str, int]] = None):
+        if not self.branch:
+            return None
+        if not el_target:
+            return self.branch
+        # Otherwise, the caller is asking us to determine the branch for
+        # a specific RHEL version. Pull apart the default group branch
+        # and replace it wth the targeted version.
+        el_ver: int = util.isolate_el_version_in_brew_tag(el_target)
+        match = re.match(r'^(.*)rhel-\d+(.*)$', self.branch)
+        el_specific_branch: str = f'{match.group(1)}rhel-{el_ver}{match.group(2)}'
+        return el_specific_branch
+
+    def get_default_candidate_brew_tag(self, el_target: Optional[Union[str, int]] = None):
+        branch = self.get_el_targeted_default_branch(el_target=el_target)
+        return branch + '-candidate' if branch else None
+
+    def get_default_hotfix_brew_tag(self, el_target: Optional[Union[str, int]] = None):
+        branch = self.get_el_targeted_default_branch(el_target=el_target)
+        return branch + '-hotfix' if branch else None
 
     def get_candidate_brew_tags(self):
         """Return a set of known candidate tags relevant to this group"""
@@ -1455,22 +1527,6 @@ class Runtime(object):
     def get_minor_version(self):
         # only applicable if appropriate vars are defined in group config
         return '.'.join(str(self.group_config.vars[v]) for v in ('MAJOR', 'MINOR'))
-
-    def builds_for_group_branch(self):
-        # return a dict of all the latest builds for this group, according to
-        # the branch's candidate tag in brew. each entry is name => tuple(version, release).
-        tag = self.get_default_candidate_brew_tag()
-        output, _ = exectools.cmd_assert(
-            "brew list-tagged --quiet --latest {}".format(tag),
-            retries=3,
-        )
-        builds = [
-            # each line like "build tag owner" split into build NVR
-            line.split()[0].rsplit("-", 2)
-            for line in output.strip().split("\n")
-            if line.strip()
-        ]
-        return {n: (v, r) for n, v, r in builds}
 
     def scan_for_upstream_changes(self) -> List[Tuple[Metadata, RebuildHint]]:
         """

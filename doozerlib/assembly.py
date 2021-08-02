@@ -3,13 +3,45 @@ import copy
 
 from enum import Enum
 
-from doozerlib.model import Missing, Model
+from doozerlib.model import Missing, Model, ListModel
 
 
 class AssemblyTypes(Enum):
-    STANDARD = 0  # All constraints / checks enforced (e.g. consistent RPMs / siblings)
-    CUSTOM = 1  # No constraints enforced
-    CANDIDATE = 2  # Release candidate or feature candidate
+    STREAM = "stream"  # Default assembly type - indicates continuous build and no basis event
+    STANDARD = "standard"  # All constraints / checks enforced (e.g. consistent RPMs / siblings)
+    CANDIDATE = "candidate"  # Indicates releaes or feature candidate
+    CUSTOM = "custom"  # No constraints enforced
+
+
+class AssemblyIssueCode(Enum):
+    IMPERMISSIBLE = 0
+    CONFLICTING_INHERITED_DEPENDENCY = 1
+    CONFLICTING_GROUP_RPM_INSTALLED = 2
+    MISMATCHED_SIBLINGS = 3
+    OUTDATED_RPMS_IN_STREAM_BUILD = 4
+    INCONSISTENT_RHCOS_RPMS = 5
+
+
+class AssemblyIssue:
+    """
+    An encapsulation of an issue with an assembly. Some issues are critical for any
+    assembly and some are on relevant for assemblies we intend for GA.
+    """
+    def __init__(self, msg: str, component: str, code: AssemblyIssueCode = AssemblyIssueCode.IMPERMISSIBLE):
+        """
+        :param msg: A human readable message describing the issue.
+        :param component: The name of the entity associated with the issue, if any.
+        :param code: A code that that classifies the issue. Assembly definitions can optionally permit some of these codes.
+        """
+        self.msg: str = msg
+        self.component: str = component or 'general'
+        self.code = code
+
+    def __str__(self):
+        return self.msg
+
+    def __repr__(self):
+        return self.msg
 
 
 def merger(a, b):
@@ -75,19 +107,24 @@ def _check_recursion(releases_config: Model, assembly: str):
 def assembly_type(releases_config: Model, assembly: str) -> AssemblyTypes:
 
     if not assembly or not isinstance(releases_config, Model):
-        return AssemblyTypes.STANDARD
+        return AssemblyTypes.STREAM
 
     target_assembly = releases_config.releases[assembly].assembly
+
+    if not target_assembly:
+        # If the assembly is not defined in releases.yml, it defaults to stream
+        return AssemblyTypes.STREAM
+
     str_type = target_assembly['type']
-    if not str_type or str_type == "standard":
-        # Assemblies are standard by default
+    if not str_type:
+        # Assemblies which are defined in releases.yml default to standard
         return AssemblyTypes.STANDARD
-    elif str_type == "custom":
-        return AssemblyTypes.CUSTOM
-    elif str_type == "candidate":
-        return AssemblyTypes.CANDIDATE
-    else:
-        raise ValueError(f'Unknown assembly type: {str_type}')
+
+    for assem_type in AssemblyTypes:
+        if str_type == assem_type.value:
+            return assem_type
+
+    raise ValueError(f'Unknown assembly type: {str_type}')
 
 
 def assembly_group_config(releases_config: Model, assembly: str, group_config: Model) -> Model:
@@ -147,23 +184,37 @@ def assembly_metadata_config(releases_config: Model, assembly: str, meta_type: s
     return Model(dict_to_model=config_dict)
 
 
-def assembly_rhcos_config(releases_config: Model, assembly: str) -> Model:
+def _assembly_config_struct(releases_config: Model, assembly: str, key: str, default):
     """
-    :param releases_config: The content of releases.yml in Model form.
-    :param assembly: The name of the assembly to assess
-    Returns the a computed rhcos config model for a given assembly.
+    If a key is directly under the 'assembly' (e.g. rhcos), then this method will
+    recurse the inheritance tree to build you a final version of that key's value.
+    The key may refer to a list or dict (set default value appropriately).
     """
     if not assembly or not isinstance(releases_config, Model):
         return Missing
 
     _check_recursion(releases_config, assembly)
     target_assembly = releases_config.releases[assembly].assembly
-    rhcos_config_dict = target_assembly.get("rhcos", {})
+    key_struct = target_assembly.get(key, default)
     if target_assembly.basis.assembly:  # Does this assembly inherit from another?
         # Recursive apply ancestor assemblies
-        basis_rhcos_config = assembly_rhcos_config(releases_config, target_assembly.basis.assembly)
-        rhcos_config_dict = merger(rhcos_config_dict, basis_rhcos_config.primitive())
-    return Model(dict_to_model=rhcos_config_dict)
+        parent_config_struct = _assembly_config_struct(releases_config, target_assembly.basis.assembly, key, default)
+        key_struct = merger(key_struct, parent_config_struct.primitive())
+    if isinstance(default, dict):
+        return Model(dict_to_model=key_struct)
+    elif isinstance(default, list):
+        return ListModel(list_to_model=key_struct)
+    else:
+        raise ValueError(f'Unknown how to derive for default type: {type(default)}')
+
+
+def assembly_rhcos_config(releases_config: Model, assembly: str) -> Model:
+    """
+    :param releases_config: The content of releases.yml in Model form.
+    :param assembly: The name of the assembly to assess
+    Returns the a computed rhcos config model for a given assembly.
+    """
+    return _assembly_config_struct(releases_config, assembly, 'rhcos', {})
 
 
 def assembly_basis_event(releases_config: Model, assembly: str) -> typing.Optional[int]:
@@ -184,16 +235,50 @@ def assembly_basis_event(releases_config: Model, assembly: str) -> typing.Option
     return assembly_basis_event(releases_config, target_assembly.basis.assembly)
 
 
-def assembly_config_finalize(releases_config: Model, assembly: str, rpm_metas, ordered_image_metas):
+def assembly_basis(releases_config: Model, assembly: str) -> Model:
     """
-    Some metadata cannot be finalized until all metadata is read in by doozer. This method
-    uses that interpreted metadata set to go through and adjust assembly information
-    within it.
-    :param releases_config: The releases.yml Model
-    :param assembly: The name of the assembly to apply
-    :param rpm_metas: A list of rpm metadata to update relative to the assembly.
-    :param ordered_image_metas: A list of image metadata to update relative to the assembly.
-    :return: N/A. Metas are updated in-place. Only call during runtime.initialize.
+    :param releases_config: The content of releases.yml in Model form.
+    :param assembly: The name of the assembly to assess
+    Returns the basis dict for a given assembly. If the assembly has no basis,
+    Model({}) is returned.
     """
-    _check_recursion(releases_config, assembly)
-    pass
+    return _assembly_config_struct(releases_config, assembly, 'basis', {})
+
+
+def assembly_permits(releases_config: Model, assembly: str) -> ListModel:
+    """
+    :param releases_config: The content of releases.yml in Model form.
+    :param assembly: The name of the assembly to assess
+    Returns the a computed permits config model for a given assembly. If no
+    permits are defined ListModel([]) is returned.
+    """
+
+    defined_permits = _assembly_config_struct(releases_config, assembly, 'permits', {})
+
+    if not defined_permits and (assembly == 'stream' or not assembly):  # If assembly is None, this a group without assemblies enabled
+        # TODO: Address this formally with https://issues.redhat.com/browse/ART-3162 .
+        # In the short term, we need to allow certain inconsistencies for stream.
+        # We don't want common pre-GA issues to stop all nightlies.
+        default_stream_permits = [
+            {
+                'code': 'OUTDATED_RPMS_IN_STREAM_BUILD',
+                'component': '*'
+            },
+            {
+                'code': 'CONFLICTING_GROUP_RPM_INSTALLED',
+                'component': 'rhcos'
+            }
+        ]
+        return ListModel(list_to_model=default_stream_permits)
+
+    # Do some basic validation here to fail fast
+    if assembly_type(releases_config, assembly) == AssemblyTypes.STANDARD:
+        if defined_permits:
+            raise ValueError(f'STANDARD assemblies like {assembly} do not allow "permits"')
+
+    for permit in defined_permits:
+        if permit.code == AssemblyIssueCode.IMPERMISSIBLE.name:
+            raise ValueError(f'IMPERMISSIBLE cannot be permitted in any assembly (assembly: {assembly})')
+        if permit.code not in ['*', *[aic.name for aic in AssemblyIssueCode]]:
+            raise ValueError(f'Undefined permit code in assembly {assembly}: {permit.code}')
+    return defined_permits

@@ -80,22 +80,6 @@ class RuntimeTestCase(unittest.TestCase):
         with self.assertRaises(runtime.DoozerFatalError):
             rt.detect_remote_source_branch(source_details)
 
-    def test_builds_for_group_branch(self):
-        rt = stub_runtime()
-        list_tagged = """
-            somepackage-1.2.3-4.5.el7    some-tag    somebody
-            some-container-v1.2.3-4.5    some-tag    somebody
-        """
-        expected = {
-            "somepackage": ("1.2.3", "4.5.el7"),
-            "some-container": ("v1.2.3", "4.5"),
-        }
-        flexmock(exectools).should_receive("cmd_assert").once().and_return(list_tagged, "")
-        self.assertEqual(expected, rt.builds_for_group_branch())
-
-        flexmock(exectools).should_receive("cmd_assert").once().and_return("\n", "")
-        self.assertEqual({}, rt.builds_for_group_branch())
-
 
 if __name__ == "__main__":
     unittest.main()

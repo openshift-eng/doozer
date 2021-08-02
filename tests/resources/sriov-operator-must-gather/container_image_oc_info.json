@@ -1,0 +1,188 @@
+{
+  "name": "registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather@sha256:611a4934a9388fd5f5a9179da182eb9edc99b01ee78222fcd750ec035c141131",
+  "digest": "sha256:dccedddbe79de2f6b1212c42ac2f68f810c3bca68a3434db376c106478cc6198",
+  "contentDigest": "sha256:dccedddbe79de2f6b1212c42ac2f68f810c3bca68a3434db376c106478cc6198",
+  "listDigest": "sha256:611a4934a9388fd5f5a9179da182eb9edc99b01ee78222fcd750ec035c141131",
+  "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+  "layers": [
+    {
+      "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+      "size": 83335265,
+      "digest": "sha256:1cadda38f72dece653de82063e3c8e910265fe7a342ec2fb73ad8e540c47e1f7"
+    },
+    {
+      "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+      "size": 1801,
+      "digest": "sha256:a50df8fd88fecefc26fd331f832672108deb08cf9d2b303a5b86156a7f51b5d8"
+    },
+    {
+      "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+      "size": 2121431,
+      "digest": "sha256:904d3325f999f09cad1ba9676937fc8b72ff2856ec698cf7b203509a4c8b449d"
+    },
+    {
+      "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+      "size": 11178541,
+      "digest": "sha256:5193b0db398b46003eefb073cbddef4a528410365e992081c8d2ea6633d78865"
+    },
+    {
+      "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+      "size": 2168,
+      "digest": "sha256:c508459eab721a3bd89bd2987b0d73985ef41be9fa609371eeaec573f4346baa"
+    }
+  ],
+  "config": {
+    "id": "",
+    "created": "2021-07-26T15:47:28.698039824Z",
+    "container": "6c00a7ca55a1ee26dbbaaaebe278666e28cd56c9f21cdd04dcb168d3702e3d5f",
+    "container_config": {
+      "Hostname": "6c00a7ca55a1",
+      "Env": [
+        "__doozer=merge",
+        "BUILD_RELEASE=202107222130.p0.git.8bbec8f.assembly.stream",
+        "BUILD_VERSION=v4.9.0",
+        "OS_GIT_MAJOR=4",
+        "OS_GIT_MINOR=9",
+        "OS_GIT_PATCH=0",
+        "OS_GIT_TREE_STATE=clean",
+        "OS_GIT_VERSION=4.9.0-202107222130.p0.git.8bbec8f.assembly.stream-8bbec8f",
+        "SOURCE_GIT_TREE_STATE=clean",
+        "OS_GIT_COMMIT=8bbec8f",
+        "SOURCE_DATE_EPOCH=1625799187",
+        "SOURCE_GIT_COMMIT=8bbec8fc781529b9b6eebd1f86c3725752d38dcb",
+        "SOURCE_GIT_TAG=8bbec8f",
+        "SOURCE_GIT_URL=https://github.com/openshift/images",
+        "GODEBUG=x509ignoreCN=0,madvdontneed=1",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "container=oci"
+      ],
+      "Cmd": [
+        "#(imagebuilder)\nsleep 86400"
+      ],
+      "Image": "sha256:dc0ea3950364d9e9e5771bb64e08f657b3fdef8f626e166520b3bb39e87702b8",
+      "Entrypoint": [
+        "/bin/sh",
+        "-c"
+      ],
+      "Labels": {
+        "License": "GPLv2+",
+        "architecture": "x86_64",
+        "build-date": "2021-07-22T23:10:35.606964",
+        "com.redhat.build-host": "cpt-1007.osbs.prod.upshift.rdu2.redhat.com",
+        "com.redhat.component": "openshift-enterprise-base-container",
+        "com.redhat.license_terms": "https://www.redhat.com/agreements",
+        "description": "This is the base image from which all OpenShift Container Platform images inherit.",
+        "distribution-scope": "public",
+        "io.k8s.description": "This is the base image from which all OpenShift Container Platform images inherit.",
+        "io.k8s.display-name": "OpenShift Container Platform RHEL 7 Base",
+        "io.openshift.build.commit.id": "8bbec8fc781529b9b6eebd1f86c3725752d38dcb",
+        "io.openshift.build.commit.url": "https://github.com/openshift/images/commit/8bbec8fc781529b9b6eebd1f86c3725752d38dcb",
+        "io.openshift.build.source-location": "https://github.com/openshift/images",
+        "io.openshift.expose-services": "",
+        "io.openshift.maintainer.component": "Release",
+        "io.openshift.maintainer.product": "OpenShift Container Platform",
+        "io.openshift.tags": "openshift,base",
+        "maintainer": "Red Hat, Inc.",
+        "name": "openshift/ose-base",
+        "release": "202107222130.p0.git.8bbec8f.assembly.stream",
+        "summary": "Provides the latest release of Red Hat Universal Base Image 8.",
+        "url": "https://access.redhat.com/containers/#/registry.access.redhat.com/openshift/ose-base/images/v4.9.0-202107222130.p0.git.8bbec8f.assembly.stream",
+        "vcs-ref": "7fef0def1f9ad264f371a5ab11aaf279a5f3c41b",
+        "vcs-type": "git",
+        "vendor": "Red Hat, Inc.",
+        "version": "v4.9.0"
+      }
+    },
+    "docker_version": "1.13.1",
+    "config": {
+      "Hostname": "01eb13d41cd1",
+      "Env": [
+        "__doozer=merge",
+        "BUILD_RELEASE=202107261525.p0.git.51a98df.assembly.stream",
+        "BUILD_VERSION=v4.9.0",
+        "OS_GIT_MAJOR=4",
+        "OS_GIT_MINOR=9",
+        "OS_GIT_PATCH=0",
+        "OS_GIT_TREE_STATE=clean",
+        "OS_GIT_VERSION=4.9.0-202107261525.p0.git.51a98df.assembly.stream-51a98df",
+        "SOURCE_GIT_TREE_STATE=clean",
+        "OS_GIT_COMMIT=51a98df",
+        "SOURCE_DATE_EPOCH=1627311800",
+        "SOURCE_GIT_COMMIT=51a98df728d6712c469946b6ed5973c2fba1454e",
+        "SOURCE_GIT_TAG=51a98df7",
+        "SOURCE_GIT_URL=https://github.com/openshift/sriov-network-operator",
+        "GODEBUG=x509ignoreCN=0,madvdontneed=1",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "container=oci"
+      ],
+      "Entrypoint": [
+        "/bin/sh",
+        "-c",
+        "/usr/bin/gather"
+      ],
+      "Labels": {
+        "License": "GPLv2+",
+        "architecture": "x86_64",
+        "build-date": "2021-07-26T15:46:18.869735",
+        "com.redhat.build-host": "cpt-1007.osbs.prod.upshift.rdu2.redhat.com",
+        "com.redhat.component": "sriov-network-must-gather-container",
+        "com.redhat.license_terms": "https://www.redhat.com/agreements",
+        "description": "This is a sriov must-gather image that collectes sriov network operator related resources.",
+        "distribution-scope": "public",
+        "io.k8s.description": "This is a sriov must-gather image that collectes sriov network operator related resources.",
+        "io.k8s.display-name": "sriov-network-operator-must-gather",
+        "io.openshift.build.commit.id": "51a98df728d6712c469946b6ed5973c2fba1454e",
+        "io.openshift.build.commit.url": "https://github.com/openshift/sriov-network-operator/commit/51a98df728d6712c469946b6ed5973c2fba1454e",
+        "io.openshift.build.source-location": "https://github.com/openshift/sriov-network-operator",
+        "io.openshift.expose-services": "",
+        "io.openshift.maintainer.component": "Networking",
+        "io.openshift.maintainer.product": "OpenShift Container Platform",
+        "io.openshift.maintainer.subcomponent": "SR-IOV",
+        "io.openshift.tags": "openshift,base",
+        "maintainer": "Red Hat, Inc.",
+        "name": "openshift/ose-sriov-operator-must-gather",
+        "release": "202107261525.p0.git.51a98df.assembly.stream",
+        "summary": "Provides the latest release of Red Hat Universal Base Image 8.",
+        "url": "https://access.redhat.com/containers/#/registry.access.redhat.com/openshift/ose-sriov-operator-must-gather/images/v4.9.0-202107261525.p0.git.51a98df.assembly.stream",
+        "vcs-ref": "e43afce9d3812403ae54e9166551791a9a4ea550",
+        "vcs-type": "git",
+        "vendor": "Red Hat, Inc.",
+        "version": "v4.9.0"
+      }
+    },
+    "architecture": "amd64",
+    "size": 96639206,
+    "rootfs": {
+      "type": "layers",
+      "diff_ids": [
+        "sha256:9f792120afb392676729d0f0dfdb54350bb95ddebcbcfd0ed57163fe63a7e748",
+        "sha256:fabeba2a071f743f0e40675d4ec77cfc70dffe2e2e45bfea9d9d105da901fce9",
+        "sha256:ad143e6884c1176131371dbb91ce6a7a940f4f91384582ba07d6b5ee729fce46",
+        "sha256:5e04e033945ff915ca4cca2450a609754d8993088ea90ea8004f9673b4759a75",
+        "sha256:e640c89a62e063bfe11420d1150feb3ff38d74e0d44b667de4d7b5ba708c45e1"
+      ]
+    },
+    "history": [
+      {
+        "created": "2021-07-21T02:45:44.77365861Z",
+        "comment": "Imported from -"
+      },
+      {
+        "created": "2021-07-21T02:45:52.657622Z"
+      },
+      {
+        "created": "2021-07-22T22:46:56.715242216Z",
+        "created_by": "#(imagebuilder)\nsleep 86400"
+      },
+      {
+        "created": "2021-07-22T23:12:14.877852975Z",
+        "created_by": "#(imagebuilder)\nsleep 86400"
+      },
+      {
+        "created": "2021-07-26T15:47:28.698039824Z",
+        "created_by": "#(imagebuilder)\nsleep 86400"
+      }
+    ],
+    "os": "linux"
+  }
+}

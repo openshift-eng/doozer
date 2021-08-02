@@ -50,6 +50,8 @@ def print_version(ctx, param, value):
               help="Username for rhpkg. Env var: DOOZER_USER")
 @click.option("-g", "--group", default=None, metavar='NAME[@commitish]',
               help="The group of images on which to operate. Env var: DOOZER_GROUP")
+@click.option("--releases", metavar="FILENAME", default=None,
+              help="Allows for overriding the releases.yaml configuration file for the group.")
 @click.option("--assembly", metavar="ASSEMBLY_NAME", default='test',
               help="The name of an assembly to rebase & build for. Assemblies must be enabled in group.yml or with --enable-assemblies.")
 @click.option('--enable-assemblies', default=False, is_flag=True, help='Enable assemblies even if not enabled in group.yml. Primarily for testing purposes.')

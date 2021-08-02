@@ -1,0 +1,546 @@
+# print(yaml.dump(k.listArchives(1675520), default_flow_style=False, indent=2))
+- btype: fake_some_non_image_btype_we_dont_care_about
+- btype: image
+  btype_id: 4
+  build_id: 1675520
+  buildroot_id: 7646828
+  checksum: c99d8169f11a90fa5da8e752af3311ea
+  checksum_type: 0
+  extra:
+    docker:
+      config:
+        architecture: s390x
+        config:
+          ArgsEscaped: true
+          AttachStderr: false
+          AttachStdin: false
+          AttachStdout: false
+          Cmd: null
+          Domainname: ''
+          Entrypoint:
+          - /bin/sh
+          - -c
+          - /usr/bin/gather
+          Env:
+          - __doozer=merge
+          - BUILD_RELEASE=202107261525.p0.git.51a98df.assembly.stream
+          - BUILD_VERSION=v4.9.0
+          - OS_GIT_MAJOR=4
+          - OS_GIT_MINOR=9
+          - OS_GIT_PATCH=0
+          - OS_GIT_TREE_STATE=clean
+          - OS_GIT_VERSION=4.9.0-202107261525.p0.git.51a98df.assembly.stream-51a98df
+          - SOURCE_GIT_TREE_STATE=clean
+          - OS_GIT_COMMIT=51a98df
+          - SOURCE_DATE_EPOCH=1627311800
+          - SOURCE_GIT_COMMIT=51a98df728d6712c469946b6ed5973c2fba1454e
+          - SOURCE_GIT_TAG=51a98df7
+          - SOURCE_GIT_URL=https://github.com/openshift/sriov-network-operator
+          - GODEBUG=x509ignoreCN=0,madvdontneed=1
+          - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          - container=oci
+          Hostname: fb44c51e1f2b
+          Image: ''
+          Labels:
+            License: GPLv2+
+            architecture: s390x
+            build-date: '2021-07-26T15:46:19.710759'
+            com.redhat.build-host: s390-c1-vm-03.prod.osbs.eng.bos.redhat.com
+            com.redhat.component: sriov-network-must-gather-container
+            com.redhat.license_terms: https://www.redhat.com/agreements
+            description: This is a sriov must-gather image that collectes sriov network
+              operator related resources.
+            distribution-scope: public
+            io.k8s.description: This is a sriov must-gather image that collectes sriov
+              network operator related resources.
+            io.k8s.display-name: sriov-network-operator-must-gather
+            io.openshift.build.commit.id: 51a98df728d6712c469946b6ed5973c2fba1454e
+            io.openshift.build.commit.url: https://github.com/openshift/sriov-network-operator/commit/51a98df728d6712c469946b6ed5973c2fba1454e
+            io.openshift.build.source-location: https://github.com/openshift/sriov-network-operator
+            io.openshift.expose-services: ''
+            io.openshift.maintainer.component: Networking
+            io.openshift.maintainer.product: OpenShift Container Platform
+            io.openshift.maintainer.subcomponent: SR-IOV
+            io.openshift.tags: openshift,base
+            maintainer: Red Hat, Inc.
+            name: openshift/ose-sriov-operator-must-gather
+            release: 202107261525.p0.git.51a98df.assembly.stream
+            summary: Provides the latest release of Red Hat Universal Base Image 8.
+            url: https://access.redhat.com/containers/#/registry.access.redhat.com/openshift/ose-sriov-operator-must-gather/images/v4.9.0-202107261525.p0.git.51a98df.assembly.stream
+            vcs-ref: e43afce9d3812403ae54e9166551791a9a4ea550
+            vcs-type: git
+            vendor: Red Hat, Inc.
+            version: v4.9.0
+          OnBuild: null
+          OpenStdin: false
+          StdinOnce: false
+          Tty: false
+          User: ''
+          Volumes: null
+          WorkingDir: ''
+        container: 2ddce683e3875a09b81903979f3be476ba49aaeb30393522de70ddb0b1b8ea61
+        created: '2021-07-26T15:46:47.495145755Z'
+        docker_version: 1.13.1
+        history:
+        - comment: Imported from -
+          created: '2021-07-21T02:45:45.881252177Z'
+        - created: '2021-07-21T02:46:09.171166Z'
+        - created: '2021-07-22T22:46:55.378845102Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        - created: '2021-07-22T23:12:23.488934076Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        - created: '2021-07-26T15:46:47.495145755Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        os: linux
+        rootfs:
+          diff_ids:
+          - sha256:78047c02b1c89334f8312c81b63b5183e701271bc34d214f93e7ccec9f686b36
+          - sha256:284a855c20507cde5260e0c7390651f9a565494279c541cf8efa750c36fc052c
+          - sha256:a26a7cc69488f2d713abdd9a15a152b0cfdb24ab4061a4ecc79ced8e9dd1bbf6
+          - sha256:e76bba334cd795ffe7ffea8647829231f381d4118627df0f58b69961832beefb
+          - sha256:0c0240bae433d0b2be8859c000f0bdf190f58361aacd03b109584568373d0e7a
+          type: layers
+      digests:
+        application/vnd.docker.distribution.manifest.v2+json: sha256:1f3ebef02669eca018dbfd2c5a65575a21e4920ebe6a5328029a5000127aaa4b
+      id: sha256:3478b32cf5bac9ed0b196c040e34e8a9d723f94b8f8b1fe8e4765966c0d35141
+      layer_sizes:
+      - diff_id: sha256:78047c02b1c89334f8312c81b63b5183e701271bc34d214f93e7ccec9f686b36
+        size: 223446739
+      - diff_id: sha256:284a855c20507cde5260e0c7390651f9a565494279c541cf8efa750c36fc052c
+        size: 4760
+      - diff_id: sha256:a26a7cc69488f2d713abdd9a15a152b0cfdb24ab4061a4ecc79ced8e9dd1bbf6
+        size: 7705020
+      - diff_id: sha256:e76bba334cd795ffe7ffea8647829231f381d4118627df0f58b69961832beefb
+        size: 34363223
+      - diff_id: sha256:0c0240bae433d0b2be8859c000f0bdf190f58361aacd03b109584568373d0e7a
+        size: 6734
+      parent_id: sha256:4394e986499357613948126f45638cf3ae8974533604af407ae87371702a2dd4
+      repositories:
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather:rhaos-4.9-rhel-8-containers-candidate-98861-20210726154614-s390x
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather@sha256:1f3ebef02669eca018dbfd2c5a65575a21e4920ebe6a5328029a5000127aaa4b
+      tags:
+      - rhaos-4.9-rhel-8-containers-candidate-98861-20210726154614-s390x
+    image:
+      arch: s390x
+  filename: docker-image-sha256:3478b32cf5bac9ed0b196c040e34e8a9d723f94b8f8b1fe8e4765966c0d35141.s390x.tar.gz
+  id: 5229574
+  metadata_only: false
+  size: 107946644
+  type_description: Tar file
+  type_extensions: tar tar.gz tar.bz2 tar.xz tgz
+  type_id: 4
+  type_name: tar
+- btype: image
+  btype_id: 4
+  build_id: 1675520
+  buildroot_id: 7646826
+  checksum: 3bf7f3248c4310fb98dea5210058f038
+  checksum_type: 0
+  extra:
+    docker:
+      config:
+        architecture: ppc64le
+        config:
+          ArgsEscaped: true
+          AttachStderr: false
+          AttachStdin: false
+          AttachStdout: false
+          Cmd: null
+          Domainname: ''
+          Entrypoint:
+          - /bin/sh
+          - -c
+          - /usr/bin/gather
+          Env:
+          - __doozer=merge
+          - BUILD_RELEASE=202107261525.p0.git.51a98df.assembly.stream
+          - BUILD_VERSION=v4.9.0
+          - OS_GIT_MAJOR=4
+          - OS_GIT_MINOR=9
+          - OS_GIT_PATCH=0
+          - OS_GIT_TREE_STATE=clean
+          - OS_GIT_VERSION=4.9.0-202107261525.p0.git.51a98df.assembly.stream-51a98df
+          - SOURCE_GIT_TREE_STATE=clean
+          - OS_GIT_COMMIT=51a98df
+          - SOURCE_DATE_EPOCH=1627311800
+          - SOURCE_GIT_COMMIT=51a98df728d6712c469946b6ed5973c2fba1454e
+          - SOURCE_GIT_TAG=51a98df7
+          - SOURCE_GIT_URL=https://github.com/openshift/sriov-network-operator
+          - GODEBUG=x509ignoreCN=0,madvdontneed=1
+          - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          - container=oci
+          Hostname: 23bbf48fd445
+          Image: ''
+          Labels:
+            License: GPLv2+
+            architecture: ppc64le
+            build-date: '2021-07-26T15:44:25.173651'
+            com.redhat.build-host: ppc64le-c1-vm-03.prod.osbs.eng.rdu2.redhat.com
+            com.redhat.component: sriov-network-must-gather-container
+            com.redhat.license_terms: https://www.redhat.com/agreements
+            description: This is a sriov must-gather image that collectes sriov network
+              operator related resources.
+            distribution-scope: public
+            io.k8s.description: This is a sriov must-gather image that collectes sriov
+              network operator related resources.
+            io.k8s.display-name: sriov-network-operator-must-gather
+            io.openshift.build.commit.id: 51a98df728d6712c469946b6ed5973c2fba1454e
+            io.openshift.build.commit.url: https://github.com/openshift/sriov-network-operator/commit/51a98df728d6712c469946b6ed5973c2fba1454e
+            io.openshift.build.source-location: https://github.com/openshift/sriov-network-operator
+            io.openshift.expose-services: ''
+            io.openshift.maintainer.component: Networking
+            io.openshift.maintainer.product: OpenShift Container Platform
+            io.openshift.maintainer.subcomponent: SR-IOV
+            io.openshift.tags: openshift,base
+            maintainer: Red Hat, Inc.
+            name: openshift/ose-sriov-operator-must-gather
+            release: 202107261525.p0.git.51a98df.assembly.stream
+            summary: Provides the latest release of Red Hat Universal Base Image 8.
+            url: https://access.redhat.com/containers/#/registry.access.redhat.com/openshift/ose-sriov-operator-must-gather/images/v4.9.0-202107261525.p0.git.51a98df.assembly.stream
+            vcs-ref: e43afce9d3812403ae54e9166551791a9a4ea550
+            vcs-type: git
+            vendor: Red Hat, Inc.
+            version: v4.9.0
+          OnBuild: null
+          OpenStdin: false
+          StdinOnce: false
+          Tty: false
+          User: ''
+          Volumes: null
+          WorkingDir: ''
+        container: fe335e445dceab41db2b7411ef14bd172e533754b32a4829badfee0b5dbb4104
+        created: '2021-07-26T15:45:18.95974165Z'
+        docker_version: 1.13.1
+        history:
+        - comment: Imported from -
+          created: '2021-07-21T02:44:11.031595949Z'
+        - created: '2021-07-21T02:44:40.8539Z'
+        - created: '2021-07-22T22:47:13.339015911Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        - created: '2021-07-22T23:12:47.864168528Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        - created: '2021-07-26T15:45:18.95974165Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        os: linux
+        rootfs:
+          diff_ids:
+          - sha256:618fdb075737348f6bd8dff7549f7e7fb333565662287452483a7e14599f9515
+          - sha256:078d45965216760d96022518ccb5be928c8adaa81d1c6f281bc3568cafdd08d4
+          - sha256:f8a6598ec0addeeaeffa3722a5a5a35d7b3a20260bb30cc3dee4d48b56b78b4c
+          - sha256:28dd471b9cc6ee088e69efc6b5d265ad3e460be3460f1bb5d6ff272624fee06a
+          - sha256:52f7900ef01c394895c9ab0f287b922c0a37de57a6e2498ca117029e470d4e5e
+          type: layers
+      digests:
+        application/vnd.docker.distribution.manifest.v2+json: sha256:0c460ed9cc9565e68472600c1eaa4c766f47d21d80b9a545ab36b6cb5bfa63f5
+      id: sha256:d325a2f3042968f6763141670961d8aefc2eb0ead27ef5de15b757bdc4d8a912
+      layer_sizes:
+      - diff_id: sha256:618fdb075737348f6bd8dff7549f7e7fb333565662287452483a7e14599f9515
+        size: 291203156
+      - diff_id: sha256:078d45965216760d96022518ccb5be928c8adaa81d1c6f281bc3568cafdd08d4
+        size: 4770
+      - diff_id: sha256:f8a6598ec0addeeaeffa3722a5a5a35d7b3a20260bb30cc3dee4d48b56b78b4c
+        size: 7758282
+      - diff_id: sha256:28dd471b9cc6ee088e69efc6b5d265ad3e460be3460f1bb5d6ff272624fee06a
+        size: 38943656
+      - diff_id: sha256:52f7900ef01c394895c9ab0f287b922c0a37de57a6e2498ca117029e470d4e5e
+        size: 6740
+      parent_id: sha256:97cad93dd0fba397e77b177e2f5499fc3d394e096e6f1fa4efc497bae8252d4f
+      repositories:
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather:rhaos-4.9-rhel-8-containers-candidate-12844-20210726154614-ppc64le
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather@sha256:0c460ed9cc9565e68472600c1eaa4c766f47d21d80b9a545ab36b6cb5bfa63f5
+      tags:
+      - rhaos-4.9-rhel-8-containers-candidate-12844-20210726154614-ppc64le
+    image:
+      arch: ppc64le
+  filename: docker-image-sha256:d325a2f3042968f6763141670961d8aefc2eb0ead27ef5de15b757bdc4d8a912.ppc64le.tar.gz
+  id: 5229575
+  metadata_only: false
+  size: 102272115
+  type_description: Tar file
+  type_extensions: tar tar.gz tar.bz2 tar.xz tgz
+  type_id: 4
+  type_name: tar
+- btype: image
+  btype_id: 4
+  build_id: 1675520
+  buildroot_id: 7646829
+  checksum: 5f22ec02d961409caf2da2e87f430c79
+  checksum_type: 0
+  extra:
+    docker:
+      config:
+        architecture: amd64
+        config:
+          ArgsEscaped: true
+          AttachStderr: false
+          AttachStdin: false
+          AttachStdout: false
+          Cmd: null
+          Domainname: ''
+          Entrypoint:
+          - /bin/sh
+          - -c
+          - /usr/bin/gather
+          Env:
+          - __doozer=merge
+          - BUILD_RELEASE=202107261525.p0.git.51a98df.assembly.stream
+          - BUILD_VERSION=v4.9.0
+          - OS_GIT_MAJOR=4
+          - OS_GIT_MINOR=9
+          - OS_GIT_PATCH=0
+          - OS_GIT_TREE_STATE=clean
+          - OS_GIT_VERSION=4.9.0-202107261525.p0.git.51a98df.assembly.stream-51a98df
+          - SOURCE_GIT_TREE_STATE=clean
+          - OS_GIT_COMMIT=51a98df
+          - SOURCE_DATE_EPOCH=1627311800
+          - SOURCE_GIT_COMMIT=51a98df728d6712c469946b6ed5973c2fba1454e
+          - SOURCE_GIT_TAG=51a98df7
+          - SOURCE_GIT_URL=https://github.com/openshift/sriov-network-operator
+          - GODEBUG=x509ignoreCN=0,madvdontneed=1
+          - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          - container=oci
+          Hostname: 01eb13d41cd1
+          Image: ''
+          Labels:
+            License: GPLv2+
+            architecture: x86_64
+            build-date: '2021-07-26T15:46:18.869735'
+            com.redhat.build-host: cpt-1007.osbs.prod.upshift.rdu2.redhat.com
+            com.redhat.component: sriov-network-must-gather-container
+            com.redhat.license_terms: https://www.redhat.com/agreements
+            description: This is a sriov must-gather image that collectes sriov network
+              operator related resources.
+            distribution-scope: public
+            io.k8s.description: This is a sriov must-gather image that collectes sriov
+              network operator related resources.
+            io.k8s.display-name: sriov-network-operator-must-gather
+            io.openshift.build.commit.id: 51a98df728d6712c469946b6ed5973c2fba1454e
+            io.openshift.build.commit.url: https://github.com/openshift/sriov-network-operator/commit/51a98df728d6712c469946b6ed5973c2fba1454e
+            io.openshift.build.source-location: https://github.com/openshift/sriov-network-operator
+            io.openshift.expose-services: ''
+            io.openshift.maintainer.component: Networking
+            io.openshift.maintainer.product: OpenShift Container Platform
+            io.openshift.maintainer.subcomponent: SR-IOV
+            io.openshift.tags: openshift,base
+            maintainer: Red Hat, Inc.
+            name: openshift/ose-sriov-operator-must-gather
+            release: 202107261525.p0.git.51a98df.assembly.stream
+            summary: Provides the latest release of Red Hat Universal Base Image 8.
+            url: https://access.redhat.com/containers/#/registry.access.redhat.com/openshift/ose-sriov-operator-must-gather/images/v4.9.0-202107261525.p0.git.51a98df.assembly.stream
+            vcs-ref: e43afce9d3812403ae54e9166551791a9a4ea550
+            vcs-type: git
+            vendor: Red Hat, Inc.
+            version: v4.9.0
+          OnBuild: null
+          OpenStdin: false
+          StdinOnce: false
+          Tty: false
+          User: ''
+          Volumes: null
+          WorkingDir: ''
+        container: 6c00a7ca55a1ee26dbbaaaebe278666e28cd56c9f21cdd04dcb168d3702e3d5f
+        created: '2021-07-26T15:47:28.698039824Z'
+        docker_version: 1.13.1
+        history:
+        - comment: Imported from -
+          created: '2021-07-21T02:45:44.77365861Z'
+        - created: '2021-07-21T02:45:52.657622Z'
+        - created: '2021-07-22T22:46:56.715242216Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        - created: '2021-07-22T23:12:14.877852975Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        - created: '2021-07-26T15:47:28.698039824Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        os: linux
+        rootfs:
+          diff_ids:
+          - sha256:9f792120afb392676729d0f0dfdb54350bb95ddebcbcfd0ed57163fe63a7e748
+          - sha256:fabeba2a071f743f0e40675d4ec77cfc70dffe2e2e45bfea9d9d105da901fce9
+          - sha256:ad143e6884c1176131371dbb91ce6a7a940f4f91384582ba07d6b5ee729fce46
+          - sha256:5e04e033945ff915ca4cca2450a609754d8993088ea90ea8004f9673b4759a75
+          - sha256:e640c89a62e063bfe11420d1150feb3ff38d74e0d44b667de4d7b5ba708c45e1
+          type: layers
+      digests:
+        application/vnd.docker.distribution.manifest.v2+json: sha256:dccedddbe79de2f6b1212c42ac2f68f810c3bca68a3434db376c106478cc6198
+      id: sha256:76824da63a05cd0195e178237a6c628a14ed9b1d2b4104d16821c4cbef0076d2
+      layer_sizes:
+      - diff_id: sha256:9f792120afb392676729d0f0dfdb54350bb95ddebcbcfd0ed57163fe63a7e748
+        size: 225671015
+      - diff_id: sha256:fabeba2a071f743f0e40675d4ec77cfc70dffe2e2e45bfea9d9d105da901fce9
+        size: 4763
+      - diff_id: sha256:ad143e6884c1176131371dbb91ce6a7a940f4f91384582ba07d6b5ee729fce46
+        size: 7745269
+      - diff_id: sha256:5e04e033945ff915ca4cca2450a609754d8993088ea90ea8004f9673b4759a75
+        size: 34201218
+      - diff_id: sha256:e640c89a62e063bfe11420d1150feb3ff38d74e0d44b667de4d7b5ba708c45e1
+        size: 6735
+      parent_id: sha256:dc0ea3950364d9e9e5771bb64e08f657b3fdef8f626e166520b3bb39e87702b8
+      repositories:
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather:rhaos-4.9-rhel-8-containers-candidate-91433-20210726154614-x86_64
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather@sha256:dccedddbe79de2f6b1212c42ac2f68f810c3bca68a3434db376c106478cc6198
+      tags:
+      - rhaos-4.9-rhel-8-containers-candidate-91433-20210726154614-x86_64
+    image:
+      arch: x86_64
+  filename: docker-image-sha256:76824da63a05cd0195e178237a6c628a14ed9b1d2b4104d16821c4cbef0076d2.x86_64.tar.gz
+  id: 5229576
+  metadata_only: false
+  size: 93985037
+  type_description: Tar file
+  type_extensions: tar tar.gz tar.bz2 tar.xz tgz
+  type_id: 4
+  type_name: tar
+- btype: image
+  btype_id: 4
+  build_id: 1675520
+  buildroot_id: 7646825
+  checksum: 043df606fc7798cab7529fb37bab3751
+  checksum_type: 0
+  extra:
+    docker:
+      config:
+        architecture: arm64
+        config:
+          ArgsEscaped: true
+          AttachStderr: false
+          AttachStdin: false
+          AttachStdout: false
+          Cmd: null
+          Domainname: ''
+          Entrypoint:
+          - /bin/sh
+          - -c
+          - /usr/bin/gather
+          Env:
+          - __doozer=merge
+          - BUILD_RELEASE=202107261525.p0.git.51a98df.assembly.stream
+          - BUILD_VERSION=v4.9.0
+          - OS_GIT_MAJOR=4
+          - OS_GIT_MINOR=9
+          - OS_GIT_PATCH=0
+          - OS_GIT_TREE_STATE=clean
+          - OS_GIT_VERSION=4.9.0-202107261525.p0.git.51a98df.assembly.stream-51a98df
+          - SOURCE_GIT_TREE_STATE=clean
+          - OS_GIT_COMMIT=51a98df
+          - SOURCE_DATE_EPOCH=1627311800
+          - SOURCE_GIT_COMMIT=51a98df728d6712c469946b6ed5973c2fba1454e
+          - SOURCE_GIT_TAG=51a98df7
+          - SOURCE_GIT_URL=https://github.com/openshift/sriov-network-operator
+          - GODEBUG=x509ignoreCN=0,madvdontneed=1
+          - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          - container=oci
+          Hostname: 9d01c867eae8
+          Image: ''
+          Labels:
+            License: GPLv2+
+            architecture: arm64
+            build-date: '2021-07-26T15:46:27.437761'
+            com.redhat.build-host: arm-003.osbs.prod.upshift.rdu2.redhat.com
+            com.redhat.component: sriov-network-must-gather-container
+            com.redhat.license_terms: https://www.redhat.com/agreements
+            description: This is a sriov must-gather image that collectes sriov network
+              operator related resources.
+            distribution-scope: public
+            io.k8s.description: This is a sriov must-gather image that collectes sriov
+              network operator related resources.
+            io.k8s.display-name: sriov-network-operator-must-gather
+            io.openshift.build.commit.id: 51a98df728d6712c469946b6ed5973c2fba1454e
+            io.openshift.build.commit.url: https://github.com/openshift/sriov-network-operator/commit/51a98df728d6712c469946b6ed5973c2fba1454e
+            io.openshift.build.source-location: https://github.com/openshift/sriov-network-operator
+            io.openshift.expose-services: ''
+            io.openshift.maintainer.component: Networking
+            io.openshift.maintainer.product: OpenShift Container Platform
+            io.openshift.maintainer.subcomponent: SR-IOV
+            io.openshift.tags: openshift,base
+            maintainer: Red Hat, Inc.
+            name: openshift/ose-sriov-operator-must-gather
+            release: 202107261525.p0.git.51a98df.assembly.stream
+            summary: Provides the latest release of Red Hat Universal Base Image 8.
+            url: https://access.redhat.com/containers/#/registry.access.redhat.com/openshift/ose-sriov-operator-must-gather/images/v4.9.0-202107261525.p0.git.51a98df.assembly.stream
+            vcs-ref: e43afce9d3812403ae54e9166551791a9a4ea550
+            vcs-type: git
+            vendor: Red Hat, Inc.
+            version: v4.9.0
+          OnBuild: null
+          OpenStdin: false
+          StdinOnce: false
+          Tty: false
+          User: ''
+          Volumes: null
+          WorkingDir: ''
+        container: 49b458405f8f8d0fd4c2cc799a2c6743b3e86bd2e8f1c215963f525d8cb3e559
+        created: '2021-07-26T15:48:03.373137079Z'
+        docker_version: 1.13.1
+        history:
+        - comment: Imported from -
+          created: '2021-07-21T02:45:58.395130589Z'
+        - created: '2021-07-21T02:47:33.03081Z'
+        - created: '2021-07-22T22:47:51.408036713Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        - created: '2021-07-22T23:13:15.630094902Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        - created: '2021-07-26T15:48:03.373137079Z'
+          created_by: '#(imagebuilder)
+
+            sleep 86400'
+        os: linux
+        rootfs:
+          diff_ids:
+          - sha256:120879ddbc58437deae79a7d2bf51601e84e5e0ec0f4e13a190de3e7a5360e55
+          - sha256:df9e50ca260fbc3365d4b756999a8f8103813d570a59308efa424f0504838c16
+          - sha256:6c7246dd16f35d2ead6cf67f1219876546f5795f7d2ea1067fe612d4872b735c
+          - sha256:84be2ba296af04ef93be2e9249fa15eba3a94cae50e45efeae37814dea2e1a31
+          - sha256:41e651b5d6cd6fa5339f258ff2024b96d4a4fbefde72ac334b877a7d7d65a1e2
+          type: layers
+      digests:
+        application/vnd.docker.distribution.manifest.v2+json: sha256:162b5087f7f82fd781ef6a35d99719e89b42a0463307629e081f256b6a94c5e7
+      id: sha256:2f7ca6ec6774da0d446c05c42b00d67f14452810016ddfe6caebe29ccb2b8736
+      layer_sizes:
+      - diff_id: sha256:120879ddbc58437deae79a7d2bf51601e84e5e0ec0f4e13a190de3e7a5360e55
+        size: 259129779
+      - diff_id: sha256:df9e50ca260fbc3365d4b756999a8f8103813d570a59308efa424f0504838c16
+        size: 4763
+      - diff_id: sha256:6c7246dd16f35d2ead6cf67f1219876546f5795f7d2ea1067fe612d4872b735c
+        size: 7762372
+      - diff_id: sha256:84be2ba296af04ef93be2e9249fa15eba3a94cae50e45efeae37814dea2e1a31
+        size: 36613745
+      - diff_id: sha256:41e651b5d6cd6fa5339f258ff2024b96d4a4fbefde72ac334b877a7d7d65a1e2
+        size: 6733
+      parent_id: sha256:9c3300bf5b8aa74eeaf1ca2553e771e4d0e0825032822cd13de6661aa730c973
+      repositories:
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather:rhaos-4.9-rhel-8-containers-candidate-49566-20210726154614-aarch64
+      - registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-sriov-operator-must-gather@sha256:162b5087f7f82fd781ef6a35d99719e89b42a0463307629e081f256b6a94c5e7
+      tags:
+      - rhaos-4.9-rhel-8-containers-candidate-49566-20210726154614-aarch64
+    image:
+      arch: aarch64
+  filename: docker-image-sha256:2f7ca6ec6774da0d446c05c42b00d67f14452810016ddfe6caebe29ccb2b8736.aarch64.tar.gz
+  id: 5229577
+  metadata_only: false
+  size: 92586407
+  type_description: Tar file
+  type_extensions: tar tar.gz tar.bz2 tar.xz tgz
+  type_id: 4
+  type_name: tar

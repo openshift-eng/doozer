@@ -3,14 +3,16 @@ from __future__ import absolute_import, print_function, unicode_literals
 import hashlib
 import json
 import random
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union, List
+from kobo.rpmlib import parse_nvr
 
-from doozerlib import brew, exectools, util
+from doozerlib import brew, exectools
 from doozerlib.distgit import pull_image
 from doozerlib.metadata import Metadata, RebuildHint, RebuildHintCode
 from doozerlib.model import Missing, Model
 from doozerlib.pushd import Dir
 from doozerlib import coverity
+from doozerlib.util import brew_arch_for_go_arch, isolate_el_version_in_release, go_arch_for_brew_arch
 
 
 class ImageMetadata(Metadata):
@@ -27,6 +29,40 @@ class ImageMetadata(Metadata):
             self.children.append(self.runtime.late_resolve_image(d, add=True))
         if clone_source:
             runtime.resolve_source(self)
+
+    def get_assembly_rpm_package_dependencies(self, el_ver: int) -> Tuple[Dict[str, str], Dict[str, str]]:
+        """
+        An assembly can define RPMs which should be installed into a given member
+        image. Those dependencies can be specified at either the individual member
+        (higher priority) or at the group level. This method computes a
+        Dict[package_name] -> nvr for any package that should be installed due to
+        these overrides.
+        :param el_ver: Which version of RHEL to check
+        :return: Returns a tuple with two Dict[package_name] -> nvr for any assembly induced overrides.
+                 The first entry in the Tuple are dependencies directly specified in the member.
+                 The second entry are dependencies specified in the group and member.
+        """
+        direct_member_deps: Dict[str, str] = dict()  # Map package_name -> nvr
+        aggregate_deps: Dict[str, str] = dict()  # Map package_name -> nvr
+        eltag = f'el{el_ver}'
+        group_deps = self.runtime.get_group_config().dependencies.rpms or []
+        member_deps = self.config.dependencies.rpms or []
+
+        for rpm_entry in group_deps:
+            if eltag in rpm_entry:  # This entry has something for the requested RHEL version
+                nvr = rpm_entry[eltag]
+                package_name = parse_nvr(nvr)['name']
+                aggregate_deps[package_name] = nvr
+
+        # Perform the same process, but only for dependencies directly listed for the member
+        for rpm_entry in member_deps:
+            if eltag in rpm_entry:  # This entry has something for the requested RHEL version
+                nvr = rpm_entry[eltag]
+                package_name = parse_nvr(nvr)['name']
+                direct_member_deps[package_name] = nvr
+                aggregate_deps[package_name] = nvr  # Override anything at the group level
+
+        return direct_member_deps, aggregate_deps
 
     def is_ancestor(self, image):
         """
@@ -89,11 +125,35 @@ class ImageMetadata(Metadata):
 
     @property
     def is_payload(self):
-        return self.config.get('for_payload', False)
+        val = self.config.get('for_payload', False)
+        if val and self.base_only:
+            raise ValueError(f'{self.distgit_key} claims to be for_payload and base_only')
+        return val
 
     @property
     def for_release(self):
-        return self.config.get('for_release', True)
+        val = self.config.get('for_release', True)
+        if val and self.base_only:
+            raise ValueError(f'{self.distgit_key} claims to be for_release and base_only')
+        return val
+
+    def get_payload_tag_info(self) -> Tuple[str, bool]:
+        """
+        If this image is destined for the OpenShift release payload, it will have a tag name
+        associated within it within the release payload's originating imagestream.
+        :return: Returns the tag name to use for this image in an
+                OpenShift release imagestream and whether the payload name was explicitly included in the
+                image metadata. See https://issues.redhat.com/browse/ART-2823 . i.e. (tag_name, explicitly_declared)
+        """
+        if not self.is_payload:
+            raise ValueError('Attempted to derive payload name for non-payload image: ' + self.distgit_key)
+
+        payload_name = self.config.get("payload_name")
+        if payload_name:
+            return payload_name, True
+        else:
+            payload_name = self.image_name_short[4:] if self.image_name_short.startswith("ose-") else self.image_name_short   # it _should_ but... to be safe
+            return payload_name, False
 
     def get_brew_image_name_short(self):
         # Get image name in the Brew pullspec. e.g. openshift3/ose-ansible --> openshift3-ose-ansible
@@ -213,7 +273,7 @@ class ImageMetadata(Metadata):
     # Mapping of brew pullspec => most recent brew build dict.
     builder_image_builds = dict()
 
-    def does_image_need_change(self, changing_rpm_packages=[], buildroot_tag=None, newest_image_event_ts=None, oldest_image_event_ts=None) -> Tuple[Metadata, RebuildHint]:
+    def does_image_need_change(self, changing_rpm_packages=None, buildroot_tag=None, newest_image_event_ts=None, oldest_image_event_ts=None) -> Tuple[Metadata, RebuildHint]:
         """
         Answers the question of whether the latest built image needs to be rebuilt based on
         the packages (and therefore RPMs) it is dependent on might have changed in tags
@@ -225,6 +285,9 @@ class ImageMetadata(Metadata):
         :param oldest_image_event_ts: The build timestamp of the oldest build in this group from getLatestBuild of each component.
         :return: (meta, RebuildHint).
         """
+
+        if not changing_rpm_packages:
+            changing_rpm_packages = []
 
         dgk = self.distgit_key
         runtime = self.runtime
@@ -523,3 +586,435 @@ def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, 
             return RebuildHint(RebuildHintCode.PACKAGE_CHANGE, f'Package {package_name} has been retagged by potentially relevant tags since image build: {intersection_set}')
 
     return RebuildHint(RebuildHintCode.BUILD_IS_UP_TO_DATE, 'No package change detected')
+
+
+class ArchiveImageInspector:
+    """
+    Represents and returns information about an archive image associated with a brew build.
+    """
+
+    def __init__(self, runtime, archive: Dict, brew_build_inspector: 'BrewBuildImageInspector' = None):
+        """
+        :param runtime: The brew build inspector associated with the build that created this archive.
+        :param archive: The raw archive dict from brew.
+        :param brew_build_inspector: If the BrewBuildImageInspector is known, pass it in.
+        """
+        self.runtime = runtime
+        self._archive = archive
+        self._cache = {}
+        self.brew_build_inspector = brew_build_inspector
+
+        if self.brew_build_inspector:
+            assert(self.brew_build_inspector.get_brew_build_id() == self.get_brew_build_id())
+
+    def image_arch(self) -> str:
+        """
+        Returns the CPU architecture (brew build nomenclature) for which this archive was created.
+        """
+        return self._archive['extra']['image']['arch']
+
+    def get_archive_id(self) -> int:
+        """
+        :return: Returns this archive's unique brew ID.
+        """
+        return self._archive['id']
+
+    def get_image_envs(self) -> Dict[str, Optional[str]]:
+        """
+        :return: Returns a dictionary of environment variables set for this image.
+        """
+        env_list: List[str] = self._archive['extra']['docker']['config']['config']['Env']
+        envs_dict: Dict[str, Optional[str]] = dict()
+        for env_entry in env_list:
+            if '=' in env_entry:
+                components = env_entry.split('=', 1)
+                envs_dict[components[0]] = components[1]
+            else:
+                # Something odd about entry, so include it by don't try to parse
+                envs_dict[env_entry] = None
+        return envs_dict
+
+    def get_image_labels(self) -> Dict[str, str]:
+        """
+        :return: Returns a dictionary of labels set for this image.
+        """
+        return dict(self._archive['extra']['docker']['config']['config']['Labels'])
+
+    def get_archive_dict(self) -> Dict:
+        """
+        :return: Returns the raw brew archive object associated with this object.
+                 listArchives output: https://gist.github.com/jupierce/a28a53e4057b550b3c8e5d6a8ac5198c. This method returns a single entry.
+        """
+        return self._archive
+
+    def get_brew_build_id(self) -> int:
+        """
+        :return: Returns the brew build id for the build which created this archive.
+        """
+        return self._archive['build_id']
+
+    def get_brew_build_inspector(self):
+        """
+        :return: Returns a brew build inspector for the build which created this archive.
+        """
+        if not self.brew_build_inspector:
+            self.brew_build_inspector = BrewBuildImageInspector(self.runtime, self.get_brew_build_id())
+        return self.brew_build_inspector
+
+    def get_image_meta(self) -> ImageMetadata:
+        """
+        :return: Returns the imagemeta associated with this archive's component if there is one. None if no imagemeta represents it.
+        """
+        return self.get_brew_build_inspector().get_image_meta()
+
+    def get_installed_rpm_dicts(self) -> List[Dict]:
+        """
+        :return: Returns listRPMs for this archive
+        (e.g. https://gist.github.com/jupierce/a8798858104dcf6dfa4bd1d6dd99d2d8)
+        IMPORTANT: these are different from brew
+        build records; use get_installed_build_dicts for those.
+        """
+        cn = 'get_installed_rpms'
+        if cn not in self._cache:
+            with self.runtime.pooled_koji_client_session() as koji_api:
+                rpm_entries = koji_api.listRPMs(imageID=self.get_archive_id())
+                self._cache[cn] = rpm_entries
+        return self._cache[cn]
+
+    def get_installed_package_build_dicts(self) -> Dict[str, Dict]:
+        """
+        :return: Returns a Dict containing records for package builds corresponding to
+                 RPMs used by this archive. A single package can build multiple RPMs.
+                 Dict[package_name] -> raw brew build dict for package.
+        """
+        cn = 'get_installed_package_build_dicts'
+
+        if cn not in self._cache:
+            aggregate: Dict[str, Dict] = dict()
+            with self.runtime.pooled_koji_client_session() as koji_api:
+                # Example results of listing RPMs in an given imageID:
+                # https://gist.github.com/jupierce/a8798858104dcf6dfa4bd1d6dd99d2d8
+                for rpm_entry in self.get_installed_rpm_dicts():
+                    rpm_build_id = rpm_entry['build_id']
+                    # Now retrieve records for the package build which created this RPM. Turn caching
+                    # on as the archives (and other images being analyzed) likely reference the
+                    # exact same builds.
+                    package_build = koji_api.getBuild(rpm_build_id, brew.KojiWrapperOpts(caching=True))
+                    package_name = package_build['package_name']
+                    aggregate[package_name] = package_build
+
+            self._cache[cn] = aggregate
+
+        return self._cache[cn]
+
+    def get_archive_pullspec(self):
+        """
+        :return: Returns an internal pullspec for a specific archive image.
+                 e.g. 'registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-openshift-controller-manager:rhaos-4.6-rhel-8-containers-candidate-53809-20210722091236-x86_64'
+        """
+        return self._archive['extra']['docker']['repositories'][0]
+
+    def get_archive_digest(self):
+        """
+        :return Returns the archive image's sha digest (e.g. 'sha256:1f3ebef02669eca018dbfd2c5a65575a21e4920ebe6a5328029a5000127aaa4b')
+        """
+        digest = self._archive["extra"]['docker']['digests']['application/vnd.docker.distribution.manifest.v2+json']
+        if not digest.startswith("sha256:"):  # It should start with sha256: for now. Let's raise an error if this changes.
+            raise ValueError(f"Received unrecognized digest {digest} for archive {self.get_archive_id()}")
+        return digest
+
+
+class BrewBuildImageInspector:
+    """
+    Provides an API for common queries we perform against brew built images.
+    """
+
+    def __init__(self, runtime, pullspec_or_build_id_or_nvr: Union[str, int]):
+        """
+        :param runtime: The koji client session to use.
+        :param pullspec_or_build_id_or_nvr: A pullspec to the brew image (it is fine if this is a manifest list OR a single archive image), a brew build id, or an NVR.
+        """
+        self.runtime = runtime
+
+        with self.runtime.pooled_koji_client_session() as koji_api:
+            self._nvr: Optional[str] = None  # Will be resolved to the NVR for the image/manifest list
+            self._brew_build_obj: Optional[Dict] = None  # Will be populated with a brew build dict for the NVR
+
+            self._cache = dict()
+
+            if '/' not in str(pullspec_or_build_id_or_nvr):
+                # Treat the parameter as an NVR or build_id.
+                self._brew_build_obj = koji_api.getBuild(pullspec_or_build_id_or_nvr, strict=True)
+                self._nvr = self._brew_build_obj['nvr']
+            else:
+                # Treat as a full pullspec
+                self._build_pullspec = pullspec_or_build_id_or_nvr  # This will be reset to the official brew pullspec, but use it for now
+                image_info = self.get_image_info()  # We need to find the brew build, so extract image info
+                image_labels = image_info['config']['config']['Labels']
+                self._nvr = image_labels['com.redhat.component'] + '-' + image_labels['version'] + '-' + image_labels['release']
+                self._brew_build_obj = koji_api.getBuild(self._nvr, strict=True)
+
+            self._build_pullspec = self._brew_build_obj['extra']['image']['index']['pull'][0]
+            self._brew_build_id = self._brew_build_obj['id']
+
+    def get_brew_build_id(self) -> int:
+        """
+        :return: Returns the koji build id for this image.
+        """
+        return self._brew_build_id
+
+    def get_brew_build_webpage_url(self):
+        """
+        :return: Returns a link for humans to go look at details for this brew build.
+        """
+        return f'https://brewweb.engineering.redhat.com/brew/buildinfo?buildID={self._brew_build_id}'
+
+    def get_brew_build_dict(self) -> Dict:
+        """
+        :return: Returns the koji getBuild dictionary for this iamge.
+        """
+        return self._brew_build_obj
+
+    def get_nvr(self) -> str:
+        return self._nvr
+
+    def __str__(self):
+        return f'BrewBuild:{self.get_brew_build_id()}:{self.get_nvr()}'
+
+    def __repr__(self):
+        return f'BrewBuild:{self.get_brew_build_id()}:{self.get_nvr()}'
+
+    def get_image_info(self, arch='amd64') -> Dict:
+        """
+        :return Returns the parsed output of oc image info for the specified arch.
+        """
+        go_arch = go_arch_for_brew_arch(arch)  # Ensure it is a go arch
+        cn = f'get_image_info-{go_arch}'
+        if cn not in self._cache:
+            image_raw_str, _ = exectools.cmd_assert(f'oc image info --filter-by-os={go_arch} -o=json {self._build_pullspec}', retries=3)
+            self._cache[cn] = json.loads(image_raw_str)
+        return self._cache[cn]
+
+    def get_labels(self, arch='amd64') -> Dict[str, str]:
+        """
+        :return: Returns a dictionary of labels associated with the image. If the image is a manifest list,
+                 these will be the amd64 labels.
+        """
+        return self.get_image_archive_inspector(arch).get_image_labels()
+
+    def get_envs(self, arch='amd64') -> Dict[str, str]:
+        """
+        :param arch: The image architecture to check.
+        :return: Returns a dictionary of environment variables set for the image.
+        """
+        return self.get_image_archive_inspector(arch).get_image_envs()
+
+    def get_component_name(self) -> str:
+        return self.get_labels()['com.redhat.component']
+
+    def get_package_name(self) -> str:
+        return self.get_component_name()
+
+    def get_image_meta(self) -> Optional[ImageMetadata]:
+        """
+        :return: Returns the ImageMetadata object associated with this component. Returns None if the component is not in ocp-build-data.
+        """
+        return self.runtime.component_map.get(self.get_component_name(), None)
+
+    def get_version(self) -> str:
+        """
+        :return: Returns the 'version' field of this image's NVR.
+        """
+        return self._brew_build_obj['version']
+
+    def get_release(self) -> str:
+        """
+        :return: Returns the 'release' field of this image's NVR.
+        """
+        return self._brew_build_obj['release']
+
+    def get_rhel_base_version(self) -> Optional[int]:
+        """
+        Determines whether this image is based on RHEL 8, 9, ... May return None if no
+        RPMS are installed (e.g. FROM scratch)
+        """
+        # OS metadata has changed a bit over time (i.e. there may be newer/cleaner ways
+        # to determine this), but one thing that seems backwards compatible
+        # is finding 'el' information in RPM list.
+        for brew_dict in self.get_all_installed_rpm_dicts():
+            nvr = brew_dict['nvr']
+            el_ver = isolate_el_version_in_release(nvr)
+            if el_ver:
+                return el_ver
+
+        raise None
+
+    def get_source_git_url(self) -> Optional[str]:
+        """
+        :return: Returns SOURCE_GIT_URL from the image environment. This is a URL for the
+                public source a customer should be able to find the source of the component.
+                If the component does not have a ART-style SOURCE_GIT_URL, None is returned.
+        """
+        return self.get_envs().get('SOURCE_GIT_URL', None)
+
+    def get_source_git_commit(self) -> Optional[str]:
+        """
+        :return: Returns SOURCE_GIT_COMMIT from the image environment. This is a URL for the
+                public source a customer should be able to find the source of the component.
+                If the component does not have a ART-style SOURCE_GIT_COMMIT, None is returned.
+        """
+        return self.get_envs().get('SOURCE_GIT_COMMIT', None)
+
+    def get_arch_archives(self) -> Dict[str, ArchiveImageInspector]:
+        """
+        :return: Returns a map of architectures -> brew archive Dict  within this brew build.
+        """
+        return {a.image_arch(): a for a in self.get_image_archive_inspectors()}
+
+    def get_build_pullspec(self) -> str:
+        """
+        :return: Returns an internal pullspec for the overall build. Usually this would be a manifest list with architecture specific archives.
+                    To get achive pullspecs, use get_archive_pullspec.
+        """
+        return self._build_pullspec
+
+    def get_all_archive_dicts(self) -> List[Dict]:
+        """
+        :return: Returns all archives associated with the build. This includes entries for
+        things like cachito.
+        Example listArchives output: https://gist.github.com/jupierce/a28a53e4057b550b3c8e5d6a8ac5198c
+        """
+        cn = 'get_all_archives'  # cache entry name
+        if cn not in self._cache:
+            with self.runtime.pooled_koji_client_session() as koji_api:
+                self._cache[cn] = koji_api.listArchives(self._brew_build_id)
+        return self._cache[cn]
+
+    def get_image_archive_dicts(self) -> List[Dict]:
+        """
+        :return: Returns only raw brew archives for images within the build.
+        """
+        return list(filter(lambda a: a['btype'] == 'image', self.get_all_archive_dicts()))
+
+    def get_image_archive_inspectors(self) -> List[ArchiveImageInspector]:
+        """
+        Example listArchives output: https://gist.github.com/jupierce/a28a53e4057b550b3c8e5d6a8ac5198c
+        :return: Returns only image archives from the build.
+        """
+        cn = 'get_image_archives'
+        if cn not in self._cache:
+            image_archive_dicts = self.get_image_archive_dicts()
+            inspectors = [ArchiveImageInspector(self.runtime, archive, brew_build_inspector=self) for archive in image_archive_dicts]
+            self._cache[cn] = inspectors
+
+        return self._cache[cn]
+
+    def get_all_installed_rpm_dicts(self) -> List[Dict]:
+        """
+        :return: Returns an aggregate set of all brew rpm definitions
+        for RPMs installed on ALL architectures
+        of this image build. IMPORTANT: these are different from brew
+        build records; use get_installed_build_dicts for those.
+        """
+        cn = 'get_all_installed_rpm_dicts'
+        if cn not in self._cache:
+            dedupe: Dict[str, Dict] = dict()  # Maps nvr to rpm definition. This is because most archives will have similar RPMS installed.
+            for archive_inspector in self.get_image_archive_inspectors():
+                for rpm_dict in archive_inspector.get_installed_rpm_dicts():
+                    dedupe[rpm_dict['nvr']] = rpm_dict
+            self._cache[cn] = list(dedupe.values())
+        return self._cache[cn]
+
+    def get_all_installed_package_build_dicts(self) -> Dict[str, Dict]:
+        """
+        :return: Returns an aggregate set of all brew build dicts for
+        packages installed on ALL architectures of this image build. This
+        code assumes that all image archives install the same package NVR
+        if they install it.
+        """
+        cn = 'get_all_installed_package_build_dicts'
+        if cn not in self._cache:
+            dedupe: Dict[str, Dict] = dict()  # Maps nvr to build dict. This is because most archives will have the similar packages installed.
+            for archive_inspector in self.get_image_archive_inspectors():
+                dedupe.update(archive_inspector.get_installed_package_build_dicts())
+            self._cache[cn] = dedupe
+
+        return self._cache[cn]
+
+    def get_image_archive_inspector(self, arch: str) -> Optional[ArchiveImageInspector]:
+        """
+        Example listArchives output: https://gist.github.com/jupierce/a28a53e4057b550b3c8e5d6a8ac5198c
+        :return: Returns the archive inspector for the specified arch    OR    None if the build does not possess one.
+        """
+        arch = brew_arch_for_go_arch(arch)  # Make sure this is a brew arch
+        found = filter(lambda ai: ai.image_arch() == arch, self.get_image_archive_inspectors())
+        return next(found, None)
+
+    def is_under_embargo(self) -> bool:
+        """
+        :return: Returns whether this image build contains currently embargoed content.
+        """
+        if not self.runtime.group_config.public_upstreams:
+            # when public_upstreams are not configured, we assume there is no private content.
+            return False
+
+        cn = 'is_private'
+        if cn not in self._cache:
+            with self.runtime.shared_build_status_detector() as bs_detector:
+                # determine if the image build is embargoed (or otherwise "private")
+                self._cache[cn] = len(bs_detector.find_embargoed_builds([self._brew_build_obj], [self.get_image_meta().candidate_brew_tag()])) > 0
+
+        return self._cache[cn]
+
+    def list_brew_tags(self) -> List[Dict]:
+        """
+        :return: Returns a list of tag definitions which are applied on this build.
+        """
+        cn = 'list_brew_tags'
+        if cn not in self._cache:
+            with self.runtime.pooled_koji_client_session() as koji_api:
+                self._cache[cn] = koji_api.listTags(self._brew_build_id)
+
+        return self._cache[cn]
+
+    def list_brew_tag_names(self) -> List[str]:
+        """
+        :return: Returns the list of tag names which are applied to this build.
+        """
+        return [t['name'] for t in self.list_brew_tags()]
+
+    def find_non_latest_rpms(self) -> List[Tuple[str, str]]:
+        """
+        If the packages installed in this image overlap packages in the candidate tag,
+        return NVRs of the latest candidate builds that are not also installed in this image.
+        This indicates that the image has not picked up the latest from candidate.
+
+        Note that this is completely normal for non-STREAM assemblies. In fact, it is
+        normal for any assembly other than the assembly used for nightlies. In the age of
+        a thorough config:scan-sources, if this method returns anything, scan-sources is
+        likely broken.
+
+        :return: Returns a list of NVRs from the "latest" state of the specified candidate tag
+        if same the package installed into this archive is not the same NVR.
+        """
+
+        candidate_brew_tag = self.get_image_meta().candidate_brew_tag()
+
+        # N.B. the "rpms" installed in an image archive are individual RPMs, not brew rpm package builds.
+        # we compare against the individual RPMs from latest candidate rpm package builds.
+        with self.runtime.shared_build_status_detector() as bs_detector:
+            candidate_rpms = {
+                # the RPMs are collected by name mainly to de-duplicate (same RPM, multiple arches)
+                rpm['name']: rpm for rpm in
+                bs_detector.find_unshipped_candidate_rpms(candidate_brew_tag, self.runtime.brew_event)
+            }
+
+        old_nvrs: List[Tuple[str, str]] = []
+        archive_rpms = {rpm['name']: rpm for rpm in self.get_all_installed_rpm_dicts()}
+        # we expect only a few unshipped candidates most of the the time, so we'll just search for those.
+        for name, rpm in candidate_rpms.items():
+            archive_rpm = archive_rpms.get(name)
+            if archive_rpm and rpm['nvr'] != archive_rpm['nvr']:
+                old_nvrs.append((archive_rpm['nvr'], rpm['nvr']))
+
+        return old_nvrs

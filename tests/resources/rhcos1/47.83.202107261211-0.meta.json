@@ -1,0 +1,119 @@
+{
+    "build-url": "https://jenkins-rhcos.router.default.svc.cluster.local/job/rhcos/job/rhcos-rhcos-4.7/2054/",
+    "buildid": "47.83.202107261211-0",
+    "coreos-assembler.basearch": "s390x",
+    "coreos-assembler.build-timestamp": "2021-07-26T12:18:00Z",
+    "coreos-assembler.code-source": "container",
+    "coreos-assembler.config-dirty": "false",
+    "coreos-assembler.config-gitrev": "v3.1-1271-g5bfbd563962484067a4f47c26c96def706976511",
+    "coreos-assembler.container-config-git": {
+        "branch": "HEAD",
+        "commit": "5bfbd563962484067a4f47c26c96def706976511",
+        "dirty": "false",
+        "origin": "https://gitlab.cee.redhat.com/coreos/redhat-coreos.git"
+    },
+    "coreos-assembler.container-image-git": {
+        "branch": "rhcos-4.7",
+        "commit": "dfe0626604876718095b27c59b5442dacb32a840",
+        "dirty": "true",
+        "origin": "https://github.com/coreos/coreos-assembler"
+    },
+    "coreos-assembler.delayed-meta-merge": false,
+    "coreos-assembler.image-config-checksum": "0f9d52036baeb94441a4eafda05272956ab4a31729b55f2a77280d95a879822c",
+    "coreos-assembler.image-genver": 0,
+    "coreos-assembler.image-input-checksum": "36a7098f91d7de7e94ef0cc224184723907869a6e65dcb46cf42ccf888d7dcdd",
+    "coreos-assembler.meta-stamp": 1627304238112090064,
+    "images": {
+        "live-initramfs": {
+            "path": "rhcos-47.83.202107261211-0-live-initramfs.s390x.img",
+            "sha256": "695dd688d098f04710fa04cca6970cdb7ec3aca6b9ef061870718eb11f72d0e4"
+        },
+        "live-iso": {
+            "path": "rhcos-47.83.202107261211-0-live.s390x.iso",
+            "sha256": "699fd9907bd22ae20c423d3722b728e6f4b1a64364bcec9b553740bda982e8a4"
+        },
+        "live-kernel": {
+            "path": "rhcos-47.83.202107261211-0-live-kernel-s390x",
+            "sha256": "a3a5fe2a50a2b27f9fba22293b08d5f9336065a6fbab3f05a7e0b2fb15028617"
+        },
+        "live-rootfs": {
+            "path": "rhcos-47.83.202107261211-0-live-rootfs.s390x.img",
+            "sha256": "077a3f42248cd46453caddb04348d1151e96956e6d704d656030b21d46b2409a"
+        },
+        "metal": {
+            "path": "rhcos-47.83.202107261211-0-metal.s390x.raw.gz",
+            "sha256": "5beea57aacd462a9c406f0695935a41e36680d583809b53020e8f97248f0b819",
+            "size": 835059948,
+            "uncompressed-sha256": "63ff2c008a8a5cd5e01ac3e77fbfdfd01020637a9f77ef8f53673ef931f75f0c",
+            "uncompressed-size": 3527409664
+        },
+        "metal4k": {
+            "path": "rhcos-47.83.202107261211-0-metal4k.s390x.raw.gz",
+            "sha256": "c7972fb425282b3831b26c324f1d11b8cd778099166b0c3179227d9020a45d33",
+            "size": 835047829,
+            "uncompressed-sha256": "04b169a05695fe74986ba091cd9d8437dd85956ee451f6a5f9dec35d3f2f2b2a",
+            "uncompressed-size": 3527409664
+        },
+        "ostree": {
+            "path": "rhcos-47.83.202107261211-0-ostree.s390x.tar",
+            "sha256": "b83c3a7f5c991f66593a32f8d3d8fda03d3a0039f602fe2c7ca3f0ba557cb60e",
+            "size": 783534080
+        },
+        "qemu": {
+            "path": "rhcos-47.83.202107261211-0-qemu.s390x.qcow2.gz",
+            "sha256": "7295e7f42122fd199d29610594a72c33dc3cde7a0226f413c88cf93d9b03e1dc",
+            "size": 834605627,
+            "uncompressed-sha256": "e0feb178e3a35553616f10c187289af9b301f04cdfdb545e3d75c575d30280be",
+            "uncompressed-size": 2222325760
+        },
+        "dasd": {
+            "path": "rhcos-47.83.202107261211-0-dasd.s390x.raw.gz",
+            "sha256": "3b027938d778435eb164fa4965ce94dfb2f65830e01f6a18fe1e44bb10283474",
+            "size": 834978528,
+            "uncompressed-sha256": "2fca9d5f76dd4079054f4f1086a036ea7c1dc1cd59d5e0f6299f61aa23917f62",
+            "uncompressed-size": 3527409664
+        },
+        "openstack": {
+            "path": "rhcos-47.83.202107261211-0-openstack.s390x.qcow2.gz",
+            "sha256": "3cce5e94d029bb1eb31481a5dde648f1798201f372220f9797150ec72516f089",
+            "size": 833449980,
+            "uncompressed-sha256": "2fd7fc64309976c7405f849030dd8182ec5e8bb954174fa707d136d8fc367cdf",
+            "uncompressed-size": 2188836864
+        }
+    },
+    "name": "rhcos",
+    "oscontainer": {
+        "digest": "sha256:d51ca4e301cfdbc98e16ace0bcbee02b143a8be9e454ce5fb196467981141f59",
+        "image": "quay.io/openshift-release-dev/ocp-v4.0-art-dev"
+    },
+    "ostree-commit": "48a066e9e15bde40415c6711db90110832c010a36969f6c8984a7c91853db937",
+    "ostree-content-bytes-written": 161574387,
+    "ostree-content-checksum": "c89222c240bedd48996dad051d17f695d10a3d52d63496759abd7cf320cae697",
+    "ostree-n-cache-hits": 19030,
+    "ostree-n-content-total": 6283,
+    "ostree-n-content-written": 1302,
+    "ostree-n-metadata-total": 9731,
+    "ostree-n-metadata-written": 3184,
+    "ostree-timestamp": "2021-07-26T12:17:38Z",
+    "ostree-version": "47.83.202107261211-0",
+    "pkgdiff": [
+        [
+            "cri-o",
+            2,
+            {
+                "NewPackage": [
+                    "cri-o",
+                    "1.20.4-5.rhaos4.7.gitea842fa.el8",
+                    "s390x"
+                ],
+                "PreviousPackage": [
+                    "cri-o",
+                    "1.20.4-4.rhaos4.7.gitf7276ed.el8",
+                    "s390x"
+                ]
+            }
+        ]
+    ],
+    "rpm-ostree-inputhash": "af519780458814872775f2f1a10440bddf3b782eb18a43c446a2a297cd1f1233",
+    "summary": "OpenShift 4"
+}

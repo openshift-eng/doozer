@@ -19,6 +19,7 @@ from .distgit import ImageDistGitRepo, RPMDistGitRepo
 from . import exectools
 from . import logutil
 from .brew import BuildStates
+from .util import isolate_el_version_in_brew_tag
 
 from .model import Model, Missing
 from doozerlib.assembly import assembly_metadata_config, assembly_basis_event
@@ -150,6 +151,19 @@ class Metadata(object):
             # If group config doesn't define the targets either, the target name will be derived from the distgit branch name
             targets = [self._default_brew_target()]
         return targets
+
+    def determine_rhel_targets(self) -> List[int]:
+        """
+        For each build target for the component, return the rhel version it is for. For example,
+        if an RPM builds for both rhel-7 and rhel-8 targets, return [7,8]
+        """
+        el_targets: List[int] = []
+        for target in self.determine_targets():
+            el_ver = isolate_el_version_in_brew_tag(target)
+            if not el_ver:
+                raise IOError(f'Unable to determine RHEL version from build target {target} in {self.distgit_key}')
+            el_targets.append(el_ver)
+        return el_targets
 
     def save(self):
         self.data_obj.data = self.config.primitive()
@@ -341,16 +355,16 @@ class Metadata(object):
 
             rpm_suffix = ''  # By default, find the latest RPM build - regardless of el7, el8, ...
 
+            el_ver = None
             if self.meta_type == 'image':
                 ver_prefix = 'v'  # openshift-enterprise-console-container-v4.7.0-202106032231.p0.git.d9f4379
             else:
                 # RPMs do not have a 'v' in front of their version; images do.
                 ver_prefix = ''  # openshift-clients-4.7.0-202106032231.p0.git.e29b355.el8
                 if el_target:
-                    el_target = f'-rhel-{el_target}'  # Whether the incoming value is an int, decimal str, or a target, normalize for regex
-                    target_match = re.match(r'.*-rhel-(\d+)(?:-|$)', str(el_target))  # tolerate incoming int with str()
-                    if target_match:
-                        rpm_suffix = f'.el{target_match.group(1)}'
+                    el_ver = isolate_el_version_in_brew_tag(el_target)
+                    if el_ver:
+                        rpm_suffix = f'.el{el_ver}'
                     else:
                         raise IOError(f'Unable to determine rhel version from specified el_target: {el_target}')
 
@@ -425,9 +439,9 @@ class Metadata(object):
                 # under 'is' for RPMs, we expect 'el7' and/or 'el8', etc. For images, just 'nvr'.
                 isd = self.config['is']
                 if self.meta_type == 'rpm':
-                    if el_target is None:
+                    if el_ver is None:
                         raise ValueError(f'Expected el_target to be set when querying a pinned RPM component {self.distgit_key}')
-                    is_nvr = isd[f'el{el_target}']
+                    is_nvr = isd[f'el{el_ver}']
                     if not is_nvr:
                         return default_return()
                 else:
@@ -454,7 +468,6 @@ class Metadata(object):
             else:
                 basis_event = assembly_basis_event(self.runtime.get_releases_config(), assembly=assembly)
                 if basis_event:
-                    self.logger.warning(f'Constraining image search to stream assembly due to assembly basis event {basis_event}')
                     # If an assembly has a basis event, its latest images can only be sourced from
                     # "is:" or the stream assembly. We've already checked for "is" above.
                     assembly = 'stream'
