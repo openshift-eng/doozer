@@ -54,8 +54,11 @@ def payload_imagestream_name_and_namespace(base_imagestream_name: str, base_name
               help="By default, for a named assembly, images will be tagged to prevent garbage collection")
 @click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
               help="Architecture (brew nomenclature) to exclude from payload generation")
+@click.option("--emergency-ignore-issues", default=False, is_flag=True,
+              help="If you must get this command to permit an assembly despite issues. Do not use without approval.")
 @pass_runtime
-def release_gen_payload(runtime: Runtime, is_name: Optional[str], is_namespace: Optional[str], organization: Optional[str], repository: Optional[str], exclude_arch: Tuple[str, ...], skip_gc_tagging: bool):
+def release_gen_payload(runtime: Runtime, is_name: Optional[str], is_namespace: Optional[str], organization: Optional[str],
+                        repository: Optional[str], exclude_arch: Tuple[str, ...], skip_gc_tagging: bool, emergency_ignore_issues: bool):
     """Generates two sets of input files for `oc` commands to mirror
 content and update image streams. Files are generated for each arch
 defined in ocp-build-data for a version, as well as a final file for
@@ -341,7 +344,8 @@ read and propagate/expose this annotation in its display of the release image.
     print(yaml.dump(report, default_flow_style=False, indent=2))
     if not overall_permitted:
         red_print('DO NOT PROCEED WITH THIS ASSEMBLY PAYLOAD -- not all detected issues are permitted.', file=sys.stderr)
-        exit(1)
+        if not emergency_ignore_issues:
+            exit(1)
     exit(0)
 
 
