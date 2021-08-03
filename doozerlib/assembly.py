@@ -104,7 +104,7 @@ def _check_recursion(releases_config: Model, assembly: str):
         next_assembly = target_assembly.basis.assembly
 
 
-def assembly_type(releases_config: Model, assembly: str) -> AssemblyTypes:
+def assembly_type(releases_config: Model, assembly: typing.Optional[str]) -> AssemblyTypes:
 
     if not assembly or not isinstance(releases_config, Model):
         return AssemblyTypes.STREAM
@@ -127,14 +127,13 @@ def assembly_type(releases_config: Model, assembly: str) -> AssemblyTypes:
     raise ValueError(f'Unknown assembly type: {str_type}')
 
 
-def assembly_group_config(releases_config: Model, assembly: str, group_config: Model) -> Model:
+def assembly_group_config(releases_config: Model, assembly: typing.Optional[str], group_config: Model) -> Model:
     """
     Returns a group config based on the assembly information
     and the input group config.
     :param releases_config: A Model for releases.yaml.
     :param assembly: The name of the assembly
     :param group_config: The group config to merge into a new group config (original Model will not be altered)
-    :param _visited: Keeps track of visited assembly definitions to prevent infinite recursion.
     """
     if not assembly or not isinstance(releases_config, Model):
         return group_config
@@ -153,7 +152,32 @@ def assembly_group_config(releases_config: Model, assembly: str, group_config: M
     return Model(dict_to_model=merger(target_assembly_group.primitive(), group_config.primitive()))
 
 
-def assembly_metadata_config(releases_config: Model, assembly: str, meta_type: str, distgit_key: str, meta_config: Model) -> Model:
+def assembly_streams_config(releases_config: Model, assembly: typing.Optional[str], streams_config: Model) -> Model:
+    """
+    Returns a streams config based on the assembly information
+    and the input group config.
+    :param releases_config: A Model for releases.yaml.
+    :param assembly: The name of the assembly
+    :param streams_config: The streams config to merge into a new streams config (original Model will not be altered)
+    """
+    if not assembly or not isinstance(releases_config, Model):
+        return streams_config
+
+    _check_recursion(releases_config, assembly)
+    target_assembly = releases_config.releases[assembly].assembly
+
+    if target_assembly.basis.assembly:  # Does this assembly inherit from another?
+        # Recursively apply ancestor assemblies
+        streams_config = assembly_streams_config(releases_config, target_assembly.basis.assembly, streams_config)
+
+    target_assembly_streams = target_assembly.group
+    if not target_assembly_streams:
+        return streams_config
+
+    return Model(dict_to_model=merger(target_assembly_streams.primitive(), streams_config.primitive()))
+
+
+def assembly_metadata_config(releases_config: Model, assembly: typing.Optional[str], meta_type: str, distgit_key: str, meta_config: Model) -> Model:
     """
     Returns a group member's metadata configuration based on the assembly information
     and the initial file-based config.
@@ -184,7 +208,7 @@ def assembly_metadata_config(releases_config: Model, assembly: str, meta_type: s
     return Model(dict_to_model=config_dict)
 
 
-def _assembly_config_struct(releases_config: Model, assembly: str, key: str, default):
+def _assembly_config_struct(releases_config: Model, assembly: typing.Optional[str], key: str, default):
     """
     If a key is directly under the 'assembly' (e.g. rhcos), then this method will
     recurse the inheritance tree to build you a final version of that key's value.
@@ -208,7 +232,7 @@ def _assembly_config_struct(releases_config: Model, assembly: str, key: str, def
         raise ValueError(f'Unknown how to derive for default type: {type(default)}')
 
 
-def assembly_rhcos_config(releases_config: Model, assembly: str) -> Model:
+def assembly_rhcos_config(releases_config: Model, assembly: typing.Optional[str]) -> Model:
     """
     :param releases_config: The content of releases.yml in Model form.
     :param assembly: The name of the assembly to assess
@@ -217,7 +241,7 @@ def assembly_rhcos_config(releases_config: Model, assembly: str) -> Model:
     return _assembly_config_struct(releases_config, assembly, 'rhcos', {})
 
 
-def assembly_basis_event(releases_config: Model, assembly: str) -> typing.Optional[int]:
+def assembly_basis_event(releases_config: Model, assembly: typing.Optional[str]) -> typing.Optional[int]:
     """
     :param releases_config: The content of releases.yml in Model form.
     :param assembly: The name of the assembly to assess
@@ -235,7 +259,7 @@ def assembly_basis_event(releases_config: Model, assembly: str) -> typing.Option
     return assembly_basis_event(releases_config, target_assembly.basis.assembly)
 
 
-def assembly_basis(releases_config: Model, assembly: str) -> Model:
+def assembly_basis(releases_config: Model, assembly: typing.Optional[str]) -> Model:
     """
     :param releases_config: The content of releases.yml in Model form.
     :param assembly: The name of the assembly to assess
@@ -245,7 +269,7 @@ def assembly_basis(releases_config: Model, assembly: str) -> Model:
     return _assembly_config_struct(releases_config, assembly, 'basis', {})
 
 
-def assembly_permits(releases_config: Model, assembly: str) -> ListModel:
+def assembly_permits(releases_config: Model, assembly: typing.Optional[str]) -> ListModel:
     """
     :param releases_config: The content of releases.yml in Model form.
     :param assembly: The name of the assembly to assess
