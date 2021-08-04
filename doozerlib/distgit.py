@@ -303,7 +303,7 @@ class DistGitRepo(object):
             if self.source_sha:
                 # add short sha of source for audit trail
                 commit_message += " - {}".format(self.source_sha)
-            commit_message += "\n- MaxFileSize: {}".format(50000000)  # set dist-git size limit to 50MB
+            commit_message += "\n- MaxFileSize: {}".format(100000000)  # set dist-git size limit to 100MB
             # commit changes; if these flake there is probably not much we can do about it
             exectools.cmd_assert(["git", "add", "-A", "."])
             exectools.cmd_assert(["git", "commit", "--allow-empty", "-m", commit_message])
@@ -2202,7 +2202,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         dockerfile_notify = False
 
-        # Create a sha for Dockerfile. We use this to determined if we've reconciled it before.
+        # Create a sha for Dockerfile. We use this to determine if we've reconciled it before.
         source_dockerfile_hash = hashlib.sha256(io.open(source_dockerfile_path, 'rb').read()).hexdigest()
 
         reconciled_path = dg_path.joinpath('.oit', 'reconciled')
