@@ -619,7 +619,7 @@ class Runtime(object):
                 raise IOError('Complete duplicate distgit & branch; something wrong with metadata: {} from {} and {}'.format(key, meta.config_filename, no_collide_check[key].config_filename))
             no_collide_check[key] = meta
 
-        # Read in the streams definite for this group if one exists
+        # Read in the streams definition for this group if one exists
         streams_data = self.gitdata.load_data(key='streams', replace_vars=replace_vars)
         if streams_data:
             org_stream_model = Model(dict_to_model=streams_data.data)
