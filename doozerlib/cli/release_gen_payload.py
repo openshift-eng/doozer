@@ -605,10 +605,11 @@ class PayloadGenerator:
 
             if arch not in image_meta.get_arches():
                 # If this image is not meant for this architecture
-                members[tag_name] = None  # We still need a placeholder in the tag mapping
+                if tag_name not in members:
+                    members[tag_name] = None  # We still need a placeholder in the tag mapping
                 continue
 
-            if tag_name in members and not explicit:
+            if members.get(tag_name, None) and not explicit:
                 # If we have already found an entry, there is a precedence we honor for
                 # "-alt" images. Specifically, if a imagemeta declares its payload tag
                 # name explicitly, it will take precedence over any other entries
