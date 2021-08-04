@@ -12,7 +12,7 @@ from doozerlib.cli import cli, pass_runtime
 from doozerlib.image import ImageMetadata, BrewBuildImageInspector, ArchiveImageInspector
 from doozerlib.assembly_inspector import AssemblyInspector
 from doozerlib.runtime import Runtime
-from doozerlib.util import red_print, go_suffix_for_arch, brew_arch_for_go_arch, isolate_nightly_name_components, isolate_el_version_in_brew_tag
+from doozerlib.util import red_print, go_suffix_for_arch, brew_arch_for_go_arch, isolate_nightly_name_components, convert_remote_git_to_https
 from doozerlib.assembly import AssemblyTypes, assembly_basis, AssemblyIssue, AssemblyIssueCode
 from doozerlib import exectools
 from doozerlib.model import Model
@@ -401,11 +401,19 @@ class PayloadGenerator:
                 # No build for this component at present.
                 continue
 
-            source_url = build_image_inspector.get_source_git_url()
+            # Here we check the raw config - before it is affected by assembly overrides. Why?
+            # If an artist overrides one sibling's git url, but not another, the following
+            # scan would not be able to detect that they were siblings. Instead, we rely on the
+            # original image metadata to determine sibling-ness.
+            source_url = build_image_inspector.get_image_meta().raw_config.content.source.git.url
+
             source_git_commit = build_image_inspector.get_source_git_commit()
             if not source_url or not source_git_commit:
                 # This is true for distgit only components.
                 continue
+
+            # Make sure URLs are comparable regardless of git: or https:
+            source_url = convert_remote_git_to_https(source_url)
 
             potential_conflict: RepoBuildRecord = repo_builds.get(source_url, None)
             if potential_conflict:

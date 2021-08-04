@@ -45,7 +45,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import constants
 from doozerlib import util
 from doozerlib import brew
-from doozerlib.assembly import assembly_group_config, assembly_basis_event, assembly_type, AssemblyTypes
+from doozerlib.assembly import assembly_group_config, assembly_basis_event, assembly_type, AssemblyTypes, assembly_streams_config
 from doozerlib.build_status_detector import BuildStatusDetector
 
 # Values corresponds to schema for group.yml: freeze_automation. When
@@ -211,7 +211,7 @@ class Runtime(object):
         self.initialized = False
 
         # Will be loaded with the streams.yml Model
-        self.streams = {}
+        self.streams = Model(dict_to_model={})
 
         self.uuid = None
 
@@ -619,10 +619,11 @@ class Runtime(object):
                 raise IOError('Complete duplicate distgit & branch; something wrong with metadata: {} from {} and {}'.format(key, meta.config_filename, no_collide_check[key].config_filename))
             no_collide_check[key] = meta
 
-        # Read in the streams definite for this group if one exists
-        streams = self.gitdata.load_data(key='streams')
-        if streams:
-            self.streams = Model(self.gitdata.load_data(key='streams', replace_vars=replace_vars).data)
+        # Read in the streams definition for this group if one exists
+        streams_data = self.gitdata.load_data(key='streams', replace_vars=replace_vars)
+        if streams_data:
+            org_stream_model = Model(dict_to_model=streams_data.data)
+            self.streams = assembly_streams_config(self.get_releases_config(), self.assembly, org_stream_model)
 
         self.assembly_basis_event = assembly_basis_event(self.get_releases_config(), self.assembly)
         if self.assembly_basis_event:
@@ -1174,12 +1175,11 @@ class Runtime(object):
         :param branch: A branch name in rpm or image metadata.
         :returns: Returns True if the specified branch name is actually a commit hash for a custom assembly.
         """
-        if self.assembly_type == AssemblyTypes.STANDARD:
-            # Hashes are not permitted for standard assemblies
-            return False
         if len(branch) >= 7:  # The hash must be sufficiently unique
             try:
                 int(branch, 16)   # A hash must be a valid hex number
+                if self.assembly_type == AssemblyTypes.STANDARD:
+                    raise IOError(f'Commit hash {branch} specified for standard assembly git branch. This is not permitted.')
                 return True
             except ValueError:
                 pass
@@ -1328,6 +1328,9 @@ class Runtime(object):
             if result:
                 return stage_branch, result
             raise DoozerFatalError('--stage option specified and no stage branch named "{}" exists for {}'.format(stage_branch, git_url))
+
+        if self.is_branch_commit_hash(branch):
+            return branch, branch
 
         result = self._get_remote_branch_ref(git_url, branch)
         if result:
