@@ -52,8 +52,9 @@ def merger(a, b):
     1. if 'a' specifies a primitive value, regardless of depth, 'c' will contain that value.
     2. if a key in 'a' specifies a list and 'b' has the same key/list, a's list will be appended to b's for c's list.
        Duplicates entries will be removed and primitive (str, int, ..) lists will be returned in sorted order).
-    3. if a key ending with '!' in 'a' specifies a value, c's key-! will be to set that value exactly.
-    4. if a key ending with a '?' in 'a' specifies a value, c's key-? will be set to that value is 'c' does not contain the key.
+    3. if a key ending with '!' in 'a' specifies a value, c's key (sans !) will be to set that value exactly.
+    4. if a key ending with a '?' in 'a' specifies a value, c's key (sans ?) will be set to that value IF 'c' does not contain the key.
+    4. if a key ending with a '-' in 'a' specifies a value, c's will not be populated with the key (sans -) regardless of 'a' or  'b's key value.
     """
 
     if type(a) in [bool, int, float, str, bytes, type(None)]:
@@ -83,6 +84,8 @@ def merger(a, b):
                 k = k[:-1]
                 if k not in c:
                     c[k] = v
+            elif k.endswith('-'):  # remove key entirely
+                c.pop(k, None)
             else:
                 if k in c:
                     c[k] = merger(a[k], c[k])

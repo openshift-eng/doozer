@@ -1175,12 +1175,11 @@ class Runtime(object):
         :param branch: A branch name in rpm or image metadata.
         :returns: Returns True if the specified branch name is actually a commit hash for a custom assembly.
         """
-        if self.assembly_type == AssemblyTypes.STANDARD:
-            # Hashes are not permitted for standard assemblies
-            return False
         if len(branch) >= 7:  # The hash must be sufficiently unique
             try:
                 int(branch, 16)   # A hash must be a valid hex number
+                if self.assembly_type == AssemblyTypes.STANDARD:
+                    raise IOError(f'Commit hash {branch} specified for standard assembly git branch. This is not permitted.')
                 return True
             except ValueError:
                 pass
@@ -1329,6 +1328,9 @@ class Runtime(object):
             if result:
                 return stage_branch, result
             raise DoozerFatalError('--stage option specified and no stage branch named "{}" exists for {}'.format(stage_branch, git_url))
+
+        if self.is_branch_commit_hash(branch):
+            return branch, branch
 
         result = self._get_remote_branch_ref(git_url, branch)
         if result:
