@@ -6,7 +6,7 @@ GIT_NO_PROMPTS = {
     "GIT_SSH_COMMAND": "ssh -oBatchMode=yes",
     "GIT_TERMINAL_PROMPT": "0",
 }
-GIT_TOKEN="GIT_TOKEN"
+GIT_TOKEN = "GIT_TOKEN"
 BREWWEB_URL = "https://brewweb.engineering.redhat.com/brew"
 
 # Environment variables that should be set for doozer interaction with db for storing and retrieving build records.

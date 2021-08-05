@@ -20,7 +20,7 @@ def images_upstreampulls(runtime):
     runtime.initialize(clone_distgits=False, clone_source=False)
     version = runtime.group.split("-")[-1]
     retdata = {}
-    contents = repo.get_contents("images", ref="openshift-"+version)
+    contents = repo.get_contents("images", ref="openshift-" + version)
     for content_file in contents:
         ydata = yaml.load(content_file.decoded_content, Loader=yaml.FullLoader)
         if 'content' not in ydata:
@@ -35,7 +35,7 @@ def images_upstreampulls(runtime):
             xrepo = github_client.get_repo(upstream_project + "/" + upstream)
         pulls = xrepo.get_pulls(state='open', sort='created')
         for pr in pulls:
-            if pr.user.login == "openshift-bot" and pr.base.ref == "release-"+version:
+            if pr.user.login == "openshift-bot" and pr.base.ref == "release-" + version:
                 if pr.assignee is not None:
                     if pr.assignee.email is not None:
                         if pr.assignee.email not in retdata.keys():
