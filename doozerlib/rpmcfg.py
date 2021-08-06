@@ -1,20 +1,16 @@
 import glob
 import io
 import os
-import re
-import shutil
 import threading
-import traceback
-from typing import List, Optional
+from typing import List, Dict, Optional, Union
 
 import rpm
 
-from doozerlib import brew, constants, util
+from doozerlib import brew, util
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.source_modifications import SourceModifierFactory
 
 from . import exectools
-from .brew import watch_tasks
 from .metadata import Metadata
 from .model import Missing
 from .pushd import Dir

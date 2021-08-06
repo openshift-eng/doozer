@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import io
 from unittest import TestCase
 
 from mock import AsyncMock, MagicMock, Mock, patch
@@ -10,10 +11,22 @@ from doozerlib.exectools import RetryException
 
 
 class TestRPMsBuildCli(TestCase):
+
+    def _make_runtime(self, assembly=None):
+        runtime = MagicMock()
+        runtime.group_config.public_upstreams = [{"private": "https://github.com/openshift-priv", "public": "https://github.com/openshift"}]
+        runtime.brew_logs_dir = "/path/to/brew-logs"
+        runtime.assembly = assembly
+        runtime.local = False
+        runtime.assert_mutation_is_permitted = MagicMock()
+        stream = io.StringIO()
+        logging.basicConfig(level=logging.INFO, stream=stream)
+        runtime.logger = logging.getLogger()
+        return runtime
+
     @patch("doozerlib.cli.rpms_build.RPMBuilder")
     def test_rpms_build_success(self, MockedRPMBuilder: Mock):
-        runtime = MagicMock(local=False)
-        runtime.assert_mutation_is_permitted = MagicMock()
+        runtime = self._make_runtime()
         version = "v1.2.3"
         release = "202104070000.yuxzhu.test.p?"
         embargoed = True
@@ -36,7 +49,6 @@ class TestRPMsBuildCli(TestCase):
         })
         rpm = rpmcfg.RPMMetadata(runtime, data_obj, clone_source=False)
         rpm.distgit_repo = MagicMock(branch="rhaos-4.4-rhel-8")
-        rpm.logger = MagicMock(spec=logging.Logger)
         rpms.append(rpm)
 
         data_obj = gitdata.DataObj("bar", "/path/to/ocp-build-data/rpms/bar.yml", {
@@ -51,7 +63,6 @@ class TestRPMsBuildCli(TestCase):
         })
         rpm = rpmcfg.RPMMetadata(runtime, data_obj, clone_source=False)
         rpm.distgit_repo = MagicMock(branch="rhaos-4.4-rhel-8")
-        rpm.logger = MagicMock(spec=logging.Logger)
         rpms.append(rpm)
 
         runtime.rpm_metas.return_value = rpms
@@ -64,8 +75,7 @@ class TestRPMsBuildCli(TestCase):
 
     @patch("doozerlib.cli.rpms_build.RPMBuilder")
     def test_rpms_build_failure(self, MockedRPMBuilder: Mock):
-        runtime = MagicMock(local=False)
-        runtime.assert_mutation_is_permitted = MagicMock()
+        runtime = self._make_runtime()
         version = "v1.2.3"
         release = "202104070000.yuxzhu.test.p?"
         embargoed = True
@@ -87,7 +97,6 @@ class TestRPMsBuildCli(TestCase):
             "targets": ["rhaos-4.4-rhel-8-candidate", "rhaos-4.4-rhel-7-candidate"],
         })
         rpm = rpmcfg.RPMMetadata(runtime, data_obj, clone_source=False)
-        rpm.logger = MagicMock(spec=logging.Logger)
         rpm.distgit_repo = MagicMock(branch="rhaos-4.4-rhel-8")
         rpms.append(rpm)
 
@@ -102,7 +111,6 @@ class TestRPMsBuildCli(TestCase):
             "targets": ["rhaos-4.4-rhel-8-candidate"],
         })
         rpm = rpmcfg.RPMMetadata(runtime, data_obj, clone_source=False)
-        rpm.logger = MagicMock(spec=logging.Logger)
         rpm.distgit_repo = MagicMock(branch="rhaos-4.4-rhel-8")
         rpms.append(rpm)
 

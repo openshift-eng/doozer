@@ -17,7 +17,6 @@ from typing import Tuple
 
 import aiofiles
 import bashlex
-from kobo.rpmlib import parse_nvr
 import requests
 import yaml
 from dockerfile_parse import DockerfileParser
@@ -2260,7 +2259,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     def _run_modifications(self):
         """
-        Interprets and applies content.source.modify steps in the image metadata.
+        Interprets and applies content.source.modifications steps in the image metadata.
         """
         dg_path = self.dg_path
         df_path = dg_path.joinpath('Dockerfile')

@@ -1,12 +1,13 @@
-from typing import Dict, Optional, List, Tuple, NamedTuple
+from typing import Dict, Optional, List, Tuple, Any, Union
 import urllib.parse
 import yaml
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict
 import pathlib
 import json
 import traceback
 import datetime
 import time
+import sys
 import re
 from enum import Enum
 
@@ -18,11 +19,11 @@ from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
 from . import exectools
 from . import logutil
-from .brew import BuildStates
-from .util import isolate_el_version_in_brew_tag
+from .brew import BuildStates, KojiWrapperOpts
+from .util import isolate_el_version_in_brew_tag, isolate_git_commit_in_release
 
 from .model import Model, Missing
-from doozerlib.assembly import assembly_metadata_config, assembly_basis_event
+from doozerlib.assembly import assembly_metadata_config, assembly_basis_event, AssemblyTypes
 
 
 class CgitAtomFeedEntry(NamedTuple):
@@ -136,7 +137,50 @@ class Metadata(object):
         # The first target is the primary target, against which tito will direct build.
         # Others are secondary targets. We will use Brew API to build against secondary
         # targets with the same distgit commit as the primary target.
-        self.targets = self.determine_targets()
+        self.targets: List[str] = self.determine_targets()
+
+        if self.runtime.assembly_type != AssemblyTypes.STREAM and self.config.content.source.git.branch.target and not commitish:
+            # Ok, so we are a release assembly like 'art1999'. We inherit from
+            # 4.7.22 which was composed primarily out of "assembly.stream" builds
+            # but maybe one or two pinned "assembly.4.7.22" builds.
+            # An artists has been asked to create art1999 and bump a single RPM in the
+            # ose-etcd image. To do that, the artist
+            # adds the dependency to releases.yml for the ose-etcd distgit_key in the
+            # art1999 assembly and then triggers a "rebuild" job of the image.
+            # What upstream git commit do you expect to be built? Why the source from 4.7.22,
+            # of course! The customer asked for an RPM bump, not to take on any of the hundreds of
+            # code changes that may have take place since 4.7.22 in the 4.7 branch.
+            # So how do we arrive at that? Well, it is in the brew metadata of the latest build from
+            # the 4.7.22 assembly.
+            # Oh, but what if the customer DOES want a different commit? Well, the artist should
+            # update the release.yml for art1999 to include that commit or explicitly specify a branch.
+            # How do we determine whether they have done that? Looking for any explicit overrides
+            # in the our assembly's metadata.
+            # Let's do it!
+            assembly_overrides = assembly_metadata_config(runtime.get_releases_config(), runtime.assembly, meta_type, self.distgit_key, Model({}))
+            # Nice! By passing Model({}) instead of the metadata from our image yml file, we should only get fields actually defined in
+            # releases.yml.
+            if assembly_overrides.content.source.git.branch.target:
+                # Yep.. there is an override in releases.yml. The good news is that we are done.
+                # The rest of doozer code is equipped to clone that upstream commit
+                # and rebase using it.
+                pass
+            else:
+                # Ooof.. it is not defined in the assembly, so we need to find it dynamically.
+                build_obj = self.get_latest_build(default=None, el_target=self.determine_rhel_targets()[0])
+                if build_obj:
+                    self.commitish = isolate_git_commit_in_release(build_obj['nvr'])
+                    self.logger.warning(f'Pinning upstream source to commit of last assembly selected build ({build_obj["id"]}) -> commit {self.commitish} ')
+                else:
+                    # If this is part of a unit test, don't make the caller's life more difficult thatn it already is; skip the exception.
+                    if 'unittest' not in sys.modules.keys():
+                        raise IOError(f'Expected to find pre-existing build for {self.distgit_key} in order to pin upstream source commit')
+
+            # If you've read this far, you may be wondering, why are we not trying to find the SOURCE_GIT_URL from the last built image?
+            # Good question! Because it should be the value found in our assembly-modified image metadata!
+            # The git commit starts as a branch in standard ocp-build-data metadata and its
+            # commit hash is only discovered at runtime. The source git URL is literal. If it does change somewhere in the assembly
+            # definitions, that's fine. This assembly should find it when looking up the content.source.git.url from the metadata.
 
     def determine_targets(self) -> List[str]:
         """ Determine Brew targets for building this component
@@ -321,7 +365,9 @@ class Metadata(object):
             check_f=lambda req: req.code == 200)
         return req.read()
 
-    def get_latest_build(self, default=-1, assembly=None, extra_pattern='*', build_state: BuildStates = BuildStates.COMPLETE, el_target=None, honor_is=True, complete_before_event: Optional[int] = None):
+    def get_latest_build(self, default: Optional[Any] = -1, assembly: Optional[str] = None, extra_pattern: str = '*',
+                         build_state: BuildStates = BuildStates.COMPLETE,
+                         el_target: Optional[Union[str, int]] = None, honor_is: bool = True, complete_before_event: Optional[int] = None):
         """
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
         :param assembly: A non-default assembly name to search relative to. If not specified, runtime.assembly
@@ -345,7 +391,7 @@ class Metadata(object):
         component_name = self.get_component_name()
         builds = []
 
-        with self.runtime.pooled_koji_client_session() as koji_api:
+        with self.runtime.pooled_koji_client_session(caching=True) as koji_api:
             package_info = koji_api.getPackage(component_name)  # e.g. {'id': 66873, 'name': 'atomic-openshift-descheduler-container'}
             if not package_info:
                 raise IOError(f'No brew package is defined for {component_name}')
