@@ -123,7 +123,7 @@ cmd_counter_lock = threading.Lock()
 cmd_counter = 0  # Increments atomically to help search logs for command start/stop
 
 
-def cmd_gather(cmd, set_env=None, realtime=False, strip=False, log_stdout=False, log_stderr=True) -> Tuple[int, str, str]:
+def cmd_gather(cmd: Union[str, List], set_env: Optional[Dict[str, str]] = None, realtime=False, strip=False, log_stdout=False, log_stderr=True) -> Tuple[int, str, str]:
     """
     Runs a command and returns rc,stdout,stderr as a tuple.
 
