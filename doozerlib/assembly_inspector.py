@@ -136,7 +136,11 @@ class AssemblyInspector:
                     # Make sure things are in https form so we can compare
                     # content_git_url = util.convert_remote_git_to_https(content_git_url)
 
-                    # TODO: Download spec file associated with the build and verify SOURCE_GIT_URL
+                    # TODO: The commit in which this comment is introduced also introduces
+                    # machine parsable yaml documents into distgit commits. Once this code
+                    # has been running for our active 4.x releases for some time,
+                    # we should check the distgit commit info against the git.url
+                    # in our metadata.
 
                     try:
                         target_branch = rpm_meta.config.content.source.git.branch.target
