@@ -2,6 +2,7 @@ import copy
 import os
 import pathlib
 import re
+import urllib.parse
 from collections import deque
 from contextlib import contextmanager
 from datetime import datetime
@@ -355,6 +356,20 @@ def get_docker_config_json(config_dir):
         return abspath(os.path.join(config_dir, 'config.json'))
     else:
         raise FileNotFoundError("Can not find the registry config file in {}".format(config_dir))
+
+
+def isolate_git_commit_in_release(release: str) -> Optional[str]:
+    """
+    Given a release field, determines whether is contains
+    .git.<commit> information. If it does, it returns the value
+    of <commit>. If it is not found, None is returned.
+    """
+    match = re.match(r'.*\.git\.([a-f0-9]+)(?:\.+|$)', release)
+
+    if match:
+        return match.group(1)
+
+    return None
 
 
 def isolate_pflag_in_release(release: str) -> Optional[str]:
