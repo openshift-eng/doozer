@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import unittest
+import io
 from pathlib import Path
 
 import mock
@@ -17,9 +18,12 @@ class TestRPMBuilder(unittest.TestCase):
 
     def _make_runtime(self, assembly=None):
         runtime = mock.MagicMock()
-        runtime.group_config.public_upstreams = [{"private": "https://github.com/openshift-priv", "puiblic": "https://github.com/openshift"}]
+        runtime.group_config.public_upstreams = [{"private": "https://github.com/openshift-priv", "public": "https://github.com/openshift"}]
         runtime.brew_logs_dir = "/path/to/brew-logs"
         runtime.assembly = assembly
+        stream = io.StringIO()
+        logging.basicConfig(level=logging.INFO, stream=stream)
+        runtime.logger = logging.getLogger()
         return runtime
 
     def _make_rpm_meta(self, runtime, source_sha, distgit_sha):

@@ -729,12 +729,15 @@ class Runtime(object):
             yield self._build_status_detector
 
     @contextmanager
-    def pooled_koji_client_session(self):
+    def pooled_koji_client_session(self, caching: bool = False):
         """
         Context manager which offers a koji client session from a limited pool. You hold a lock on this
         session until you return. It is not recommended to call other methods that acquire their
         own pooled sessions, because that may lead to deadlock if the pool is exhausted.
         Honors doozer --brew-event.
+        :param caching: Set to True in order for your instance to place calls/results into
+                        the global KojiWrapper cache. This is equivalent to passing
+                        KojiWrapperOpts(caching=True) in each call within the session context.
         """
         session = None
         session_id = None
@@ -759,8 +762,10 @@ class Runtime(object):
 
         # Arriving here, we have a session to use.
         try:
+            session.force_instance_caching = caching
             yield session
         finally:
+            session.force_instance_caching = False
             # Put it back into the pool
             with self.mutex:
                 self.session_pool_available[session_id] = session
