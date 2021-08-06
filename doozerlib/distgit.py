@@ -10,10 +10,11 @@ import pathlib
 import re
 import shutil
 import time
+import sys
 import traceback
 from datetime import date
 from multiprocessing import Event, Lock
-from typing import Tuple
+from typing import Tuple, Union, Optional, Dict
 
 import aiofiles
 import bashlex
@@ -96,23 +97,23 @@ class DistGitRepo(object):
 
     def __init__(self, metadata, autoclone=True):
         self.metadata = metadata
-        self.config = metadata.config
+        self.config: Model = metadata.config
         self.runtime = metadata.runtime
-        self.name = self.metadata.name
-        self.distgit_dir = None
-        self.dg_path = None
+        self.name: str = self.metadata.name
+        self.distgit_dir: str = None
+        self.dg_path: pathlib.Path = None
         self.build_status = False
         self.push_status = False
 
-        self.branch = self.runtime.branch
-        self.sha = None
+        self.branch: str = self.runtime.branch
+        self.sha: str = None
 
-        self.source_sha = None
-        self.source_full_sha = None
-        self.source_latest_tag = None
+        self.source_sha: str = None
+        self.source_full_sha: str = None
+        self.source_latest_tag: str = None
         self.source_date_epoch = None
-        self.actual_source_url = None
-        self.public_facing_source_url = None
+        self.actual_source_url: str = None
+        self.public_facing_source_url: str = None
 
         # If this is a standard release, private_fix will be set to True if the source contains
         # embargoed (private) CVE fixes. Defaulting to None which means the value should be determined while rebasing.
@@ -289,23 +290,43 @@ class DistGitRepo(object):
     def _get_diff(self):
         return None  # to actually record a diff, child classes must override this function
 
-    def commit(self, commit_message, log_diff=False):
+    def commit(self, cmdline_commit_msg: str, commit_attributes: Optional[Dict[str, Union[int, str, bool]]] = None, log_diff=False):
         if self.runtime.local:
             return ''  # no commits if local
 
         with Dir(self.distgit_dir):
-            self.logger.info("Adding commit to local repo: {}".format(commit_message))
+            commit_payload: Dict[str, Union[int, str, bool]] = {
+                'MaxFileSize': 100 * 1024 * 1024,  # 100MB push limit; see https://source.redhat.com/groups/public/release-engineering/release_engineering_rcm_wiki/dist_git_update_hooks
+                'jenkins.url': None if 'unittest' in sys.modules.keys() else os.getenv('BUILD_URL'),  # Get the Jenkins build URL if available, but ignore if this is a unit test run
+            }
+
+            if self.dg_path:  # Might not be set if this is a unittest
+                df_path = self.dg_path.joinpath('Dockerfile')
+                if df_path.exists():
+                    # This is an image distgit commit, we can help the callers by reading in env variables for the commit message.
+                    # RPM commits are expected to pass these values in directly in commit_attributes.
+                    dfp = DockerfileParser(str(df_path))
+                    for var_name in ['version', 'release', 'io.openshift.build.source-location', 'io.openshift.build.commit.id']:
+                        commit_payload[var_name] = dfp.labels.get(var_name, None)
+
+            if commit_attributes:
+                commit_payload.update(commit_attributes)
+
+            # The commit should be a valid yaml document so we can retrieve details
+            # programmatically later. The human specified portion of the commit is
+            # included in comments above the yaml payload.
+            cmdline_commit_msg = cmdline_commit_msg.strip().replace('\n', '\n# ')  # If multiple lines are specified, split across commented lines.
+            commit_msg = f'# {cmdline_commit_msg}\n'  # Any message specified in '-m' during rebase
+            commit_msg += yaml.safe_dump(commit_payload, default_flow_style=False, sort_keys=True)
+
+            self.logger.info("Adding commit to local repo:\n{}".format(commit_msg))
             if log_diff:
                 diff = self._get_diff()
                 if diff and diff.strip():
                     self.runtime.add_distgits_diff(self.metadata.distgit_key, diff)
-            if self.source_sha:
-                # add short sha of source for audit trail
-                commit_message += " - {}".format(self.source_sha)
-            commit_message += "\n- MaxFileSize: {}".format(100000000)  # set dist-git size limit to 100MB
             # commit changes; if these flake there is probably not much we can do about it
             exectools.cmd_assert(["git", "add", "-A", "."])
-            exectools.cmd_assert(["git", "commit", "--allow-empty", "-m", commit_message])
+            exectools.cmd_assert(["git", "commit", "--allow-empty", "-m", commit_msg])
             rc, sha, err = exectools.cmd_gather(["git", "rev-parse", "HEAD"])
             assertion.success(rc, "Failure fetching commit SHA for {}".format(self.distgit_dir))
         self.sha = sha.strip()
@@ -2321,7 +2342,14 @@ class ImageDistGitRepo(DistGitRepo):
             return version, prev_release, private_fix
         return None, None, None
 
-    def rebase_dir(self, version, release, terminate_event, force_yum_updates=False):
+    def rebase_dir(self, version: str, release: str, terminate_event, force_yum_updates=False) -> Tuple[str, str]:
+        """
+        - Copies the checked out upstream source commit over the content the checked out distgit commit.
+        - Runs any configured source modifications for the component.
+        - Updates the version and release fields in the appropriate files in the checked out distgit.
+        :return: Returns a Tuple[applied_version, applied_release]. This may not match the incoming 'version'
+                    and 'release' fields since the called may not have supplied literal values (e.g. release == '+').
+        """
         try:
             # If this image is FROM another group member, we need to wait on that group
             # member to determine if there are embargoes in that group member.

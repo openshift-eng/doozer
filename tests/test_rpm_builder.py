@@ -90,7 +90,13 @@ class TestRPMBuilder(unittest.TestCase):
         mocked_copy.assert_any_call(Path(rpm.source_path) / "a.diff", dg.dg_path / "a.diff", follow_symlinks=False)
         mocked_copy.assert_any_call(Path(rpm.source_path) / "b/c.diff", dg.dg_path / "b/c.diff", follow_symlinks=False)
         rpm._run_modifications.assert_called_once_with(dg.dg_path / "foo.spec", dg.dg_path)
-        dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].")
+        dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].",
+                                          commit_attributes={
+                                              'version': '1.2.3',
+                                              'release': '202104070000.test.p0.git.3f17b42',
+                                              'io.openshift.build.commit.id': '3f17b42b8aa7d294c0d2b6f946af5fe488f3a722',
+                                              'io.openshift.build.source-location': None}
+                                          )
         dg.push_async.assert_called_once()
 
     @mock.patch("doozerlib.rpm_builder.Path.mkdir")
@@ -124,7 +130,12 @@ class TestRPMBuilder(unittest.TestCase):
         mocked_copy.assert_any_call(Path(rpm.source_path) / "a.diff", dg.dg_path / "a.diff", follow_symlinks=False)
         mocked_copy.assert_any_call(Path(rpm.source_path) / "b/c.diff", dg.dg_path / "b/c.diff", follow_symlinks=False)
         rpm._run_modifications.assert_called_once_with(dg.dg_path / "foo.spec", dg.dg_path)
-        dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].")
+        dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].",
+                                          commit_attributes={
+                                              'version': '1.2.3',
+                                              'release': '202104070000.test.p0.git.3f17b42.assembly.tester',
+                                              'io.openshift.build.commit.id': '3f17b42b8aa7d294c0d2b6f946af5fe488f3a722',
+                                              'io.openshift.build.source-location': None})
         dg.push_async.assert_called_once()
 
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_gather_async")

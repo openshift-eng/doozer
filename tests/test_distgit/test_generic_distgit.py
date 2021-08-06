@@ -491,7 +491,7 @@ class TestGenericDistGit(TestDistgit):
 
         expected_2nd_cmd = [
             "git", "commit", "--allow-empty", "-m",
-            "commit msg - my-source-sha\n- MaxFileSize: 100000000"]
+            "# commit msg\nMaxFileSize: 104857600\njenkins.url: null\n"]
 
         (flexmock(distgit.exectools)
          .should_receive("cmd_assert")
@@ -533,7 +533,7 @@ class TestGenericDistGit(TestDistgit):
 
         expected_2nd_cmd = [
             "git", "commit", "--allow-empty", "-m",
-            "commit msg\n- MaxFileSize: 100000000"]
+            "# commit msg\nMaxFileSize: 104857600\njenkins.url: null\n"]
 
         (flexmock(distgit.exectools)
          .should_receive("cmd_assert")

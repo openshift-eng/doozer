@@ -166,7 +166,13 @@ class RPMBuilder:
         logging.info("Committing distgit changes...")
         await aiofiles.os.remove(tarball_path)
         commit_hash = await exectools.to_thread(dg.commit,
-                                                f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}]."
+                                                f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].",
+                                                commit_attributes={
+                                                    'version': rpm.version,
+                                                    'release': rpm.release,
+                                                    'io.openshift.build.commit.id': rpm.pre_init_sha,
+                                                    'io.openshift.build.source-location': rpm.public_upstream_url,
+                                                }
                                                 )
 
         if self._push:
