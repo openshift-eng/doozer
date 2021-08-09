@@ -19,11 +19,11 @@ from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
 from . import exectools
 from . import logutil
-from .brew import BuildStates, KojiWrapperOpts
+from .brew import BuildStates
 from .util import isolate_el_version_in_brew_tag, isolate_git_commit_in_release
 
 from .model import Model, Missing
-from doozerlib.assembly import assembly_metadata_config, assembly_basis_event, AssemblyTypes
+from doozerlib.assembly import assembly_metadata_config, assembly_basis_event
 
 
 class CgitAtomFeedEntry(NamedTuple):
@@ -139,7 +139,7 @@ class Metadata(object):
         # targets with the same distgit commit as the primary target.
         self.targets: List[str] = self.determine_targets()
 
-        if self.runtime.assembly_type != AssemblyTypes.STREAM and self.config.content.source.git.branch.target and not commitish:
+        if self.runtime.assembly_basis_event and self.config.content.source.git.branch.target and not commitish:
             # Ok, so we are a release assembly like 'art1999'. We inherit from
             # 4.7.22 which was composed primarily out of "assembly.stream" builds
             # but maybe one or two pinned "assembly.4.7.22" builds.

@@ -444,6 +444,35 @@ class Runtime(object):
             # ignore this argument throughout doozer.
             self.assembly = None
 
+        replace_vars = {}
+        if self.group_config.vars:
+            replace_vars = self.group_config.vars.primitive()
+        if self.assembly:
+            replace_vars['runtime_assembly'] = self.assembly
+
+        # Read in the streams definition for this group if one exists
+        streams_data = self.gitdata.load_data(key='streams', replace_vars=replace_vars)
+        if streams_data:
+            org_stream_model = Model(dict_to_model=streams_data.data)
+            self.streams = assembly_streams_config(self.get_releases_config(), self.assembly, org_stream_model)
+
+        self.assembly_basis_event = assembly_basis_event(self.get_releases_config(), self.assembly)
+        if self.assembly_basis_event:
+            if self.brew_event:
+                raise IOError(f'Cannot run with assembly basis event {self.assembly_basis_event} and --brew-event at the same time.')
+            # If the assembly has a basis event, we constrain all brew calls to that event.
+            self.brew_event = self.assembly_basis_event
+            self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
+
+        self.assembly_type = assembly_type(self.get_releases_config(), self.assembly)
+
+        if not self.brew_event:
+            with self.shared_koji_client_session() as koji_session:
+                # If brew event is not set as part of the assembly and not specified on the command line,
+                # lock in an event so that there are no race conditions.
+                event_info = koji_session.getLastEvent()
+                self.brew_event = event_info['id']
+
         # register the sources
         # For each "--source alias path" on the command line, register its existence with
         # the runtime.
@@ -545,12 +574,6 @@ class Runtime(object):
             else:
                 filter_func = filter_enabled
 
-            replace_vars = {}
-            if self.group_config.vars:
-                replace_vars = self.group_config.vars.primitive()
-            if self.assembly:
-                replace_vars['runtime_assembly'] = self.assembly
-
             # pre-load the image data to get the names for all images
             # eventually we can use this to allow loading images by
             # name or distgit. For now this is used elsewhere
@@ -618,29 +641,6 @@ class Runtime(object):
             if key in no_collide_check:
                 raise IOError('Complete duplicate distgit & branch; something wrong with metadata: {} from {} and {}'.format(key, meta.config_filename, no_collide_check[key].config_filename))
             no_collide_check[key] = meta
-
-        # Read in the streams definition for this group if one exists
-        streams_data = self.gitdata.load_data(key='streams', replace_vars=replace_vars)
-        if streams_data:
-            org_stream_model = Model(dict_to_model=streams_data.data)
-            self.streams = assembly_streams_config(self.get_releases_config(), self.assembly, org_stream_model)
-
-        self.assembly_basis_event = assembly_basis_event(self.get_releases_config(), self.assembly)
-        if self.assembly_basis_event:
-            if self.brew_event:
-                raise IOError(f'Cannot run with assembly basis event {self.assembly_basis_event} and --brew-event at the same time.')
-            # If the assembly has a basis event, we constrain all brew calls to that event.
-            self.brew_event = self.assembly_basis_event
-            self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
-
-        self.assembly_type = assembly_type(self.get_releases_config(), self.assembly)
-
-        if not self.brew_event:
-            with self.shared_koji_client_session() as koji_session:
-                # If brew event is not set as part of the assembly and not specified on the command line,
-                # lock in an event so that there are no race conditions.
-                event_info = koji_session.getLastEvent()
-                self.brew_event = event_info['id']
 
         if clone_distgits:
             self.clone_distgits()
