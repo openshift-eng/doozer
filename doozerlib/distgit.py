@@ -494,13 +494,19 @@ class ImageDistGitRepo(DistGitRepo):
 
         if self.config.content.source.pkg_managers is not Missing:
             # If a package manager is specified, then configure cachito.
-            # https://source.redhat.com/groups/public/container-build-system/container_build_system_wiki/containers_from_source_multistage_builds_in_osbs#jive_content_id_Cachito_Integration
+            # https://osbs.readthedocs.io/en/latest/users.html#remote-sources
             config_overrides.update({
-                'remote_source': {
-                    'repo': convert_remote_git_to_https(self.actual_source_url),
-                    'ref': self.source_full_sha,
-                    'pkg_managers': self.config.content.source.pkg_managers.primitive(),
-                }
+                'remote_sources': [
+                    {
+                        'name': 'cachito-gomod-with-deps',
+                        'remote_source': {
+                            'repo': convert_remote_git_to_https(self.actual_source_url),
+                            'ref': self.source_full_sha,
+                            'pkg_managers': self.config.content.source.pkg_managers.primitive(),
+                        }
+
+                    }
+                ]
             })
 
         if self.image_build_method is not Missing:
