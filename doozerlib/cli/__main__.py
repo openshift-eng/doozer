@@ -40,7 +40,7 @@ import koji
 import io
 import json
 import functools
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import semver
 import urllib
 import pathlib
@@ -2151,7 +2151,7 @@ def analyze_debug_log(debug_log):
 
 @cli.command('olm-bundle:list-olm-operators', short_help='List all images that are OLM operators')
 @pass_runtime
-def list_olm_operators(runtime):
+def list_olm_operators(runtime: Runtime):
     """
     Example:
     $ doozer --group openshift-4.5 olm-bundle:list-olm-operators
@@ -2169,7 +2169,7 @@ def list_olm_operators(runtime):
              ))
 @click.argument("pattern", default="{component}", nargs=1)
 @pass_runtime
-def olm_bundles_print(runtime, pattern):
+def olm_bundles_print(runtime: Runtime, pattern: Optional[str]):
     """
     Prints data from each distgit. The pattern specified should be a string
     with replacement fields:
@@ -2198,7 +2198,7 @@ def olm_bundles_print(runtime, pattern):
     for image in runtime.ordered_image_metas():
         if not image.enabled or image.config['update-csv'] is Missing:
             continue
-        olm_bundle = OLMBundle(runtime)
+        olm_bundle = OLMBundle(runtime, dry_run=False)
 
         s = pattern
         s = s.replace("{lf}", "\n")
@@ -2245,50 +2245,109 @@ def olm_bundles_print(runtime, pattern):
         click.echo(s)
 
 
-@cli.command('olm-bundle:rebase', short_help='Update bundle distgit repo with manifests from given operator NVR')
-@click.argument('operator_nvrs', nargs=-1, required=True)
+@cli.command('olm-bundle:rebase', short_help='Update bundle distgit repo with manifests from given operators')
+@click.argument('operator_nvrs', nargs=-1, required=False)
+@click.option('--dry-run', default=False, is_flag=True, help='Do not push to distgit.')
 @pass_runtime
-def rebase_olm_bundle(runtime, operator_nvrs):
+def rebase_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...], dry_run: bool):
     """
-    Example:
+    Examples:
+    $ doozer --group openshift-4.9 --assembly art3171 olm-bundle:rebase
+    $ doozer --group openshift-4.9 --assembly art3171 -i cluster-nfd-operator,ptp-operator olm-bundle:rebase
     $ doozer --group openshift-4.2 olm-bundle:rebase \
         sriov-network-operator-container-v4.2.30-202004200449 \
         elasticsearch-operator-container-v4.2.30-202004240858 \
         cluster-logging-operator-container-v4.2.30-202004240858
     """
     runtime.initialize(clone_distgits=False)
-    ThreadPool(len(operator_nvrs)).map(lambda nvr: OLMBundle(runtime).rebase(nvr), operator_nvrs)
+    if not operator_nvrs:
+        # If this verb is run without operator NVRs, query Brew for all operator builds selected by the assembly
+        operator_metas = [meta for meta in runtime.ordered_image_metas() if meta.enabled and meta.config['update-csv'] is not Missing]
+        results = runtime.parallel_exec(lambda meta, _: meta.get_latest_build(), operator_metas)
+        operator_builds = results.get()
+    else:
+        operator_builds = list(operator_nvrs)
+    runtime.parallel_exec(lambda operator, _: OLMBundle(runtime, dry_run).rebase(operator), operator_builds).get()
 
 
 @cli.command('olm-bundle:build', short_help='Build bundle containers of given operators')
-@click.argument('operator_names', nargs=-1, required=True)
+@click.argument('operator_names', nargs=-1, required=False)
+@click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but print what would be done.')
 @pass_runtime
-def build_olm_bundle(runtime, operator_names):
+def build_olm_bundle(runtime: Runtime, operator_names: Tuple[str, ...], dry_run: bool):
     """
     Example:
+    $ doozer --group openshift-4.9 --assembly art3171 olm-bundle:build
+    $ doozer --group openshift-4.9 --assembly art3171 -i cluster-nfd-operator,ptp-operator olm-bundle:build
     $ doozer --group openshift-4.2 olm-bundle:build \
         sriov-network-operator \
         elasticsearch-operator \
         cluster-logging-operator
     """
     runtime.initialize(clone_distgits=False)
-    ThreadPool(len(operator_names)).map(lambda name: OLMBundle(runtime).build(name), operator_names)
+    if not operator_names:
+        operator_names = [meta.name for meta in runtime.ordered_image_metas() if meta.enabled and meta.config['update-csv'] is not Missing]
+
+    def _build_bundle(operator):
+        record = {
+            'status': -1,
+            "task_id": "",
+            "task_url": "",
+            "operator_distgit": operator,
+            "bundle_nvr": "",
+            "message": "Unknown failure",
+        }
+        try:
+            olm_bundle = OLMBundle(runtime, dry_run)
+            runtime.logger.info("%s - Building bundle distgit repo", operator)
+            task_id, task_url, bundle_nvr = olm_bundle.build(operator)
+            record['status'] = 0
+            record['message'] = 'Success'
+            record['task_id'] = task_id
+            record['task_url'] = task_url
+            record['bundle_nvr'] = bundle_nvr
+        except Exception as err:
+            runtime.logger.error('Error during build for: {}'.format(operator))
+            traceback.print_exc()
+            record['message'] = str(err)
+        finally:
+            runtime.add_record("build_olm_bundle", **record)
+            return record
+
+    results = runtime.parallel_exec(lambda operator, _: _build_bundle(operator), operator_names).get()
+
+    for record in results:
+        if record['status'] == 0:
+            runtime.logger.info('Successfully built %s', record['bundle_nvr'])
+            click.echo(record['bundle_nvr'])
+        else:
+            runtime.logger.error('Error building bundle for %s: %s', record['operator_nvr'], record['message'])
+
+    rc = 0 if all(map(lambda i: i['status'] == 0, results)) else 1
+
+    if rc:
+        runtime.logger.error('One or more bundles failed')
+
+    sys.exit(rc)
 
 
 @cli.command('olm-bundle:rebase-and-build', short_help='Shortcut for olm-bundle:rebase and olm-bundle:build')
-@click.argument('operator_nvrs', nargs=-1, required=True)
+@click.argument('operator_nvrs', nargs=-1, required=False)
 @click.option("-f", "--force", required=False, is_flag=True,
               help="Perform a build even if previous bundles for given NVRs already exist")
+@click.option('--dry-run', default=False, is_flag=True, help='Do not push to distgit or build anything, but print what would be done.')
 @pass_runtime
-def rebase_and_build_olm_bundle(runtime, operator_nvrs, force=False):
-    """Having in mind that its primary use will be inside a Jenkins job, this command combines the
-    execution of both commands in sequence (since they are commonly used together anyway), using the
-    same OLMBundle instance, in order to save time and avoid fetching the same information twice.
+def rebase_and_build_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...], force: bool, dry_run: bool):
+    """Rebase and build operator bundles.
 
-    Also, the output of this command is more verbose, in order to provide relevant info back to the
-    next steps of the Jenkins job, avoiding the need to retrieve a lot of data via Groovy.
+    Run this command with operator NVRs to build bundles for the given operator builds.
+    Run this command without operator NVRs to build bundles for operator NVRs selected by the runtime assembly.
 
-    Example:
+    If `--force` option is not specified and there's already a bundle build for given operator builds, this command will do nothing but just print the most recent bundle NVR of that operator.
+
+    Examples:
+    $ doozer --group openshift-4.9 --assembly art3171 olm-bundle:rebase-and-build
+    $ doozer --group openshift-4.9 --assembly art3171 -i cluster-nfd-operator,ptp-operator olm-bundle:rebase-and-build
     $ doozer --group openshift-4.2 olm-bundle:rebase-and-build \
         sriov-network-operator-container-v4.2.30-202004200449 \
         elasticsearch-operator-container-v4.2.30-202004240858 \
@@ -2296,43 +2355,67 @@ def rebase_and_build_olm_bundle(runtime, operator_nvrs, force=False):
     """
     runtime.initialize(clone_distgits=False)
 
-    def rebase_and_build(nvr):
+    if not operator_nvrs:
+        # If this verb is run without operator NVRs, query Brew for all operator builds
+        operator_metas = [meta for meta in runtime.ordered_image_metas() if meta.enabled and meta.config['update-csv'] is not Missing]
+        results = runtime.parallel_exec(lambda meta, _: meta.get_latest_build(), operator_metas)
+        operator_builds = results.get()
+    else:
+        operator_builds = list(operator_nvrs)
+
+    def rebase_and_build(operator):
+        record = {
+            'status': -1,
+            "task_id": "",
+            "task_url": "",
+            "operator_nvr": "",
+            "bundle_nvr": "",
+            "message": "Unknown failure",
+        }
         try:
-            olm_bundle = OLMBundle(runtime)
-
-            bundle_nvr = olm_bundle.find_bundle_for(nvr)
-            if bundle_nvr and not force:
-                return {
-                    'success': True,
-                    'task_url': None,
-                    'bundle_nvr': bundle_nvr,
-                }
-
-            did_rebase = olm_bundle.rebase(nvr)
-            return {
-                'success': olm_bundle.build() if did_rebase or force else True,
-                'task_url': olm_bundle.task_url if hasattr(olm_bundle, 'task_url') else None,
-                'bundle_nvr': olm_bundle.get_latest_bundle_build_nvr(),
-            }
-        except:
-            runtime.logger.error('Error during rebase or build for: {}'.format(nvr))
+            olm_bundle = OLMBundle(runtime, dry_run)
+            operator_nvr = operator if isinstance(operator, str) else operator["nvr"]
+            record['operator_nvr'] = operator_nvr
+            if not force:
+                runtime.logger.info("%s - Finding most recent bundle build", operator_nvr)
+                bundle_nvr = olm_bundle.find_bundle_for(operator)
+                if bundle_nvr:
+                    runtime.logger.info("%s - Found bundle build %s", operator_nvr, bundle_nvr)
+                    record['status'] = 0
+                    record['message'] = 'Already built'
+                    record['bundle_nvr'] = bundle_nvr
+                    return record
+                runtime.logger.info("%s - No bundle build found", operator_nvr)
+            runtime.logger.info("%s - Rebasing bundle distgit repo", operator_nvr)
+            olm_bundle.rebase(operator)
+            runtime.logger.info("%s - Building bundle distgit repo", operator_nvr)
+            task_id, task_url, bundle_nvr = olm_bundle.build()
+            record['status'] = 0
+            record['message'] = 'Success'
+            record['task_id'] = task_id
+            record['task_url'] = task_url
+            record['bundle_nvr'] = bundle_nvr
+        except Exception as err:
+            runtime.logger.error('Error during rebase or build for: {}'.format(bundle_nvr))
             traceback.print_exc()
-            return {
-                'success': False,
-                'task_url': None,
-                'bundle_nvr': None,
-            }
+            record['message'] = str(err)
+        finally:
+            runtime.add_record("build_olm_bundle", **record)
+            return record
 
-    results = ThreadPool(len(operator_nvrs)).map(rebase_and_build, operator_nvrs)
+    results = runtime.parallel_exec(lambda operator, _: rebase_and_build(operator), operator_builds).get()
 
-    for result in results:
-        runtime.logger.info('SUCCESS={success} {task_url} {bundle_nvr}'.format(**result))
-        click.echo(result['bundle_nvr'])
+    for record in results:
+        if record['status'] == 0:
+            runtime.logger.info('Successfully built %s', record['bundle_nvr'])
+            click.echo(record['bundle_nvr'])
+        else:
+            runtime.logger.error('Error building bundle for %s: %s', record['operator_nvr'], record['message'])
 
-    rc = 0 if all(list(map(lambda i: i['success'], results))) else 1
+    rc = 0 if all(map(lambda i: i['status'] == 0, results)) else 1
 
     if rc:
-        runtime.logger.error('One or more bundles failed; look above for SUCCESS=False')
+        runtime.logger.error('One or more bundles failed')
 
     sys.exit(rc)
 
