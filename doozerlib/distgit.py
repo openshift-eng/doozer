@@ -1936,7 +1936,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             updates = art_yaml_data.get('updates', [])
             if not isinstance(updates, list):
-                raise DoozerFatalError('`updates` key must be a list in art.yaml!')
+                raise DoozerFatalError('`updates` key must be a list in art.yaml')
 
             for u in updates:
                 f = u.get('file', None)
@@ -1959,7 +1959,10 @@ class ImageDistGitRepo(DistGitRepo):
                         if not s or not r:
                             raise DoozerFatalError('Must provide `search` and `replace` fields in art.yaml `update_list`')
 
+                        original_string = sr_file_str
                         sr_file_str = sr_file_str.replace(s, r)
+                        if sr_file_str == original_string:
+                            raise DoozerFatalError(f'Search `{s}` and replace was ineffective for {self.metadata.distgit_key}')
                     sr_file.seek(0)
                     sr_file.truncate()
                     sr_file.write(sr_file_str)
