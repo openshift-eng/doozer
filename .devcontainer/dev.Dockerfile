@@ -58,3 +58,4 @@ RUN chown "$USERNAME" -R /tmp/doozer \
  && popd && rm -rf /tmp/doozer
 
 USER "$USER_UID"
+WORKDIR /workspaces/doozer
