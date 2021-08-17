@@ -1962,7 +1962,7 @@ class ImageDistGitRepo(DistGitRepo):
                         original_string = sr_file_str
                         sr_file_str = sr_file_str.replace(s, r)
                         if sr_file_str == original_string:
-                            raise DoozerFatalError(f'Search `{s}` and replace was ineffective for {self.metadata.distgit_key}')
+                            self.logger.error(f'Search `{s}` and replace was ineffective for {self.metadata.distgit_key}')
                     sr_file.seek(0)
                     sr_file.truncate()
                     sr_file.write(sr_file_str)
