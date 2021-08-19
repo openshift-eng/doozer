@@ -873,6 +873,7 @@ class ImageDistGitRepo(DistGitRepo):
             "task_url": "n/a",
             "status": -1,
             "push_status": -1,
+            "has_olm_bundle": 1 if self.config['update-csv'] is not Missing else 0,
             # Status defaults to failure until explicitly set by success. This handles raised exceptions.
         }
 

@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, unicode_literals
+from multiprocessing.pool import MapResult
 from future import standard_library
 standard_library.install_aliases()
 from future.utils import as_native_str
@@ -1475,14 +1476,14 @@ class Runtime(object):
             self.all_metas(),
             n_threads=n_threads)
 
-    def parallel_exec(self, f, args, n_threads=None):
+    def parallel_exec(self, f, args, n_threads=None) -> MapResult:
         """
         :param f: A function to invoke for all arguments
         :param args: A list of argument tuples. Each tuple will be used to invoke the function once.
         :param n_threads: preferred number of threads to use during the work
         :return:
         """
-        n_threads = n_threads if n_threads is not None else len(args)
+        n_threads = n_threads if n_threads is not None else max(len(args), 1)
         terminate_event = threading.Event()
         pool = ThreadPool(n_threads)
         # Python 3 doesn't allow to unpack tuple argument in a lambdas or functions (PEP-3113).

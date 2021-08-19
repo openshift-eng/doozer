@@ -441,6 +441,7 @@ class KojiWrapper(koji.ClientSession):
         'listArchives',
         'listRPMs',
         'getPackage',
+        'getPackageID',
         'listTags',
         'gssapi_login',
         'sslLogin',
