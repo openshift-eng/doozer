@@ -66,6 +66,7 @@ class RebuildHintCode(Enum):
     BUILD_ROOT_CHANGING = (True, 12)
     PACKAGE_CHANGE = (True, 13)
     ARCHES_CHANGE = (True, 14)
+    DEPENDENCY_NEWER = (True, 15)
 
 
 class RebuildHint(NamedTuple):
