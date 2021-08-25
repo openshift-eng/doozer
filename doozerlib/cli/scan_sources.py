@@ -122,7 +122,10 @@ def config_scan_source_changes(runtime: Runtime, ci_kubeconfig, as_yaml):
                 continue  # A rebuild is already requested.
 
             # Request a rebuild if A is a dependent of B but the latest build of A is older than B.
-            rebase_time = datetime.strptime(util.isolate_timestamp_in_release(info["release"]), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+            rebase_time = util.isolate_timestamp_in_release(info["release"])
+            if not rebase_time:  # no timestamp string in NVR?
+                continue
+            rebase_time = datetime.strptime(rebase_time, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
             for dep_key in image_meta.dependencies:
                 dep = runtime.image_map.get(dep_key)
                 if not dep:
@@ -131,7 +134,10 @@ def config_scan_source_changes(runtime: Runtime, ci_kubeconfig, as_yaml):
                 dep_info = dep.get_latest_build(default=None)
                 if not dep_info:
                     continue
-                dep_rebase_time = datetime.strptime(util.isolate_timestamp_in_release(dep_info["release"]), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+                dep_rebase_time = util.isolate_timestamp_in_release(dep_info["release"])
+                if not dep_rebase_time:  # no timestamp string in NVR?
+                    continue
+                dep_rebase_time = datetime.strptime(dep_rebase_time, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
                 if dep_rebase_time > rebase_time:
                     add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.DEPENDENCY_NEWER, 'Dependency has a newer build'))
 
