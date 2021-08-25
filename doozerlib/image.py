@@ -3,16 +3,17 @@ from __future__ import absolute_import, print_function, unicode_literals
 import hashlib
 import json
 import random
-from typing import Any, Dict, Optional, Tuple, Union, List
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
 from kobo.rpmlib import parse_nvr
 
-from doozerlib import brew, exectools
+from doozerlib import brew, coverity, exectools
 from doozerlib.distgit import pull_image
 from doozerlib.metadata import Metadata, RebuildHint, RebuildHintCode
 from doozerlib.model import Missing, Model
 from doozerlib.pushd import Dir
-from doozerlib import coverity
-from doozerlib.util import brew_arch_for_go_arch, isolate_el_version_in_release, go_arch_for_brew_arch
+from doozerlib.util import (brew_arch_for_go_arch, go_arch_for_brew_arch,
+                            isolate_el_version_in_release)
 
 
 class ImageMetadata(Metadata):
@@ -24,9 +25,12 @@ class ImageMetadata(Metadata):
         self.image_name_short = self.image_name.split('/')[-1]
         self.parent = None
         self.children = []  # list of ImageMetadata which use this image as a parent.
+        self.dependencies: Set[str] = set()
         dependents = self.config.get('dependents', [])
         for d in dependents:
-            self.children.append(self.runtime.late_resolve_image(d, add=True))
+            dependent: ImageMetadata = self.runtime.late_resolve_image(d, add=True)
+            dependent.dependencies.add(self.distgit_key)
+            self.children.append(dependent)
         if clone_source:
             runtime.resolve_source(self)
 

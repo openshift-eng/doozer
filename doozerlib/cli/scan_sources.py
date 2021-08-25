@@ -1,12 +1,13 @@
-from pathlib import Path
+from datetime import datetime, timezone
 
 import click
 import yaml
 
-from doozerlib import brew, exectools, rhcos
+from doozerlib import brew, exectools, rhcos, util
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.cli import release_gen_payload as rgp
 from doozerlib.metadata import RebuildHint, RebuildHintCode
+from doozerlib.runtime import Runtime
 
 
 @cli.command("config:scan-sources", short_help="Determine if any rpms / images need to be rebuilt.")
@@ -14,7 +15,7 @@ from doozerlib.metadata import RebuildHint, RebuildHintCode
               help="File containing kubeconfig for looking at release-controller imagestreams")
 @click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
 @pass_runtime
-def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
+def config_scan_source_changes(runtime: Runtime, ci_kubeconfig, as_yaml):
     """
     Determine if any rpms / images need to be rebuilt.
 
@@ -109,30 +110,56 @@ def config_scan_source_changes(runtime, ci_kubeconfig, as_yaml):
         newest_image_event_ts = 0
         for image_meta in runtime.image_metas():
             info = image_meta.get_latest_build(default=None)
-            if info is not None:
+            if info is None:
+                continue
+            create_event_ts = koji_api.getEvent(info['creation_event_id'])['ts']
+            if oldest_image_event_ts is None or create_event_ts < oldest_image_event_ts:
+                oldest_image_event_ts = create_event_ts
+            if create_event_ts > newest_image_event_ts:
+                newest_image_event_ts = create_event_ts
 
-                # If no upstream change has been detected, check configurations
-                # like image meta, repos, and streams to see if they have changed
-                # We detect config changes by comparing their digest changes.
-                # The config digest of the previous build is stored at .oit/config_digest on distgit repo.
-                try:
-                    source_url = info['source']  # git://pkgs.devel.redhat.com/containers/atomic-openshift-descheduler#6fc9c31e5d9437ac19e3c4b45231be8392cdacac
-                    source_commit = source_url.split('#')[1]  # isolate the commit hash
-                    # Look at the digest that created THIS build. What is in head does not matter.
-                    prev_digest = image_meta.fetch_cgit_file('.oit/config_digest', commit_hash=source_commit).decode('utf-8')
-                    current_digest = image_meta.calculate_config_digest(runtime.group_config, runtime.streams)
-                    if current_digest.strip() != prev_digest.strip():
-                        runtime.logger.info('%s config_digest %s is differing from %s', dgk, prev_digest, current_digest)
-                        add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Metadata configuration change'))
-                except exectools.RetryException:
-                    runtime.logger.info('%s config_digest cannot be retrieved; request a build', dgk)
-                    add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Unable to retrieve config_digest'))
+            if image_meta in changing_image_metas:
+                continue  # A rebuild is already requested.
 
-                create_event_ts = koji_api.getEvent(info['creation_event_id'])['ts']
-                if oldest_image_event_ts is None or create_event_ts < oldest_image_event_ts:
-                    oldest_image_event_ts = create_event_ts
-                if create_event_ts > newest_image_event_ts:
-                    newest_image_event_ts = create_event_ts
+            # Request a rebuild if A is a dependent of B but the latest build of A is older than B.
+            rebase_time = util.isolate_timestamp_in_release(info["release"])
+            if not rebase_time:  # no timestamp string in NVR?
+                continue
+            rebase_time = datetime.strptime(rebase_time, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+            for dep_key in image_meta.dependencies:
+                dep = runtime.image_map.get(dep_key)
+                if not dep:
+                    runtime.logger.warning("Image %s has unknown dependency %s. Is it excluded?", image_meta.distgit_key, dep_key)
+                    continue
+                dep_info = dep.get_latest_build(default=None)
+                if not dep_info:
+                    continue
+                dep_rebase_time = util.isolate_timestamp_in_release(dep_info["release"])
+                if not dep_rebase_time:  # no timestamp string in NVR?
+                    continue
+                dep_rebase_time = datetime.strptime(dep_rebase_time, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+                if dep_rebase_time > rebase_time:
+                    add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.DEPENDENCY_NEWER, 'Dependency has a newer build'))
+
+            if image_meta in changing_image_metas:
+                continue  # A rebuild is already requested.
+
+            # If no upstream change has been detected, check configurations
+            # like image meta, repos, and streams to see if they have changed
+            # We detect config changes by comparing their digest changes.
+            # The config digest of the previous build is stored at .oit/config_digest on distgit repo.
+            try:
+                source_url = info['source']  # git://pkgs.devel.redhat.com/containers/atomic-openshift-descheduler#6fc9c31e5d9437ac19e3c4b45231be8392cdacac
+                source_commit = source_url.split('#')[1]  # isolate the commit hash
+                # Look at the digest that created THIS build. What is in head does not matter.
+                prev_digest = image_meta.fetch_cgit_file('.oit/config_digest', commit_hash=source_commit).decode('utf-8')
+                current_digest = image_meta.calculate_config_digest(runtime.group_config, runtime.streams)
+                if current_digest.strip() != prev_digest.strip():
+                    runtime.logger.info('%s config_digest %s is differing from %s', dgk, prev_digest, current_digest)
+                    add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Metadata configuration change'))
+            except exectools.RetryException:
+                runtime.logger.info('%s config_digest cannot be retrieved; request a build', dgk)
+                add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Unable to retrieve config_digest'))
 
     runtime.logger.debug(f'Will be assessing tagging changes between newest_image_event_ts:{newest_image_event_ts} and oldest_image_event_ts:{oldest_image_event_ts}')
     change_results = runtime.parallel_exec(

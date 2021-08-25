@@ -606,9 +606,10 @@ class Runtime(object):
 
             if mode in ['images', 'both']:
                 for i in image_data.values():
-                    metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
-                    self.image_map[metadata.distgit_key] = metadata
-                    self.component_map[metadata.get_component_name()] = metadata
+                    if i.key not in self.image_map:
+                        metadata = ImageMetadata(self, i, self.upstream_commitish_overrides.get(i.key), clone_source=clone_source, prevent_cloning=prevent_cloning)
+                        self.image_map[metadata.distgit_key] = metadata
+                        self.component_map[metadata.get_component_name()] = metadata
                 if not self.image_map:
                     self.logger.warning("No image metadata directories found for given options within: {}".format(self.group_dir))
 
@@ -1021,6 +1022,7 @@ class Runtime(object):
         meta = ImageMetadata(self, data_obj, self.upstream_commitish_overrides.get(data_obj.key))
         if add:
             self.image_map[distgit_name] = meta
+        self.component_map[meta.get_component_name()] = meta
         return meta
 
     def resolve_brew_image_url(self, image_name_and_version):
