@@ -62,6 +62,9 @@ def merger(a, b):
 
     c = copy.deepcopy(b)
 
+    if isinstance(a, Model):
+        a = a.primitive()
+
     if type(a) is list:
         if type(c) is not list:
             return a
