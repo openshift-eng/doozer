@@ -226,7 +226,7 @@ def _assembly_config_struct(releases_config: Model, assembly: typing.Optional[st
     if target_assembly.basis.assembly:  # Does this assembly inherit from another?
         # Recursive apply ancestor assemblies
         parent_config_struct = _assembly_config_struct(releases_config, target_assembly.basis.assembly, key, default)
-        key_struct = merger(key_struct, parent_config_struct.primitive())
+        key_struct = merger(key_struct.primitive(), parent_config_struct.primitive())
     if isinstance(default, dict):
         return Model(dict_to_model=key_struct)
     elif isinstance(default, list):
