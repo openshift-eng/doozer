@@ -16,6 +16,7 @@ from doozerlib.util import red_print, go_suffix_for_arch, brew_arch_for_go_arch,
 from doozerlib.assembly import AssemblyTypes, assembly_basis, AssemblyIssue, AssemblyIssueCode
 from doozerlib import exectools
 from doozerlib.model import Model
+from doozerlib.exceptions import DoozerFatalError
 
 
 def default_imagestream_base_name(runtime: Runtime) -> str:
@@ -117,6 +118,10 @@ and in more detail in state.yaml. The release-controller, per ART-2195, will
 read and propagate/expose this annotation in its display of the release image.
     """
     runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
+
+    if runtime.assembly not in {None, "stream", "test"} and runtime.assembly not in runtime.releases_config.releases:
+        raise DoozerFatalError(f"Assembly '{runtime.assembly}' is not explicitly defined.")
+
     logger = runtime.logger
     brew_session = runtime.build_retrying_koji_client()
 
