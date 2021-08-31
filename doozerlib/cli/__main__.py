@@ -26,7 +26,6 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
 from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
 from doozerlib.util import analyze_debug_timing, get_cincinnati_channels, extract_version_fields, get_docker_config_json, go_arch_for_brew_arch
-from doozerlib import operator_metadata
 import click
 import os
 import shutil
@@ -2009,114 +2008,6 @@ def config_update_required(runtime, image_list):
         data_obj.save()
 
     green_print('\nComplete! Remember to commit and push the changes!')
-
-
-@cli.command("operator-metadata:build", short_help="Update operator(s) metadata")
-@click.argument("nvr_list", nargs=-1, required=True)
-@click.option("--stream", required=True, type=click.Choice(['dev', 'stage', 'prod']),
-              help="Metadata repo to apply update. Possible values: dev, stage, prod.")
-@click.option("--image-ref-mode", required=False, type=click.Choice(['by-arch', 'manifest-list']),
-              help="Build mode for image references. Possible values: by-arch, manifest-list (default: group.yml operator_image_ref_mode)")
-@click.option("--merge-branch", required=False,
-              help="Branch to be updated on the metadata repo (default: rhaos-4-rhel-7)")
-@click.option("-f", "--force", required=False, is_flag=True,
-              help="Perform a build even if there is nothing new on the metadata repo")
-@pass_runtime
-def update_operator_metadata(runtime, nvr_list, stream, image_ref_mode, merge_branch, force=False):
-    """Update the corresponding metadata repositories of the given operators
-    and build "metadata containers" with nothing but a collection of manifests on them.
-
-    nvr_list: One or more NVRs to have their corresponding metadata repos updated (i.e.: cluster-logging-operator-container-v4.2.0-201908070219)
-    merge_branch: metadata repos have multiple branches (dev, stage and prod) representing the destination of the updates.
-
-    Usage example with single NVR:
-
-    $ doozer -g openshift-4.2 operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 --stream dev --merge-branch rhaos-4-rhel-8
-
-    Usage example with multiple NVRs:
-
-    $ doozer -g openshift-4.2 operator-metadata:build cluster-logging-operator-container-v4.2.0-201908070219 elasticsearch-operator-container-v4.2.0-201908070219 --stream prod
-    """
-    runtime.initialize(clone_distgits=False)
-    runtime.assert_mutation_is_permitted()
-
-    if not image_ref_mode:
-        image_ref_mode = runtime.group_config.operator_image_ref_mode
-
-    if not merge_branch:
-        merge_branch = 'rhaos-4-rhel-7'
-        # @TODO: populate merge_branch from runtime once the following MRs are merged:
-        #     https://gitlab.cee.redhat.com/openshift-art/ocp-build-data/merge_requests/222
-        #     https://gitlab.cee.redhat.com/openshift-art/ocp-build-data/merge_requests/223
-        # merge_branch = runtime.group_config.operator_metadata_branch
-
-    try:
-
-        def gotta_catchem_all(*args, **kwargs):
-            # Threadpool swallow stack traces from workers; make sure to print out details if they occur
-            try:
-                return operator_metadata.update_and_build(*args, **kwargs)
-            except:
-                runtime.logger.error('Error building operator metadata for: {}'.format(args))
-                traceback.print_exc()
-                raise
-
-        ok = ThreadPool(cpu_count()).map(gotta_catchem_all, [
-            (nvr, stream, runtime, image_ref_mode, merge_branch, force) for nvr in nvr_list
-        ])
-        # @TODO: save state.yaml (check how to do that)
-    except Exception as e:
-        ok = [False]
-        red_print(str(e))
-
-    sys.exit(0 if all(ok) else 1)
-
-
-@cli.command("operator-metadata:latest-build", short_help="Print latest metadata build of a given operator")
-@click.option("--nvr", "-n", help="Specify Name-Version-Release. Needs --stream", multiple=True)
-@click.option("--stream", "-s", type=click.Choice(['dev', 'stage', 'prod']),
-              help="Metadata stream to select. Possible values: dev, stage, prod. Needs --nvr")
-@click.argument("operator_list", nargs=-1)
-@pass_runtime
-def operator_metadata_latest_build(runtime, nvr, stream, operator_list):
-    """Print the latest metadata build of a given operator
-
-    operator_list: One or more operator names
-
-    Usage example:
-
-    $ doozer -g openshift-4.2 operator-metadata:latest-build cluster-logging-operator
-
-    Usage example with multiple operators:
-
-    $ doozer -g openshift-4.2 operator-metadata:latest-build cluster-logging-operator elasticsearch-operator
-
-    Usage example when feeding NVR and stream:
-
-    $ doozer -g openshift-4.2 operator-metadata:latest-build --stream stage --nvr cluster-logging-operator-container-v4.2.1-201910221723 --nvr sriov-network-operator-container-v4.2.0-201909131819
-    """
-
-    if operator_list and (stream or nvr):
-        click.echo('Need either a list of operators, or specified by NVR and stream. Exiting.', err=True)
-        sys.exit(1)
-    if stream and not nvr:
-        click.echo('--stream needs to be accompanied by --nvr. Exiting.', err=True)
-        sys.exit(1)
-    if nvr and not stream:
-        click.echo('--nvr needs to be accompanied by --stream. Exiting.', err=True)
-        sys.exit(1)
-    if not nvr and not operator_list:
-        click.echo("Missing arguments: Need nvr's or operators to work with")
-        sys.exit(1)
-
-    runtime.initialize(clone_distgits=False)
-
-    if operator_list:
-        for operator in operator_list:
-            click.echo(operator_metadata.OperatorMetadataLatestBuildReporter(operator, runtime).get_latest_build())
-    else:
-        for build in nvr:
-            click.echo(operator_metadata.OperatorMetadataLatestNvrReporter(build, stream, runtime).get_latest_build())
 
 
 @cli.command("analyze:debug-log", short_help="Output an analysis of the debug log")
