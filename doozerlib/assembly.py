@@ -283,7 +283,7 @@ def assembly_permits(releases_config: Model, assembly: typing.Optional[str]) -> 
     permits are defined ListModel([]) is returned.
     """
 
-    defined_permits = _assembly_config_struct(releases_config, assembly, 'permits', {})
+    defined_permits = _assembly_config_struct(releases_config, assembly, 'permits', [])
 
     if not defined_permits and (assembly == 'stream' or not assembly):  # If assembly is None, this a group without assemblies enabled
         # TODO: Address this formally with https://issues.redhat.com/browse/ART-3162 .
