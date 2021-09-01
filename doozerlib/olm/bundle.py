@@ -54,7 +54,8 @@ class OLMBundle(object):
 
         prefix = f"{self.bundle_brew_component}-{self.operator_dict['version']}.{self.operator_dict['release']}-"
         bundle_package_id = self.brew_session.getPackageID(self.bundle_brew_component, strict=True)
-        builds = self.brew_session.listBuilds(packageID=bundle_package_id, pattern=prefix + "*", state=brew.BuildStates.COMPLETE.value, queryOpts={'limit': 1, 'order': '-creation_event_id'})
+        builds = self.brew_session.listBuilds(packageID=bundle_package_id, pattern=prefix + "*", state=brew.BuildStates.COMPLETE.value,
+                                              queryOpts={'limit': 1, 'order': '-creation_event_id'}, completeBefore=None)
         return builds[0]['nvr'] if builds else None
 
     def get_latest_bundle_build(self):
