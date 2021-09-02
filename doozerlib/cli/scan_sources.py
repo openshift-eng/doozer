@@ -121,12 +121,16 @@ def config_scan_source_changes(runtime: Runtime, ci_kubeconfig, as_yaml):
             if image_meta in changing_image_metas:
                 continue  # A rebuild is already requested.
 
-            # Request a rebuild if A is a dependent of B but the latest build of A is older than B.
+            # Request a rebuild if A is a dependent (operator or child image) of B but the latest build of A is older than B.
             rebase_time = util.isolate_timestamp_in_release(info["release"])
             if not rebase_time:  # no timestamp string in NVR?
                 continue
             rebase_time = datetime.strptime(rebase_time, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
-            for dep_key in image_meta.dependencies:
+            dependencies = image_meta.dependencies.copy()
+            base_image = image_meta.config["from"].member
+            if base_image:
+                dependencies.add(base_image)
+            for dep_key in dependencies:
                 dep = runtime.image_map.get(dep_key)
                 if not dep:
                     runtime.logger.warning("Image %s has unknown dependency %s. Is it excluded?", image_meta.distgit_key, dep_key)
