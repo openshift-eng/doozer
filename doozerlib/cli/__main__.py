@@ -2287,7 +2287,7 @@ def rebase_and_build_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...]
             record['task_url'] = task_url
             record['bundle_nvr'] = bundle_nvr
         except Exception as err:
-            runtime.logger.error('Error during rebase or build for: {}'.format(bundle_nvr))
+            runtime.logger.error('Error during rebase or build for: {}'.format(olm_bundle.bundle_brew_component))
             traceback.print_exc()
             record['message'] = str(err)
         finally:
