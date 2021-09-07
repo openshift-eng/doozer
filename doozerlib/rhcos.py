@@ -1,5 +1,3 @@
-from __future__ import absolute_import, print_function, unicode_literals
-
 import json
 from typing import Dict, List, Tuple, Optional
 
@@ -7,6 +5,7 @@ from kobo.rpmlib import parse_nvr
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 from urllib import request
+from urllib.error import HTTPError
 from doozerlib.util import brew_suffix_for_arch, isolate_el_version_in_release
 from doozerlib import exectools
 from doozerlib.model import Model
@@ -50,8 +49,15 @@ def _latest_rhcos_build_id(version: str, brew_arch: str = "x86_64", private: boo
     """
     # returns the build id string or None (or raise exception)
     # (may want to return "schema-version" also if this ever gets more complex)
-    with request.urlopen(f"{rhcos_release_url(version, brew_arch, private)}/builds.json") as req:
-        data = json.loads(req.read().decode())
+    try:
+        with request.urlopen(f"{rhcos_release_url(version, brew_arch, private)}/builds.json") as req:
+            data = json.loads(req.read().decode())
+    except HTTPError as e:
+        print(f"Error retrieving {e.url}, got response {e.status}. Ignoring.")
+        return None
+    except Exception as e:
+        print(f'Exception occured: {e}')
+        return None
     if not data["builds"]:
         return None
     build = data["builds"][0]
