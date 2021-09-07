@@ -44,7 +44,10 @@ class RHCOSBuildFinder:
         @return e.g. "https://releases-rhcos-art...com/storage/releases/rhcos-4.6-s390x"
         """
         # TODO: create private rhcos builds and do something with "private" here
-        return f"{RHCOS_BASE_URL}/rhcos-{self.version}{brew_suffix_for_arch(self.brew_arch)}"
+        return (
+            self.runtime.group_config.urls.rhcos_release_base[self.brew_arch]
+            or f"{RHCOS_BASE_URL}/rhcos-{self.version}{brew_suffix_for_arch(self.brew_arch)}"
+        )
 
     @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
     def latest_rhcos_build_id(self) -> Optional[str]:

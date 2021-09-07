@@ -55,6 +55,10 @@ class TestRhcos(unittest.TestCase):
         self.assertNotIn("x86_64", rhcos.RHCOSBuildFinder(self.runtime, "4.6", "x86_64").rhcos_release_url())
         self.assertIn("4.9-aarch64", rhcos.RHCOSBuildFinder(self.runtime, "4.9", "aarch64").rhcos_release_url())
 
+        self.runtime.group_config.urls = Model(dict(rhcos_release_base=dict(aarch64="https//example.com/storage/releases/rhcos-4.x-aarch64")))
+        self.assertIn("4.x-aarch64", rhcos.RHCOSBuildFinder(self.runtime, "4.9", "aarch64").rhcos_release_url())
+        self.assertIn("4.9-s390x", rhcos.RHCOSBuildFinder(self.runtime, "4.9", "s390x").rhcos_release_url())
+
     @patch('urllib.request.urlopen')
     def test_build_id(self, mock_urlopen):
         _urlopen_json_cm(mock_urlopen, dict(builds=['id-1', 'id-2']))
