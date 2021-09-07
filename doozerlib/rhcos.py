@@ -136,8 +136,10 @@ class RHCOSBuildInspector:
             if not self.build_id:
                 raise Exception(f'Unable to determine MOSC build_id from: {pullspec}. Retrieved image info: {image_info_str}')
 
-        # The first two digits of the RHCOS build are the major.minor of the rhcos stream name
-        self.stream_version = self.build_id[0] + '.' + self.build_id[1]  # e.g. 43.82.202102081639.0 -> "4.3"
+        # The first digits of the RHCOS build are the major.minor of the rhcos stream name.
+        # Sadly we don't have any other labels or anything to look at to determine the stream.
+        version = self.build_id.split('.')[0]
+        self.stream_version = version[0] + '.' + version[1:]  # e.g. 43.82.202102081639.0 -> "4.3"
 
         self._build_meta = rhcos_build_meta(self.build_id, self.stream_version, self.brew_arch, meta_type='meta')
         self._os_commitmeta = rhcos_build_meta(self.build_id, self.stream_version, self.brew_arch, meta_type='commitmeta')
