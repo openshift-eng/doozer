@@ -3,11 +3,11 @@ from typing import List, Dict, Optional
 from koji import ClientSession
 from kobo.rpmlib import parse_nvr
 
-from doozerlib import rhcos, Runtime
-from doozerlib import util
+from doozerlib import util, Runtime
 from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, AssemblyIssueCode
+from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder
 
 
 class AssemblyInspector:
@@ -46,7 +46,7 @@ class AssemblyInspector:
                     return True
         return False
 
-    def check_rhcos_issues(self, rhcos_build: rhcos.RHCOSBuildInspector) -> List[AssemblyIssue]:
+    def check_rhcos_issues(self, rhcos_build: RHCOSBuildInspector) -> List[AssemblyIssue]:
         """
         Analyzes an RHCOS build to check whether the installed packages are consistent with:
         1. package NVRs defined at the group dependency level
@@ -282,7 +282,7 @@ class AssemblyInspector:
 
         return self._rpm_build_cache[el_ver]
 
-    def get_rhcos_build(self, arch: str, private: bool = False) -> rhcos.RHCOSBuildInspector:
+    def get_rhcos_build(self, arch: str, private: bool = False) -> RHCOSBuildInspector:
         """
         :param arch: The CPU architecture of the build to retrieve.
         :param private: If this should be a private build (NOT CURRENTLY SUPPORTED)
@@ -302,9 +302,9 @@ class AssemblyInspector:
 
         version = self.runtime.get_minor_version()
         if assembly_rhcos_arch_pullspec:
-            return rhcos.RHCOSBuildInspector(runtime, assembly_rhcos_arch_pullspec, brew_arch)
+            return RHCOSBuildInspector(runtime, assembly_rhcos_arch_pullspec, brew_arch)
         else:
-            _, pullspec = rhcos.latest_machine_os_content(version, brew_arch, private)
+            _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private).latest_machine_os_content()
             if not pullspec:
                 raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
-            return rhcos.RHCOSBuildInspector(runtime, pullspec, brew_arch)
+            return RHCOSBuildInspector(runtime, pullspec, brew_arch)
