@@ -302,7 +302,7 @@ def assembly_permits(releases_config: Model, assembly: typing.Optional[str]) -> 
         return ListModel(list_to_model=default_stream_permits)
 
     # Do some basic validation here to fail fast
-    if assembly_type(releases_config, assembly) == AssemblyTypes.STANDARD:
+    if assembly_type(releases_config, assembly) == AssemblyTypes.STANDARD and assembly != 'stream':
         if defined_permits:
             raise ValueError(f'STANDARD assemblies like {assembly} do not allow "permits"')
 
