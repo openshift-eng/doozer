@@ -9,107 +9,10 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 from urllib import request
 from doozerlib.util import brew_suffix_for_arch, isolate_el_version_in_release
 from doozerlib import exectools
-from doozerlib.model import Model
+from doozerlib.model import Model, Missing
 from doozerlib import brew
 
 RHCOS_BASE_URL = "https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases"
-
-
-def rhcos_release_url(version, brew_arch="x86_64", private=False) -> str:
-    """
-    base url for a release stream in the release browser (AWS bucket).
-
-    @param version  The 4.y ocp version as a string (e.g. "4.6")
-    @param brew_arch  architecture we are interested in (e.g. "s390x")
-    @param private  boolean, true for private stream, false for public (currently, no effect)
-    @return e.g. "https://releases-rhcos-art...com/storage/releases/rhcos-4.6-s390x"
-    """
-    # TODO: create private rhcos builds and do something with "private" here
-    return f"{RHCOS_BASE_URL}/rhcos-{version}{brew_suffix_for_arch(brew_arch)}"
-
-
-@retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
-def latest_rhcos_build_id(version: str, brew_arch: str = "x86_64", private: bool = False) -> Optional[str]:
-    """
-    :param version: The version number of the RHCOS stream (e.g. '4.6' would translate to 'rhcos-4.6' stream).
-    :param brew_arch: The CPU architecture for the build.
-    :param private: Whether we are looking for a private or public build. NOT CURRENTLY SUPPORTED.
-    :return: Returns the build id for the latest RHCOS build for the specific CPU arch. Return None if not found.
-    """
-    # this is hard to test with retries, so wrap testable method
-    return _latest_rhcos_build_id(version, brew_arch, private)
-
-
-def _latest_rhcos_build_id(version: str, brew_arch: str = "x86_64", private: bool = False) -> Optional[str]:
-    """
-    :param version: The version number of the RHCOS stream (e.g. '4.6' would translate to 'rhcos-4.6' stream).
-    :param brew_arch: The CPU architecture for the build.
-    :param private: Whether we are looking for a private or public build. NOT CURRENTLY SUPPORTED.
-    :return: Returns the build id for the latest RHCOS build for the specific CPU arch from the RHCOS release browser.
-    Return None if not found.
-    """
-    # returns the build id string or None (or raise exception)
-    # (may want to return "schema-version" also if this ever gets more complex)
-    with request.urlopen(f"{rhcos_release_url(version, brew_arch, private)}/builds.json") as req:
-        data = json.loads(req.read().decode())
-    if not data["builds"]:
-        return None
-    build = data["builds"][0]
-    # old schema just had the id as a string; newer has it in a dict
-    return build if isinstance(build, str) else build["id"]
-
-
-@retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
-def rhcos_build_meta(build_id: str, version: str, brew_arch: str = "x86_64", private: bool = False, meta_type: str = "meta") -> Dict:
-    """
-    Queries the RHCOS release browser to return metadata about the specified RHCOS build.
-    :param build_id: The RHCOS build_id to check (e.g. 410.81.20200520.0)
-    :param version: The major.minor of the RHCOS stream the build is associated with (e.g. '4.6')
-    :param brew_arch: The CPU architecture for the build (uses brew naming convention)
-    :param private: Whether this is a private build (NOT CURRENTLY SUPPORTED)
-    :param meta_type: The data to retrieve. "commitmeta" (aka OS Metadata - ostree content) or "meta" (aka Build Metadata / Build record).
-    :return: Returns a Dict containing the parsed requested metadata. See the RHCOS release browser for examples: https://releases-rhcos-art.cloud.privileged.psi.redhat.com/
-
-    Example 'meta.json':
-     https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases/rhcos-4.1/410.81.20200520.0/meta.json
-     {
-         "buildid": "410.81.20200520.0",
-         ...
-         "oscontainer": {
-             "digest": "sha256:b0997c9fe4363c8a0ed3b52882b509ade711f7cdb620cc7a71767a859172f423"
-             "image": "quay.io/openshift-release-dev/ocp-v4.0-art-dev"
-         },
-         ...
-     }
-    """
-    # this is hard to test with retries, so wrap testable method
-    return _rhcos_build_meta(build_id, version, brew_arch, private, meta_type)
-
-
-def _rhcos_build_meta(build_id: str, version: str, brew_arch: str = "x86_64", private: bool = False, meta_type: str = "meta") -> Dict:
-    """
-    See public API rhcos_build_meta for details.
-    """
-    url = f"{rhcos_release_url(version, brew_arch, private)}/{build_id}/"
-    # before 4.3 the arch was not included in the path
-    vtuple = tuple(int(f) for f in version.split("."))
-    url += f"{meta_type}.json" if vtuple < (4, 3) else f"{brew_arch}/{meta_type}.json"
-    with request.urlopen(url) as req:
-        return json.loads(req.read().decode())
-
-
-def latest_machine_os_content(version: str, brew_arch: str = "x86_64", private: bool = False) -> Tuple[Optional[str], Optional[str]]:
-    """
-    :param version: The major.minor of the RHCOS stream the build is associated with (e.g. '4.6')
-    :param brew_arch: The CPU architecture for the build (uses brew naming convention)
-    :param private: Whether this is a private build (NOT CURRENTLY SUPPORTED)
-    :return: Returns (rhcos build id, image pullspec) or (None, None) if not found.
-    """
-    build_id = latest_rhcos_build_id(version, brew_arch, private)
-    if build_id is None:
-        return None, None
-    m_os_c = rhcos_build_meta(build_id, version, brew_arch, private)['oscontainer']
-    return build_id, m_os_c['image'] + "@" + m_os_c['digest']
 
 
 def rhcos_content_tag(runtime) -> str:
@@ -118,6 +21,99 @@ def rhcos_content_tag(runtime) -> str:
     """
     base = runtime.group_config.branch.replace("-rhel-7", "-rhel-8")
     return f"{base}-candidate"
+
+
+class RHCOSBuildFinder:
+
+    def __init__(self, runtime, version: str, brew_arch: str = "x86_64", private: bool = False):
+        """
+        @param runtime  The Runtime object passed in from the CLI
+        @param version  The 4.y ocp version as a string (e.g. "4.6")
+        @param brew_arch  architecture we are interested in (e.g. "s390x")
+        @param private  boolean, true for private stream, false for public (currently, no effect)
+        """
+        self.runtime = runtime
+        self.version = version
+        self.brew_arch = brew_arch
+        self.private = private
+
+    def rhcos_release_url(self) -> str:
+        """
+        base url for a release stream in the release browser (AWS bucket).
+
+        @return e.g. "https://releases-rhcos-art...com/storage/releases/rhcos-4.6-s390x"
+        """
+        # TODO: create private rhcos builds and do something with "private" here
+        return (
+            self.runtime.group_config.urls.rhcos_release_base[self.brew_arch]
+            or f"{RHCOS_BASE_URL}/rhcos-{self.version}{brew_suffix_for_arch(self.brew_arch)}"
+        )
+
+    @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
+    def latest_rhcos_build_id(self) -> Optional[str]:
+        """
+        :return: Returns the build id for the latest RHCOS build for the specific CPU arch. Return None if not found.
+        """
+        # this is hard to test with retries, so wrap testable method
+        return self._latest_rhcos_build_id()
+
+    def _latest_rhcos_build_id(self) -> Optional[str]:
+        # returns the build id string or None (or raise exception)
+        # (may want to return "schema-version" also if this ever gets more complex)
+        with request.urlopen(f"{self.rhcos_release_url()}/builds.json") as req:
+            data = json.loads(req.read().decode())
+        if not data["builds"]:
+            return None
+        build = data["builds"][0]
+        # old schema just had the id as a string; newer has it in a dict
+        return build if isinstance(build, str) else build["id"]
+
+    @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
+    def rhcos_build_meta(self, build_id: str, meta_type: str = "meta") -> Dict:
+        """
+        Queries the RHCOS release browser to return metadata about the specified RHCOS build.
+        :param build_id: The RHCOS build_id to check (e.g. 410.81.20200520.0)
+        :param meta_type: The data to retrieve. "commitmeta" (aka OS Metadata - ostree content) or "meta" (aka Build Metadata / Build record).
+        :return: Returns a Dict containing the parsed requested metadata. See the RHCOS release browser for examples: https://releases-rhcos-art.cloud.privileged.psi.redhat.com/
+
+        Example 'meta.json':
+         https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases/rhcos-4.1/410.81.20200520.0/meta.json
+         {
+             "buildid": "410.81.20200520.0",
+             ...
+             "oscontainer": {
+                 "digest": "sha256:b0997c9fe4363c8a0ed3b52882b509ade711f7cdb620cc7a71767a859172f423"
+                 "image": "quay.io/openshift-release-dev/ocp-v4.0-art-dev"
+             },
+             ...
+         }
+        """
+        # this is hard to test with retries, so wrap testable method
+        return self._rhcos_build_meta(build_id, meta_type)
+
+    def _rhcos_build_meta(self, build_id: str, meta_type: str = "meta") -> Dict:
+        """
+        See public API rhcos_build_meta for details.
+        """
+        url = f"{self.rhcos_release_url()}/{build_id}/"
+        # before 4.3 the arch was not included in the path
+        vtuple = tuple(int(f) for f in self.version.split("."))
+        url += f"{meta_type}.json" if vtuple < (4, 3) else f"{self.brew_arch}/{meta_type}.json"
+        with request.urlopen(url) as req:
+            return json.loads(req.read().decode())
+
+    def latest_machine_os_content(self) -> Tuple[Optional[str], Optional[str]]:
+        """
+        :param version: The major.minor of the RHCOS stream the build is associated with (e.g. '4.6')
+        :param brew_arch: The CPU architecture for the build (uses brew naming convention)
+        :param private: Whether this is a private build (NOT CURRENTLY SUPPORTED)
+        :return: Returns (rhcos build id, image pullspec) or (None, None) if not found.
+        """
+        build_id = self.latest_rhcos_build_id()
+        if build_id is None:
+            return None, None
+        m_os_c = self.rhcos_build_meta(build_id)['oscontainer']
+        return build_id, m_os_c['image'] + "@" + m_os_c['digest']
 
 
 class RHCOSBuildInspector:
@@ -136,11 +132,15 @@ class RHCOSBuildInspector:
             if not self.build_id:
                 raise Exception(f'Unable to determine MOSC build_id from: {pullspec}. Retrieved image info: {image_info_str}')
 
-        # The first two digits of the RHCOS build are the major.minor of the rhcos stream name
-        self.stream_version = self.build_id[0] + '.' + self.build_id[1]  # e.g. 43.82.202102081639.0 -> "4.3"
+        # The first digits of the RHCOS build are the major.minor of the rhcos stream name.
+        # Which, near branch cut, might not match the actual release stream.
+        # Sadly we don't have any other labels or anything to look at to determine the stream.
+        version = self.build_id.split('.')[0]
+        self.stream_version = version[0] + '.' + version[1:]  # e.g. 43.82.202102081639.0 -> "4.3"
 
-        self._build_meta = rhcos_build_meta(self.build_id, self.stream_version, self.brew_arch, meta_type='meta')
-        self._os_commitmeta = rhcos_build_meta(self.build_id, self.stream_version, self.brew_arch, meta_type='commitmeta')
+        finder = RHCOSBuildFinder(runtime, self.stream_version, self.brew_arch)
+        self._build_meta = finder.rhcos_build_meta(self.build_id, meta_type='meta')
+        self._os_commitmeta = finder.rhcos_build_meta(self.build_id, meta_type='commitmeta')
 
     def __str__(self):
         return f'RHCOSBuild:{self.brew_arch}:{self.build_id}'
