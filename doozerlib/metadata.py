@@ -694,14 +694,14 @@ class Metadata(object):
 
         if "git" in self.config.content.source:
             remote_branch = self.runtime.detect_remote_source_branch(self.config.content.source.git)[0]
-            out, _ = exectools.cmd_assert(["git", "ls-remote", self.config.content.source.git.url, remote_branch], strip=True)
+            out, _ = exectools.cmd_assert(["git", "ls-remote", self.config.content.source.git.url, remote_branch], strip=True, retries=5, on_retry='sleep 5')
             # Example output "296ac244f3e7fd2d937316639892f90f158718b0	refs/heads/openshift-4.8"
             upstream_commit_hash = out.split()[0]
         elif self.config.content.source.alias and self.runtime.group_config.sources and self.config.content.source.alias in self.runtime.group_config.sources:
             # This is a new style alias with url information in group config
             source_details = self.runtime.group_config.sources[self.config.content.source.alias]
             remote_branch = self.runtime.detect_remote_source_branch(source_details)[0]
-            out, _ = exectools.cmd_assert(["git", "ls-remote", source_details.url, remote_branch], strip=True)
+            out, _ = exectools.cmd_assert(["git", "ls-remote", source_details.url, remote_branch], strip=True, retries=5, on_retry='sleep 5')
             # Example output "296ac244f3e7fd2d937316639892f90f158718b0	refs/heads/openshift-4.8"
             upstream_commit_hash = out.split()[0]
         else:
