@@ -721,8 +721,8 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             if image_meta.config.content.source.path:
                 dockerfile_name = os.path.join(image_meta.config.content.source.path, dockerfile_name)
 
-            df_path = df_path.joinpath(dockerfile_name)
-            ci_operator_config_path = Dir.getpath().joinpath('.ci-operator.yaml')  # https://docs.ci.openshift.org/docs/architecture/ci-operator/#build-root-image
+            df_path = df_path.joinpath(dockerfile_name).resolve()
+            ci_operator_config_path = Dir.getpath().joinpath('.ci-operator.yaml').resolve()  # https://docs.ci.openshift.org/docs/architecture/ci-operator/#build-root-image
 
             assignee = None
             try:
