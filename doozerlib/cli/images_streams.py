@@ -873,7 +873,7 @@ open_prs: {open_prs}
                     commit_msg = f"""{commit_prefix}{first_commit_line}
 {reconcile_info}
 """
-                    exectools.cmd_assert(f'git commit -m "{commit_msg}"')  # Add a commit atop the public branch's current state
+                    exectools.cmd_assert(f'git commit --all --message "{commit_msg}"')  # Add a commit atop the public branch's current state
                     # Create or update the remote fork branch
                     exectools.cmd_assert(f'git push --force fork {work_branch_name}:{fork_branch_name}', retries=3)
 
