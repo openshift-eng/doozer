@@ -316,7 +316,7 @@ class Runtime(object):
 
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
-                   no_group=False, clone_source=None, disabled=None,
+                   no_group=False, clone_source=None, disabled=None, wip=None,
                    prevent_cloning: bool = False):
 
         if self.initialized:
@@ -379,6 +379,8 @@ class Runtime(object):
 
         if disabled is not None:
             self.load_disabled = disabled
+        if wip is not None:
+            self.load_wip = wip
 
         self.initialize_logging()
 
