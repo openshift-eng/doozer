@@ -883,7 +883,9 @@ __TLDR__:
 Component owners, please ensure that this PR merges as it impacts the fidelity
 of your CI signal. Patch-manager / leads, this PR is a no-op from a product
 perspective -- feel free to manually apply any labels (e.g. bugzilla/valid-bug) to help the
-PR merge as long as tests are passing.
+PR merge as long as tests are passing. If the PR is labeled "needs-ok-to-test", this is
+to limit costs for re-testing these PRs while they wait for review. Issue /ok-to-test
+to remove this tag and help the PR to merge.
 
 __Detail__:
 This repository is out of sync with the downstream product builds for this component.
