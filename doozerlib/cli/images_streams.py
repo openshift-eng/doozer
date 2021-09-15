@@ -834,7 +834,7 @@ Fork build_root (in .ci-operator.yaml): {fork_ci_build_root_coordinate}
                 with ci_operator_config_path.open(mode='w+', encoding='utf-8') as config_file:
                     yaml.safe_dump(ci_operator_config, config_file, default_flow_style=False)
 
-                exectools.cmd_assert(f'git add {str(ci_operator_config_path)}')
+                exectools.cmd_assert(f'git add -f {str(ci_operator_config_path)}')
 
             desired_df_digest = compute_dockerfile_digest(df_path)
 
