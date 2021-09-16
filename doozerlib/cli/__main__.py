@@ -306,6 +306,7 @@ def images_update_dockerfile(runtime: Runtime, version: Optional[str], release: 
                     state.record_image_fail(lstate, meta, success)
                 dgr.wait_on_cgit_file()
         except Exception as ex:
+            traceback.print_exc()
             msg = str(ex)
             state.record_image_fail(lstate, image_meta, msg, runtime.logger)
             return False
@@ -2198,8 +2199,8 @@ def build_olm_bundle(runtime: Runtime, operator_names: Tuple[str, ...], dry_run:
             record['task_url'] = task_url
             record['bundle_nvr'] = bundle_nvr
         except Exception as err:
-            runtime.logger.error('Error during build for: {}'.format(operator))
             traceback.print_exc()
+            runtime.logger.error('Error during build for: {}'.format(operator))
             record['message'] = str(err)
         finally:
             runtime.add_record("build_olm_bundle", **record)
@@ -2287,8 +2288,8 @@ def rebase_and_build_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...]
             record['task_url'] = task_url
             record['bundle_nvr'] = bundle_nvr
         except Exception as err:
-            runtime.logger.error('Error during rebase or build for: {}'.format(olm_bundle.bundle_brew_component))
             traceback.print_exc()
+            runtime.logger.error('Error during rebase or build for: {}'.format(operator))
             record['message'] = str(err)
         finally:
             runtime.add_record("build_olm_bundle", **record)
