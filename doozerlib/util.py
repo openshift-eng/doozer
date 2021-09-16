@@ -1,4 +1,6 @@
 import copy
+import functools
+import json
 import os
 import pathlib
 import re
@@ -14,6 +16,7 @@ from sys import getsizeof, stderr
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import click
+import semver
 import yaml
 
 try:
@@ -638,3 +641,57 @@ def isolate_timestamp_in_release(release: str) -> Optional[str]:
         if year >= 2000 and month >= 1 and month <= 12 and day >= 1 and day <= 31 and hour <= 23 and minute <= 59:
             return match.group(0)
     return None
+
+
+def sort_semver(versions):
+    return sorted(versions, key=functools.cmp_to_key(semver.compare), reverse=True)
+
+
+def get_channel_versions(channel, arch,
+                         graph_url='https://api.openshift.com/api/upgrades_info/v1/graph',
+                         graph_content_stable=None,
+                         graph_content_candidate=None):
+    """
+    Queries Cincinnati and returns a tuple containing:
+    1. All of the versions in the specified channel in decending order (e.g. 4.6.26, ... ,4.6.1)
+    2. A map of the edges associated with each version (e.g. map['4.6.1'] -> [ '4.6.2', '4.6.3', ... ]
+    :param channel: The name of the channel to inspect
+    :param arch: Arch for the channel
+    :param graph_url: Cincinnati graph URL to query
+    :param graph_content_candidate: Override content from candidate channel - primarily for testing
+    :param graph_content_stable: Override content from stable channel - primarily for testing
+    :return: (versions, edge_map)
+    """
+    content = None
+    if (channel == 'stable') and graph_content_stable:
+        # permit override
+        with open(graph_content_stable, 'r') as f:
+            content = f.read()
+
+    if (channel != 'stable') and graph_content_candidate:
+        # permit override
+        with open(graph_content_candidate, 'r') as f:
+            content = f.read()
+
+    if not content:
+        url = f'{graph_url}?arch={arch}&channel={channel}'
+        req = urllib.request.Request(url)
+        req.add_header('Accept', 'application/json')
+        content = exectools.urlopen_assert(req).read()
+
+    graph = json.loads(content)
+    versions = [node['version'] for node in graph['nodes']]
+    descending_versions = sort_semver(versions)
+
+    edges: Dict[str, List] = dict()
+    for v in versions:
+        # Ensure there is at least an empty list for all versions.
+        edges[v] = []
+
+    for edge_def in graph['edges']:
+        # edge_def example [22, 20] where is number is an offset into versions
+        from_ver = versions[edge_def[0]]
+        to_ver = versions[edge_def[1]]
+        edges[from_ver].append(to_ver)
+
+    return descending_versions, edges
