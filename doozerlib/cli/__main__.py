@@ -2151,7 +2151,7 @@ def rebase_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...], dry_run:
         elasticsearch-operator-container-v4.2.30-202004240858 \
         cluster-logging-operator-container-v4.2.30-202004240858
     """
-    runtime.initialize(clone_distgits=False, disabled=True, wip=True)
+    runtime.initialize(clone_distgits=False)
     if not operator_nvrs:
         # If this verb is run without operator NVRs, query Brew for all operator builds selected by the assembly
         operator_metas = [meta for meta in runtime.ordered_image_metas() if meta.enabled and meta.config['update-csv'] is not Missing]
@@ -2176,7 +2176,7 @@ def build_olm_bundle(runtime: Runtime, operator_names: Tuple[str, ...], dry_run:
         elasticsearch-operator \
         cluster-logging-operator
     """
-    runtime.initialize(clone_distgits=False, disabled=True, wip=True)
+    runtime.initialize(clone_distgits=False)
     if not operator_names:
         operator_names = [meta.name for meta in runtime.ordered_image_metas() if meta.enabled and meta.config['update-csv'] is not Missing]
 
@@ -2245,7 +2245,7 @@ def rebase_and_build_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...]
         elasticsearch-operator-container-v4.2.30-202004240858 \
         cluster-logging-operator-container-v4.2.30-202004240858
     """
-    runtime.initialize(clone_distgits=False, disabled=True, wip=True)
+    runtime.initialize(clone_distgits=False)
 
     if not operator_nvrs:
         # If this verb is run without operator NVRs, query Brew for all operator builds
