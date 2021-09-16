@@ -267,7 +267,7 @@ def _detect_rhcos_status(runtime, kubeconfig) -> list:
             name = f"{version}-{arch}{'-priv' if private else ''}"
             try:
                 tagged_mosc_id = _tagged_mosc_id(kubeconfig, version, arch, private)
-                latest_rhcos_id = _latest_rhcos_build_id(version, arch, private)
+                latest_rhcos_id = _latest_rhcos_build_id(runtime, version, arch, private)
                 status = dict(name=name)
                 if not latest_rhcos_id:
                     status['changed'] = False
@@ -302,10 +302,10 @@ def _tagged_mosc_id(kubeconfig, version, arch, private) -> str:
     return stdout if stdout else None
 
 
-def _latest_rhcos_build_id(version, arch, private) -> str:
+def _latest_rhcos_build_id(runtime, version, arch, private) -> str:
     """wrapper to return None if anything goes wrong, which will be taken as no change"""
     try:
-        return rhcos.latest_rhcos_build_id(version, arch, private)
+        return rhcos.RHCOSBuildFinder(runtime, version, arch, private).latest_rhcos_build_id()
     except Exception:
         return None
 

@@ -18,7 +18,7 @@ class TestScanSourcesCli(TestCase):
 
     @patch("doozerlib.cli.scan_sources._tagged_mosc_id")
     @patch("doozerlib.cli.scan_sources._latest_rhcos_build_id")
-    def test_tagged_mosc_id(self, mock_latest, mock_tagged):
+    def test_detect_rhcos_status(self, mock_latest, mock_tagged):
         mock_tagged.return_value = "id-1"
         mock_latest.return_value = "id-2"
         runtime = MagicMock()

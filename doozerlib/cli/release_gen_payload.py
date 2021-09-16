@@ -19,10 +19,14 @@ from doozerlib.model import Model
 from doozerlib.exceptions import DoozerFatalError
 
 
-def default_imagestream_base_name(runtime: Runtime) -> str:
+def default_imagestream_base_name(version: str) -> str:
+    return f'{version}-art-latest'
+
+
+def assembly_imagestream_base_name(runtime: Runtime) -> str:
     version = runtime.get_minor_version()
     if runtime.assembly is None or runtime.assembly == 'stream':
-        return f'{version}-art-latest'
+        return default_imagestream_base_name(version)
     else:
         return f'{version}-art-assembly-{runtime.assembly}'
 
@@ -125,7 +129,7 @@ read and propagate/expose this annotation in its display of the release image.
     logger = runtime.logger
     brew_session = runtime.build_retrying_koji_client()
 
-    base_imagestream_name: str = is_name if is_name else default_imagestream_base_name(runtime)
+    base_imagestream_name: str = is_name if is_name else assembly_imagestream_base_name(runtime)
     base_istream_namespace: str = is_namespace if is_namespace else default_imagestream_namespace_base_name()
 
     if runtime.assembly and runtime.assembly != 'stream' and 'art-latest' in base_imagestream_name:
