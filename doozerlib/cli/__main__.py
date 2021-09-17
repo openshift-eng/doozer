@@ -40,7 +40,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
 from doozerlib.util import green_print, red_print, yellow_print, color_print, dict_get
 from doozerlib.util import analyze_debug_timing, get_cincinnati_channels, extract_version_fields, go_arch_for_brew_arch
-from doozerlib.util import get_channel_versions, sort_semver
+from doozerlib.util import get_release_calc_previous
 from typing import Optional, Tuple
 from numbers import Number
 from dockerfile_parse import DockerfileParser
@@ -1734,68 +1734,9 @@ def config_gencsv(runtime, keys, as_type, output):
               default="https://raw.githubusercontent.com/openshift/cincinnati-graph-data/master/build-suggestions/",
               help="Suggestions URL, load from {major}-{minor}-{arch}.yaml")
 def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate, suggestions_url):
-    major, minor = extract_version_fields(version, at_least=2)[:2]
-    arch = go_arch_for_brew_arch(arch)  # Cincinnati is go code, and uses a different arch name than brew
-
     # Refer to https://docs.google.com/document/d/16eGVikCYARd6nUUtAIHFRKXa7R_rU5Exc9jUPcQoG8A/edit
     # for information on channels & edges
-
-    # Get the names of channels we need to analyze
-    candidate_channel = get_cincinnati_channels(major, minor)[0]
-    prev_candidate_channel = get_cincinnati_channels(major, minor - 1)[0]
-
-    def get_build_suggestions(suggestions_url, major, minor, arch):
-        """
-        Loads suggestions_url/major.minor.yaml and returns minor_min, minor_max,
-        minor_block_list, z_min, z_max, and z_block_list
-        :param suggestions_url: Base url to /{major}.{minor}.yaml
-        :param major: Major version
-        :param minor: Minor version
-        :param arch: Architecture to lookup
-        :return: {minor_min, minor_max, minor_block_list, z_min, z_max, z_block_list}
-        """
-        url = f'{suggestions_url}/{major}.{minor}.yaml'
-        req = urllib.request.Request(url)
-        req.add_header('Accept', 'application/yaml')
-        suggestions = yaml.safe_load(exectools.urlopen_assert(req))
-        if arch in suggestions:
-            return suggestions[arch]
-        else:
-            return suggestions['default']
-
-    upgrade_from = set()
-    prev_versions, prev_edges = get_channel_versions(prev_candidate_channel, arch, graph_url,
-                                                          graph_content_stable, graph_content_candidate)
-    curr_versions, current_edges = get_channel_versions(candidate_channel, arch, graph_url, graph_content_stable,
-                                                         graph_content_candidate)
-    suggestions = get_build_suggestions(suggestions_url, major, minor, arch)
-    for v in prev_versions:
-        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['minor_min'])
-                and semver.VersionInfo.parse(v) < semver.VersionInfo.parse(suggestions['minor_max'])
-                and v not in suggestions['minor_block_list']):
-            upgrade_from.add(v)
-    for v in curr_versions:
-        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['z_min'])
-                and semver.VersionInfo.parse(v) < semver.VersionInfo.parse(suggestions['z_max'])
-                and v not in suggestions['z_block_list']):
-            upgrade_from.add(v)
-
-    candidate_channel_versions, candidate_edges = curr_versions, current_edges
-    # 'nightly' was an older convention. This nightly variant check can be removed by Oct 2020.
-    if 'nightly' not in version and 'hotfix' not in version:
-        # If we are not calculating a previous list for standard release, we want edges from previously
-        # released hotfixes to be valid for this node IF and only if that hotfix does not
-        # have an edge to TWO previous standard releases.
-        # ref: https://docs.google.com/document/d/16eGVikCYARd6nUUtAIHFRKXa7R_rU5Exc9jUPcQoG8A/edit
-
-        # If a release name in candidate contains 'hotfix', it was promoted as a hotfix for a customer.
-        previous_hotfixes = list(filter(lambda release: 'nightly' in release or 'hotfix' in release, candidate_channel_versions))
-        # For each hotfix that doesn't have 2 outgoing edges, and it as an incoming edge to this release
-        for hotfix_version in previous_hotfixes:
-            if len(candidate_edges[hotfix_version]) < 2:
-                upgrade_from.add(hotfix_version)
-
-    results = sort_semver(list(upgrade_from))
+    results = get_release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate, suggestions_url)
     print(','.join(results))
 
 
