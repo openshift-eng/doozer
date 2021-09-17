@@ -16,8 +16,9 @@ def release_calc_upgrade_tests(version):
     def get_test_edges(version_list):
         test_edges = []
         sorted_list = util.sort_semver(version_list)
-        test_edges += sorted_list[:5]  # add first five
-        test_edges += sorted_list[-5:]  # add last five
+        test_edges += sorted_list[:5]  # add first 5
+        test_edges += sorted_list[-5:]  # add last 5
+        # 5 equally distributed between remaining
         remaining = sorted_list[5:-5]
         if len(remaining) < 5:
             test_edges += remaining
