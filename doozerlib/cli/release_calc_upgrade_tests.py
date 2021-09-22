@@ -27,4 +27,5 @@ def release_calc_upgrade_tests(version):
             test_edges += remaining[step::step]
         return util.sort_semver(set(test_edges))
 
-    print(','.join(get_test_edges(curr_versions)+get_test_edges(prev_versions)))
+    edges = get_test_edges(curr_versions) + get_test_edges(prev_versions)
+    print(','.join(edges))

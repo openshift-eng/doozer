@@ -736,9 +736,9 @@ def get_release_calc_previous(version, arch,
 
     upgrade_from = set()
     prev_versions, prev_edges = get_channel_versions(prev_candidate_channel, arch, graph_url,
-                                                          graph_content_stable, graph_content_candidate)
+                                                     graph_content_stable, graph_content_candidate)
     curr_versions, current_edges = get_channel_versions(candidate_channel, arch, graph_url, graph_content_stable,
-                                                         graph_content_candidate)
+                                                        graph_content_candidate)
     suggestions = get_build_suggestions(major, minor, arch, suggestions_url)
     for v in prev_versions:
         if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['minor_min'])
