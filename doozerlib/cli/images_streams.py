@@ -13,7 +13,7 @@ from dockerfile_parse import DockerfileParser
 from doozerlib.model import Missing
 from doozerlib.pushd import Dir
 from doozerlib.cli import cli, pass_runtime
-from doozerlib import brew, state, exectools, model
+from doozerlib import brew, state, exectools, model, constants
 from doozerlib.util import get_docker_config_json, convert_remote_git_to_ssh, \
     split_git_url, remove_prefix, green_print,\
     yellow_print, red_print, convert_remote_git_to_https, \
@@ -572,16 +572,15 @@ def images_upstreampulls(runtime):
                             retdata["no assignee"][public_repo_url] = []
                         retdata["no assignee"][public_repo_url].append("[{} ][created_at:{}]".format(
                             pr.html_url, pr.created_at))
-    #format output
+    # format output
     for key, val in retdata.items():
-         if len(val) == 0:
-             continue
-         print(">[{}]".format(key))
-         for img, prs in val.items():
-             print(" -[{}]".format(img))
-             for pr in prs:
-                 print("   {}".format(pr))
-
+        if len(val) == 0:
+            continue
+        print(">[{}]".format(key))
+        for img, prs in val.items():
+            print(" -[{}]".format(img))
+            for pr in prs:
+                print("   {}".format(pr))
 
 
 @prs.command('open', short_help='Open PRs against upstream component repos that have a FROM that differs from ART metadata.')
