@@ -560,9 +560,17 @@ class OLMBundle(object):
 
     @property
     def operator_framework_tags(self):
+        version = '{MAJOR}.{MINOR}'.format(**self.runtime.group_config.vars)
+        override_channel = self.channel
+        override_default = self.channel
+        # wip see: issues.redhat.com/browse/ART-3107
+        if version == '4.10':
+            override_channel = f'{self.channel},stable'
+            override_default = 'stable'
+
         return {
-            'operators.operatorframework.io.bundle.channel.default.v1': 'stable',
-            'operators.operatorframework.io.bundle.channels.v1': f'{self.channel},stable',
+            'operators.operatorframework.io.bundle.channel.default.v1': override_default,
+            'operators.operatorframework.io.bundle.channels.v1': override_channel,
             'operators.operatorframework.io.bundle.manifests.v1': 'manifests/',
             'operators.operatorframework.io.bundle.mediatype.v1': 'registry+v1',
             'operators.operatorframework.io.bundle.metadata.v1': 'metadata/',
