@@ -96,7 +96,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
                 print(f'For {upstream_entry_name}, would have run: {cmd}')
             else:
                 exectools.cmd_assert(cmd, retries=3, realtime=True)
-            
+
             if runtime.group_config.get('arches', ['aarch64']):
                 arm_cmd = f'oc image mirror --filter-by-os linux/arm64 {brew_pullspec} {upstream_dest}-arm64'
                 if runtime.registry_config_dir is not None:
