@@ -1,31 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import, print_function, unicode_literals
-from future import standard_library
-import typing
-
-standard_library.install_aliases()
-from doozerlib import Runtime, Dir, cli as cli_package
-from doozerlib import state
-from doozerlib.model import Missing
-from doozerlib.brew import get_watch_task_info_copy
-from doozerlib import metadata
-from doozerlib.config import MetaDataConfig as mdc
-from doozerlib.cli import cli, pass_runtime, validate_semver_major_minor_patch
-from doozerlib.cli.release_gen_payload import release_gen_payload
-from doozerlib.cli.detect_embargo import detect_embargo
-from doozerlib.cli.images_health import images_health
-from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
-from doozerlib.cli.release_gen_assembly import releases_gen_assembly, gen_assembly_from_releases
-from doozerlib.cli.scan_sources import config_scan_source_changes
-from doozerlib.cli.rpms_build import rpms_build
-from doozerlib.cli.config_plashet import config_plashet
-from doozerlib import coverity
-
-from doozerlib.exceptions import DoozerFatalError
-from doozerlib import exectools
-from doozerlib.util import green_prefix, red_prefix, green_print, red_print, yellow_print, yellow_prefix, color_print, dict_get
-from doozerlib.util import analyze_debug_timing, get_cincinnati_channels, extract_version_fields, get_docker_config_json, go_arch_for_brew_arch
 import click
 import os
 import shutil
@@ -37,18 +12,42 @@ import tempfile
 import traceback
 import koji
 import io
-import json
-import functools
-from typing import Dict, List, Optional, Tuple
 import semver
 import urllib
 import pathlib
+
+from future import standard_library
+from doozerlib import Runtime, Dir, cli as cli_package
+from doozerlib import state
+from doozerlib.model import Missing
+from doozerlib.brew import get_watch_task_info_copy
+from doozerlib import metadata
+from doozerlib.config import MetaDataConfig as mdc
+from doozerlib.cli import cli, pass_runtime, validate_semver_major_minor_patch
+
+from doozerlib.cli.release_gen_payload import release_gen_payload
+from doozerlib.cli.detect_embargo import detect_embargo
+from doozerlib.cli.images_health import images_health
+from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
+from doozerlib.cli.release_gen_assembly import releases_gen_assembly, gen_assembly_from_releases
+from doozerlib.cli.scan_sources import config_scan_source_changes
+from doozerlib.cli.rpms_build import rpms_build
+from doozerlib.cli.config_plashet import config_plashet
+from doozerlib.cli.release_calc_upgrade_tests import release_calc_upgrade_tests
+
+from doozerlib import coverity
+from doozerlib.exceptions import DoozerFatalError
+from doozerlib import exectools
+from doozerlib.util import green_print, red_print, yellow_print, color_print, dict_get
+from doozerlib.util import analyze_debug_timing, get_cincinnati_channels, extract_version_fields, go_arch_for_brew_arch
+from doozerlib.util import get_release_calc_previous
+from typing import Optional, Tuple
 from numbers import Number
-from multiprocessing.pool import ThreadPool
-from multiprocessing import cpu_count
 from dockerfile_parse import DockerfileParser
 from doozerlib import gitdata
 from doozerlib.olm.bundle import OLMBundle
+
+standard_library.install_aliases()
 
 
 class RemoteRequired(click.Option):
@@ -1730,117 +1729,14 @@ def config_gencsv(runtime, keys, as_type, output):
 @click.option("--graph-content-stable", metavar='JSON_FILE', required=False,
               help="Override content from stable channel - primarily for testing")
 @click.option("--graph-content-candidate", metavar='JSON_FILE', required=False,
-              help="Override content from stable channel - primarily for testing")
+              help="Override content from candidate channel - primarily for testing")
 @click.option("--suggestions-url", metavar='SUGGESTIONS_URL', required=False,
               default="https://raw.githubusercontent.com/openshift/cincinnati-graph-data/master/build-suggestions/",
               help="Suggestions URL, load from {major}-{minor}-{arch}.yaml")
 def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate, suggestions_url):
-    major, minor = extract_version_fields(version, at_least=2)[:2]
-    arch = go_arch_for_brew_arch(arch)  # Cincinnati is go code, and uses a different arch name than brew
-
     # Refer to https://docs.google.com/document/d/16eGVikCYARd6nUUtAIHFRKXa7R_rU5Exc9jUPcQoG8A/edit
     # for information on channels & edges
-
-    # Get the names of channels we need to analyze
-    candidate_channel = get_cincinnati_channels(major, minor)[0]
-    prev_candidate_channel = get_cincinnati_channels(major, minor - 1)[0]
-
-    def sort_semver(versions):
-        return sorted(versions, key=functools.cmp_to_key(semver.compare), reverse=True)
-
-    def get_channel_versions(channel):
-        """
-        Queries Cincinnati and returns a tuple containing:
-        1. All of the versions in the specified channel in decending order (e.g. 4.6.26, ... ,4.6.1)
-        2. A map of the edges associated with each version (e.g. map['4.6.1'] -> [ '4.6.2', '4.6.3', ... ]
-        :param channel: The name of the channel to inspect
-        :return: (versions, edge_map)
-        """
-        content = None
-
-        if channel == 'stable' and graph_content_stable:
-            # permit command line override
-            with open(graph_content_stable, 'r') as f:
-                content = f.read()
-
-        if channel != 'stable' and graph_content_candidate:
-            # permit command line override
-            with open(graph_content_candidate, 'r') as f:
-                content = f.read()
-
-        if not content:
-            url = f'{graph_url}?arch={arch}&channel={channel}'
-            req = urllib.request.Request(url)
-            req.add_header('Accept', 'application/json')
-            content = exectools.urlopen_assert(req).read()
-
-        graph = json.loads(content)
-        versions = [node['version'] for node in graph['nodes']]
-        descending_versions = sort_semver(versions)
-
-        edges: Dict[str, List] = dict()
-        for v in versions:
-            # Ensure there is at least an empty list for all versions.
-            edges[v] = []
-
-        for edge_def in graph['edges']:
-            # edge_def example [22, 20] where is number is an offset into versions
-            from_ver = versions[edge_def[0]]
-            to_ver = versions[edge_def[1]]
-            edges[from_ver].append(to_ver)
-
-        return descending_versions, edges
-
-    def get_build_suggestions(suggestions_url, major, minor, arch):
-        """
-        Loads suggestions_url/major.minor.yaml and returns minor_min, minor_max,
-        minor_block_list, z_min, z_max, and z_block_list
-        :param suggestions_url: Base url to /{major}.{minor}.yaml
-        :param major: Major version
-        :param minor: Minor version
-        :param arch: Architecture to lookup
-        :return: {minor_min, minor_max, minor_block_list, z_min, z_max, z_block_list}
-        """
-        url = f'{suggestions_url}/{major}.{minor}.yaml'
-        req = urllib.request.Request(url)
-        req.add_header('Accept', 'application/yaml')
-        suggestions = yaml.safe_load(exectools.urlopen_assert(req))
-        if arch in suggestions:
-            return suggestions[arch]
-        else:
-            return suggestions['default']
-
-    upgrade_from = set()
-    prev_versions, prev_edges = get_channel_versions(prev_candidate_channel)
-    curr_versions, current_edges = get_channel_versions(candidate_channel)
-    suggestions = get_build_suggestions(suggestions_url, major, minor, arch)
-    for v in prev_versions:
-        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['minor_min'])
-                and semver.VersionInfo.parse(v) < semver.VersionInfo.parse(suggestions['minor_max'])
-                and v not in suggestions['minor_block_list']):
-            upgrade_from.add(v)
-    for v in curr_versions:
-        if (semver.VersionInfo.parse(v) >= semver.VersionInfo.parse(suggestions['z_min'])
-                and semver.VersionInfo.parse(v) < semver.VersionInfo.parse(suggestions['z_max'])
-                and v not in suggestions['z_block_list']):
-            upgrade_from.add(v)
-
-    candidate_channel_versions, candidate_edges = get_channel_versions(candidate_channel)
-    # 'nightly' was an older convention. This nightly variant check can be removed by Oct 2020.
-    if 'nightly' not in version and 'hotfix' not in version:
-        # If we are not calculating a previous list for standard release, we want edges from previously
-        # released hotfixes to be valid for this node IF and only if that hotfix does not
-        # have an edge to TWO previous standard releases.
-        # ref: https://docs.google.com/document/d/16eGVikCYARd6nUUtAIHFRKXa7R_rU5Exc9jUPcQoG8A/edit
-
-        # If a release name in candidate contains 'hotfix', it was promoted as a hotfix for a customer.
-        previous_hotfixes = list(filter(lambda release: 'nightly' in release or 'hotfix' in release, candidate_channel_versions))
-        # For each hotfix that doesn't have 2 outgoing edges, and it as an incoming edge to this release
-        for hotfix_version in previous_hotfixes:
-            if len(candidate_edges[hotfix_version]) < 2:
-                upgrade_from.add(hotfix_version)
-
-    results = sort_semver(list(upgrade_from))
+    results = get_release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate, suggestions_url)
     print(','.join(results))
 
 
