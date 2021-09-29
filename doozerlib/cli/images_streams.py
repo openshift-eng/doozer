@@ -109,10 +109,13 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
 
             # mirror arm64 builder and base images for CI
             if mirror_arm:
+                # oc image mirror will filter out missing arches (as long as the manifest is there) regardless of specifying --skip-missing
                 arm_cmd = f'oc image mirror --filter-by-os linux/arm64 {brew_pullspec} {upstream_dest}-arm64'
                 if runtime.registry_config_dir is not None:
                     arm_cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_dir)}"
-                if not dry_run:
+                if dry_run:
+                    print(f'For {upstream_entry_name}, would have run: {arm_cmd}')
+                else:
                     exectools.cmd_assert(arm_cmd, retries=3, realtime=True)
 
 
