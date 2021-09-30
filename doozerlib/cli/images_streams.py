@@ -66,6 +66,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
     for upstream_entry_name, config in upstreaming_entries.items():
         if config.mirror is True or user_specified:
             upstream_dest = config.upstream_image
+            mirror_arm = False
             if upstream_dest is Missing:
                 raise IOError(f'Unable to mirror {upstream_entry_name} since upstream_image is not defined')
 
@@ -74,6 +75,8 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
             # for transforming upstream_image_base to upstream_image.
             if config.upstream_image_base is not Missing:
                 upstream_dest = config.upstream_image_base
+                if "aarch64" in runtime.arches:
+                    mirror_arm = True
 
             brew_image = config.image
             brew_pullspec = runtime.resolve_brew_image_url(brew_image)
@@ -81,9 +84,16 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
             if only_if_missing:
                 check_cmd = f'oc image info {upstream_dest}'
                 rc, check_out, check_err = exectools.cmd_gather(check_cmd)
-                if rc == 0:
-                    print(f'Image {upstream_dest} seems to exist already; skipping because of --only-if-missing')
-                    continue
+                if mirror_arm:
+                    check_cmd_arm = f'oc image info {upstream_dest}-arm64'
+                    rc_arm, check_out, check_err = exectools.cmd_gather(check_cmd_arm)
+                    if rc == 0 and rc_arm == 0:
+                        print(f'Image {upstream_dest} and {upstream_dest}-arm64 seems to exist already; skipping because of --only-if-missing')
+                        continue
+                else:
+                    if rc == 0:
+                        print(f'Image {upstream_dest} seems to exist already; skipping because of --only-if-missing')
+                        continue
 
             if live_test_mode:
                 upstream_dest += '.test'
@@ -96,6 +106,17 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
                 print(f'For {upstream_entry_name}, would have run: {cmd}')
             else:
                 exectools.cmd_assert(cmd, retries=3, realtime=True)
+
+            # mirror arm64 builder and base images for CI
+            if mirror_arm:
+                # oc image mirror will filter out missing arches (as long as the manifest is there) regardless of specifying --skip-missing
+                arm_cmd = f'oc image mirror --filter-by-os linux/arm64 {brew_pullspec} {upstream_dest}-arm64'
+                if runtime.registry_config_dir is not None:
+                    arm_cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_dir)}"
+                if dry_run:
+                    print(f'For {upstream_entry_name}, would have run: {arm_cmd}')
+                else:
+                    exectools.cmd_assert(arm_cmd, retries=3, realtime=True)
 
 
 @images_streams.command('check-upstream', short_help='Dumps information about CI buildconfigs/mirrored images associated with this group.')
