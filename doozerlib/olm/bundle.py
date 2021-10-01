@@ -566,7 +566,7 @@ class OLMBundle(object):
 
         # see: issues.redhat.com/browse/ART-3107
         if self.runtime.group_config.operator_channel_stable:
-            override_channel = ','.join([self.channel, stable_channel])
+            override_channel = ','.join({self.channel, stable_channel})
             override_default = stable_channel
 
         return {
