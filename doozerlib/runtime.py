@@ -317,7 +317,7 @@ class Runtime(object):
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
                    no_group=False, clone_source=None, disabled=None,
-                   prevent_cloning: bool = False):
+                   prevent_cloning: bool = False, config_only: bool = False):
 
         if self.initialized:
             return
@@ -450,6 +450,10 @@ class Runtime(object):
             replace_vars = self.group_config.vars.primitive()
         if self.assembly:
             replace_vars['runtime_assembly'] = self.assembly
+
+        # only initialize group and assembly configs and nothing else
+        if config_only:
+            return
 
         # Read in the streams definition for this group if one exists
         streams_data = self.gitdata.load_data(key='streams', replace_vars=replace_vars)

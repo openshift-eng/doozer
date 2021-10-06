@@ -1467,7 +1467,9 @@ CONFIG_RUNTIME_OPTS = {
     'mode': 'both',           # config wants it all
     'clone_distgits': False,  # no need, just doing config
     'clone_source': False,    # no need, just doing config
-    'disabled': True          # show all, including disabled/wip
+    'disabled': True,         # show all, including disabled/wip
+    'prevent_cloning': True,  # raise exception is somehow we try to clone
+    'config_only': True       # only initialize config and nothing else
 }
 
 
@@ -1563,7 +1565,7 @@ def config_read_group(runtime, key, as_len, as_yaml, permit_missing_group, defau
     """
     _fix_runtime_mode(runtime)
     try:
-        runtime.initialize(no_group=False, **CONFIG_RUNTIME_OPTS)
+        runtime.initialize(**CONFIG_RUNTIME_OPTS)
     except gitdata.GitDataException:
         # This may happen if someone if trying to get data for a branch that does not exist.
         # This may be perfectly OK if they are just trying to check the next minor's branch,
