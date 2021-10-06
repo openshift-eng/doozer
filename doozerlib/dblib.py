@@ -491,7 +491,7 @@ class Record(object):
                         attr_payload[self.db.rename_to_valid_column(k)] = v
                 self.db.create_payload_entry(attr_payload, self.table, self.dry_run)
         except:
-            self.logger.warning("Cannot connect to the DB")
+            pass
 
         self._tl.record = self.previous_record
 
