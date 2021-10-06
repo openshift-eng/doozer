@@ -478,17 +478,20 @@ class Record(object):
         return self
 
     def __exit__(self, *args):
-        with self.db.runtime.get_named_semaphore('dblib::mysql'):
+        try:
+            with self.db.runtime.get_named_semaphore('dblib::mysql'):
 
-            attr_payload = {}
+                attr_payload = {}
 
-            for k, v in self.attrs.items():
+                for k, v in self.attrs.items():
 
-                if v is None or v is Missing or v == '':
-                    continue
-                else:
-                    attr_payload[self.db.rename_to_valid_column(k)] = v
-            self.db.create_payload_entry(attr_payload, self.table, self.dry_run)
+                    if v is None or v is Missing or v == '':
+                        continue
+                    else:
+                        attr_payload[self.db.rename_to_valid_column(k)] = v
+                self.db.create_payload_entry(attr_payload, self.table, self.dry_run)
+        except:
+            self.logger.warning("Cannot connect to the DB")
 
         self._tl.record = self.previous_record
 

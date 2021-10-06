@@ -384,7 +384,11 @@ class Runtime(object):
 
         self.init_state()
 
-        self.db = dblib.DB(self, self.datastore)
+        try:
+            self.db = dblib.DB(self, self.datastore)
+        except:
+            self.logger.warning('Cannot connect to the DB')
+
         self.logger.info(f'Initial execution (cwd) directory: {os.getcwd()}')
 
         if no_group:
