@@ -3,8 +3,7 @@ coverage
 flake8
 flexmock
 mock
-pygit2 ~= 0.28 ; python_version <= '3.4'
-pygit2 ; python_version >= '3.5'
+pygit2 == 1.6.*
 pylint
 pytest
 tox
