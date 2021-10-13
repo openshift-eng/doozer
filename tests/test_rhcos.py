@@ -9,6 +9,7 @@ import os
 import yaml
 from pathlib import Path
 from unittest.mock import patch, MagicMock, Mock
+from urllib.error import URLError
 
 from doozerlib import rhcos
 from doozerlib.model import Model
@@ -68,6 +69,12 @@ class TestRhcos(unittest.TestCase):
         _urlopen_json_cm(mock_urlopen, dict(builds=[]))
         self.assertIsNone(rhcos.RHCOSBuildFinder(self.runtime, "4.2", "ppc64le")._latest_rhcos_build_id())
         self.assertIn('/rhcos-4.2-ppc64le/', mock_urlopen.call_args_list[1][0][0])
+
+    @patch('urllib.request.urlopen')
+    def test_build_find_failure(self, mock_urlopen):
+        mock_urlopen.side_effect = URLError("test")
+        with self.assertRaises(rhcos.RHCOSNotFound):
+            rhcos.RHCOSBuildFinder(self.runtime, "4.9")._latest_rhcos_build_id()
 
     @patch('doozerlib.rhcos.RHCOSBuildFinder.latest_rhcos_build_id')
     @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
