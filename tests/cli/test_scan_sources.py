@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from doozerlib.cli import scan_sources
+from doozerlib import rhcos
 
 
 class TestScanSourcesCli(TestCase):
@@ -16,8 +17,8 @@ class TestScanSourcesCli(TestCase):
         self.assertIn("--namespace 'ocp-s390x-priv'", mock_cmd.call_args_list[0][0][0])
         self.assertIn("istag '4.2-art-latest-s390x-priv", mock_cmd.call_args_list[0][0][0])
 
-    @patch("doozerlib.cli.scan_sources._tagged_mosc_id")
-    @patch("doozerlib.cli.scan_sources._latest_rhcos_build_id")
+    @patch("doozerlib.cli.scan_sources._tagged_mosc_id", autospec=True)
+    @patch("doozerlib.cli.scan_sources._latest_rhcos_build_id", autospec=True)
     def test_detect_rhcos_status(self, mock_latest, mock_tagged):
         mock_tagged.return_value = "id-1"
         mock_latest.return_value = "id-2"
@@ -30,3 +31,13 @@ class TestScanSourcesCli(TestCase):
         self.assertTrue(all(s['changed'] for s in statuses), "expect changed status reported")
         self.assertTrue(all("id-1" in s['reason'] for s in statuses), "expect previous id in reason")
         self.assertTrue(all("id-2" in s['reason'] for s in statuses), "expect changed id in reason")
+
+    @patch('doozerlib.rhcos.RHCOSBuildFinder.latest_rhcos_build_id')
+    def test_build_find_failure(self, mock_get_build):
+        # pedantic to have this test but don't want this to silently break again
+        mock_get_build.side_effect = Exception("test")
+        with self.assertRaises(Exception):
+            scan_sources._latest_rhcos_build_id(MagicMock(), "4.9", "aarch64", False)
+
+        mock_get_build.side_effect = rhcos.RHCOSNotFound("test")
+        self.assertIsNone(scan_sources._latest_rhcos_build_id(MagicMock(), "4.9", "aarch64", False))

@@ -95,6 +95,7 @@ class TestRhcos(unittest.TestCase):
         # Data source: https://releases-rhcos-art.cloud.privileged.psi.redhat.com/?stream=releases/rhcos-4.7-s390x&release=47.83.202107261211-0#47.83.202107261211-0
         rhcos_meta = json.loads(self.respath.joinpath('rhcos1', '47.83.202107261211-0.meta.json').read_text())
         rhcos_commitmeta = json.loads(self.respath.joinpath('rhcos1', '47.83.202107261211-0.commitmeta.json').read_text())
+        # NOTE: loading and parsing these fixtures can take a few seconds, no cause for concern
         rpm_defs = yaml.safe_load(self.respath.joinpath('rhcos1', '47.83.202107261211-0.rpm_defs.yaml').read_text())
         pkg_build_dicts = yaml.safe_load(self.respath.joinpath('rhcos1', '47.83.202107261211-0.pkg_builds.yaml').read_text())
 

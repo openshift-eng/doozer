@@ -265,24 +265,19 @@ def _detect_rhcos_status(runtime, kubeconfig) -> list:
     for arch in runtime.arches:
         for private in (False, True):
             name = f"{version}-{arch}{'-priv' if private else ''}"
-            try:
-                tagged_mosc_id = _tagged_mosc_id(kubeconfig, version, arch, private)
-                latest_rhcos_id = _latest_rhcos_build_id(runtime, version, arch, private)
-                status = dict(name=name)
-                if not latest_rhcos_id:
-                    status['changed'] = False
-                    status['reason'] = "could not find an RHCOS build to sync"
-                elif tagged_mosc_id == latest_rhcos_id:
-                    status['changed'] = False
-                    status['reason'] = f"latest RHCOS build is still {latest_rhcos_id} -- no change from istag"
-                else:
-                    status['changed'] = True
-                    status['reason'] = f"latest RHCOS build is {latest_rhcos_id} which differs from istag {tagged_mosc_id}"
-                statuses.append(status)
-            except Exception as ex:
-                # don't let flakiness in rhcos lookups prevent us from scanning regular builds;
-                # if anything else changed it will sync anyway.
-                runtime.logger.warning(f"could not determine RHCOS status for {name}: {ex}")
+            tagged_mosc_id = _tagged_mosc_id(kubeconfig, version, arch, private)
+            latest_rhcos_id = _latest_rhcos_build_id(runtime, version, arch, private)
+            status = dict(name=name)
+            if not latest_rhcos_id:
+                status['changed'] = False
+                status['reason'] = "could not find an RHCOS build to sync"
+            elif tagged_mosc_id == latest_rhcos_id:
+                status['changed'] = False
+                status['reason'] = f"latest RHCOS build is still {latest_rhcos_id} -- no change from istag"
+            else:
+                status['changed'] = True
+                status['reason'] = f"latest RHCOS build is {latest_rhcos_id} which differs from istag {tagged_mosc_id}"
+            statuses.append(status)
 
     return statuses
 
@@ -306,7 +301,10 @@ def _latest_rhcos_build_id(runtime, version, arch, private) -> str:
     """wrapper to return None if anything goes wrong, which will be taken as no change"""
     try:
         return rhcos.RHCOSBuildFinder(runtime, version, arch, private).latest_rhcos_build_id()
-    except Exception:
+    except rhcos.RHCOSNotFound as ex:
+        # don't let flakiness in rhcos lookups prevent us from scanning regular builds;
+        # if anything else changed it will sync anyway.
+        runtime.logger.warning(f"could not determine RHCOS build for {version}-{arch}{'-priv' if private else ''}: {ex}")
         return None
 
 
