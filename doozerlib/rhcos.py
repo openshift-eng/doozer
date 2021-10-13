@@ -7,6 +7,7 @@ from kobo.rpmlib import parse_nvr
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 from urllib import request
+from urllib.error import URLError
 from doozerlib.util import brew_suffix_for_arch, isolate_el_version_in_release
 from doozerlib import exectools
 from doozerlib.model import Model, Missing
@@ -21,6 +22,10 @@ def rhcos_content_tag(runtime) -> str:
     """
     base = runtime.group_config.branch.replace("-rhel-7", "-rhel-8")
     return f"{base}-candidate"
+
+
+class RHCOSNotFound(Exception):
+    pass
 
 
 class RHCOSBuildFinder:
@@ -58,10 +63,15 @@ class RHCOSBuildFinder:
         return self._latest_rhcos_build_id()
 
     def _latest_rhcos_build_id(self) -> Optional[str]:
-        # returns the build id string or None (or raise exception)
+        # returns the build id string or None (raises RHCOSNotFound for failure to retrieve)
         # (may want to return "schema-version" also if this ever gets more complex)
-        with request.urlopen(f"{self.rhcos_release_url()}/builds.json") as req:
-            data = json.loads(req.read().decode())
+        url = f"{self.rhcos_release_url()}/builds.json"
+        try:
+            with request.urlopen(url) as req:
+                data = json.loads(req.read().decode())
+        except URLError as ex:
+            raise RHCOSNotFound(f"Loading RHCOS build at {url} failed: {ex}")
+
         if not data["builds"]:
             return None
         build = data["builds"][0]
