@@ -521,7 +521,7 @@ class ImageDistGitRepo(DistGitRepo):
         # Include the UUID in the tags. This will allow other images being rebased
         # to have a known tag to refer to this image if they depend on it - even
         # before it is built.
-        floating_tags = {"latest", f"{version}.{self.runtime.uuid}"}
+        floating_tags = {f"{version}.{self.runtime.uuid}"}
         if self.runtime.assembly:
             floating_tags.add(f"assembly.{self.runtime.assembly}")
         vsplit = version.split(".")  # Split the version number: v4.3.4 => [ 'v4', '3, '4' ]
