@@ -609,7 +609,8 @@ class ImageDistGitRepo(DistGitRepo):
                 self.org_release = dfp.labels.get("release")  # occasionally no release given
 
     def push_image(self, tag_list, push_to_defaults, additional_registries=[], version_release_tuple=None,
-                   push_late=False, dry_run=False, registry_config_dir=None, filter_by_os=None):
+                   push_late=False, dry_run=False, registry_config_dir=None, filter_by_os=None,
+                   complete_before_event: Optional[int] = None):
         """
         Pushes the most recent image built for this distgit repo. This is
         accomplished by looking at the 'version' field in the Dockerfile or
@@ -621,6 +622,10 @@ class ImageDistGitRepo(DistGitRepo):
         :param version_release_tuple: Specify a version/release to pull as the source (if None, the latest build will be pulled).
         :param push_late: Whether late pushes should be included.
         :param dry_run: Will only print the docker operations that would have taken place.
+        :param complete_before_event: If a value is specified >= 0, any search will be constrained to builds which completed before
+            the specified brew_event. If a value is specified < 0, the search will be conducted with no constraint on
+            brew event.
+            If no value is specified, the search will be relative to the current assembly's basis event.
         :return: Returns True if successful (exception otherwise)
         """
 
@@ -676,7 +681,7 @@ class ImageDistGitRepo(DistGitRepo):
                 # If the version & release information was not specified,
                 # try to detect latest build from brew.
                 # Read in version information from the Distgit dockerfile
-                _, version, release = self.metadata.get_latest_build_info()
+                _, version, release = self.metadata.get_latest_build_info(comcomplete_before_event=complete_before_event)
 
             image_name_and_version = "%s:%s-%s" % (self.config.name, version, release)
             brew_image_url = self.runtime.resolve_brew_image_url(image_name_and_version)

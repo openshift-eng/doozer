@@ -991,7 +991,9 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
 
     # Push all late images
     for image in runtime.image_metas():
-        image.distgit_repo().push_image([], push_to_defaults, additional_registries=push_to, push_late=True, registry_config_dir=runtime.registry_config_dir, filter_by_os=filter_by_os)
+        image.distgit_repo().push_image([], push_to_defaults, additional_registries=push_to, push_late=True,
+                                        registry_config_dir=runtime.registry_config_dir, filter_by_os=filter_by_os,
+                                        complete_before_event=-1)
 
     state.record_image_finish(lstate)
 

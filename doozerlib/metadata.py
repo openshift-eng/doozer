@@ -384,8 +384,10 @@ class Metadata(object):
                             contains '....-rhel-?..' and the number will be extracted. If you want the true
                             latest, leave as None.
         :param honor_is: If True, and an assembly component specifies 'is', that nvr will be returned.
-        :param complete_before_event: If specified, the search will be constrained to builds which completed before
-                the specified brew_event. If not specified, the search will be relative to the current assembly's basis event.
+        :param complete_before_event: If a value is specified >= 0, the search will be constrained to builds which completed before
+                the specified brew_event. If a value is specified < 0, the search will be conducted with no constraint on
+                brew event.
+                If no value is specified, the search will be relative to the current assembly's basis event.
         :return: Returns the most recent build object from koji for this package & assembly.
                  Example https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
         """
@@ -421,10 +423,14 @@ class Metadata(object):
                 assembly = self.runtime.assembly
 
             list_builds_kwargs = {}  # extra kwargs that will be passed to koji_api.listBuilds invocations
-            if complete_before_event:
-                # listBuilds accepts timestamps, not brew events, so convert brew event into seconds since the epoch
-                complete_before_ts = koji_api.getEvent(complete_before_event)['ts']
-                list_builds_kwargs['completeBefore'] = complete_before_ts
+            if complete_before_event is not None:
+                if complete_before_event < 0:
+                    # By setting the parameter to None, it tells the koji wrapper to not bound the brew event.
+                    list_builds_kwargs['completeBefore'] = None
+                else:
+                    # listBuilds accepts timestamps, not brew events, so convert brew event into seconds since the epoch
+                    complete_before_ts = koji_api.getEvent(complete_before_event)['ts']
+                    list_builds_kwargs['completeBefore'] = complete_before_ts
             else:
                 # We cannot pass None; this indicates to our koji call wrapper that
                 # we do not want to constrain the brew event. Instead, we must not
