@@ -535,10 +535,9 @@ def prs():
 def images_upstreampulls(runtime):
     runtime.initialize(clone_distgits=False, clone_source=False)
     retdata = {}
-    upstreams = []
-    github_client = Github(constants.GTIHUB_TOKEN)
+    upstreams = set()
+    github_client = Github(os.environ.get(constants.GTIHUB_TOKEN))
     for image_meta in runtime.ordered_image_metas():
-        time.sleep(1)
         source_repo_url, source_repo_branch = _get_upstream_source(runtime, image_meta, skip_branch_check=True)
         if not source_repo_url or 'github.com' not in source_repo_url:
             runtime.logger.info('Skipping PR check since there is no configured github source URL')
@@ -550,37 +549,19 @@ def images_upstreampulls(runtime):
         _, org, repo_name = split_git_url(public_repo_url)
         if public_repo_url in upstreams:
             continue
-        else:
-            upstreams.append(public_repo_url)
+        upstreams.add(public_repo_url)
         public_source_repo = github_client.get_repo(f'{org}/{repo_name}')
         pulls = public_source_repo.get_pulls(state='open', sort='created')
         for pr in pulls:
-            time.sleep(1)
             if pr.user.login == github_client.get_user().login and pr.base.ref == source_repo_branch:
-                if pr.assignee is not None:
-                    if pr.assignee.email is not None:
-                        if pr.assignee.email not in retdata.keys():
-                            retdata[pr.assignee.email] = {}
-                        if public_repo_url not in retdata[pr.assignee.email].keys():
-                            retdata[pr.assignee.email][public_repo_url] = []
-                        retdata[pr.assignee.email][public_repo_url].append("[{} ][created_at:{}]".format(
-                            pr.html_url, pr.created_at))
-                    else:
-                        if "no assignee" not in retdata.keys():
-                            retdata["no assignee"] = {}
-                        if public_repo_url not in retdata["no assignee"].keys():
-                            retdata["no assignee"][public_repo_url] = []
-                        retdata["no assignee"][public_repo_url].append("[{} ][created_at:{}]".format(
-                            pr.html_url, pr.created_at))
-    # format output
-    for key, val in retdata.items():
-        if len(val) == 0:
-            continue
-        print(">[{}]".format(key))
-        for img, prs in val.items():
-            print(" -[{}]".format(img))
-            for pr in prs:
-                print("   {}".format(pr))
+                owners_email = image_meta.config['owners'][0]
+                if owners_email not in retdata.keys():
+                    retdata[owners_email] = {}
+                if public_repo_url not in retdata[owners_email].keys():
+                    retdata[owners_email][public_repo_url] = set()
+                retdata[owners_email][public_repo_url].add("[{} ][created_at:{}]".format(
+                    pr.html_url, pr.created_at))
+    print(yaml.dump(retdata, default_flow_style=False, width=10000))
 
 
 @prs.command('open', short_help='Open PRs against upstream component repos that have a FROM that differs from ART metadata.')
