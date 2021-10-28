@@ -538,7 +538,7 @@ def images_upstreampulls(runtime):
     runtime.initialize(clone_distgits=False, clone_source=False)
     retdata = {}
     upstreams = set()
-    github_client = Github(os.getenv(constants.GTIHUB_TOKEN))
+    github_client = Github(os.getenv(constants.GITHUB_TOKEN))
     for image_meta in runtime.ordered_image_metas():
         source_repo_url, source_repo_branch = _get_upstream_source(runtime, image_meta, skip_branch_check=True)
         if not source_repo_url or 'github.com' not in source_repo_url:
