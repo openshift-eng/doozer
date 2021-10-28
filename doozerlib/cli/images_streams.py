@@ -495,23 +495,25 @@ def resolve_upstream_from(runtime, image_entry):
         return runtime.resolve_stream(image_entry.stream).upstream_image
 
 
-def _get_upstream_source(runtime, image_meta):
+def _get_upstream_source(runtime, image_meta, skip_branch_check=False):
     """
     Analyzes an image metadata to find the upstream URL and branch associated with its content.
     :param runtime: The runtime object
     :param image_meta: The metadata to inspect
+    :param skip_branch_check: Skip check branch exist every time
     :return: A tuple containing (url, branch) for the upstream source OR (None, None) if there
             is no upstream source.
     """
     if "git" in image_meta.config.content.source:
         source_repo_url = image_meta.config.content.source.git.url
         source_repo_branch = image_meta.config.content.source.git.branch.target
-        branch_check, err = exectools.cmd_assert(f'git ls-remote --heads {source_repo_url} {source_repo_branch}', strip=True, retries=3)
-        if not branch_check:
-            # Output is empty if branch does not exist
-            source_repo_branch = image_meta.config.content.source.git.branch.fallback
-            if source_repo_branch is Missing:
-                raise IOError(f'Unable to detect source repository branch for {image_meta.distgit_key}')
+        if not skip_branch_check:
+            branch_check, err = exectools.cmd_assert(f'git ls-remote --heads {source_repo_url} {source_repo_branch}', strip=True, retries=3)
+            if not branch_check:
+                # Output is empty if branch does not exist
+                source_repo_branch = image_meta.config.content.source.git.branch.fallback
+                if source_repo_branch is Missing:
+                    raise IOError(f'Unable to detect source repository branch for {image_meta.distgit_key}')
     elif "alias" in image_meta.config.content.source:
         alias = image_meta.config.content.source.alias
         if alias not in runtime.group_config.sources:
@@ -536,7 +538,7 @@ def images_upstreampulls(runtime):
     runtime.initialize(clone_distgits=False, clone_source=False)
     retdata = {}
     upstreams = set()
-    github_client = Github(os.environ.get(constants.GTIHUB_TOKEN))
+    github_client = Github(os.getenv(constants.GTIHUB_TOKEN))
     for image_meta in runtime.ordered_image_metas():
         source_repo_url, source_repo_branch = _get_upstream_source(runtime, image_meta, skip_branch_check=True)
         if not source_repo_url or 'github.com' not in source_repo_url:
@@ -558,8 +560,8 @@ def images_upstreampulls(runtime):
                 if owners_email not in retdata.keys():
                     retdata[owners_email] = {}
                 if public_repo_url not in retdata[owners_email].keys():
-                    retdata[owners_email][public_repo_url] = set()
-                retdata[owners_email][public_repo_url].add("[{} ][created_at:{}]".format(
+                    retdata[owners_email][public_repo_url] = []
+                retdata[owners_email][public_repo_url].append("[{} ][created_at:{}]".format(
                     pr.html_url, pr.created_at))
     print(yaml.dump(retdata, default_flow_style=False, width=10000))
 
