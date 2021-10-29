@@ -10,7 +10,7 @@ RUN curl -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --fail -L \
 RUN dnf install -y \
     # runtime dependencies
     krb5-workstation git tig rsync koji skopeo podman docker tito \
-    python3 python3-certifi python3-rpm python3-kobo-rpmlib \
+    python36 python3-certifi python3-rpm python3-kobo-rpmlib \
     # provides en_US.UTF-8 locale required by tito
     glibc-langpack-en \
     # development dependencies
