@@ -13,7 +13,7 @@ from doozerlib import exectools
 from doozerlib.model import Model, Missing
 from doozerlib import brew
 
-RHCOS_BASE_URL = "https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases"
+RHCOS_BASE_URL = "https://rhcos-redirector.apps.art.xq1c.p1.openshiftapps.com/art/storage/releases"
 
 
 def rhcos_content_tag(runtime) -> str:
