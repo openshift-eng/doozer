@@ -81,7 +81,7 @@ class TestRPMBuilder(unittest.TestCase):
         actual = asyncio.get_event_loop().run_until_complete(builder.rebase(rpm, "1.2.3", "202104070000.test.p?"))
 
         self.assertEqual(actual, distgit_sha)
-        self.assertEqual(rpm.release, "202104070000.test.p0.git." + source_sha[:7])
+        self.assertEqual(rpm.release, "202104070000.test.p0.g" + source_sha[:7])
         mocked_open.assert_called_once_with(dg.dg_path / "foo.spec", "w")
         mocked_open.return_value.__aenter__.return_value.writelines.assert_called_once_with(["fake spec content"])
         mocked_cmd_assert_async.assert_any_call(["tar", "-czf", dg.dg_path / f"{rpm.config.name}-{rpm.version}-{rpm.release}.tar.gz", "--exclude=.git", fr"--transform=s,^\./,{rpm.config.name}-{rpm.version}/,", "."], cwd=rpm.source_path)
@@ -93,7 +93,7 @@ class TestRPMBuilder(unittest.TestCase):
         dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].",
                                           commit_attributes={
                                               'version': '1.2.3',
-                                              'release': '202104070000.test.p0.git.3f17b42',
+                                              'release': '202104070000.test.p0.g3f17b42',
                                               'io.openshift.build.commit.id': '3f17b42b8aa7d294c0d2b6f946af5fe488f3a722',
                                               'io.openshift.build.source-location': None}
                                           )
@@ -121,7 +121,7 @@ class TestRPMBuilder(unittest.TestCase):
         actual = asyncio.get_event_loop().run_until_complete(builder.rebase(rpm, "1.2.3", "202104070000.test.p?"))
 
         self.assertEqual(actual, distgit_sha)
-        self.assertEqual(rpm.release, "202104070000.test.p0.git." + source_sha[:7] + '.assembly.tester')
+        self.assertEqual(rpm.release, "202104070000.test.p0.g" + source_sha[:7] + '.assembly.tester')
         mocked_open.assert_called_once_with(dg.dg_path / "foo.spec", "w")
         mocked_open.return_value.__aenter__.return_value.writelines.assert_called_once_with(["fake spec content"])
         mocked_cmd_assert_async.assert_any_call(["tar", "-czf", dg.dg_path / f"{rpm.config.name}-{rpm.version}-{rpm.release}.tar.gz", "--exclude=.git", fr"--transform=s,^\./,{rpm.config.name}-{rpm.version}/,", "."], cwd=rpm.source_path)
@@ -133,7 +133,7 @@ class TestRPMBuilder(unittest.TestCase):
         dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].",
                                           commit_attributes={
                                               'version': '1.2.3',
-                                              'release': '202104070000.test.p0.git.3f17b42.assembly.tester',
+                                              'release': '202104070000.test.p0.g3f17b42.assembly.tester',
                                               'io.openshift.build.commit.id': '3f17b42b8aa7d294c0d2b6f946af5fe488f3a722',
                                               'io.openshift.build.source-location': None})
         dg.push_async.assert_called_once()

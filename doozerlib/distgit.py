@@ -1660,7 +1660,7 @@ class ImageDistGitRepo(DistGitRepo):
                     release += pval
 
                 if self.source_full_sha:
-                    release += ".git." + self.source_full_sha[:7]
+                    release += ".g" + self.source_full_sha[:7]
 
                 if self.runtime.assembly:
                     release += f'.assembly.{self.runtime.assembly}'
