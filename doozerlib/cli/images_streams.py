@@ -532,7 +532,7 @@ def prs():
     pass
 
 
-@prs.command('list', short_help='List all open prs for upstream repo')
+@prs.command('list', short_help='List all open prs for upstream repo, run this need GITHUB_TOKEN var from env got set.')
 @pass_runtime
 def images_upstreampulls(runtime):
     runtime.initialize(clone_distgits=False, clone_source=False)
@@ -556,13 +556,8 @@ def images_upstreampulls(runtime):
         pulls = public_source_repo.get_pulls(state='open', sort='created')
         for pr in pulls:
             if pr.user.login == github_client.get_user().login and pr.base.ref == source_repo_branch:
-                owners_email = image_meta.config['owners'][0]
-                if owners_email not in retdata.keys():
-                    retdata[owners_email] = {}
-                if public_repo_url not in retdata[owners_email].keys():
-                    retdata[owners_email][public_repo_url] = []
-                retdata[owners_email][public_repo_url].append("[{} ][created_at:{}]".format(
-                    pr.html_url, pr.created_at))
+                for owners_email in image_meta.config['owners']:
+                    retdata.setdefault(owners_email, {}).setdefault(public_repo_url, []).append(dict(pr_url=pr.html_url, created_at=pr.created_at))
     print(yaml.dump(retdata, default_flow_style=False, width=10000))
 
 
