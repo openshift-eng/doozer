@@ -3,8 +3,7 @@ import urllib.parse
 import yaml
 from collections import OrderedDict
 import pathlib
-import json
-import traceback
+import io
 import datetime
 import time
 import sys
@@ -14,6 +13,8 @@ from enum import Enum
 from xml.etree import ElementTree
 from typing import NamedTuple
 import dateutil.parser
+
+from dockerfile_parse import DockerfileParser
 
 from .pushd import Dir
 from .distgit import ImageDistGitRepo, RPMDistGitRepo
@@ -367,7 +368,7 @@ class Metadata(object):
         return req.read()
 
     def get_latest_build(self, default: Optional[Any] = -1, assembly: Optional[str] = None, extra_pattern: str = '*',
-                         build_state: BuildStates = BuildStates.COMPLETE,
+                         build_state: BuildStates = BuildStates.COMPLETE, component_name: Optional[str] = None,
                          el_target: Optional[Union[str, int]] = None, honor_is: bool = True, complete_before_event: Optional[int] = None):
         """
         :param default: A value to return if no latest is found (if not specified, an exception will be thrown)
@@ -379,6 +380,7 @@ class Metadata(object):
                          like p? and git commit (up to, but not including ".assembly.<name>" release
                          component). e.g. "*.git.<commit>.*   or '*.p1.*'
         :param build_state: 0=BUILDING, 1=COMPLETE, 2=DELETED, 3=FAILED, 4=CANCELED
+        :param component_name: If not specified, looks up builds for self component.
         :param el_target: In the case of an RPM, which can build for multiple targets, you can specify
                             '7' for el7, '8' for el8, etc. You can also pass in a brew target that
                             contains '....-rhel-?..' and the number will be extracted. If you want the true
@@ -386,10 +388,11 @@ class Metadata(object):
         :param honor_is: If True, and an assembly component specifies 'is', that nvr will be returned.
         :param complete_before_event: If specified, the search will be constrained to builds which completed before
                 the specified brew_event. If not specified, the search will be relative to the current assembly's basis event.
-        :return: Returns the most recent build object from koji for this package & assembly.
+        :return: Returns the most recent build object from koji for the specified component & assembly.
                  Example https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
         """
-        component_name = self.get_component_name()
+        if not component_name:
+            component_name = self.get_component_name()
         builds = []
 
         with self.runtime.pooled_koji_client_session(caching=True) as koji_api:
@@ -811,81 +814,68 @@ class Metadata(object):
 
     def extract_kube_env_vars(self) -> Dict[str, str]:
         """
-        Analyzes the source_base_dir for either Godeps or go.mod and looks for information about
-        which version of Kubernetes is being utilized by the repository. Side effect is cloning distgit
+        Analyzes the source_base_dir for the hyperkube Dockerfile in which the release's k8s version
+        is defined. Side effect is cloning distgit
         and upstream source if it has not already been done.
         :return: A Dict of environment variables that should be added to the Dockerfile / rpm spec.
                 Variables like KUBE_GIT_VERSION, KUBE_GIT_COMMIT, KUBE_GIT_MINOR, ...
                 May be empty if there is no kube information in the source dir.
         """
         envs = dict()
-
-        upstream_source_path: pathlib.Path = self.runtime.resolve_source(self)
+        upstream_source_path: pathlib.Path = pathlib.Path(self.runtime.resolve_source(self))
         if not upstream_source_path:
             # distgit only. Return empty.
             return envs
 
-        kube_version_fields: List[str] = None  # Populate ['x', 'y', 'z'] this from godeps or gomod
-        kube_commit_hash: str = None  # Populate with kube repo hash like '2f054b7646dc9e98f6dea458d2fb65e1d2c1f731'
         with Dir(upstream_source_path):
             out, _ = exectools.cmd_assert(["git", "rev-parse", "HEAD"])
-            source_full_sha = out.strip()
+            source_full_sha = out
 
-            # First determine if this source repository is using Godeps. Godeps is ultimately
-            # being replaced by gomod, but older versions of OpenShift continue to use it.
-            godeps_file = pathlib.Path(upstream_source_path, 'Godeps', 'Godeps.json')
-            if godeps_file.is_file():
-                try:
-                    with godeps_file.open('r', encoding='utf-8') as f:
-                        godeps = json.load(f)
-                        # Reproduce https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/hack/lib/build/version.sh#L82
-                        # Example of what we are after: https://github.com/openshift/origin/blob/6f457bc317f8ca8e514270714db6597ec1cb516c/Godeps/Godeps.json#L10-L15
-                        for dep in godeps.get('Deps', []):
-                            if dep.get('ImportPath', '') == 'k8s.io/kubernetes/pkg/api':
-                                kube_commit_hash = dep.get('Rev', '')
-                                raw_kube_version = dep.get('Comment', '')  # e.g. v1.14.6-152-g117ba1f
-                                # drop release information.
-                                base_kube_version = raw_kube_version.split('-')[0]  # v1.17.1-152-g117ba1f => v1.17.1
-                                kube_version_fields = base_kube_version.lstrip('v').split('.')  # v1.17.1 => [ '1', '17', '1']
-                except:
-                    self.logger.error(f'Error parsing godeps {str(godeps_file)}')
-                    traceback.print_exc()
+        use_path = None
+        path_4x = upstream_source_path.joinpath('openshift-hack/images/hyperkube/Dockerfile.rhel')  # for >= 4.6: https://github.com/openshift/kubernetes/blob/fcff70a54d3f0bde19e879062e8f1489ba5d0cb0/openshift-hack/images/hyperkube/Dockerfile.rhel#L16
+        if path_4x.exists():
+            use_path = path_4x
 
-            go_sum_file = pathlib.Path(upstream_source_path, 'go.sum')
-            if go_sum_file.is_file():
-                try:
-                    # we are looking for a line like: https://github.com/openshift/kubernetes/blob/5241b27b8acd73cdc99a0cac281645189189f1d8/go.sum#L602
-                    # e.g. "k8s.io/kubernetes v1.19.0-rc.2/go.mod h1:zomfQQTZYrQjnakeJi8fHqMNyrDTT6F/MuLaeBHI9Xk="
-                    with go_sum_file.open('r', encoding='utf-8') as f:
-                        for line in f.readlines():
-                            if line.startswith('k8s.io/kubernetes '):
-                                entry_split = line.split()  # => ['k8s.io/kubernetes', 'v1.19.0-rc.2/go.mod', 'h1:zomfQQTZYrQjnakeJi8fHqMNyrDTT6F/MuLaeBHI9Xk=']
-                                base_kube_version = entry_split[1].split('/')[0].strip()  # 'v1.19.0-rc.2/go.mod' => 'v1.19.0-rc.2'
-                                kube_version_fields = base_kube_version.lstrip('v').split('.')  # 'v1.19.0-rc.2' => [ '1', '19', '0-rc.2']
-                                # upstream kubernetes creates a tag for each version. Go find its sha.
-                                rc, out, err = exectools.cmd_gather('git ls-remote https://github.com/kubernetes/kubernetes {base_kube_version}')
-                                out = out.strip()
-                                if out:
-                                    # Expecting something like 'a26dc584ac121d68a8684741bce0bcba4e2f2957	refs/tags/v1.19.0-rc.2'
-                                    kube_commit_hash = out.split()[0]
-                                else:
-                                    # That's strange, but let's not kill the build for it.  Poke in our repo's hash.
-                                    kube_commit_hash = source_full_sha
-                                break
-                except:
-                    self.logger.error(f'Error parsing go.sum {str(go_sum_file)}')
-                    traceback.print_exc()
+        path_3_11 = upstream_source_path.joinpath('images/hyperkube/Dockerfile.rhel')  # for 3.11: https://github.com/openshift/ose/blob/master/images/hyperkube/Dockerfile.rhel
+        if not use_path and path_3_11.exists():
+            use_path = path_3_11
 
-            if kube_version_fields:
-                # For historical consistency with tito's flow, we add +OS_GIT_COMMIT[:7] to the kube version
-                envs['KUBE_GIT_VERSION'] = f"v{'.'.join(kube_version_fields)}+{source_full_sha[:7]}"
-                envs['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
-                godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
-                envs['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, append a '+' since OCP patches its vendored kube.
-                envs['KUBE_GIT_COMMIT'] = kube_commit_hash
-                envs['KUBE_GIT_TREE_STATE'] = 'clean'
-            elif self.name in ('openshift-enterprise-hyperkube', 'openshift', 'atomic-openshift'):
-                self.logger.critical(f'Unable to acquire KUBE vars for {self.name}. This must be fixed or platform addons can break: https://bugzilla.redhat.com/show_bug.cgi?id=1861097')
-                raise IOError(f'Unable to determine KUBE vars for {self.name}')
+        kube_version_fields = []
+        if use_path:
+            dfp = DockerfileParser(cache_content=True, fileobj=io.BytesIO(use_path.read_bytes()))
+            build_versions = dfp.labels.get('io.openshift.build.versions', None)
+            if not build_versions:
+                raise IOError(f'Unable to find io.openshift.build.versions label in {str(use_path)}')
 
-            return envs
+            # Find something like kubernetes=1.22.1 and extract version as group
+            m = re.match(r"^.*[^\w]*kubernetes=([\d.]+).*", build_versions)
+            if not m:
+                raise IOError(f'Unable to find `kubernetes=...` in io.openshift.build.versions label from {str(use_path)}')
+
+            base_kube_version = m.group(1).lstrip('v')
+            kube_version_fields = base_kube_version.split('.')  # 1.17.1 => [ '1', '17', '1']
+
+            # upstream kubernetes creates a tag for each version. Go find its sha.
+            rc, out, err = exectools.cmd_gather(f'git ls-remote https://github.com/kubernetes/kubernetes v{base_kube_version}')
+            out = out.strip()
+            if rc == 0 and out:
+                # Expecting something like 'a26dc584ac121d68a8684741bce0bcba4e2f2957	refs/tags/v1.19.0-rc.2'
+                kube_commit_hash = out.split()[0]
+            else:
+                # That's strange, but let's not kill the build for it.  Poke in our repo's hash.
+                self.logger.warning(f'Unable to find upstream git tag v{base_kube_version} in https://github.com/kubernetes/kubernetes')
+                kube_commit_hash = source_full_sha
+
+        if kube_version_fields:
+            # For historical consistency with tito's flow, we add +OS_GIT_COMMIT[:7] to the kube version
+            envs['KUBE_GIT_VERSION'] = f"v{'.'.join(kube_version_fields)}+{source_full_sha[:7]}"
+            envs['KUBE_GIT_MAJOR'] = '0' if len(kube_version_fields) < 1 else kube_version_fields[0]
+            godep_kube_minor = '0' if len(kube_version_fields) < 2 else kube_version_fields[1]
+            envs['KUBE_GIT_MINOR'] = f'{godep_kube_minor}+'  # For historical reasons, append a '+' since OCP patches its vendored kube.
+            envs['KUBE_GIT_COMMIT'] = kube_commit_hash
+            envs['KUBE_GIT_TREE_STATE'] = 'clean'
+        elif self.name in ('openshift-enterprise-hyperkube', 'openshift', 'atomic-openshift'):
+            self.logger.critical(f'Unable to acquire KUBE vars for {self.name}. This must be fixed or platform addons can break: https://bugzilla.redhat.com/show_bug.cgi?id=1861097')
+            raise IOError(f'Unable to determine KUBE vars for {self.name}')
+
+        return envs
