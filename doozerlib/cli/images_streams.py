@@ -532,7 +532,7 @@ def prs():
     pass
 
 
-@prs.command('list', short_help='List all open prs for upstream repo, run this need GITHUB_TOKEN var from env got set.')
+@prs.command('list', short_help='List all open prs for upstream repos (requires GITHUB_TOKEN env var to be set.')
 @pass_runtime
 def images_upstreampulls(runtime):
     runtime.initialize(clone_distgits=False, clone_source=False)
