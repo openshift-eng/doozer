@@ -13,7 +13,7 @@ from dockerfile_parse import DockerfileParser
 from doozerlib.model import Missing
 from doozerlib.pushd import Dir
 from doozerlib.cli import cli, pass_runtime
-from doozerlib import brew, state, exectools, model
+from doozerlib import brew, state, exectools, model, constants
 from doozerlib.util import get_docker_config_json, convert_remote_git_to_ssh, \
     split_git_url, remove_prefix, green_print,\
     yellow_print, red_print, convert_remote_git_to_https, \
@@ -516,23 +516,25 @@ def resolve_upstream_from(runtime, image_entry):
         return runtime.resolve_stream(image_entry.stream).upstream_image
 
 
-def _get_upstream_source(runtime, image_meta):
+def _get_upstream_source(runtime, image_meta, skip_branch_check=False):
     """
     Analyzes an image metadata to find the upstream URL and branch associated with its content.
     :param runtime: The runtime object
     :param image_meta: The metadata to inspect
+    :param skip_branch_check: Skip check branch exist every time
     :return: A tuple containing (url, branch) for the upstream source OR (None, None) if there
             is no upstream source.
     """
     if "git" in image_meta.config.content.source:
         source_repo_url = image_meta.config.content.source.git.url
         source_repo_branch = image_meta.config.content.source.git.branch.target
-        branch_check, err = exectools.cmd_assert(f'git ls-remote --heads {source_repo_url} {source_repo_branch}', strip=True, retries=3)
-        if not branch_check:
-            # Output is empty if branch does not exist
-            source_repo_branch = image_meta.config.content.source.git.branch.fallback
-            if source_repo_branch is Missing:
-                raise IOError(f'Unable to detect source repository branch for {image_meta.distgit_key}')
+        if not skip_branch_check:
+            branch_check, err = exectools.cmd_assert(f'git ls-remote --heads {source_repo_url} {source_repo_branch}', strip=True, retries=3)
+            if not branch_check:
+                # Output is empty if branch does not exist
+                source_repo_branch = image_meta.config.content.source.git.branch.fallback
+                if source_repo_branch is Missing:
+                    raise IOError(f'Unable to detect source repository branch for {image_meta.distgit_key}')
     elif "alias" in image_meta.config.content.source:
         alias = image_meta.config.content.source.alias
         if alias not in runtime.group_config.sources:
@@ -549,6 +551,35 @@ def _get_upstream_source(runtime, image_meta):
 @images_streams.group("prs", short_help="Manage ART equivalent PRs in upstream.")
 def prs():
     pass
+
+
+@prs.command('list', short_help='List all open prs for upstream repos (requires GITHUB_TOKEN env var to be set.')
+@pass_runtime
+def images_upstreampulls(runtime):
+    runtime.initialize(clone_distgits=False, clone_source=False)
+    retdata = {}
+    upstreams = set()
+    github_client = Github(os.getenv(constants.GITHUB_TOKEN))
+    for image_meta in runtime.ordered_image_metas():
+        source_repo_url, source_repo_branch = _get_upstream_source(runtime, image_meta, skip_branch_check=True)
+        if not source_repo_url or 'github.com' not in source_repo_url:
+            runtime.logger.info('Skipping PR check since there is no configured github source URL')
+            continue
+
+        public_repo_url, public_branch = runtime.get_public_upstream(source_repo_url)
+        if not public_branch:
+            public_branch = source_repo_branch
+        _, org, repo_name = split_git_url(public_repo_url)
+        if public_repo_url in upstreams:
+            continue
+        upstreams.add(public_repo_url)
+        public_source_repo = github_client.get_repo(f'{org}/{repo_name}')
+        pulls = public_source_repo.get_pulls(state='open', sort='created')
+        for pr in pulls:
+            if pr.user.login == github_client.get_user().login and pr.base.ref == source_repo_branch:
+                for owners_email in image_meta.config['owners']:
+                    retdata.setdefault(owners_email, {}).setdefault(public_repo_url, []).append(dict(pr_url=pr.html_url, created_at=pr.created_at))
+    print(yaml.dump(retdata, default_flow_style=False, width=10000))
 
 
 @prs.command('open', short_help='Open PRs against upstream component repos that have a FROM that differs from ART metadata.')
