@@ -4,7 +4,7 @@ import errno
 import os
 import unittest
 
-import flexmock
+from flexmock import flexmock
 import mock
 
 from doozerlib import distgit, model

@@ -5,7 +5,7 @@ import sys
 import io
 import unittest
 
-import flexmock
+from flexmock import flexmock
 
 from doozerlib import distgit
 from doozerlib.assembly import AssemblyTypes

@@ -8,7 +8,7 @@ import os
 import logging
 import tempfile
 import shutil
-import flexmock
+from flexmock import flexmock
 try:
     from importlib import reload
 except ImportError:
