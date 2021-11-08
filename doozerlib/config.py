@@ -1,4 +1,3 @@
-from __future__ import absolute_import, print_function, unicode_literals
 from future.utils import bytes_to_native_str
 from . import metadata
 import yaml
