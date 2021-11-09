@@ -1,7 +1,6 @@
 # This file is part of gitdata project <https://github.com/adammhaile/gitdata>
 # and released under LGPL v3 <https://www.gnu.org/licenses/lgpl-3.0.en.html>
 
-from __future__ import absolute_import, print_function, unicode_literals
 from future import standard_library
 standard_library.install_aliases()
 import yaml

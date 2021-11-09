@@ -1,4 +1,3 @@
-from __future__ import absolute_import, print_function, unicode_literals
 import io
 import logging
 
@@ -7,7 +6,7 @@ import tempfile
 import unittest
 from threading import Lock
 
-import flexmock
+from flexmock import flexmock
 from mock import MagicMock
 
 from doozerlib import distgit, model

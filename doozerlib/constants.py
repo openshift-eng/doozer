@@ -1,4 +1,3 @@
-from __future__ import absolute_import, print_function, unicode_literals
 
 
 # Environment variables to disable Git stdin prompts for username, password, etc

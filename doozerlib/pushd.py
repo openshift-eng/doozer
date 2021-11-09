@@ -7,7 +7,6 @@ clause.  The context manager idiom allows the user to execute some commands
 in a working directory other than the CWD and return without needing to
 explicitly handle it.
 """
-from __future__ import absolute_import, print_function, unicode_literals
 
 import threading
 import pathlib

@@ -1,4 +1,3 @@
-from __future__ import absolute_import, print_function, unicode_literals
 import unittest
 import yaml
 from . import run_doozer, get_working_dir

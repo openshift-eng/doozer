@@ -4,7 +4,6 @@ consistently. It adds some logging and some additional capabilties to the
 ordinary subprocess behaviors.
 """
 
-from __future__ import absolute_import, print_function, unicode_literals
 import asyncio
 from asyncio import events
 import contextvars

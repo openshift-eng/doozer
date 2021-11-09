@@ -1,11 +1,10 @@
-from __future__ import absolute_import, print_function, unicode_literals
 import errno
 import os
 import sys
 import io
 import unittest
 
-import flexmock
+from flexmock import flexmock
 
 from doozerlib import distgit
 from doozerlib.assembly import AssemblyTypes

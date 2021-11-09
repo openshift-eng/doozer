@@ -1,6 +1,6 @@
 import unittest
 
-import flexmock
+from flexmock import flexmock
 from mock import MagicMock
 
 from doozerlib.olm.bundle import OLMBundle
