@@ -1956,9 +1956,10 @@ def list_olm_operators(runtime: Runtime):
              context_settings=dict(
                  ignore_unknown_options=True,  # permit patterns starting with dash; allows printing yaml lists
              ))
+@click.option('--skip-missing', default=False, is_flag=True, help='If no build has been performed, skip printing pattern that would require it')
 @click.argument("pattern", default="{component}", nargs=1)
 @pass_runtime
-def olm_bundles_print(runtime: Runtime, pattern: Optional[str]):
+def olm_bundles_print(runtime: Runtime, skip_missing, pattern: Optional[str]):
     """
     Prints data from each distgit. The pattern specified should be a string
     with replacement fields:
@@ -1994,39 +1995,47 @@ def olm_bundles_print(runtime: Runtime, pattern: Optional[str]):
         s = s.replace("{distgit_key}", image.distgit_key)
         s = s.replace("{component}", image.get_component_name())
 
-        build_info = image.get_latest_build()
-        nvr = build_info['nvr']
-        s = s.replace('{nvr}', nvr)
-        olm_bundle.get_operator_buildinfo(nvr=nvr)  # Populate the object for the operator we are interested in.
-        s = s.replace('{bundle_component}', olm_bundle.bundle_brew_component)
-        bundle_image_name = olm_bundle.get_bundle_image_name()
+        build_info = image.get_latest_build(default=None)
+        if build_info is None:
+            if "{" in s:
+                if skip_missing:
+                    runtime.logger.warning(f'No build has been performed for {image.distgit_key} by {s} requires it; skipping')
+                    continue
+                else:
+                    raise IOError(f"Fields remaining in pattern, but no build was found for {image.distgit_key} with which to populate those fields: {s}")
+        else:
+            nvr = build_info['nvr']
+            s = s.replace('{nvr}', nvr)
+            olm_bundle.get_operator_buildinfo(nvr=nvr)  # Populate the object for the operator we are interested in.
+            s = s.replace('{bundle_component}', olm_bundle.bundle_brew_component)
+            bundle_image_name = olm_bundle.get_bundle_image_name()
 
-        if '{paired_' in s:
-            # Paired bundle values must correspond exactly to the latest operator NVR.
-            paired_bundle_nvr = olm_bundle.find_bundle_for(nvr)
-            if not paired_bundle_nvr:
-                paired_bundle_nvr = 'None'  # Doesn't exist
-                paired_pullspec = 'None'
-            else:
-                paired_version_release = paired_bundle_nvr[len(olm_bundle.bundle_brew_component) + 1:]
-                paired_pullspec = runtime.resolve_brew_image_url(f'{bundle_image_name}:{paired_version_release}')
-            s = s.replace('{paired_bundle_nvr}', paired_bundle_nvr)
-            s = s.replace('{paired_bundle_pullspec}', paired_pullspec)
+            if '{paired_' in s:
+                # Paired bundle values must correspond exactly to the latest operator NVR.
+                paired_bundle_nvr = olm_bundle.find_bundle_for(nvr)
+                if not paired_bundle_nvr:
+                    paired_bundle_nvr = 'None'  # Doesn't exist
+                    paired_pullspec = 'None'
+                else:
+                    paired_version_release = paired_bundle_nvr[len(olm_bundle.bundle_brew_component) + 1:]
+                    paired_pullspec = runtime.resolve_brew_image_url(f'{bundle_image_name}:{paired_version_release}')
+                s = s.replace('{paired_bundle_nvr}', paired_bundle_nvr)
+                s = s.replace('{paired_bundle_pullspec}', paired_pullspec)
 
-        if '{bundle_' in s:
-            # Unpaired is just whatever bundle build was most recent
-            build = olm_bundle.get_latest_bundle_build()
-            if not build:
-                bundle_nvr = 'None'
-                bundle_pullspec = 'None'
-            else:
-                bundle_nvr = build['nvr']
-                version_release = bundle_nvr[len(olm_bundle.bundle_brew_component) + 1:]
-                # Build pullspec like: registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-clusterresourceoverride-operator-bundle:v4.7.0.202012082225.p0-1
-                bundle_pullspec = runtime.resolve_brew_image_url(f'{bundle_image_name}:{version_release}')
+            if '{bundle_' in s:
+                # Unpaired is just whatever bundle build was most recent
+                build = olm_bundle.get_latest_bundle_build()
+                if not build:
+                    bundle_nvr = 'None'
+                    bundle_pullspec = 'None'
+                else:
+                    bundle_nvr = build['nvr']
+                    version_release = bundle_nvr[len(olm_bundle.bundle_brew_component) + 1:]
+                    # Build pullspec like: registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-clusterresourceoverride-operator-bundle:v4.7.0.202012082225.p0-1
+                    bundle_pullspec = runtime.resolve_brew_image_url(f'{bundle_image_name}:{version_release}')
 
-            s = s.replace('{bundle_nvr}', bundle_nvr)
-            s = s.replace('{bundle_pullspec}', bundle_pullspec)
+                s = s.replace('{bundle_nvr}', bundle_nvr)
+                s = s.replace('{bundle_pullspec}', bundle_pullspec)
 
         if "{" in s:
             raise IOError("Unrecognized fields remaining in pattern: %s" % s)
