@@ -25,6 +25,7 @@ from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.cli import cli, pass_runtime, validate_semver_major_minor_patch
 
 from doozerlib.cli.release_gen_payload import release_gen_payload
+from doozerlib.cli.get_nightlies import get_nightlies
 from doozerlib.cli.detect_embargo import detect_embargo
 from doozerlib.cli.images_health import images_health
 from doozerlib.cli.images_streams import images_streams, images_streams_mirror, images_streams_gen_buildconfigs
