@@ -1867,6 +1867,7 @@ class ImageDistGitRepo(DistGitRepo):
         registry = csv_config['registry'].rstrip("/")
         image_map = csv_config.get('image-map', {})
 
+        name_in_bundle = self.metadata.config.get('name_in_bundle', None)
         for ref in image_refs:
             try:
                 name = build_image_ref_name(ref['name'])
@@ -1876,10 +1877,15 @@ class ImageDistGitRepo(DistGitRepo):
                 raise DoozerFatalError('Error loading image-references data for {}'.format(self.metadata.distgit_key))
 
             try:
-                if name == self.metadata.image_name_short:  # ref is current image
+                # ref is current image
+                if name == self.metadata.image_name_short or name_in_bundle and ref['name'] == name_in_bundle:
                     image_tag = '{}:{}-{}'.format(name, version, release)
                 else:
-                    distgit = self.runtime.image_distgit_by_name(name)
+                    # try to find by ref['name'], which is enabled by name_in_bundle field
+                    # indexed in map at initialization
+                    distgit = self.runtime.image_distgit_by_name(ref['name'])
+                    if not distgit:
+                        distgit = self.runtime.image_distgit_by_name(name)
                     # if upstream is referring to an image we don't actually build, give up.
                     if not distgit:
                         raise DoozerFatalError('Unable to find {} in image-references data for {}'.format(name, self.metadata.distgit_key))
