@@ -82,10 +82,6 @@ def pull_image(url):
         task_f=lambda: exectools.cmd_gather(["podman", "pull", url])[0] == 0)
 
 
-def build_image_ref_name(name):
-    return 'openshift/ose-' + re.sub(pattern='^ose-', repl='', string=name)
-
-
 def map_image_name(name, image_map):
     for match, replacement in image_map.items():
         if name.find(match) != -1:
@@ -1869,28 +1865,25 @@ class ImageDistGitRepo(DistGitRepo):
 
         for ref in image_refs:
             try:
-                name = build_image_ref_name(ref['name'])
+                name = ref['name']
                 name = map_image_name(name, image_map)
                 spec = ref['from']['name']
             except:
                 raise DoozerFatalError('Error loading image-references data for {}'.format(self.metadata.distgit_key))
 
             try:
-                if name == self.metadata.image_name_short:  # ref is current image
-                    image_tag = '{}:{}-{}'.format(name, version, release)
+                distgit = self.runtime.name_in_bundle_map.get(name, None)
+                # if upstream is referring to an image we don't actually build, give up.
+                if not distgit:
+                    raise DoozerFatalError('Unable to find {} in image-references data for {}'.format(name, self.metadata.distgit_key))
+                meta = self.runtime.image_map.get(distgit, None)
+                if meta:  # image is currently be processed
+                    uuid_tag = "%s.%s" % (version, self.runtime.uuid)  # applied by additional-tags
+                    image_tag = '{}:{}'.format(meta.image_name_short, uuid_tag)
                 else:
-                    distgit = self.runtime.image_distgit_by_name(name)
-                    # if upstream is referring to an image we don't actually build, give up.
-                    if not distgit:
-                        raise DoozerFatalError('Unable to find {} in image-references data for {}'.format(name, self.metadata.distgit_key))
-                    meta = self.runtime.image_map.get(distgit, None)
-                    if meta:  # image is currently be processed
-                        uuid_tag = "%s.%s" % (version, self.runtime.uuid)  # applied by additional-tags
-                        image_tag = '{}:{}'.format(meta.image_name_short, uuid_tag)
-                    else:
-                        meta = self.runtime.late_resolve_image(distgit)
-                        _, v, r = meta.get_latest_build_info()
-                        image_tag = '{}:{}-{}'.format(meta.image_name_short, v, r)
+                    meta = self.runtime.late_resolve_image(distgit)
+                    _, v, r = meta.get_latest_build_info()
+                    image_tag = '{}:{}-{}'.format(meta.image_name_short, v, r)
 
                 namespace = self.runtime.group_config.get('csv_namespace', None)
                 if not namespace:
