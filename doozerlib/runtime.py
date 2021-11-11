@@ -224,6 +224,8 @@ class Runtime(object):
         self.image_order = []
         # allows mapping from name or distgit to meta
         self.image_name_map = {}
+        # allows mapping from name in bundle to meta
+        self.name_in_bundle_map: Dict[str, ImageMetadata] = {}
 
         # holds untouched group config
         self.raw_group_config = {}
@@ -587,11 +589,24 @@ class Runtime(object):
             # name or distgit. For now this is used elsewhere
             image_name_data = self.gitdata.load_data(path='images')
 
+            def _register_name_in_bundle(name_in_bundle: str, distgit_key: str):
+                if name_in_bundle in self.name_in_bundle_map:
+                    raise ValueError(f"Image {distgit_key} has name_in_bundle={name_in_bundle}, which is already taken by image {self.name_in_bundle_map[name_in_bundle]}")
+                self.name_in_bundle_map[name_in_bundle] = img.key
+
             for img in image_name_data.values():
                 name = img.data.get('name')
                 short_name = name.split('/')[1]
                 self.image_name_map[name] = img.key
                 self.image_name_map[short_name] = img.key
+                name_in_bundle = img.data.get('name_in_bundle')
+                if name_in_bundle:
+                    _register_name_in_bundle(name_in_bundle, img.key)
+                else:
+                    short_name_without_ose = short_name[4:] if short_name.startswith("ose-") else short_name
+                    _register_name_in_bundle(short_name_without_ose, img.key)
+                    short_name_with_ose = "ose-" + short_name_without_ose
+                    _register_name_in_bundle(short_name_with_ose, img.key)
 
             image_data = self.gitdata.load_data(path='images', keys=image_keys,
                                                 exclude=image_ex,
