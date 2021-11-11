@@ -593,15 +593,6 @@ class Runtime(object):
                 self.image_name_map[name] = img.key
                 self.image_name_map[short_name] = img.key
 
-                name_in_bundle = img.data.get('name_in_bundle', None)
-                if name_in_bundle and name_in_bundle!=name and name_in_bundle!=name:
-                    if name_in_bundle in self.image_name_map:
-                        self.logger.warning(
-                            f"name_in_bundle field in conflict with another image name/shortname, for image={name} "
-                            f"name_in_bundle={name_in_bundle}.")
-                    else:
-                        self.image_name_map[name_in_bundle] = img.key
-
             image_data = self.gitdata.load_data(path='images', keys=image_keys,
                                                 exclude=image_ex,
                                                 replace_vars=replace_vars,
@@ -856,7 +847,7 @@ class Runtime(object):
                     self.image_order.append(i)
 
     def image_distgit_by_name(self, name):
-        """Returns image meta by full name, short name, name_in_bundle or distgit"""
+        """Returns image meta by full name, short name, or distgit"""
         return self.image_name_map.get(name, None)
 
     def rpm_metas(self) -> List[RPMMetadata]:
