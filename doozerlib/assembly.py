@@ -9,7 +9,7 @@ from doozerlib.model import Missing, Model, ListModel
 class AssemblyTypes(Enum):
     STREAM = "stream"  # Default assembly type - indicates continuous build and no basis event
     STANDARD = "standard"  # All constraints / checks enforced (e.g. consistent RPMs / siblings)
-    CANDIDATE = "candidate"  # Indicates releaes or feature candidate
+    CANDIDATE = "candidate"  # Indicates release candidate or feature candidate
     CUSTOM = "custom"  # No constraints enforced
 
 

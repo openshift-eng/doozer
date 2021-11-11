@@ -76,7 +76,7 @@ class RPMBuilder:
             release = release[:-3] + pval
 
         # include commit hash in release field
-        release += ".git." + rpm.pre_init_sha[:7]
+        release += ".g" + rpm.pre_init_sha[:7]
 
         if self._runtime.assembly:
             release += f'.assembly.{self._runtime.assembly}'

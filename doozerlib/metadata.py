@@ -378,7 +378,7 @@ class Metadata(object):
         :param extra_pattern: An extra glob pattern that must be matched in the middle of the
                          build's release field. Pattern must match release timestamp and components
                          like p? and git commit (up to, but not including ".assembly.<name>" release
-                         component). e.g. "*.git.<commit>.*   or '*.p1.*'
+                         component). e.g. "*.g<commit>.*   or '*.p1.*'
         :param build_state: 0=BUILDING, 1=COMPLETE, 2=DELETED, 3=FAILED, 4=CANCELED
         :param component_name: If not specified, looks up builds for self component.
         :param el_target: In the case of an RPM, which can build for multiple targets, you can specify
@@ -713,7 +713,7 @@ class Metadata(object):
                 upstream_commit_hash, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
 
         self.logger.debug(f'scan-sources coordinate: upstream_commit_hash: {upstream_commit_hash}')
-        git_component = f'.git.{upstream_commit_hash[:7]}'
+        git_component = f'.g*{upstream_commit_hash[:7]}'  # use .g*<commit> so it matches new form ".g0123456" and old ".git.0123456"
 
         # Scan for any build in this assembly which also includes the git commit.
         upstream_commit_build = self.get_latest_build(default=None,

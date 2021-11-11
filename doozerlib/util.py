@@ -366,11 +366,14 @@ def get_docker_config_json(config_dir):
 def isolate_git_commit_in_release(release: str) -> Optional[str]:
     """
     Given a release field, determines whether is contains
-    .git.<commit> information. If it does, it returns the value
+    .git.<commit> information or .g<commit> (new style). If it does, it returns the value
     of <commit>. If it is not found, None is returned.
     """
     match = re.match(r'.*\.git\.([a-f0-9]+)(?:\.+|$)', release)
+    if match:
+        return match.group(1)
 
+    match = re.match(r'.*\.g([a-f0-9]+)(?:\.+|$)', release)
     if match:
         return match.group(1)
 
