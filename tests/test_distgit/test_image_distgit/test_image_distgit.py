@@ -10,6 +10,7 @@ from flexmock import flexmock
 from mock import MagicMock
 
 from doozerlib import distgit, model
+from doozerlib import assembly
 from doozerlib.image import ImageMetadata
 from doozerlib.assembly import AssemblyTypes
 
@@ -475,6 +476,29 @@ FROM another-base-image:some-tag
 COPY --from=builder /some/path/a /some/path/b
         """.strip().splitlines()
         self.assertListEqual(actual, expected)
+
+    def test_generate_osbs_image_config_with_addtional_tags(self):
+        runtime = MagicMock(uuid="123456")
+        meta = ImageMetadata(runtime, model.Model({
+            "key": "foo",
+            'data': {
+                'name': 'openshift/foo',
+                'distgit': {'branch': 'fake-branch-rhel-8'},
+                "additional_tags": ["tag_a", "tag_b"]
+            },
+        }))
+        dg = distgit.ImageDistGitRepo(meta, autoclone=False)
+        dg.logger = logging.getLogger()
+
+        # assembly is not enabled
+        runtime.assembly = None
+        container_yaml = dg._generate_osbs_image_config("v4.10.0")
+        self.assertEqual(sorted(container_yaml["tags"]), sorted(['v4.10.0.123456', 'v4.10', 'tag_a', 'tag_b']))
+
+        # assembly is enabled
+        runtime.assembly = "art3109"
+        container_yaml = dg._generate_osbs_image_config("v4.10.0")
+        self.assertEqual(sorted(container_yaml["tags"]), sorted(['assembly.art3109', 'v4.10.0.123456', 'v4.10', 'tag_a', 'tag_b']))
 
 
 if __name__ == "__main__":

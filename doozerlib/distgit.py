@@ -54,7 +54,7 @@ CONTAINER_YAML_HEADER = """
 
 # Always ignore these files/folders when rebasing into distgit
 # May be added to based on group/image config
-BASE_IGNORE = [".git", ".oit", "additional-tags"]
+BASE_IGNORE = [".git", ".oit"]
 
 logger = logutil.getLogger(__name__)
 
@@ -442,12 +442,12 @@ class ImageDistGitRepo(DistGitRepo):
 
         return build_method
 
-    def _write_osbs_image_config(self):
+    def _write_osbs_image_config(self, version: str):
         # Writes OSBS image config (container.yaml).
         # For more info about the format, see https://osbs.readthedocs.io/en/latest/users.html#image-configuration.
 
         self.logger.info('Generating container.yaml')
-        container_config = self._generate_osbs_image_config()
+        container_config = self._generate_osbs_image_config(version)
 
         if 'compose' in container_config:
             self.logger.info("Rebasing with ODCS support")
@@ -459,7 +459,7 @@ class ImageDistGitRepo(DistGitRepo):
         with self.dg_path.joinpath('container.yaml').open('w', encoding="utf-8") as rc:
             rc.write(CONTAINER_YAML_HEADER + content_yml)
 
-    def _generate_osbs_image_config(self):
+    def _generate_osbs_image_config(self, version: str) -> Dict:
         """
         Generates OSBS image config (container.yaml).
         Returns a dict for the config.
@@ -510,6 +510,23 @@ class ImageDistGitRepo(DistGitRepo):
 
         if arches:
             config_overrides.setdefault('platforms', {})['only'] = arches
+
+        # Request OSBS to apply specified tags to the newly-built image as floating tags.
+        # See https://osbs.readthedocs.io/en/latest/users.html?highlight=tags#image-tags
+        #
+        # Include the UUID in the tags. This will allow other images being rebased
+        # to have a known tag to refer to this image if they depend on it - even
+        # before it is built.
+        floating_tags = {f"{version}.{self.runtime.uuid}"}
+        if self.runtime.assembly:
+            floating_tags.add(f"assembly.{self.runtime.assembly}")
+        vsplit = version.split(".")  # Split the version number: v4.3.4 => [ 'v4', '3, '4' ]
+        if len(vsplit) > 1:
+            floating_tags.add(f"{vsplit[0]}.{vsplit[1]}")
+        if self.metadata.config.additional_tags:
+            floating_tags |= set(self.metadata.config.additional_tags)
+        if floating_tags:
+            config_overrides["tags"] = list(floating_tags)
 
         if not self.runtime.group_config.doozer_feature_gates.odcs_enabled and not self.runtime.odcs_mode:
             # ODCS mode is not enabled
@@ -1419,8 +1436,6 @@ class ImageDistGitRepo(DistGitRepo):
 
             self._generate_config_digest()
 
-            self._write_osbs_image_config()
-
             self._write_cvp_owners()
 
             dfp = DockerfileParser(path=str(dg_path.joinpath('Dockerfile')))
@@ -1439,6 +1454,8 @@ class ImageDistGitRepo(DistGitRepo):
                     else:
                         DoozerFatalError("No version found in Dockerfile for %s" % self.metadata.qualified_name)
 
+            self._write_osbs_image_config(version)
+
             uuid_tag = "%s.%s" % (version, self.runtime.uuid)
 
             # Split the version number v4.3.4 => [ 'v4', '3, '4' ]
@@ -1448,20 +1465,6 @@ class ImageDistGitRepo(DistGitRepo):
             # Click validation should have ensured user specified semver, but double check because of version=None flow.
             minor_version = '0' if len(vsplit) < 2 else vsplit[1]
             patch_version = '0' if len(vsplit) < 3 else vsplit[2]
-
-            if not self.runtime.local:
-                with dg_path.joinpath('additional-tags').open('w', encoding="utf-8") as at:
-                    # Include the UUID in the tags. This will allow other images being rebased
-                    # to have a known tag to refer to this image if they depend on it - even
-                    # before it is built.
-                    at.write("%s\n" % uuid_tag)
-                    if self.runtime.assembly:
-                        at.write("assembly.%s\n" % self.runtime.assembly)
-                    if len(vsplit) > 1:
-                        at.write("%s.%s\n" % (vsplit[0], vsplit[1]))  # e.g. "v3.7.0" -> "v3.7"
-                    if self.metadata.config.additional_tags is not Missing:
-                        for tag in self.metadata.config.additional_tags:
-                            at.write("{}\n".format(tag))
 
             self.logger.debug("Dockerfile contains the following labels:")
             for k, v in dfp.labels.items():
