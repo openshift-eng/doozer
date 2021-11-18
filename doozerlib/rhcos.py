@@ -29,29 +29,40 @@ class RHCOSNotFound(Exception):
 
 class RHCOSBuildFinder:
 
-    def __init__(self, runtime, version: str, brew_arch: str = "x86_64", private: bool = False):
+    def __init__(self, runtime, version: str, brew_arch: str = "x86_64", private: bool = False, custom: bool = False):
         """
         @param runtime  The Runtime object passed in from the CLI
         @param version  The 4.y ocp version as a string (e.g. "4.6")
         @param brew_arch  architecture we are interested in (e.g. "s390x")
         @param private  boolean, true for private stream, false for public (currently, no effect)
+        @param custom If the caller knows this build is custom, the library will only search in the -custom buckets. When the RHCOS pipeline runs a custom build, artifacts
+            should be stored in a different area; e.g. https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases/rhcos-4.8-custom/48.84.....-0/x86_64/commitmeta.json
+            This is done by ART's RHCOS pipeline code when a custom build is indicated: https://gitlab.cee.redhat.com/openshift-art/rhcos-upshift/-/blob/fdad7917ebdd9c8b47d952010e56e511394ed348/Jenkinsfile#L30
         """
         self.runtime = runtime
         self.version = version
         self.brew_arch = brew_arch
         self.private = private
+        self.custom = custom
 
     def rhcos_release_url(self) -> str:
         """
         base url for a release stream in the release browser (AWS bucket).
-
         @return e.g. "https://releases-rhcos-art...com/storage/releases/rhcos-4.6-s390x"
         """
         # TODO: create private rhcos builds and do something with "private" here
-        return (
-            self.runtime.group_config.urls.rhcos_release_base[self.brew_arch]
-            or f"{RHCOS_BASE_URL}/rhcos-{self.version}{brew_suffix_for_arch(self.brew_arch)}"
-        )
+        bucket = self.brew_arch
+        if self.custom:
+            bucket += '-custom'
+
+        if self.runtime.group_config.urls.rhcos_release_base[bucket]:
+            return self.runtime.group_config.urls.rhcos_release_base[bucket]
+
+        bucket_suffix = brew_suffix_for_arch(self.brew_arch)
+        if self.custom:
+            bucket_suffix += '-custom'
+
+        return f"{RHCOS_BASE_URL}/rhcos-{self.version}{bucket_suffix}"
 
     @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
     def latest_rhcos_build_id(self) -> Optional[str]:
@@ -147,9 +158,15 @@ class RHCOSBuildInspector:
         version = self.build_id.split('.')[0]
         self.stream_version = version[0] + '.' + version[1:]  # e.g. 43.82.202102081639.0 -> "4.3"
 
-        finder = RHCOSBuildFinder(runtime, self.stream_version, self.brew_arch)
-        self._build_meta = finder.rhcos_build_meta(self.build_id, meta_type='meta')
-        self._os_commitmeta = finder.rhcos_build_meta(self.build_id, meta_type='commitmeta')
+        try:
+            finder = RHCOSBuildFinder(runtime, self.stream_version, self.brew_arch)
+            self._build_meta = finder.rhcos_build_meta(self.build_id, meta_type='meta')
+            self._os_commitmeta = finder.rhcos_build_meta(self.build_id, meta_type='commitmeta')
+        except:
+            # Fall back to trying to find a custom build
+            finder = RHCOSBuildFinder(runtime, self.stream_version, self.brew_arch, custom=True)
+            self._build_meta = finder.rhcos_build_meta(self.build_id, meta_type='meta')
+            self._os_commitmeta = finder.rhcos_build_meta(self.build_id, meta_type='commitmeta')
 
     def __str__(self):
         return f'RHCOSBuild:{self.brew_arch}:{self.build_id}'

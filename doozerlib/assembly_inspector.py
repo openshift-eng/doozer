@@ -6,7 +6,7 @@ from kobo.rpmlib import parse_nvr
 from doozerlib import util, Runtime
 from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
-from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, AssemblyIssueCode
+from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, AssemblyIssueCode, assembly_type
 from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder
 
 
@@ -19,6 +19,7 @@ class AssemblyInspector:
             raise ValueError('Runtime must be initialized with "both"')
 
         self.assembly_rhcos_config = assembly_rhcos_config(self.runtime.releases_config, self.runtime.assembly)
+        self.assembly_type: AssemblyTypes = assembly_type(self.runtime.releases_config, self.runtime.assembly)
         self._rpm_build_cache: Dict[int, Dict[str, Optional[Dict]]] = {}  # Dict[rhel_ver] -> Dict[distgit_key] -> Optional[BuildDict]
         self._permits = assembly_permits(self.runtime.releases_config, self.runtime.assembly)
 
@@ -30,6 +31,9 @@ class AssemblyInspector:
                 self._release_image_inspectors[image_meta.distgit_key] = BrewBuildImageInspector(self.runtime, latest_build_obj['nvr'])
             else:
                 self._release_image_inspectors[image_meta.distgit_key] = None
+
+    def get_type(self) -> AssemblyTypes:
+        return self.assembly_type
 
     def does_permit(self, issue: AssemblyIssue) -> bool:
         """
@@ -282,10 +286,11 @@ class AssemblyInspector:
 
         return self._rpm_build_cache[el_ver]
 
-    def get_rhcos_build(self, arch: str, private: bool = False) -> RHCOSBuildInspector:
+    def get_rhcos_build(self, arch: str, private: bool = False, custom: bool = False) -> RHCOSBuildInspector:
         """
         :param arch: The CPU architecture of the build to retrieve.
         :param private: If this should be a private build (NOT CURRENTLY SUPPORTED)
+        :param custom: If this is a custom RHCOS build (see https://gitlab.cee.redhat.com/openshift-art/rhcos-upshift/-/blob/fdad7917ebdd9c8b47d952010e56e511394ed348/Jenkinsfile#L30).
         :return: Returns an RHCOSBuildInspector for the specified arch. For non-STREAM assemblies, this will be the RHCOS builds
                  pinned in the assembly definition. For STREAM assemblies, it will be the latest RHCOS build in the latest
                  in the app.ci imagestream for ART's release/arch (e.g. ocp-s390x:is/4.7-art-latest-s390x).
@@ -304,7 +309,7 @@ class AssemblyInspector:
         if assembly_rhcos_arch_pullspec:
             return RHCOSBuildInspector(runtime, assembly_rhcos_arch_pullspec, brew_arch)
         else:
-            _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private).latest_machine_os_content()
+            _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private, custom=custom).latest_machine_os_content()
             if not pullspec:
                 raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
             return RHCOSBuildInspector(runtime, pullspec, brew_arch)
