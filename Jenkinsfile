@@ -4,7 +4,7 @@ pipeline {
     agent {
         docker {
             image "openshift-art/art-ci-toolkit:latest"
-            alwaysPull true
+            alwaysPull false
             args "--entrypoint=''"
         }
     }
