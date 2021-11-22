@@ -3,14 +3,15 @@ import json
 from datetime import datetime
 from urllib import request
 from doozerlib.cli import cli
-from doozerlib import constants, util
+from doozerlib import constants, util, exectools
 
 
 @cli.command("get-nightlies", short_help="Get sets of Accepted nightlies. A set contains nightly for each arch, "
                                          "determined by closest timestamps")
 @click.option("--limit", help="Number of sets of passing nightlies to print", default=10)
+@click.option("--rhcos", is_flag=True, help="Print rhcos build id with nightlies")
 @click.pass_obj
-def get_nightlies(runtime, limit):
+def get_nightlies(runtime, limit, rhcos):
     limit = int(limit)
     runtime.initialize(clone_distgits=False)
     major = runtime.group_config.vars.MAJOR
@@ -24,16 +25,41 @@ def get_nightlies(runtime, limit):
         nightlies[arch] = all_accepted_nightlies(major, minor, arch)
 
     i = 0
-    for nightly in nightlies["amd64"]:
+    for x64_nightly in nightlies["amd64"]:
         if i >= limit:
             break
-        n = []
+        nightly_set = []
+        rhcos_set = {}
         for arch in util.go_arches:
             if version < '4.9' and arch == 'arm64':
                 continue
-            n.append(get_closest_nightly(nightlies[arch], nightly))
-        print(",".join(n))
+            nightly = get_closest_nightly(nightlies[arch], x64_nightly)
+            nightly_set.append(nightly)
+            if rhcos:
+                rhcos_set[arch] = get_build_from_payload(get_nightly_pullspec(nightly, arch))
+        print(",".join(nightly_set))
+        if rhcos:
+            print(rhcos_set)
         i += 1
+
+
+def get_nightly_pullspec(release, arch):
+    suffix = util.go_suffix_for_arch(arch)
+    return f'registry.ci.openshift.org/ocp{suffix}/release{suffix}:{release}'
+
+
+def get_build_from_payload(payload_pullspec):
+    rhcos_tag = 'machine-os-content'
+    out, err = exectools.cmd_assert(["oc", "adm", "release", "info", "--image-for", rhcos_tag, "--", payload_pullspec])
+    if err:
+        raise Exception(f"Error running oc adm: {err}")
+    rhcos_pullspec = out.split('\n')[0]
+    out, err = exectools.cmd_assert(["oc", "image", "info", "-o", "json", rhcos_pullspec])
+    if err:
+        raise Exception(f"Error running oc adm: {err}")
+    image_info = json.loads(out)
+    build_id = image_info["config"]["config"]["Labels"]["version"]
+    return build_id
 
 
 def get_closest_nightly(nightly_list, nightly):
