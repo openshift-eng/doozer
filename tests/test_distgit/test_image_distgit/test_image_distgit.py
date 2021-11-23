@@ -493,12 +493,12 @@ COPY --from=builder /some/path/a /some/path/b
         # assembly is not enabled
         runtime.assembly = None
         container_yaml = dg._generate_osbs_image_config("v4.10.0")
-        self.assertEqual(sorted(container_yaml["tags"]), sorted(['v4.10.0.123456', 'v4.10', 'tag_a', 'tag_b']))
+        self.assertEqual(sorted(container_yaml["tags"]), sorted(['v4.10.0.123456', 'v4.10', 'v4.10.0', 'tag_a', 'tag_b']))
 
         # assembly is enabled
         runtime.assembly = "art3109"
         container_yaml = dg._generate_osbs_image_config("v4.10.0")
-        self.assertEqual(sorted(container_yaml["tags"]), sorted(['assembly.art3109', 'v4.10.0.123456', 'v4.10', 'tag_a', 'tag_b']))
+        self.assertEqual(sorted(container_yaml["tags"]), sorted(['assembly.art3109', 'v4.10.0.123456', 'v4.10', 'v4.10.0', 'tag_a', 'tag_b']))
 
 
 if __name__ == "__main__":

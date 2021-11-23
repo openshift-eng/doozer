@@ -523,6 +523,8 @@ class ImageDistGitRepo(DistGitRepo):
         vsplit = version.split(".")  # Split the version number: v4.3.4 => [ 'v4', '3, '4' ]
         if len(vsplit) > 1:
             floating_tags.add(f"{vsplit[0]}.{vsplit[1]}")
+        if len(vsplit) > 2:
+            floating_tags.add(f"{vsplit[0]}.{vsplit[1]}.{vsplit[2]}")
         if self.metadata.config.additional_tags:
             floating_tags |= set(self.metadata.config.additional_tags)
         if floating_tags:
