@@ -5,6 +5,7 @@ import yaml
 import json
 import hashlib
 import time
+import datetime
 import random
 
 from github import Github, UnknownObjectException, GithubException
@@ -573,6 +574,9 @@ def images_upstreampulls(runtime):
         if public_repo_url in upstreams:
             continue
         upstreams.add(public_repo_url)
+        rateLimit = github_client.get_rate_limit()
+        if rateLimit.core.remaining < 1000:
+            time.sleep((rateLimit.core.reset - datetime.datetime.now()).seconds)
         public_source_repo = github_client.get_repo(f'{org}/{repo_name}')
         pulls = public_source_repo.get_pulls(state='open', sort='created')
         for pr in pulls:
