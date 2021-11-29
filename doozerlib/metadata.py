@@ -836,7 +836,7 @@ class Metadata(object):
         if path_4x.exists():
             use_path = path_4x
 
-        path_3_11 = upstream_source_path.joinpath('images/hyperkube/Dockerfile.rhel')  # for 3.11: https://github.com/openshift/ose/blob/master/images/hyperkube/Dockerfile.rhel
+        path_3_11 = upstream_source_path.joinpath('images/hyperkube/Dockerfile')  # for 3.11: https://github.com/openshift/ose/blob/enterprise-3.11/images/hyperkube/Dockerfile
         if not use_path and path_3_11.exists():
             use_path = path_3_11
 
