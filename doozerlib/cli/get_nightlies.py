@@ -8,7 +8,7 @@ from doozerlib import constants, util, exectools
 
 @cli.command("get-nightlies", short_help="Get sets of Accepted nightlies. A set contains nightly for each arch, "
                                          "determined by closest timestamps")
-@click.option("--limit", help="Number of sets of passing nightlies to print", default=10)
+@click.option("--limit", default=1, metavar='NUM', help="Number of sets of passing nightlies to print")
 @click.option("--rhcos", is_flag=True, help="Print rhcos build id with nightlies")
 @click.pass_obj
 def get_nightlies(runtime, limit, rhcos):
@@ -18,9 +18,10 @@ def get_nightlies(runtime, limit, rhcos):
     minor = runtime.group_config.vars.MINOR
     version = f'{major}.{minor}'
 
+    not_arm = major == 4 and minor < 9
     nightlies = {}
     for arch in util.go_arches:
-        if version < '4.9' and arch == 'arm64':
+        if arch == 'arm64' and not_arm:
             continue
         nightlies[arch] = all_accepted_nightlies(major, minor, arch)
 
@@ -31,8 +32,9 @@ def get_nightlies(runtime, limit, rhcos):
         nightly_set = []
         rhcos_set = {}
         for arch in util.go_arches:
-            if version < '4.9' and arch == 'arm64':
+            if arch == 'arm64' and not_arm:
                 continue
+            print()
             nightly = get_closest_nightly(nightlies[arch], x64_nightly)
             nightly_set.append(nightly)
             if rhcos:
