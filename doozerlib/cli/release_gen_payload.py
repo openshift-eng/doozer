@@ -279,6 +279,9 @@ read and propagate/expose this annotation in its display of the release image.
                 # We already stored inconsistencies for each image_meta; look them up if there are any.
                 payload_entry.issues.extend(filter(lambda ai: ai.component == payload_entry.image_meta.distgit_key, assembly_issues))
             elif payload_entry.rhcos_build:
+                # Record the build so that we can later evaluate consistency between all RHCOS builds. There are presently
+                # no private RHCOS builds, so add only to private_mode=False.
+                targeted_rhcos_builds[False].append(payload_entry.rhcos_build)
                 assembly_issues.extend(assembly_inspector.check_rhcos_issues(payload_entry.rhcos_build))
                 payload_entry.issues.extend(filter(lambda ai: ai.component == 'rhcos', assembly_issues))
                 if runtime.assembly == 'stream':
