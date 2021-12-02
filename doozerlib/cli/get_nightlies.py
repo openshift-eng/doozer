@@ -16,7 +16,6 @@ def get_nightlies(runtime, limit, rhcos):
     runtime.initialize(clone_distgits=False)
     major = runtime.group_config.vars.MAJOR
     minor = runtime.group_config.vars.MINOR
-    version = f'{major}.{minor}'
 
     not_arm = major == 4 and minor < 9
     nightlies = {}
