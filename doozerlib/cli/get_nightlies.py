@@ -34,7 +34,6 @@ def get_nightlies(runtime, limit, rhcos):
         for arch in util.go_arches:
             if arch == 'arm64' and not_arm:
                 continue
-            print()
             nightly = get_closest_nightly(nightlies[arch], x64_nightly)
             nightly_set.append(nightly)
             if rhcos:
