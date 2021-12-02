@@ -1,4 +1,4 @@
-
+RC_BASE_URL = "https://{arch}.ocp.releases.ci.openshift.org"
 
 # Environment variables to disable Git stdin prompts for username, password, etc
 GIT_NO_PROMPTS = {

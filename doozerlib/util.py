@@ -651,6 +651,13 @@ def isolate_timestamp_in_release(release: str) -> Optional[str]:
     return None
 
 
+def get_release_tag_datetime(release: str) -> Optional[str]:
+    match = re.search(r"(\d{4})-(\d{2})-(\d{2})-(\d{6})", release)  # yyyy-MM-dd-HHmmss
+    if match:
+        return datetime.strptime(match.group(0), "%Y-%m-%d-%H%M%S")
+    return None
+
+
 def sort_semver(versions):
     return sorted(versions, key=functools.cmp_to_key(semver.compare), reverse=True)
 
