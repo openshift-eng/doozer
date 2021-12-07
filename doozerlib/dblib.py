@@ -107,7 +107,7 @@ class DB(object):
 
         if not (constants.DB_USER in os.environ and constants.DB_PWD in os.environ):
             self.runtime.logger.info("Environment variables required for db operation missing. Doozer will be running"
-                                        "in no DB use mode.")
+                                     "in no DB use mode.")
             return False
 
         import mysql.connector as mysql_connector
