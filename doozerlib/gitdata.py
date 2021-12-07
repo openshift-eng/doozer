@@ -172,6 +172,8 @@ class GitData(object):
         self.origin_url, _ = exectools.cmd_assert(f'git -C {self.data_path} remote get-url origin', strip=True)
         self.commit_hash, _ = exectools.cmd_assert(f'git -C {self.data_path} rev-parse HEAD', strip=True)
 
+        self.logger.info(f'On commit: {self.commit_hash}')
+
         if not os.path.isdir(self.data_dir):
             raise GitDataPathException('{} is not a valid sub-directory in the data'.format(self.sub_dir))
 
