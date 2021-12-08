@@ -2323,7 +2323,7 @@ class ImageDistGitRepo(DistGitRepo):
                     "distgit_path": self.dg_path,
                 }
                 modifier.act(context=context, ceiling_dir=str(dg_path))
-                new_dockerfile_data = context.get("result")
+                new_dockerfile_data = context.get("result", new_dockerfile_data)
             else:
                 raise IOError("Don't know how to perform modification action: %s" % modification.action)
         if new_dockerfile_data is not None and new_dockerfile_data != dockerfile_data:
