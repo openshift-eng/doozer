@@ -6,7 +6,8 @@ from kobo.rpmlib import parse_nvr
 from doozerlib import util, Runtime
 from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
-from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, Assembly_permits, AssemblyIssue, AssemblyIssueCode, assembly_type
+from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, \
+    AssemblyIssueCode, assembly_type
 from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder
 
 

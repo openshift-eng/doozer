@@ -10,13 +10,13 @@ from doozerlib.assembly_inspector import AssemblyInspector
 
 
 @cli.command("inspect:stream", short_help="Inspect stream assembly for assembly issues")
-@click.argument("code", type=click.Choice([code.name for code in AssemblyIssueCode]), required=True)
+@click.argument("code", type=click.Choice([code.name for code in AssemblyIssueCode], case_sensitive=False),
+                required=True)
 @click.pass_obj
 def inspect_stream(runtime, code):
     code = AssemblyIssueCode[code]
     if runtime.assembly != 'stream':
-        print(f'Disregarding non-stream assembly: {runtime.assembly}. This command is only intended for '
-                       f'stream')
+        print(f'Disregarding non-stream assembly: {runtime.assembly}. This command is only intended for stream')
     runtime.assembly = 'stream'
     runtime.initialize(clone_distgits=False)
     assembly_inspector = AssemblyInspector(runtime, lite=True)
@@ -30,13 +30,13 @@ def inspect_stream(runtime, code):
             if assembly_inspector.does_permit(assembly_issue):
                 print(f'Assembly permits code {code}.')
                 exit(0)
-            print(f'Assembly does not permit code {code}. Failed')
             exit(1)
         print(f'RHCOS builds consistent {rhcos_builds}')
         exit(0)
     else:
         print(f'AssemblyIssueCode {code} not supported at this time :(')
         exit(1)
+
 
 def _check_inconsistent_rhcos_rpms(runtime, assembly_inspector):
     logger = runtime.logger
