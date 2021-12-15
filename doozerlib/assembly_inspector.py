@@ -6,16 +6,16 @@ from kobo.rpmlib import parse_nvr
 from doozerlib import util, Runtime
 from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
-from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, AssemblyIssueCode, assembly_type
+from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, Assembly_permits, AssemblyIssue, AssemblyIssueCode, assembly_type
 from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder
 
 
 class AssemblyInspector:
 
-    def __init__(self, runtime: Runtime, brew_session: ClientSession):
+    def __init__(self, runtime: Runtime, brew_session: ClientSession = None, lite: bool = False):
         self.runtime = runtime
         self.brew_session = brew_session
-        if runtime.mode != 'both':
+        if not lite and runtime.mode != 'both':
             raise ValueError('Runtime must be initialized with "both"')
 
         self.assembly_rhcos_config = assembly_rhcos_config(self.runtime.releases_config, self.runtime.assembly)
@@ -23,6 +23,8 @@ class AssemblyInspector:
         self._rpm_build_cache: Dict[int, Dict[str, Optional[Dict]]] = {}  # Dict[rhel_ver] -> Dict[distgit_key] -> Optional[BuildDict]
         self._permits = assembly_permits(self.runtime.releases_config, self.runtime.assembly)
 
+        if lite:
+            return
         # If an image component has a latest build, an ImageInspector associated with the image.
         self._release_image_inspectors: Dict[str, Optional[BrewBuildImageInspector]] = dict()
         for image_meta in runtime.get_for_release_image_metas():
