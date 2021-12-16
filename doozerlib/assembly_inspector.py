@@ -12,8 +12,14 @@ from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder
 
 
 class AssemblyInspector:
-
+    """ It inspects an assembly """
     def __init__(self, runtime: Runtime, brew_session: ClientSession = None, lite: bool = False):
+        """
+        :param runtime: Doozer runtime
+        :param brew_session: Brew session object to use for communicating with Brew
+        :param lite: Create a lite version without the ability to inspect Images; can be used to check AssemblyIssues,
+        fetch rhcos_builds and other defined methods
+        """
         self.runtime = runtime
         self.brew_session = brew_session
         if not lite and runtime.mode != 'both':
