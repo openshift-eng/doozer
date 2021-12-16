@@ -40,13 +40,8 @@ def inspect_stream(runtime, code):
 
 def _check_inconsistent_rhcos_rpms(runtime, assembly_inspector):
     logger = runtime.logger
-    major = runtime.group_config.vars.MAJOR
-    minor = runtime.group_config.vars.MINOR
-    not_arm = major == 4 and minor < 9
     rhcos_builds = []
-    for arch in brew_arches:
-        if not_arm and arch == 'aarch64':
-            continue
+    for arch in runtime.group_config.arches:
         build_inspector = assembly_inspector.get_rhcos_build(arch)
         rhcos_builds.append(build_inspector)
     logger.info(f"Checking following builds for inconsistency: {rhcos_builds}")
