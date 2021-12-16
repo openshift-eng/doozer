@@ -168,7 +168,7 @@ class RHCOSBuildInspector:
             self._build_meta = finder.rhcos_build_meta(self.build_id, meta_type='meta')
             self._os_commitmeta = finder.rhcos_build_meta(self.build_id, meta_type='commitmeta')
 
-    def __str__(self):
+    def __repr__(self):
         return f'RHCOSBuild:{self.brew_arch}:{self.build_id}'
 
     def get_os_metadata(self) -> Dict:
