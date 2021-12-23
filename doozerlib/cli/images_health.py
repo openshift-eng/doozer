@@ -101,7 +101,13 @@ def get_concerns(image, runtime, limit, url_markup):
 def query(name, runtime, limit=100):
     domain = "`log_build`"
     fields_str = "`brew_task_id`, `brew_task_state`, `time_unix`, `jenkins_build_url`"
-    where_str = f'WHERE `group`="{runtime.group_config.name}" and `dg_qualified_key`="{name}" and `time_unix` is not null'
+    where_str = f"""
+        WHERE `group`="{runtime.group_config.name}"
+        AND `dg_qualified_key`="{name}"
+        AND `time_unix` is not null
+    """
+    if runtime.group_config.assemblies.enabled:
+        where_str += f" AND label_release REGEXP 'assembly.(stream|{runtime.assembly})' "
     sort_by_str = ' ORDER BY `time_unix` DESC'
 
     expr = f'SELECT {fields_str} FROM {domain} {where_str} {sort_by_str}'
