@@ -4,6 +4,7 @@ import hashlib
 import pathlib
 import json
 from typing import List, Optional
+import shutil
 
 from dockerfile_parse import DockerfileParser
 from doozerlib import exectools
@@ -496,7 +497,7 @@ RUN cov-manage-emit --dir={container_stage_cov_dir} reset-host-name; timeout 3h 
 
         # The dockerfile which will run the coverity builds and analysis for each stage has been created.
         # Now, run the build (and execute those steps). The output will be to <cov_path>/<stage_number>
-        run_tag = cc.image.image_name_short
+        run_tag = f'{cc.image.image_name_short}_{cc.runtime.group_config.name}'
         rc, stdout, stderr = exectools.cmd_gather(
             f'{cc.podman_cmd} build -v {str(cc.cov_root_path)}:/cov:z -v {str(dg_path)}:/covscan-src:z -t {run_tag} -f {str(covscan_df)} {str(dg_path)}',
             set_env=cc.podman_env)
@@ -505,6 +506,15 @@ stdout: {stdout}
 stderr: {stderr}
 
 ''')
+
+        _, cleanup_out, cleanup_err = exectools.cmd_gather(
+            f'{cc.podman_cmd} rmi -f {run_tag}',
+            set_env=cc.podman_env)
+        cc.logger.info(f'''Output from image clean up {cc.image.distgit_key}
+stdout: {cleanup_out}
+stderr: {cleanup_err}
+''')
+
         if rc != 0:
             cc.logger.error(f'Error running covscan build for {cc.image.distgit_key} ({str(covscan_df)})')
             # TODO: log this as a record and make sure the pipeline warns artist
@@ -572,7 +582,8 @@ def records_results(cc: CoverityContext, stage_number, waived_cov_path_root=None
 
     dest_all_js_path.write_text(source_all_js, encoding='utf-8')
 
-    source_summary_path = host_stage_cov_path.joinpath('output', 'summary.txt')
+    host_stage_output_path = host_stage_cov_path.joinpath('output')
+    source_summary_path = host_stage_output_path.joinpath('summary.txt')
     if source_summary_path.exists():
         dest_summary_path = dest_result_path.joinpath('summary.txt')
         # The only reason there would not be a summary.txt is if we are testing with fake data.
@@ -608,3 +619,6 @@ def records_results(cc: CoverityContext, stage_number, waived_cov_path_root=None
         html_out_path.write_text(html, encoding='utf-8')
 
     write_record()
+    # The output directory may be multiple gigabytes for each phase. Remove it
+    # to reduce workspace size during runtime.
+    shutil.rmtree(str(host_stage_output_path), ignore_errors=True)
