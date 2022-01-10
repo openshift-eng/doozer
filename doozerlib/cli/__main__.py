@@ -1681,7 +1681,9 @@ def config_print(runtime, key, name_only, as_yaml):
         $ doozer --group=openshift-4.0 config:print --name-only
     """
     _fix_runtime_mode(runtime)
-    runtime.initialize(**CONFIG_RUNTIME_OPTS)
+    opts = dict(CONFIG_RUNTIME_OPTS)
+    opts['config_only'] = False  # This verb must load image & rpm data
+    runtime.initialize(**opts)
     config = mdc(runtime)
     config.config_print(key, name_only, as_yaml)
 

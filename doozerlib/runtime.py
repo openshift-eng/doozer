@@ -939,7 +939,14 @@ class Runtime(object):
                 if not (url and branch):
                     raise DoozerFatalError(f"Couldn't detect source URL or branch for local source {path}. Is it a valid Git repo?")
                 public_upstream_url, public_upstream_branch = self.get_public_upstream(url)
-                self.source_resolutions[alias] = SourceResolution(path, url, branch, public_upstream_url, public_upstream_branch or branch)
+                if branch == 'HEAD':
+                    # If branch == HEAD, our source is a detached HEAD.
+                    public_upstream_url = None
+                    public_upstream_branch = None
+                else:
+                    if not public_upstream_branch:
+                        public_upstream_branch = branch
+                self.source_resolutions[alias] = SourceResolution(path, url, branch, public_upstream_url, public_upstream_branch)
             else:
                 self.source_resolutions[alias] = SourceResolution(path, url, branch, None, None)
 

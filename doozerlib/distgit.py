@@ -2139,8 +2139,11 @@ class ImageDistGitRepo(DistGitRepo):
             self.public_facing_source_url, _ = self.runtime.get_public_upstream(out)  # Point to public upstream if there are private components to the URL
 
             # If private_fix has not already been set (e.g. by --embargoed), determine if the source contains private fixes by checking if the private org branch commit exists in the public org
-            if self.private_fix is None and self.metadata.public_upstream_branch:
-                self.private_fix = not util.is_commit_in_public_upstream(self.source_full_sha, self.metadata.public_upstream_branch, source_dir)
+            if self.private_fix is None:
+                if self.metadata.public_upstream_branch:
+                    self.private_fix = not util.is_commit_in_public_upstream(self.source_full_sha, self.metadata.public_upstream_branch, source_dir)
+                else:
+                    self.private_fix = False
 
             self.env_vars_from_source.update(self.metadata.extract_kube_env_vars())
 
