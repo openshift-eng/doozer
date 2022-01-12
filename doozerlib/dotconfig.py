@@ -58,17 +58,16 @@ class Config(object):
             if not os.path.isdir(self.base_dir):
                 os.makedirs(self.base_dir)
 
-            for ext in VALID_EXT:
-                for _ext in [ext, ext.upper()]:
-                    filename = '{}.{}'.format(name, _ext)
-                    cfg = os.path.join(self.base_dir, filename)
-                    if os.path.isfile(cfg):
-                        self.full_path = cfg
-                        self.filename = filename
-                        break
+            for ext in [ext for t in zip(VALID_EXT, [item.upper() for item in VALID_EXT]) for ext in t]:
+                filename = f'{name}.{ext}'
+                cfg = os.path.join(self.base_dir, filename)
+                if os.path.isfile(cfg):
+                    self.full_path = cfg
+                    self.filename = filename
+                    break
 
             if self.filename is None:
-                self.filename = name + '.' + VALID_EXT[0]
+                self.filename = f'{name}.{VALID_EXT[0]}'
                 self.full_path = os.path.join(self.base_dir, self.filename)
                 if template_file:
                     shutil.copyfile(template_file, self.full_path)
