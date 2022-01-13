@@ -491,7 +491,10 @@ class Metadata(object):
                 if self.meta_type == 'rpm':
                     if el_ver is None:
                         raise ValueError(f'Expected el_target to be set when querying a pinned RPM component {self.distgit_key}')
-                    is_nvr = isd[f'el{el_ver}']
+                    el_str = f'el{el_ver}'
+                    if not isinstance(isd, dict):
+                        raise ValueError(f'Expected "is" to be a dict {isd}')
+                    is_nvr = isd[el_str]
                     if not is_nvr:
                         return default_return()
                 else:
