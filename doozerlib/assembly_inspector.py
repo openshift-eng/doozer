@@ -312,7 +312,7 @@ class AssemblyInspector:
         assembly_rhcos_arch_pullspec = self.assembly_rhcos_config['machine-os-content'].images[brew_arch]
 
         if self.runtime.assembly_type != AssemblyTypes.STREAM and not assembly_rhcos_arch_pullspec:
-            raise Exception(f'Assembly {runtime.assembly} has is not a STREAM but no assembly.rhcos MOSC image data for {brew_arch}; all MOSC image data must be populated for this assembly to be valid')
+            raise Exception(f'Assembly {runtime.assembly} is not STREAM but no assembly.rhcos MOSC image data for {brew_arch}; all MOSC image data must be populated for this assembly to be valid')
 
         version = self.runtime.get_minor_version()
         if assembly_rhcos_arch_pullspec:

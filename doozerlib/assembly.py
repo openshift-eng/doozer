@@ -297,6 +297,10 @@ def assembly_permits(releases_config: Model, assembly: typing.Optional[str]) -> 
             {
                 'code': 'CONFLICTING_GROUP_RPM_INSTALLED',
                 'component': 'rhcos'
+            },
+            {
+                'code': 'INCONSISTENT_RHCOS_RPMS',
+                'component': 'rhcos'
             }
         ]
         return ListModel(list_to_model=default_stream_permits)
