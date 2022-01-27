@@ -91,7 +91,9 @@ class GitData(object):
         Clones data for given data_path:
         :param str data_path: Git url (git/http/https) or local directory path
         """
-        self.data_path = data_path
+
+        # Remove trailing slash to prevent GitDataBranchException:
+        self.data_path = data_path.rstrip('/')
 
         data_url = urllib.parse.urlparse(self.data_path)
         if data_url.scheme in SCHEMES or (data_url.scheme == '' and ':' in data_url.path):
