@@ -183,8 +183,8 @@ def images_streams_start_buildconfigs(runtime, as_user, live_test_mode):
             cmd = f'oc -n ci start-build {name}'
             if as_user:
                 cmd += f' --as {as_user}'
-            rc, stdout, stderr = exectools.cmd_gather(cmd)
-            print(f'start-build (rc: {rc}):\nstdout>>\n{stdout}\nstderr>>\n{stderr}\n')
+            stdout, stderr = exectools.cmd_assert(cmd, retries=3)
+            print('   ' + stdout or stderr)
     else:
         print(f'No buildconfigs associated with this group: {group_label}')
 
