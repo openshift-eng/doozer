@@ -79,7 +79,9 @@ def gen_assembly_from_releases(ctx, runtime, nightlies, standards, custom):
             raise ValueError(f'Cannot process {standard_release_name} since {release_pullspecs[brew_cpu_arch]} is already included')
         release_pullspecs[brew_cpu_arch] = standard_pullspec
 
-    different_nvrs = False
+    nvr_diff_map = {}
+    processed_arches = []
+
     for brew_cpu_arch, pullspec in release_pullspecs.items():
         runtime.logger.info(f'Processing release: {pullspec}')
 
@@ -107,10 +109,12 @@ def gen_assembly_from_releases(ctx, runtime, nightlies, standards, custom):
                 # processing, then make sure that the original NVR we found matches the new NVR.
                 # We want the releases to be populated with identical builds.
                 existing_nvr = component_image_builds[package_name].get_nvr()
+
                 if build_nvr != existing_nvr:
-                    different_nvrs = True
-                    red_print(f'Found disparate nvrs between releases; {existing_nvr} in processed and {build_nvr} in'
+                    red_print(f'Found disparate nvrs between releases; {existing_nvr} in {processed_arches} and {build_nvr} in'
                       f' {pullspec}')
+                    nvr_diff_map[processed_arches] = existing_nvr
+                    nvr_diff_map[pullspec] = build_nvr
             else:
                 # Otherwise, record the build as the first time we've seen an NVR for this
                 # package.
@@ -135,8 +139,11 @@ def gen_assembly_from_releases(ctx, runtime, nightlies, standards, custom):
             # sweeping images we've already analyzed, increase the basis_event_ts.
             basis_event_ts = max(basis_event_ts, completion_ts + (60.0 * 5))
 
-    if different_nvrs:
-        red_print("Found different nvrs! Make sure to pin those builds in assembly definition")
+        processed_arches.append(brew_cpu_arch)
+
+    if nvr_diff_map:
+        print("nvrs found to be different between nightlies: ")
+        print(nvr_diff_map)
 
     # basis_event_ts should now be greater than the build completion / target tagging operation
     # for any (non machine-os-content) image in the nightlies. Because images are built after RPMs,
