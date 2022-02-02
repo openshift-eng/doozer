@@ -97,7 +97,7 @@ def print_version(ctx, param, value):
 @click.option("--datastore", metavar="ENV", required=False, default=None,
               help="Whether to store & retrieve data in int / stage / prod database environment")
 @click.option("--profile", metavar="NAME", default="", help="Name of build profile")
-@click.option("--brew-event", metavar='EVENT', default=None,
+@click.option("--brew-event", metavar='EVENT', default=None, type=int,
               help="Lock koji clients from runtime to this brew event.")
 @click.pass_context
 def cli(ctx, **kwargs):

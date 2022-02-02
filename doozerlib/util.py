@@ -528,10 +528,10 @@ def total_size(o, handlers=None, verbose=False):
 
 
 # some of our systems refer to golang's architecture nomenclature; translate between that and brew arches
-brew_arches = ["x86_64", "s390x", "ppc64le", "aarch64"]
-brew_arch_suffixes = ["", "-s390x", "-ppc64le", "-aarch64"]
-go_arches = ["amd64", "s390x", "ppc64le", "arm64"]
-go_arch_suffixes = ["", "-s390x", "-ppc64le", "-arm64"]
+brew_arches = ["x86_64", "s390x", "ppc64le", "aarch64", "multi"]
+brew_arch_suffixes = ["", "-s390x", "-ppc64le", "-aarch64", "-multi"]
+go_arches = ["amd64", "s390x", "ppc64le", "arm64", "multi"]
+go_arch_suffixes = ["", "-s390x", "-ppc64le", "-arm64", "-multi"]
 
 
 def go_arch_for_brew_arch(brew_arch: str) -> str:
@@ -777,3 +777,12 @@ def get_release_calc_previous(version, arch,
                 upgrade_from.add(hotfix_version)
 
     return sort_semver(list(upgrade_from))
+
+
+def find_manifest_list_sha(pull_spec):
+    cmd = 'oc image info --filter-by-os=linux/amd64 -o json {}'.format(pull_spec)
+    out, err = exectools.cmd_assert(cmd, retries=3)
+    image_data = json.loads(out)
+    if 'listDigest' not in image_data:
+        raise ValueError('Specified image is not a manifest-list.')
+    return image_data['listDigest']

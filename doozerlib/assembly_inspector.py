@@ -63,7 +63,7 @@ class AssemblyInspector:
         """
         Analyzes an RHCOS build to check whether the installed packages are consistent with:
         1. package NVRs defined at the group dependency level
-        2. package NVRs defiend at the rhcos dependency level
+        2. package NVRs defined at the rhcos dependency level
         3. package NVRs of any RPMs built in this assembly/group
         :param rhcos_build: The RHCOS build to analyze.
         :return: Returns a (potentially empty) list of inconsistencies in the build.
