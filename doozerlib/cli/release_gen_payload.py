@@ -450,7 +450,18 @@ read and propagate/expose this annotation in its display of the release image.
 
             if apply:
                 with oc.project(imagestream_namespace):
-                    is_apiobj = oc.selector(f'imagestream/{imagestream_name}').object()
+                    is_apiobj = oc.selector(f'imagestream/{imagestream_name}').object(ignore_not_found=True)
+                    if not is_apiobj:
+                        # If the stream has not been bootstrapped, create it.
+                        oc.create({
+                            'apiVersion': 'image.openshift.io/v1',
+                            'kind': 'ImageStream',
+                            'metadata': {
+                                'name': imagestream_name,
+                                'namespace': imagestream_namespace
+                            }
+                        })
+                        is_apiobj = oc.selector(f'imagestream/{imagestream_name}').object()
 
                     def update_single_arch_istags(apiobj: oc.APIObject):
                         incoming_tag_names = set([istag['name'] for istag in istags])
@@ -595,7 +606,18 @@ read and propagate/expose this annotation in its display of the release image.
         logger.info(f'The final pull_spec for the multi release payload is: {final_multi_pullspec}')
 
         with oc.project(imagestream_namespace):
-            multi_art_latest_is = oc.selector(f'imagestream/{imagestream_name}').object()
+            multi_art_latest_is = oc.selector(f'imagestream/{imagestream_name}').object(ignore_not_found=True)
+            if not multi_art_latest_is:
+                # If the stream has not been bootstrapped, create it.
+                oc.create({
+                    'apiVersion': 'image.openshift.io/v1',
+                    'kind': 'ImageStream',
+                    'metadata': {
+                        'name': imagestream_name,
+                        'namespace': imagestream_namespace
+                    }
+                })
+                multi_art_latest_is = oc.selector(f'imagestream/{imagestream_name}').object()
 
             def add_multi_nightly_release(obj: oc.APIObject):
                 m = obj.model
