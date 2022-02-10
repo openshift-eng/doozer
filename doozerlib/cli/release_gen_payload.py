@@ -1,6 +1,6 @@
 import datetime
 import hashlib
-import pathlib
+import traceback
 import sys
 import json
 from pathlib import Path
@@ -463,7 +463,13 @@ read and propagate/expose this annotation in its display of the release image.
                         })
                         is_apiobj = oc.selector(f'imagestream/{imagestream_name}').object()
 
+                    pruning_tags = []
+                    adding_tags = []
+
                     def update_single_arch_istags(apiobj: oc.APIObject):
+                        nonlocal pruning_tags
+                        nonlocal adding_tags
+
                         incoming_tag_names = set([istag['name'] for istag in istags])
                         existing_tag_names = set([istag['name'] for istag in apiobj.model.spec.tags])
 
@@ -478,14 +484,25 @@ read and propagate/expose this annotation in its display of the release image.
                             # old tags and new tags.
                             pruning_tags = existing_tag_names.difference(incoming_tag_names)
                             adding_tags = incoming_tag_names.difference(existing_tag_names)
-                            if pruning_tags:
-                                logger.warning(f'The following tag names are no longer part of the release and will be pruned in {imagestream_namespace}:{imagestream_name}: {pruning_tags}')
-                            if adding_tags:
-                                logger.warning(f'The following tag names are net new to {imagestream_namespace}:{imagestream_name}: {adding_tags}')
 
                         apiobj.model.spec.tags = istags
 
                     modify_and_replace_api_object(is_apiobj, update_single_arch_istags, output_path, moist_run)
+
+                    if pruning_tags:
+                        logger.warning(f'The following tag names are no longer part of the release and will be pruned in {imagestream_namespace}:{imagestream_name}: {pruning_tags}')
+                        # Even though we have replaced the .spec on the imagestream, the old tag will still be reflected in .status.
+                        # The release controller considers this a legit declaration, so we must remove it explicitly using `oc delete istag`
+                        if not moist_run:
+                            for old_tag in pruning_tags:
+                                try:
+                                    oc.selector(f'istag/{imagestream_name}:{old_tag}').delete()
+                                except:
+                                    # This is not a fatal error, but may result in issues being displayed on the release controller page.
+                                    logger.error(f'Unable to delete {old_tag} tag fully from {imagestream_name} imagestream in {imagestream_namespace}:\n{traceback.format_exc()}')
+
+                    if adding_tags:
+                        logger.warning(f'The following tag names are net new to {imagestream_namespace}:{imagestream_name}: {adding_tags}')
 
     # We now generate the artifacts to create heterogeneous release payloads. A heterogeneous or 'multi' release
     # payload is a manifest list (i.e. it consists of N release payload manifests, one for each arch). The release
