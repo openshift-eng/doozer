@@ -1,8 +1,10 @@
 import click
 import sys
 import json
+from click.core import Option
+from semver import VersionInfo
 import yaml
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 from doozerlib import util
 from doozerlib.cli import cli, pass_runtime
@@ -11,6 +13,7 @@ from doozerlib.model import Model
 from doozerlib import brew
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.image import BrewBuildImageInspector
+from doozerlib.runtime import Runtime
 
 
 @cli.group("release:gen-assembly", short_help="Output assembly metadata based on inputs")
@@ -27,12 +30,25 @@ def releases_gen_assembly(ctx, name):
 @click.option('--standard', 'standards', metavar='4.y.z-ARCH', default=[], multiple=True, help='The name and arch of an official release (e.g. 4.8.3-x86_64) where ARCH in [x86_64, s390x, ppc64le, aarch64].')
 @click.option("--custom", default=False, is_flag=True,
               help="If specified, weaker conformance criteria are applied (e.g. a nightly is not required for every arch).")
+@click.option('--in-flight', 'in_flight', metavar='EDGE', help='An in-flight release that can upgrade to this release')
+@click.option('--previous', 'previous_list', metavar='EDGES', default=[], multiple=True, help='A list of releases that can upgrade to this release')
+@click.option('--auto-previous', 'auto_previous', is_flag=True, help='If specified, previous list is calculated from Cincinnati graph')
+@click.option("--graph-url", metavar='GRAPH_URL', required=False,
+              default='https://api.openshift.com/api/upgrades_info/v1/graph',
+              help="When using --auto-previous, set custom Cincinnati graph URL to query")
+@click.option("--graph-content-stable", metavar='JSON_FILE', required=False,
+              help="When using --auto-previous, override content from stable channel - primarily for testing")
+@click.option("--graph-content-candidate", metavar='JSON_FILE', required=False,
+              help="When using --auto-previous, override content from candidate channel - primarily for testing")
+@click.option("--suggestions-url", metavar='SUGGESTIONS_URL', required=False,
+              default="https://raw.githubusercontent.com/openshift/cincinnati-graph-data/master/build-suggestions/",
+              help="When using --auto-previous, set custom suggestions URL, load from {major}-{minor}-{arch}.yaml")
 @pass_runtime
 @click.pass_context
-def gen_assembly_from_releases(ctx, runtime, nightlies, standards, custom):
+def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...], standards: Tuple[str, ...], custom: bool, in_flight: Optional[str], previous_list: Tuple[str, ...], auto_previous: bool, graph_url: Optional[str], graph_content_stable: Optional[str], graph_content_candidate: Optional[str], suggestions_url: Optional[str]):
     runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
     logger = runtime.logger
-    gen_assembly_name = ctx.obj['ASSEMBLY_NAME']  # The name of the assembly we are going to output
+    gen_assembly_name: str = ctx.obj['ASSEMBLY_NAME']  # The name of the assembly we are going to output
 
     # Create a map of package_name to RPMMetadata
     package_rpm_meta: Dict[str, RPMMetadata] = {rpm_meta.get_package_name(): rpm_meta for rpm_meta in runtime.rpm_metas()}
@@ -49,6 +65,31 @@ def gen_assembly_from_releases(ctx, runtime, nightlies, standards, custom):
 
     if len(runtime.arches) != len(nightlies) + len(standards) and not custom:
         exit_with_error(f'Expected at least {len(runtime.arches)} nightlies; one for each group arch: {runtime.arches}')
+
+    if auto_previous and previous_list:
+        exit_with_error('Cannot use `--previous` and `--auto-previous` at the same time.')
+
+    if custom and (auto_previous or previous_list or in_flight):
+        exit_with_error("Custom release doesn't have previous list.")
+
+    # Calculate previous list
+    final_previous_list: Set[VersionInfo] = set()
+    if in_flight:
+        final_previous_list.add(VersionInfo.parse(in_flight))
+    if previous_list:
+        final_previous_list |= set(map(VersionInfo.parse, previous_list))
+    elif auto_previous:
+        # gen_assembly_name should be in the form of `fc.0`, `rc.1`, or `4.10.1`
+        if gen_assembly_name.startswith("fc") or gen_assembly_name.startswith("rc"):
+            major_minor = runtime.get_minor_version()  # x.y
+            version = f"{major_minor}.0-{gen_assembly_name}"
+        else:
+            version = gen_assembly_name
+        for arch in runtime.arches:
+            logger.info("Calculating previous list for %s", arch)
+            previous_list = util.get_release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate, suggestions_url)
+            final_previous_list |= set(map(VersionInfo.parse, previous_list))
+    final_previous_list: List[VersionInfo] = sorted(final_previous_list)
 
     reference_releases_by_arch: Dict[str, str] = dict()  # Maps brew arch name to nightly name
     mosc_by_arch: Dict[str, str] = dict()  # Maps brew arch name to machine-os-content pullspec from nightly
@@ -312,6 +353,9 @@ def gen_assembly_from_releases(ctx, runtime, nightlies, standards, custom):
         group_info = {
             'arches!': list(mosc_by_arch.keys())
         }
+
+    if final_previous_list:
+        group_info['upgrades'] = ','.join(map(str, final_previous_list))
 
     assembly_def = {
         'releases': {
