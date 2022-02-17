@@ -1,10 +1,11 @@
 import click
-import sys
-import json
 from click.core import Option
+import json
+import re
 from semver import VersionInfo
-import yaml
+import sys
 from typing import Dict, List, Optional, Set, Tuple
+import yaml
 
 from doozerlib import util
 from doozerlib.cli import cli, pass_runtime
@@ -357,11 +358,17 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
     if final_previous_list:
         group_info['upgrades'] = ','.join(map(str, final_previous_list))
 
+    assembly_type = 'standard'
+    if custom:
+        assembly_type = 'custom'
+    elif re.search(r'^[fr]c\.[0-9]+$', gen_assembly_name):
+        assembly_type = 'candidate'
+
     assembly_def = {
         'releases': {
             gen_assembly_name: {
                 "assembly": {
-                    'type': 'custom' if custom else 'standard',
+                    'type': assembly_type,
                     'basis': {
                         'brew_event': basis_event,
                         'reference_releases': reference_releases_by_arch,
