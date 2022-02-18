@@ -541,6 +541,11 @@ read and propagate/expose this annotation in its display of the release image.
             manifests = []
             aggregate_issues = list()
             overall_manifest_hash = hashlib.sha256()
+            # Ensure we create a new tag for each manifest list. Unlike images, if we push a manifest list
+            # that seems to contain the same content (i.e. references the exact same manifest), it will still
+            # have a different digest. This means pushing a seemingly identical manifest list to the same
+            # tag will cause the original to lose the tag and be garbage collected.
+            overall_manifest_hash.update(runtime.uuid.encode('utf-8'))
             for arch, payload_entry in arch_to_payload_entry.items():
                 manifests.append({
                     'image': payload_entry.dest_pullspec,
