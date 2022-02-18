@@ -1,18 +1,18 @@
 import io
 import logging
-
 import re
 import tempfile
 import unittest
+from pathlib import Path
 from threading import Lock
+from unittest.mock import Mock, patch
 
 from flexmock import flexmock
 from mock import MagicMock
 
 from doozerlib import distgit, model
-from doozerlib import assembly
-from doozerlib.image import ImageMetadata
 from doozerlib.assembly import AssemblyTypes
+from doozerlib.image import ImageMetadata
 
 from ..support import MockScanner, TestDistgit
 
@@ -479,6 +479,7 @@ COPY --from=builder /some/path/a /some/path/b
 
     def test_generate_osbs_image_config_with_addtional_tags(self):
         runtime = MagicMock(uuid="123456")
+        runtime.group_config.cachito.enabled = False
         meta = ImageMetadata(runtime, model.Model({
             "key": "foo",
             'data': {
@@ -499,6 +500,76 @@ COPY --from=builder /some/path/a /some/path/b
         runtime.assembly = "art3109"
         container_yaml = dg._generate_osbs_image_config("v4.10.0")
         self.assertEqual(sorted(container_yaml["tags"]), sorted(['assembly.art3109', 'v4.10.0.123456', 'v4.10', 'v4.10.0', 'tag_a', 'tag_b']))
+
+    def test_detect_package_manangers_without_git_clone(self):
+        runtime = MagicMock(uuid="123456")
+        runtime.group_config.cachito.enabled = True
+        meta = ImageMetadata(runtime, model.Model({
+            "key": "foo",
+            'data': {
+                'name': 'openshift/foo',
+                'distgit': {'branch': 'fake-branch-rhel-8'},
+                "additional_tags": ["tag_a", "tag_b"]
+            },
+        }))
+        dg = distgit.ImageDistGitRepo(meta, autoclone=False)
+        dg.logger = logging.getLogger()
+
+        with self.assertRaises(FileNotFoundError):
+            dg._detect_package_manangers()
+
+    @patch("pathlib.Path.is_dir", autospec=True)
+    @patch("pathlib.Path.is_file", autospec=True)
+    def test_detect_package_manangers(self, is_file: Mock, is_dir: Mock):
+        runtime = MagicMock(uuid="123456")
+        runtime.group_config.cachito.enabled = True
+        meta = ImageMetadata(runtime, model.Model({
+            "key": "foo",
+            'data': {
+                'name': 'openshift/foo',
+                'distgit': {'branch': 'fake-branch-rhel-8'},
+                "additional_tags": ["tag_a", "tag_b"]
+            },
+        }))
+        dg = distgit.ImageDistGitRepo(meta, autoclone=False)
+        dg.logger = logging.getLogger()
+        dg.distgit_dir = "/path/to/distgit/containers/foo"
+        dg.dg_path = Path(dg.distgit_dir)
+        is_dir.return_value = True
+        is_file.side_effect = lambda f: f.name in ["go.mod", "package-lock.json"]
+
+        actual = dg._detect_package_manangers()
+        self.assertEqual(set(actual), {"gomod", "npm"})
+
+    @patch("pathlib.Path.is_dir", autospec=True, return_value=True)
+    def test_generate_osbs_image_config_with_cachito_enabled(self, is_dir: Mock):
+        runtime = MagicMock(uuid="123456", assembly="test", assembly_basis_event=None, profile=None, odcs_mode=False)
+        runtime.group_config = model.Model()
+        meta = ImageMetadata(runtime, model.Model({
+            "key": "foo",
+            'data': {
+                'name': 'openshift/foo',
+                'distgit': {'branch': 'fake-branch-rhel-8'},
+                "additional_tags": ["tag_a", "tag_b"],
+                "content": {
+                    "source": {"git": {"url": "git@example.com:openshift-priv/foo.git", "branch": {"target": "release-4.10"}}}
+                },
+                "cachito": {"enabled": True}
+            },
+        }))
+        dg = distgit.ImageDistGitRepo(meta, autoclone=False)
+        dg.logger = logging.getLogger()
+        dg.distgit_dir = "/path/to/distgit/containers/foo"
+        dg.dg_path = Path(dg.distgit_dir)
+        dg.actual_source_url = "git@example.com:openshift-priv/foo.git"
+        dg.source_full_sha = "deadbeef"
+        dg._detect_package_manangers = MagicMock(return_value=["gomod"])
+
+        actual = dg._generate_osbs_image_config("v4.10.0")
+        self.assertEqual(actual["remote_sources"][0]["remote_source"]["repo"], "https://example.com/openshift-priv/foo")
+        self.assertEqual(actual["remote_sources"][0]["remote_source"]["ref"], "deadbeef")
+        self.assertEqual(actual["remote_sources"][0]["remote_source"]["pkg_managers"], ["gomod"])
+        self.assertEqual(actual["remote_sources"][0]["remote_source"]["flags"], ["gomod-vendor-check"])
 
 
 if __name__ == "__main__":

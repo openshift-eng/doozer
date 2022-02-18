@@ -14,7 +14,7 @@ import sys
 import traceback
 from datetime import date
 from multiprocessing import Event, Lock
-from typing import Tuple, Union, Optional, Dict
+from typing import List, Tuple, Type, Union, Optional, Dict
 
 import aiofiles
 import bashlex
@@ -488,19 +488,44 @@ class ImageDistGitRepo(DistGitRepo):
         if self.config.container_yaml is not Missing:
             config_overrides = copy.deepcopy(self.config.container_yaml.primitive())
 
-        if self.config.content.source.pkg_managers is not Missing:
-            # If a package manager is specified, then configure cachito.
-            # https://osbs.readthedocs.io/en/latest/users.html#remote-sources
+        # Cachito will be configured if `cachito.enabled` is True in image meta, `content.source.pkg_managers` is set in image meta,
+        # or `cachito.enabled` is True in group config.
+        # https://osbs.readthedocs.io/en/latest/users.html#remote-sources
+        cachito_enabled = False
+        if self.config.cachito.enabled:
+            cachito_enabled = True
+        elif self.config.cachito.enabled is Missing:
+            if isinstance(self.config.content.source.pkg_managers, ListModel) or self.runtime.group_config.cachito.enabled:
+                cachito_enabled = True
+        if cachito_enabled and not self.has_source():
+            self.logger.warning("Cachito integration for distgit-only image %s is not supported.", self.name)
+            cachito_enabled = False
+        if cachito_enabled:
+            if config_overrides.get("go", {}).get("modules"):
+                raise ValueError(f"Cachito integration is enabled for image {self.name}. Specifying `go.modules` in `container.yaml` is not allowed.")
+            pkg_managers = []  # Note if cachito is enabled but `pkg_managers` is set to an empty array, Cachito will provide the sources with no package manager magic.
+            if isinstance(self.config.content.source.pkg_managers, ListModel):
+                # Use specified package managers
+                pkg_managers = self.config.content.source.pkg_managers.primitive()
+            elif self.config.content.source.pkg_managers in [Missing, None]:
+                # Auto-detect package managers
+                pkg_managers = self._detect_package_manangers()
+            else:
+                raise ValueError(f"Invalid content.source.pkg_managers config for image {self.name}: {self.config.content.source.pkg_managers}")
+            remote_source = {
+                'repo': convert_remote_git_to_https(self.actual_source_url),
+                'ref': self.source_full_sha,
+                'pkg_managers': pkg_managers,
+            }
+            if 'gomod' in remote_source['pkg_managers']:  # if source is golang
+                # if we have a vendor directory, we will need to add gomod-vendor-check as well: https://github.com/containerbuildsystem/cachito#flags
+                if self.dg_path.joinpath('vendor').is_dir():
+                    remote_source.setdefault('flags', []).append('gomod-vendor-check')
             config_overrides.update({
                 'remote_sources': [
                     {
-                        'name': 'cachito-gomod-with-deps',
-                        'remote_source': {
-                            'repo': convert_remote_git_to_https(self.actual_source_url),
-                            'ref': self.source_full_sha,
-                            'pkg_managers': self.config.content.source.pkg_managers.primitive(),
-                        }
-
+                        'name': 'cachito-with-deps',
+                        'remote_source': remote_source,
                     }
                 ]
             })
@@ -573,6 +598,24 @@ class ImageDistGitRepo(DistGitRepo):
         # apply overrides
         config.update(config_overrides)
         return config
+
+    def _detect_package_manangers(self):
+        """ Detect and return package managers used by the source
+        :return: a list of package managers
+        """
+        if not self.dg_path or not self.dg_path.is_dir():
+            raise FileNotFoundError(f"Distgit directory for image {self.name} hasn't been cloned.")
+        pkg_manager_files = {
+            "gomod": ["go.mod"],
+            "npm": ["npm-shrinkwrap.json", "package-lock.json"],
+            "pip": ["requirements.txt", "requirements-build.txt"],
+            "yarn": ["yarn.lock"],
+        }
+        pkg_managers: List[str] = []
+        for pkg_manager, files in pkg_manager_files.items():
+            if any(self.dg_path.joinpath(file).is_file() for file in files):
+                pkg_managers.append(pkg_manager)
+        return pkg_managers
 
     def _write_cvp_owners(self):
         """
