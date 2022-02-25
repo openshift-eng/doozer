@@ -554,7 +554,7 @@ COPY --from=builder /some/path/a /some/path/b
                 "content": {
                     "source": {"git": {"url": "git@example.com:openshift-priv/foo.git", "branch": {"target": "release-4.10"}}}
                 },
-                "cachito": {"enabled": True}
+                "cachito": {"enabled": True, "flags": ["gomod-vendor-check"]}
             },
         }))
         dg = distgit.ImageDistGitRepo(meta, autoclone=False)
