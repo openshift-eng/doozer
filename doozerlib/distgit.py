@@ -512,15 +512,28 @@ class ImageDistGitRepo(DistGitRepo):
                 pkg_managers = self._detect_package_manangers()
             else:
                 raise ValueError(f"Invalid content.source.pkg_managers config for image {self.name}: {self.config.content.source.pkg_managers}")
+            # Configure Cachito flags
+            # https://github.com/containerbuildsystem/cachito#flags
+            flags = []
+            if isinstance(self.config.cachito.flags, ListModel):
+                flags = self.config.cachito.flags.primitive()
+            elif isinstance(self.runtime.group_config.cachito.flags, ListModel):
+                flags = set(self.runtime.group_config.cachito.flags.primitive())
+                if 'gomod' not in pkg_managers:
+                    # Remove gomod related flags if gomod is not used.
+                    flags -= {"cgo-disable", "gomod-vendor", "gomod-vendor-check"}
+                elif not self.dg_path.joinpath('vendor').is_dir():
+                    # Remove gomod-vendor-check flag if vendor/ is not present when gomod is used
+                    flags -= {"gomod-vendor-check"}
+                flags = list(flags)
+
             remote_source = {
                 'repo': convert_remote_git_to_https(self.actual_source_url),
                 'ref': self.source_full_sha,
                 'pkg_managers': pkg_managers,
             }
-            if 'gomod' in remote_source['pkg_managers']:  # if source is golang
-                # if we have a vendor directory, we will need to add gomod-vendor-check as well: https://github.com/containerbuildsystem/cachito#flags
-                if self.dg_path.joinpath('vendor').is_dir():
-                    remote_source.setdefault('flags', []).append('gomod-vendor-check')
+            if flags:
+                remote_source['flags'] = flags
             config_overrides.update({
                 'remote_sources': [
                     {
