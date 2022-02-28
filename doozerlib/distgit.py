@@ -9,12 +9,12 @@ import os
 import pathlib
 import re
 import shutil
-import time
 import sys
+import time
 import traceback
 from datetime import date
 from multiprocessing import Event, Lock
-from typing import List, Tuple, Type, Union, Optional, Dict
+from typing import Dict, List, Optional, Tuple, Union
 
 import aiofiles
 import bashlex
@@ -26,6 +26,7 @@ from tenacity import (before_sleep_log, retry, retry_if_not_result,
                       stop_after_attempt, wait_fixed)
 
 from doozerlib import assertion, constants, exectools, logutil, state, util
+from doozerlib.assembly import AssemblyTypes
 from doozerlib.brew import get_build_objects, watch_task
 from doozerlib.dblib import Record
 from doozerlib.exceptions import DoozerFatalError
@@ -33,7 +34,6 @@ from doozerlib.model import ListModel, Missing, Model
 from doozerlib.pushd import Dir
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib.util import convert_remote_git_to_https, yellow_print
-from doozerlib.assembly import AssemblyTypes
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -534,6 +534,8 @@ class ImageDistGitRepo(DistGitRepo):
             }
             if flags:
                 remote_source['flags'] = flags
+            if self.config.content.source.path is not Missing:  # source is in subdirectory
+                remote_source['packages'] = {pkg_manager: [{"path": self.config.content.source.path}] for pkg_manager in pkg_managers}
             config_overrides.update({
                 'remote_sources': [
                     {
