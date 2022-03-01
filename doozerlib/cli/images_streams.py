@@ -632,10 +632,6 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
             logger.info('The image has alignment PRs disabled; ignoring')
             continue
 
-        if image_meta.config.content.source.ci_alignment.upstream_image:
-            logger.info(f'Skipping PR check since image has alternative upstream representation: {image_meta.config.content.source.ci_alignment.upstream_image}')
-            continue
-
         from_config = image_meta.config['from']
         if not from_config:
             logger.info('Skipping PR check since there is no configured .from')
