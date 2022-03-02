@@ -286,14 +286,14 @@ class Repos(object):
         result = {}
         globally_enabled_repos = {r.name for r in self._repos.values() if r.enabled}
         shipping_repos = (set(globally_enabled_repos) | set(enabled_repos)) - set(non_shipping_repos)
-        for a in self._arches:
+        for a in sorted(self._arches):
             content_sets = []
             for r in shipping_repos:
                 cs = self._repos[r].content_set(a)
                 if cs:  # possible to be forced off by setting to null
                     content_sets.append(cs)
             if content_sets:
-                result[a] = content_sets
+                result[a] = sorted(content_sets)
         return CONTENT_SETS + yaml.dump(result, default_flow_style=False)
 
     def _validate_content_sets(self, arch, names):
