@@ -141,16 +141,21 @@ class RHCOSBuildInspector:
     def __init__(self, runtime, pullspec_or_build_id: str, brew_arch: str):
         self.runtime = runtime
         self.brew_arch = brew_arch
+        self.pullspec = None
 
         if pullspec_or_build_id[0].isdigit():
             self.build_id = pullspec_or_build_id
         else:
-            pullspec = pullspec_or_build_id
-            image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}', retries=3)
+            # Remember the pullspec provided in case it does not match what is in the releases.yaml.
+            # Because of an incident where we needed to repush RHCOS and get a new SHA for 4.10 GA,
+            # trust the exact pullspec in releases.yml instead of what we find in the RHCOS release
+            # browser.
+            self.pullspec = pullspec_or_build_id
+            image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {self.pullspec}', retries=3)
             image_info = Model(dict_to_model=json.loads(image_info_str))
             self.build_id = image_info.config.config.Labels.version
             if not self.build_id:
-                raise Exception(f'Unable to determine MOSC build_id from: {pullspec}. Retrieved image info: {image_info_str}')
+                raise Exception(f'Unable to determine MOSC build_id from: {self.pullspec}. Retrieved image info: {image_info_str}')
 
         # The first digits of the RHCOS build are the major.minor of the rhcos stream name.
         # Which, near branch cut, might not match the actual release stream.
@@ -238,6 +243,8 @@ class RHCOSBuildInspector:
         return aggregate
 
     def get_image_pullspec(self) -> str:
+        if self.pullspec:
+            return self.pullspec
         build_meta = self.get_build_metadata()
         m_os_c = build_meta['oscontainer']
         return m_os_c['image'] + "@" + m_os_c['digest']
