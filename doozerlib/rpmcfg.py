@@ -72,7 +72,7 @@ class RPMMetadata(Metadata):
 
             # Determine if the source contains private fixes by checking if the private org branch commit exists in the public org
             if self.private_fix is None:
-                if self.public_upstream_branch:
+                if self.public_upstream_branch and not self.runtime.is_branch_commit_hash(self.metadata.public_upstream_branch):
                     self.private_fix = not util.is_commit_in_public_upstream(source_full_sha, self.public_upstream_branch, self.source_path)
                 else:
                     self.private_fix = False

@@ -1217,8 +1217,6 @@ class Runtime(object):
         if len(branch) >= 7:  # The hash must be sufficiently unique
             try:
                 int(branch, 16)   # A hash must be a valid hex number
-                if self.assembly_type == AssemblyTypes.STANDARD:
-                    raise IOError(f'Commit hash {branch} specified for standard assembly git branch. This is not permitted.')
                 return True
             except ValueError:
                 pass
