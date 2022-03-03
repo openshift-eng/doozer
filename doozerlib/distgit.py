@@ -539,7 +539,7 @@ class ImageDistGitRepo(DistGitRepo):
             config_overrides.update({
                 'remote_sources': [
                     {
-                        'name': 'cachito-with-deps',
+                        'name': 'cachito-gomod-with-deps',  # The remote source name is always `cachito-gomod-with-deps` for backward compatibility even if gomod is not used.
                         'remote_source': remote_source,
                     }
                 ]
