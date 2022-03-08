@@ -534,7 +534,7 @@ class ImageDistGitRepo(DistGitRepo):
             }
             if flags:
                 remote_source['flags'] = flags
-            if self.config.content.source.path is not Missing:  # source is in subdirectory
+            if self.config.content.source.path:  # source is in subdirectory
                 remote_source['packages'] = {pkg_manager: [{"path": self.config.content.source.path}] for pkg_manager in pkg_managers}
             config_overrides.update({
                 'remote_sources': [
