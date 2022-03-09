@@ -1,6 +1,6 @@
 import click
 import json
-from datetime import datetime
+import sys
 from urllib import request
 from doozerlib.cli import cli
 from doozerlib import constants, util, exectools
@@ -10,15 +10,20 @@ from doozerlib import constants, util, exectools
                                          "determined by closest timestamps")
 @click.option("--limit", default=1, metavar='NUM', help="Number of sets of passing nightlies to print")
 @click.option("--rhcos", is_flag=True, help="Print rhcos build id with nightlies")
+@click.option("--latest", is_flag=True, help="Just get the latest nightlies for all arches (Accepted or not)")
 @click.pass_obj
-def get_nightlies(runtime, limit, rhcos):
+def get_nightlies(runtime, limit, rhcos, latest):
+    if latest and limit > 1:
+        print("Don't use --latest and --limit > 1", file=sys.stderr)
+        exit(1)
+
     limit = int(limit)
     runtime.initialize(clone_distgits=False)
     major = runtime.group_config.vars.MAJOR
     minor = runtime.group_config.vars.MINOR
 
     not_arm = major == 4 and minor < 9
-    nightlies = {}
+    nightlies_with_phase = {}
 
     def ignore_arch(arch):
         return (arch == 'arm64' and not_arm) or arch == 'multi'
@@ -26,24 +31,31 @@ def get_nightlies(runtime, limit, rhcos):
     for arch in util.go_arches:
         if ignore_arch(arch):
             continue
-        nightlies[arch] = all_accepted_nightlies(major, minor, arch)
+        phase = 'Accepted'
+        if latest:
+            phase = ''
+        nightlies_with_phase[arch] = all_nightlies_in_phase(major, minor, arch, phase)
 
     i = 0
-    for x64_nightly in nightlies["amd64"]:
+    for x64_nightly, x64_phase in nightlies_with_phase["amd64"]:
         if i >= limit:
             break
         nightly_set = []
-        rhcos_set = {}
         for arch in util.go_arches:
             if ignore_arch(arch):
                 continue
-            nightly = get_closest_nightly(nightlies[arch], x64_nightly)
+            if latest:
+                nightly, phase = nightlies_with_phase[arch][i]
+            else:
+                nightly, phase = get_closest_nightly(nightlies_with_phase[arch], x64_nightly)
             nightly_set.append(nightly)
+            nightly_str = f'{nightly} {phase}'
             if rhcos:
-                rhcos_set[arch] = get_build_from_payload(get_nightly_pullspec(nightly, arch))
+                if phase != 'Pending':
+                    rhcos = get_build_from_payload(get_nightly_pullspec(nightly, arch))
+                    nightly_str += f' {rhcos}'
+            print(nightly_str)
         print(",".join(nightly_set))
-        if rhcos:
-            print(rhcos_set)
         i += 1
 
 
@@ -66,16 +78,16 @@ def get_build_from_payload(payload_pullspec):
     return build_id
 
 
-def get_closest_nightly(nightly_list, nightly):
+def get_closest_nightly(nightly_with_phase_list, nightly):
     target_ts = util.get_release_tag_datetime(nightly)
-    min, min_nightly = None, None
-    for i in nightly_list:
-        nightly_ts = util.get_release_tag_datetime(i)
+    min_delta, min_nightly = None, None
+    for nightly, phase in nightly_with_phase_list:
+        nightly_ts = util.get_release_tag_datetime(nightly)
         delta = target_ts - nightly_ts
-        m = abs(delta.total_seconds())
-        if min is None or m < min:
-            min = m
-            min_nightly = i
+        local_delta = abs(delta.total_seconds())
+        if min_delta is None or local_delta < min_delta:
+            min_delta = local_delta
+            min_nightly = (nightly, phase)
     return min_nightly
 
 
@@ -92,13 +104,16 @@ def rc_api_url(tag, arch):
     return f"{constants.RC_BASE_URL.format(arch=arch)}/api/v1/releasestream/{tag}{arch_suffix}"
 
 
-def all_accepted_nightlies(major, minor, arch):
+def all_nightlies_in_phase(major, minor, arch, phase):
     # returns the build id string or None (or raise exception), one for each arch
     # (may want to return "schema-version" also if this ever gets more complex)
     tag = f'{major}.{minor}.0-0.nightly'
-    with request.urlopen(f"{rc_api_url(tag, arch)}/tags?phase=Accepted") as req:
+    rc_url = f"{rc_api_url(tag, arch)}/tags"
+    if phase:
+        rc_url += f'?phase={phase}'
+    with request.urlopen(rc_url) as req:
         data = json.loads(req.read().decode())
     if not data["tags"]:
         return None
-    nightlies = [tag["name"] for tag in data["tags"]]
+    nightlies = [(tag["name"], tag["phase"]) for tag in data["tags"]]
     return nightlies
