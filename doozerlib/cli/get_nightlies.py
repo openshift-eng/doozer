@@ -19,8 +19,12 @@ def get_nightlies(runtime, limit, rhcos):
 
     not_arm = major == 4 and minor < 9
     nightlies = {}
+
+    def ignore_arch(arch):
+        return (arch == 'arm64' and not_arm) or arch == 'multi'
+
     for arch in util.go_arches:
-        if arch == 'arm64' and not_arm:
+        if ignore_arch(arch):
             continue
         nightlies[arch] = all_accepted_nightlies(major, minor, arch)
 
@@ -31,7 +35,7 @@ def get_nightlies(runtime, limit, rhcos):
         nightly_set = []
         rhcos_set = {}
         for arch in util.go_arches:
-            if arch == 'arm64' and not_arm:
+            if ignore_arch(arch):
                 continue
             nightly = get_closest_nightly(nightlies[arch], x64_nightly)
             nightly_set.append(nightly)
