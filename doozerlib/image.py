@@ -4,7 +4,7 @@ import json
 import random
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from kobo.rpmlib import parse_nvr
+from kobo.rpmlib import parse_nvr, compare_nvr
 
 from doozerlib import brew, coverity, exectools
 from doozerlib.distgit import pull_image
@@ -1017,7 +1017,15 @@ class BrewBuildImageInspector:
         # we expect only a few unshipped candidates most of the the time, so we'll just search for those.
         for name, rpm in candidate_rpms.items():
             archive_rpm = archive_rpms.get(name)
-            if archive_rpm and rpm['nvr'] != archive_rpm['nvr']:
-                old_nvrs.append((archive_rpm['nvr'], rpm['nvr']))
+            if archive_rpm:
+                archive_nvr = parse_nvr(archive_rpm['nvr'])
+                candidate_nvr = parse_nvr(rpm['nvr'])
+                # If there is an RPM installed in the image, we want it to match what is in our tag UNLESS
+                # the installed NVR is newer than what is in our tag. This is usually an indication
+                # that some unshipped non-ART (e.g. RHEL) RPM in our tag has been tagged but the
+                # image is configured to install the image from RHEL or other repos. This is fine if
+                # build RPM repos are configured appropriately for the image.
+                if compare_nvr(archive_nvr, candidate_nvr) < 0:
+                    old_nvrs.append((archive_rpm['nvr'], rpm['nvr']))
 
         return old_nvrs
