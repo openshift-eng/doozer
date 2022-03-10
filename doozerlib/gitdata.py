@@ -223,7 +223,10 @@ class GitData(object):
                                 raw_text = raw_text.format(**replace_vars)
                             except KeyError as e:
                                 self.logger.warning('{} contains template key `{}` but no value was provided'.format(data_file, e.args[0]))
-                        data = yaml.full_load(raw_text)
+                        try:
+                            data = yaml.full_load(raw_text)
+                        except Exception as e:
+                            raise ValueError(f"error parsing file {data_file}: {e}")
                         use = True
                         if exclude and base_name in exclude:
                             use = False
