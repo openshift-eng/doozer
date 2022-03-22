@@ -117,7 +117,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
                             runtime=self.mock_runtime(),
                             distgit_key="my-distgit-key",
                             name="my-name",
-                            get_latest_build_info=lambda *_: ("_", "my-version", "my-release"),
+                            get_latest_build_info=lambda *_, **_2: ("_", "my-version", "my-release"),
                             get_default_push_names=lambda *_: ["my-default-name"],
                             get_additional_push_names=lambda *_: [],
                             logger=flexmock(info=lambda *_: None),

@@ -749,7 +749,7 @@ class ImageDistGitRepo(DistGitRepo):
                 # If the version & release information was not specified,
                 # try to detect latest build from brew.
                 # Read in version information from the Distgit dockerfile
-                _, version, release = self.metadata.get_latest_build_info()
+                _, version, release = self.metadata.get_latest_build_info(complete_before_event=-1)
 
             image_name_and_version = "%s:%s-%s" % (self.config.name, version, release)
             brew_image_url = self.runtime.resolve_brew_image_url(image_name_and_version)
