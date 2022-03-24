@@ -568,7 +568,7 @@ class ImageDistGitRepo(DistGitRepo):
         if self.metadata.config.additional_tags:
             floating_tags |= set(self.metadata.config.additional_tags)
         if floating_tags:
-            config_overrides["tags"] = list(floating_tags)
+            config_overrides["tags"] = sorted(floating_tags)
 
         if not self.runtime.group_config.doozer_feature_gates.odcs_enabled and not self.runtime.odcs_mode:
             # ODCS mode is not enabled
