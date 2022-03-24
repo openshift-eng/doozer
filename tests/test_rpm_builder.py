@@ -264,9 +264,10 @@ Some description
 %setup -q
 #...
 %autosetup -S git
+%changelog
         """.splitlines()
 
-        specfile_content = asyncio.get_event_loop().run_until_complete(RPMBuilder._populate_specfile_async(rpm, "foo-1.2.3.tar.gz"))
+        specfile_content = asyncio.get_event_loop().run_until_complete(RPMBuilder._populate_specfile_async(rpm, "foo-1.2.3.tar.gz", "https://example.com/foo/archive/commit/shasum"))
 
         self.assertIn("Version:        1.2.3\n", specfile_content)
         self.assertIn("Release:        202104070000.yuxzhu_test.p0%{?dist}\n", specfile_content)
@@ -275,6 +276,7 @@ Some description
         self.assertIn("%setup -q -n foo-1.2.3\n", specfile_content)
         self.assertIn("%autosetup -S git -n foo-1.2.3 -p1\n", specfile_content)
         self.assertIn("Version:        1.2.3\n", specfile_content)
+        self.assertIn("AOS Automation Release Team <noreply@redhat.com>", specfile_content[17])
 
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_assert_async")
     def test_build_target_async(self, mocked_cmd_assert_async: mock.Mock):

@@ -3,6 +3,7 @@ import logging
 import re
 import shutil
 import threading
+import time
 from os import PathLike
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -86,7 +87,8 @@ class RPMBuilder:
         # generate new specfile
         tarball_name = f"{rpm.config.name}-{rpm.version}-{rpm.release}.tar.gz"
         logger.info("Creating rpm spec file...")
-        specfile = await self._populate_specfile_async(rpm, tarball_name)
+        source_commit_url = '{}/commit/{}'.format(dg.public_facing_source_url, dg.source_full_sha)
+        specfile = await self._populate_specfile_async(rpm, tarball_name, source_commit_url)
         dg_specfile_path = dg.dg_path / Path(rpm.specfile).name
         async with aiofiles.open(dg_specfile_path, "w") as f:
             await f.writelines(specfile)
@@ -293,7 +295,7 @@ class RPMBuilder:
 
     @staticmethod
     async def _populate_specfile_async(
-        rpm: RPMMetadata, source_filename: str
+        rpm: RPMMetadata, source_filename: str, source_commit_url: str
     ) -> List[str]:
         """Populates spec file
         :param source_filename: Path to the template spec file
@@ -329,6 +331,8 @@ class RPMBuilder:
             full += "-{}".format(rpm.release)
 
         commit_sha = rpm.pre_init_sha
+        current_time = time.strftime('%a %b %d %Y', time.localtime(time.time()))
+        changelog_title = f"* {current_time} AOS Automation Release Team <noreply@redhat.com> - {rpm.version}-{rpm.release}"
 
         # Update with NVR, env vars, and descriptions
         described = False
@@ -355,6 +359,8 @@ class RPMBuilder:
                 lines[i] = f"%setup -q -n {rpm.config.name}-{rpm.version}\n"
             elif line.startswith("%autosetup"):
                 lines[i] = f"%autosetup -S git -n {rpm.config.name}-{rpm.version} -p1\n"
+            elif line.startswith("%changelog"):
+                lines[i] = f"{lines[i].strip()}\n{changelog_title}\n- Update to source commit {source_commit_url}\n"
 
             elif rpm_spec_tags:  # If there are keys left to replace
                 for k in list(rpm_spec_tags.keys()):
