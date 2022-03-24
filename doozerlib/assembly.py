@@ -20,6 +20,7 @@ class AssemblyIssueCode(Enum):
     MISMATCHED_SIBLINGS = 3
     OUTDATED_RPMS_IN_STREAM_BUILD = 4
     INCONSISTENT_RHCOS_RPMS = 5
+    MISSING_INHERITED_DEPENDENCY = 6
 
 
 class AssemblyIssue:

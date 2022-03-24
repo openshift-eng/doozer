@@ -204,9 +204,10 @@ class AssemblyInspector:
             for package_name, required_nvr in all_package_overrides.items():
                 if package_name in member_package_overrides and package_name not in installed_packages:
                     # A dependency was defined explicitly in an assembly member, but it is not installed.
-                    # i.e. the artists expected something to be installed, but it wasn't. Raise an issue.
-                    # Tis is impermissible because the assembly definition can easily be changed to remove the explicit dep.
-                    issues.append(AssemblyIssue(f'Expected image to contain assembly member override dependencies NVR {required_nvr} but it was not installed', component=dgk))
+                    # i.e. the artists expected something to be installed, but it wasn't found in the final image.
+                    # Raise an issue. In rare circumstances the RPM may be used by early stage of the Dockerfile
+                    # and not in the final. In this case, it should be permitted in the assembly definition.
+                    issues.append(AssemblyIssue(f'Expected image to contain assembly member override dependencies NVR {required_nvr} but it was not installed', component=dgk, code=AssemblyIssueCode.MISSING_INHERITED_DEPENDENCY))
 
                 if package_name in installed_packages:
                     installed_build_dict: Dict = installed_packages[package_name]
