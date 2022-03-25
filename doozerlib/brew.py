@@ -95,6 +95,9 @@ def watch_task(session, log_f, task_id, terminate_event):
             error = 'Timeout building image'
 
     log_f(error + ", canceling build")
+    if not session.logged_in:
+        log_f("user logged out from session, login again")
+        session.gssapi_login()
     canceled = session.cancelTask(task_id, recurse=True)
     if canceled:
         log_f(f"Brew task {task_id} was canceled.")
@@ -160,6 +163,9 @@ def watch_tasks(session, log_f, task_ids, terminate_event):
         log_f(f"{errors}, canceling builds")
         for task_id in tasks_to_cancel:
             log_f(f"Error waiting for Brew task {task_id}: {errors[task_id]}. Canceling...")
+            if not session.logged_in:
+                log_f("user logged out from session, login again")
+                session.gssapi_login()
             canceled = session.cancelTask(task_id, recurse=True)
             if canceled:
                 log_f(f"Brew task {task_id} was canceled.")
