@@ -114,8 +114,8 @@ class DistGitRepo(object):
         # If this is a standard release, private_fix will be set to True if the source contains
         # embargoed (private) CVE fixes. Defaulting to None which means the value should be determined while rebasing.
         self.private_fix = None
-        if self.runtime.assembly_type != AssemblyTypes.STANDARD:
-            # Only standard releases can have embargoed workflows.
+        if self.runtime.assembly_type != AssemblyTypes.STREAM:
+            # Only stream releases can have embargoed workflows.
             self.private_fix = False
 
         # If we are rebasing, this map can be populated with
