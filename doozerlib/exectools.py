@@ -5,7 +5,6 @@ ordinary subprocess behaviors.
 """
 
 import asyncio
-from asyncio import events
 import contextvars
 import functools
 
