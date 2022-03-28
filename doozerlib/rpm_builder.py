@@ -87,7 +87,7 @@ class RPMBuilder:
         # generate new specfile
         tarball_name = f"{rpm.config.name}-{rpm.version}-{rpm.release}.tar.gz"
         logger.info("Creating rpm spec file...")
-        source_commit_url = '{}/commit/{}'.format(dg.public_facing_source_url, dg.source_full_sha)
+        source_commit_url = '{}/commit/{}'.format(rpm.public_upstream_url, rpm.pre_init_sha)
         specfile = await self._populate_specfile_async(rpm, tarball_name, source_commit_url)
         dg_specfile_path = dg.dg_path / Path(rpm.specfile).name
         async with aiofiles.open(dg_specfile_path, "w") as f:
