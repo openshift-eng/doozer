@@ -16,7 +16,7 @@ git add doozerlib/VERSION
 git commit -evm "\
 Prepare for release v$new_version
 
-$(git log --oneline --no-merges v${old_version}..)
+$(git log --oneline --no-merges v${old_version}..v${new_version})
 "
 
 # _annotated_ tags are displayed when this is a submodule
