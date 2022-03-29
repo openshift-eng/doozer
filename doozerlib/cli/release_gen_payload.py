@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple, Dict, NamedTuple, Iterable, Set, Any, 
 import click
 import yaml
 import openshift as oc
-from kobo.rpmlib import parse_nvr
+from doozerlib.rpm_utils import parse_nvr
 
 from doozerlib.brew import KojiWrapper
 from doozerlib.rhcos import RHCOSBuildInspector

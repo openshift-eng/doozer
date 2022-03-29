@@ -3,7 +3,7 @@ from collections import OrderedDict
 from logging import Logger
 from typing import Dict, Iterable, List, Optional, Union
 
-from kobo.rpmlib import parse_nvr
+from doozerlib.rpm_utils import parse_nvr
 from koji import ClientSession
 
 from doozerlib.assembly import assembly_metadata_config, assembly_rhcos_config

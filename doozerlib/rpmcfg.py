@@ -2,9 +2,9 @@ import glob
 import io
 import os
 import threading
-from typing import List, Dict, Optional, Union
+from typing import Optional
 
-import rpm
+from doozerlib.rpm_utils import labelCompare
 
 from doozerlib import brew, util
 from doozerlib.exceptions import DoozerFatalError
@@ -180,7 +180,7 @@ class RPMMetadata(Metadata):
                 max_golang_nevr = None
                 for build in latest_builds:
                     nevr = (build["name"], build["epoch"], build["version"], build["release"])
-                    if max_golang_nevr is None or rpm.labelCompare(nevr[1:], max_golang_nevr[1:]) > 0:
+                    if max_golang_nevr is None or labelCompare(nevr[1:], max_golang_nevr[1:]) > 0:
                         max_golang_nevr = nevr
                 if max_golang_nevr is None:
                     raise DoozerFatalError(f"Buildroot {buildroot} doesn't contain any golang compiler packages.")
