@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional
 
 from koji import ClientSession
-from kobo.rpmlib import parse_nvr
+from doozerlib.rpm_utils import parse_nvr
 
 from doozerlib import util, Runtime
 from doozerlib.image import BrewBuildImageInspector

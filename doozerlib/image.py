@@ -4,7 +4,7 @@ import json
 import random
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from kobo.rpmlib import parse_nvr, compare_nvr
+from doozerlib.rpm_utils import parse_nvr, compare_nvr
 
 from doozerlib import brew, coverity, exectools
 from doozerlib.distgit import pull_image

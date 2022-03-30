@@ -21,7 +21,7 @@ import bashlex
 import requests
 import yaml
 from dockerfile_parse import DockerfileParser
-from kobo.rpmlib import parse_nvr
+from doozerlib.rpm_utils import parse_nvr
 from tenacity import (before_sleep_log, retry, retry_if_not_result,
                       stop_after_attempt, wait_fixed)
 

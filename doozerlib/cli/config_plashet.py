@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 import click
 import requests
 import yaml
-from kobo.rpmlib import compare_nvr, parse_nvr
+from doozerlib.rpm_utils import compare_nvr, parse_nvr
 from requests_kerberos import HTTPKerberosAuth
 
 from doozerlib.cli import cli

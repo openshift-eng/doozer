@@ -2,7 +2,7 @@
 import json
 from typing import Dict, List, Tuple, Optional
 
-from kobo.rpmlib import parse_nvr
+from doozerlib.rpm_utils import parse_nvr
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 from urllib import request
