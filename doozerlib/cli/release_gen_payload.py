@@ -114,11 +114,13 @@ def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable
               help="If doozer should also create a release payload for multi-arch/heterogeneous clusters.")
 @click.option("--moist-run", default=False, is_flag=True,
               help="Performing mirroring/etc but to not actually update imagestreams.")
+@click.option("--publish", default=False, is_flag=True,
+              help="Publish release image(s) directly to registry.ci for testing.")
 @pass_runtime
 def release_gen_payload(runtime: Runtime, is_name: str, is_namespace: str, organization: str,
                         repository: str, release_repository: str, output_dir: str, exclude_arch: Tuple[str, ...],
                         skip_gc_tagging: bool, emergency_ignore_issues: bool,
-                        apply: bool, apply_multi_arch: bool, moist_run: bool):
+                        apply: bool, apply_multi_arch: bool, moist_run: bool, publish: bool):
     """Computes a set of imagestream tags which can be assembled
 into an OpenShift release for this assembly. The tags will not be
 valid unless --apply and is supplied.
@@ -447,6 +449,11 @@ read and propagate/expose this annotation in its display of the release image.
                 with output_path.joinpath(f"updated-tags-for.{imagestream_namespace}.{imagestream_name}{'-partial' if incomplete_payload_update else ''}.yaml").open("w+", encoding="utf-8") as out_file:
                     istream_spec = PayloadGenerator.build_payload_imagestream(imagestream_name, imagestream_namespace, istags, assembly_issues)
                     yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
+                    if publish:
+                        publish_name = f"{runtime.get_minor_version()}.0-{runtime.assembly}"
+                        publish_reponame = imagestream_namespace.replace("ocp", "release")
+                        publish_image = f"registry.ci.openshift.org/{imagestream_namespace}/{publish_reponame}:{publish_name}"
+                        exectools.cmd_assert(f'oc adm release new --to-image={publish_image} --name {publish_name} --reference-mode=source -n {imagestream_namespace} --from-image-stream {imagestream_name}', retries=3)
 
             if apply:
                 with oc.project(imagestream_namespace):
