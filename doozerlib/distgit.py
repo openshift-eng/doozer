@@ -896,15 +896,16 @@ class ImageDistGitRepo(DistGitRepo):
         """ Wait for image_name to be rebased. """
         image = self.runtime.resolve_image(image_name, False)
         if image is None:
-            self.logger.info("Skipping image build since it is not included: %s" % image_name)
+            self.logger.info("Skipping image rebase since it is not included: %s" % image_name)
             return
         dgr = image.distgit_repo()
+        self.logger.info("Waiting for image rebase: %s" % image_name)
         dgr.rebase_event.wait()
         if not dgr.rebase_status:  # failed to rebase
-            raise IOError(f"Error building image: {self.metadata.qualified_name} ({image_name} was waiting)")
+            raise IOError(f"Error rebasing image: {self.metadata.qualified_name} ({image_name} was waiting)")
+        self.logger.info("Image rebase for %s completed. Stop waiting." % image_name)
         if terminate_event.is_set():
             raise KeyboardInterrupt()
-        pass
 
     def build_container(
             self, profile, push_to_defaults, additional_registries, terminate_event,
@@ -1594,6 +1595,8 @@ class ImageDistGitRepo(DistGitRepo):
                                 mapped_images.append('{}:latest'.format(from_image_metadata.config.name))
                             else:
                                 from_image_distgit = from_image_metadata.distgit_repo()
+                                if from_image_distgit.private_fix is None:  # This shouldn't happen.
+                                    raise ValueError(f"Parent image {base} doesn't have .p0/.p1 flag determined. This indicates a bug in Doozer.")
                                 if from_image_distgit.private_fix:  # if the parent we are going to build is embargoed
                                     self.private_fix = True  # this image should also be embargoed
                                 # Everything in the group is going to be built with the uuid tag, so we must
@@ -2195,7 +2198,6 @@ class ImageDistGitRepo(DistGitRepo):
             out, _ = exectools.cmd_assert(["git", "remote", "get-url", "origin"], strip=True)
             self.actual_source_url = out  # This may differ from the URL we report to the public
             self.public_facing_source_url, _ = self.runtime.get_public_upstream(out)  # Point to public upstream if there are private components to the URL
-
             # If private_fix has not already been set (e.g. by --embargoed), determine if the source contains private fixes by checking if the private org branch commit exists in the public org
             if self.private_fix is None:
                 if self.metadata.public_upstream_branch and not self.runtime.is_branch_commit_hash(self.metadata.public_upstream_branch):
@@ -2425,6 +2427,9 @@ class ImageDistGitRepo(DistGitRepo):
             image_from = Model(self.config.get('from', None))
             if image_from.member is not Missing:
                 self.wait_for_rebase(image_from.member, terminate_event)
+            for builder in image_from.get("builder", []):
+                if "member" in builder:
+                    self.wait_for_rebase(builder["member"], terminate_event)
 
             dg_path = self.dg_path
             df_path = dg_path.joinpath('Dockerfile')
