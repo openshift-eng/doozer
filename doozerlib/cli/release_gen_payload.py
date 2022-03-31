@@ -449,11 +449,6 @@ read and propagate/expose this annotation in its display of the release image.
                 with output_path.joinpath(f"updated-tags-for.{imagestream_namespace}.{imagestream_name}{'-partial' if incomplete_payload_update else ''}.yaml").open("w+", encoding="utf-8") as out_file:
                     istream_spec = PayloadGenerator.build_payload_imagestream(imagestream_name, imagestream_namespace, istags, assembly_issues)
                     yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
-                    if publish:
-                        publish_name = f"{runtime.get_minor_version()}.0-{runtime.assembly}"
-                        publish_reponame = imagestream_namespace.replace("ocp", "release")
-                        publish_image = f"registry.ci.openshift.org/{imagestream_namespace}/{publish_reponame}:{publish_name}"
-                        exectools.cmd_assert(f'oc adm release new --to-image={publish_image} --name {publish_name} --reference-mode=source -n {imagestream_namespace} --from-image-stream {imagestream_name}', retries=3)
 
             if apply:
                 with oc.project(imagestream_namespace):
@@ -510,6 +505,13 @@ read and propagate/expose this annotation in its display of the release image.
 
                     if adding_tags:
                         logger.warning(f'The following tag names are net new to {imagestream_namespace}:{imagestream_name}: {adding_tags}')
+
+                if publish:
+                    arch_suffix = go_suffix_for_arch(arch)
+                    priv_suffix = "-priv" if private_mode else ""
+                    publish_name = f"{runtime.get_minor_version()}.0-{runtime.assembly}"
+                    publish_image = f"registry.ci.openshift.org/{imagestream_namespace}/release{arch_suffix}{priv_suffix}:{publish_name}"
+                    exectools.cmd_assert(f'oc adm release new --to-image={publish_image} --name {publish_name} --reference-mode=source -n {imagestream_namespace} --from-image-stream {imagestream_name}', retries=3)
 
     # We now generate the artifacts to create heterogeneous release payloads. A heterogeneous or 'multi' release
     # payload is a manifest list (i.e. it consists of N release payload manifests, one for each arch). The release
