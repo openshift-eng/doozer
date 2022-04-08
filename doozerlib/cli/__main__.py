@@ -874,8 +874,9 @@ def print_build_metrics(runtime):
 @click.option("--filter-by-os", default=None, metavar="ARCH",
               help="Specify an exact arch to push (golang name e.g. 'amd64').")
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')
+@click.option('--build-retries', type=int, default=1, help='Number of build attempts for an osbs build')
 @pass_runtime
-def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scratch, threads, filter_by_os, dry_run):
+def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scratch, threads, filter_by_os, dry_run, build_retries):
     """
     Attempts to build container images for all of the distgit repositories
     in a group. If an image has already been built, it will be treated as
@@ -970,8 +971,9 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
         active_profile["repo_list"] = list(repo)
     results = runtime.parallel_exec(
         lambda dgr, terminate_event: dgr.build_container(
-            active_profile, push_to_defaults, additional_registries=push_to,
-            terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1), dry_run=dry_run, registry_config_dir=runtime.registry_config_dir, filter_by_os=filter_by_os),
+            active_profile, push_to_defaults, additional_registries=push_to, retries=build_retries,
+            terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1),
+            dry_run=dry_run, registry_config_dir=runtime.registry_config_dir, filter_by_os=filter_by_os),
         items, n_threads=threads)
     results = results.get()
 
