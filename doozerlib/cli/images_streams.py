@@ -619,6 +619,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
     new_pr_links = {}
     skipping_dgks = set()  # If a distgit key is skipped, it children will see it in this list and skip themselves.
     checked_upstream_images = set()  # A PR will not be opened unless the upstream image exists; keep track of ones we have checked.
+    errors_raised = False  # If failures are found when opening a PR, won't break the loop but will return an exit code to signal this event
 
     for image_meta in runtime.ordered_image_metas():
         dgk = image_meta.distgit_key
@@ -809,7 +810,14 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
             # Now change over to the target branch in the actual public repo
             exectools.cmd_assert(f'git checkout public/{public_branch}')
-            source_branch_parent_digest, source_branch_parents = extract_parent_digest(df_path)
+
+            try:
+                source_branch_parent_digest, source_branch_parents = extract_parent_digest(df_path)
+            except FileNotFoundError:
+                logger.error('%s not found in branch public/%s', df_path, public_branch)
+                errors_raised = True
+                continue
+
             source_branch_ci_build_root_coordinate = None
             if ci_operator_config_path.exists():
                 source_branch_ci_operator_config = yaml.safe_load(ci_operator_config_path.read_text(encoding='utf-8'))  # Read in content from public source
@@ -1100,3 +1108,7 @@ If you have any questions about this pull request, please reach out to `@art-tea
     if skipping_dgks:
         print('Some PRs were skipped; Exiting with return code 25 to indicate this')
         exit(25)
+
+    if errors_raised:
+        print('Some errors were raised: see the log for details')
+        exit(50)
