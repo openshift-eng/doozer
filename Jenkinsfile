@@ -5,7 +5,7 @@ pipeline {
         docker {
             image "openshift-art/art-ci-toolkit:latest"
             alwaysPull true
-            args "-v /home/jenkins/.ssh:/home/art/.ssh -e http_proxy -e https_proxy -e no_proxy -e HTTP_PROXY -e HTTPS_PROXY -e NO_PROXY --entrypoint=''"
+            args "-e http_proxy -e https_proxy -e no_proxy -e HTTP_PROXY -e HTTPS_PROXY -e NO_PROXY --entrypoint=''"
         }
     }
     stages {
@@ -15,7 +15,6 @@ pipeline {
                     catchError(stageResult: 'FAILURE') {
                         // Rebuild tox environment after change requirements. https://github.com/openshift/elliott/pull/149
                         sh """
-                            git fetch --tags
                             tox_args="\$(git diff --name-only HEAD~5 | grep -Fxq -e requirements.txt -e requirements-dev.txt -e MANIFEST.in -e setup.py && echo '--recreate' || true)"
                             tox \$tox_args > results.txt 2>&1
                         """
