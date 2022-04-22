@@ -1,12 +1,12 @@
 import sys
 if sys.version_info < (3, 6):
     sys.exit('Sorry, Python < 3.6 is not supported.')
-import io
+
+from setuptools_scm import get_version
+
 from .runtime import Runtime
 from .pushd import Dir
 
 
 def version():
-    from os.path import abspath, dirname, join
-    filename = join(dirname(abspath(__file__)), 'VERSION')
-    return io.open(filename, encoding="utf-8").read().strip()
+    return get_version()
