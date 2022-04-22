@@ -1,5 +1,5 @@
 from typing import Dict, Optional, List, Tuple, Any, Union
-import urllib.parse
+import urllib
 import yaml
 from collections import OrderedDict
 import pathlib
@@ -313,9 +313,10 @@ class Metadata(object):
         if params:
             url += "?" + urllib.parse.urlencode(params)
 
-        req = exectools.retry(
-            3, lambda: urllib.request.urlopen(url),
-            check_f=lambda req: req.code == 200)
+        try:
+            req = exectools.urlopen_assert(url)
+        except urllib.error.HTTPError:
+            return None
 
         content = req.read()
         et = ElementTree.fromstring(content)
