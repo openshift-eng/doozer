@@ -718,10 +718,15 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
         # For the latter style, always open directly against named branch
         if public_branch.startswith('release-') and prs_in_master:
             public_branches, _ = exectools.cmd_assert(f'git ls-remote --heads {public_repo_url}', strip=True)
-            lines = public_branches.splitlines()
-            if [bl for bl in lines if bl.endswith('/main')]:
+            public_branches = public_branches.splitlines()
+            priv_branches, _ = exectools.cmd_assert(f'git ls-remote --heads {source_repo_url}', strip=True)
+            priv_branches = priv_branches.splitlines()
+
+            if [bl for bl in public_branches if bl.endswith('/main')] and \
+               [bl for bl in priv_branches if bl.endswith('/main')]:
                 public_branch = 'main'
-            elif [bl for bl in lines if bl.endswith('/master')]:
+            elif [bl for bl in public_branches if bl.endswith('/master')] and \
+                 [bl for bl in priv_branches if bl.endswith('/master')]:
                 public_branch = 'master'
             else:
                 # There are ways of determining default branch without using naming conventions, but as of today, we don't need it.
