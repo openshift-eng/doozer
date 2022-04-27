@@ -450,6 +450,9 @@ class Runtime(object):
             # ignore this argument throughout doozer.
             self.assembly = None
 
+        if self.assembly and self.assembly not in self.releases_config.releases.keys():
+            raise ValueError(f'Assembly {self.assembly} is not defined in releases config.')
+
         replace_vars = {}
         if self.group_config.vars:
             replace_vars = self.group_config.vars.primitive()
