@@ -212,7 +212,7 @@ read and propagate/expose this annotation in its display of the release image.
     }
 
     """
-    Collect a list of builds we to tag in order to prevent garbage collection.
+    Collect a list of builds to tag in order to prevent garbage collection.
     Note: we also use this list to warm up caches, so don't wrap this section
     with `if not skip_gc_tagging`.
 
@@ -389,27 +389,41 @@ read and propagate/expose this annotation in its display of the release image.
         False: dict()
     }
 
+    # Prevents writing the same destination twice (not supported by oc if in the same mirroring file)
+    mirroring_destinations: Set[str] = set()
+
     for arch, entries in entries_by_arch.items():
         # Save the default SRC=DEST input to a file for syncing by 'oc image mirror'. Why is
         # there no '-priv'? The true images for the assembly are what we are syncing -
         # it is what we update in the imagestreams that defines whether the image will be
         # part of a public vs private release.
-        dests: Set[str] = set()  # Prevents writing the same destination twice (not supported by oc)
         src_dest_path = output_path.joinpath(f"src_dest.{arch}")
         with src_dest_path.open("w+", encoding="utf-8") as out_file:
             for payload_entry in entries.values():
                 if not payload_entry.archive_inspector:
                     # Nothing to mirror (e.g. machine-os-content)
                     continue
-                if payload_entry.dest_pullspec in dests:
-                    # Don't write the same destination twice.
-                    continue
-                out_file.write(f"{payload_entry.archive_inspector.get_archive_pullspec()}={payload_entry.dest_pullspec}\n")
-                dests.add(payload_entry.dest_pullspec)
+
+                def add_image_to_mirror(src_pullspec, dest_pullspec):
+                    if dest_pullspec in mirroring_destinations:
+                        # oc exists with an error if we have the same destination twice in the same file.
+                        # This can occurs if we have swapped in an unrelated image for a component because
+                        # that component doesn't build for this arch.
+                        return
+                    out_file.write(f"{src_pullspec}={dest_pullspec}\n")
+                    mirroring_destinations.add(dest_pullspec)
+
+                if payload_entry.dest_manifest_list_pullspec:
+                    # For heterogeneous release payloads, if a component builds for all arches
+                    # (without using -alt images), we can use the manifest list for the images directly from OSBS.
+                    # This saves a significant amount of time compared to building the manifest list again.
+                    add_image_to_mirror(payload_entry.build_inspector.get_build_pullspec(), payload_entry.dest_manifest_list_pullspec)
+
+                add_image_to_mirror(payload_entry.archive_inspector.get_archive_pullspec(), payload_entry.dest_pullspec)
 
         if apply or apply_multi_arch:
             logger.info(f'Mirroring images from {str(src_dest_path)}')
-            exectools.cmd_assert(f'oc image mirror --filename={str(src_dest_path)}', retries=3)
+            exectools.cmd_assert(f'oc image mirror --keep-manifest-list --filename={str(src_dest_path)}', retries=3)
 
         for private_mode in privacy_modes:
             logger.info(f'Building payload files for architecture: {arch}; private: {private_mode}')
@@ -510,7 +524,7 @@ read and propagate/expose this annotation in its display of the release image.
     # manifest list based component images. For example, the `cli` istag in the release imagestream will point to
     # a manifest list composed of cli image manifests for each architecture.
     # In short, the release payload is a manifest list, and each component image referenced by each release manifest
-    # is a manifest list.
+    # is itself a manifest list.
     for private_mode in privacy_modes:
 
         if private_mode:
@@ -534,50 +548,78 @@ read and propagate/expose this annotation in its display of the release image.
 
         multi_istags: List[Dict] = list()
         for tag_name, arch_to_payload_entry in multi_specs[private_mode].items():
-            # podman on rhel7.9 (like buildvm) does not support manifest lists. Instead we use a tool named
-            # manifest-list which is available through epel for rhel7 can be installed directly on fedora.
-            # The format for input is https://github.com/estesp/manifest-tool . Let's create some yaml input files.
-            component_manifest_path = output_path.joinpath(f'{imagestream_namespace}.{tag_name}.manifest-list.yaml')
-            manifests = []
-            aggregate_issues = list()
-            overall_manifest_hash = hashlib.sha256()
-            # Ensure we create a new tag for each manifest list. Unlike images, if we push a manifest list
-            # that seems to contain the same content (i.e. references the exact same manifest), it will still
-            # have a different digest. This means pushing a seemingly identical manifest list to the same
-            # tag will cause the original to lose the tag and be garbage collected.
-            overall_manifest_hash.update(runtime.uuid.encode('utf-8'))
+
+            # There are two flows:
+            # 1. The images for ALL arches were part of the same brew built manifest list. In this case, we
+            #    want to reuse the manifest list (it was already mirrored during the mirroring step).
+            # 2. At least one arch for this component does not have the same manifest list as the
+            #    other images. This will always be true for machine-os-content, but also applies
+            #    to -alt images. In this case, we must stitch a manifest list together ourselves.
+
+            aggregate_issues: List[AssemblyIssue] = list()
+
+            # Let's see which flow applies and collect all issues along the way
+            manifest_list_destination_exists = True
+            payload_entry_to_match: PayloadGenerator.PayloadEntry = None
             for arch, payload_entry in arch_to_payload_entry.items():
-                manifests.append({
-                    'image': payload_entry.dest_pullspec,
-                    'platform': {
-                        'os': 'linux',
-                        'architecture': go_arch_for_brew_arch(arch)
-                    }
-                })
-                overall_manifest_hash.update(payload_entry.dest_pullspec.encode('utf-8'))
                 if payload_entry.issues:
                     aggregate_issues.extend(payload_entry.issues)
 
-            ml_dict = {
-                # We need a unique tag for the manifest list image so that it does not get garbage collected.
-                # To calculate a tag that will vary depending on the individual manifests being added,
-                # we've calculated a sha256 of all the manifests being added.
-                'image': f'quay.io/{organization}/{repository}:sha256-{overall_manifest_hash.hexdigest()}',
-                'manifests': manifests
-            }
+                if payload_entry.dest_manifest_list_pullspec:
+                    if payload_entry_to_match is None:
+                        payload_entry_to_match = payload_entry
+                    if payload_entry.dest_manifest_list_pullspec == payload_entry_to_match.dest_manifest_list_pullspec:
+                        continue
+                manifest_list_destination_exists = False
 
-            with component_manifest_path.open(mode='w+') as ml:
-                yaml.safe_dump(ml_dict, stream=ml, default_flow_style=False)
+            if manifest_list_destination_exists:
+                # Just reuse the manifest list built in brew
+                output_pullspec = payload_entry_to_match.dest_manifest_list_pullspec
+                output_registry_org_repo = output_pullspec.rsplit(':')[0]  # e.g. quay.io/openshift-release-dev/ocp-v4.0-art-dev:sha256-b056..84b-ml -> quay.io/openshift-release-dev/ocp-v4.0-art-dev
+                output_digest_pullspec = output_registry_org_repo + '@' + payload_entry_to_match.build_inspector.get_manifest_list_digest()  # create a sha based pullspec for the new manifest list
+                logger.info(f'Reusing brew manifest-list {output_digest_pullspec} for component {tag_name}')
+            else:
+                # podman on rhel7.9 (like buildvm) does not support manifest lists. Instead we use a tool named
+                # manifest-list which is available through epel for rhel7 can be installed directly on fedora.
+                # The format for input is https://github.com/estesp/manifest-tool . Let's create some yaml input files.
+                component_manifest_path = output_path.joinpath(f'{imagestream_namespace}.{tag_name}.manifest-list.yaml')
+                logger.info(f'Stitching {component_manifest_path} manifest-list spec for component {tag_name}')
+                manifests = []
+                overall_manifest_hash = hashlib.sha256()
+                # Ensure we create a new tag for each manifest list. Unlike images, if we push a manifest list
+                # that seems to contain the same content (i.e. references the exact same manifest), it will still
+                # have a different digest. This means pushing a seemingly identical manifest list to the same
+                # tag will cause the original to lose the tag and be garbage collected.
+                overall_manifest_hash.update(runtime.uuid.encode('utf-8'))
+                for arch, payload_entry in arch_to_payload_entry.items():
+                    manifests.append({
+                        'image': payload_entry.dest_pullspec,
+                        'platform': {
+                            'os': 'linux',
+                            'architecture': go_arch_for_brew_arch(arch)
+                        }
+                    })
+                    overall_manifest_hash.update(payload_entry.dest_pullspec.encode('utf-8'))
 
-            output_pullspec = ml_dict['image']
-            # Give the push a try
-            exectools.cmd_assert(f'manifest-tool push from-spec {str(component_manifest_path)}', retries=3)
-            # if we are actually pushing a manifest list, then we should derive a sha256 based pullspec
-            output_registry_org_repo = output_pullspec.rsplit(':')[0]  # e.g. quay.io/openshift-release-dev/ocp-v4.0-art-dev:sha256-b056..84b-ml -> quay.io/openshift-release-dev/ocp-v4.0-art-dev
-            output_pullspec = output_registry_org_repo + '@' + find_manifest_list_sha(output_pullspec)  # create a sha based pullspec for the new manifest list
+                ml_dict = {
+                    # We need a unique tag for the manifest list image so that it does not get garbage collected.
+                    # To calculate a tag that will vary depending on the individual manifests being added,
+                    # we've calculated a sha256 of all the manifests being added.
+                    'image': f'quay.io/{organization}/{repository}:sha256-{overall_manifest_hash.hexdigest()}',
+                    'manifests': manifests
+                }
+
+                with component_manifest_path.open(mode='w+') as ml:
+                    yaml.safe_dump(ml_dict, stream=ml, default_flow_style=False)
+
+                output_pullspec = ml_dict['image']
+                exectools.cmd_assert(f'manifest-tool push from-spec {str(component_manifest_path)}', retries=3)
+                # if we are actually pushing a manifest list, then we should derive a sha256 based pullspec
+                output_registry_org_repo = output_pullspec.rsplit(':')[0]  # e.g. quay.io/openshift-release-dev/ocp-v4.0-art-dev:sha256-b056..84b-ml -> quay.io/openshift-release-dev/ocp-v4.0-art-dev
+                output_digest_pullspec = output_registry_org_repo + '@' + find_manifest_list_sha(output_pullspec)  # create a sha based pullspec for the new manifest list
 
             multi_istags.append(PayloadGenerator.build_payload_istag(tag_name, PayloadGenerator.PayloadEntry(
-                dest_pullspec=output_pullspec,
+                dest_pullspec=output_digest_pullspec,
                 issues=aggregate_issues
             )))
 
@@ -687,11 +729,18 @@ class PayloadGenerator:
 
     class PayloadEntry(NamedTuple):
 
-        # The destination pullspec
-        dest_pullspec: str
-
         # Append any issues for the assembly
         issues: List[AssemblyIssue]
+
+        # The final quay.io destination for the single-arch pullspec
+        dest_pullspec: str
+
+        # The final quay.io destination for the manifest list the single arch image
+        # might belong to. Most images built in brew will have been part of a
+        # manifest list, but not all release components (e.g. machine-os-content)
+        # will be. We reuse manifest lists where possible for heterogeneous
+        # release payloads to save time vs building them ourselves.
+        dest_manifest_list_pullspec: str = None
 
         """
         If the entry is for an image in this doozer group, these values will be set.
@@ -778,15 +827,15 @@ class PayloadGenerator:
         return {rpm_name: nvr_list for rpm_name, nvr_list in rpm_uses.items() if len(nvr_list) > 1}
 
     @staticmethod
-    def get_mirroring_destination(archive_inspector: ArchiveImageInspector, dest_repo: str) -> str:
+    def get_mirroring_destination(sha256: str, dest_repo: str) -> str:
         """
-        :param archive_inspector: The archive to analyze for mirroring.
+        :param sha256: The digest for the image (e.g. "sha256:6084e70110ef....70676c8ca8ee5bd5e891e74")
         :param dest_repo: A pullspec to mirror to, except for the tag. This include registry, organization, and repo.
         :return: Returns the external (quay) image location to which this image should be mirrored in order
                  to be included in an nightly release payload. These tags are meant to leak no information
                  to users watching the quay repo. The image must have a tag or it will be garbage collected.
         """
-        tag = archive_inspector.get_archive_digest().replace(":", "-")  # sha256:abcdef -> sha256-abcdef
+        tag = sha256.replace(":", "-")  # sha256:abcdef -> sha256-abcdef
         return f"{dest_repo}:{tag}"
 
     @staticmethod
@@ -811,7 +860,8 @@ class PayloadGenerator:
                 image_meta=archive_inspector.get_image_meta(),
                 build_inspector=archive_inspector.get_brew_build_inspector(),
                 archive_inspector=archive_inspector,
-                dest_pullspec=PayloadGenerator.get_mirroring_destination(archive_inspector, dest_repo),
+                dest_pullspec=PayloadGenerator.get_mirroring_destination(archive_inspector.get_archive_digest(), dest_repo),
+                dest_manifest_list_pullspec=PayloadGenerator.get_mirroring_destination(archive_inspector.get_brew_build_inspector().get_manifest_list_digest(), dest_repo),
                 issues=list(),
             )
 

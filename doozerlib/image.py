@@ -760,6 +760,12 @@ class BrewBuildImageInspector:
             self._build_pullspec = self._brew_build_obj['extra']['image']['index']['pull'][0]
             self._brew_build_id = self._brew_build_obj['id']
 
+    def get_manifest_list_digest(self) -> str:
+        """
+        :return: Returns  'sha256:....' for the manifest list associated with this brew build.
+        """
+        return self._brew_build_obj['extra']['image']['index']['digests']['application/vnd.docker.distribution.manifest.list.v2+json']
+
     def get_brew_build_id(self) -> int:
         """
         :return: Returns the koji build id for this image.
