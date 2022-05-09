@@ -225,7 +225,7 @@ class TestGather(unittest.TestCase):
 
         with mock.patch("doozerlib.exectools.cmd_gather_async") as cmd_gather_async:
             cmd_gather_async.return_value = (1, "fake_stdout", "fake_stderr")
-            with self.assertRaises(assertion.ChildProcessError):
+            with self.assertRaises(ChildProcessError):
                 out, err = loop.run_until_complete(exectools.cmd_assert_async(cmd, cwd=fake_cwd, text_mode=True))
             cmd_gather_async.assert_called_once_with(cmd, text_mode=True, cwd=fake_cwd, set_env=None, strip=False, log_stdout=False, log_stderr=True)
             self.assertEqual(out, "fake_stdout")

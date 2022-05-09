@@ -103,7 +103,7 @@ show_cmd sudo dnf install -y imagebuilder.rpm
 
 printf "${GREEN}Installing misc dependencies...${NC}\n"
 
-show_cmd sudo dnf install -y git tito koji rhpkg krb5-devel python2-devel python2-pip python2-rpm gcc
+show_cmd sudo dnf install -y git tito koji rhpkg krb5-devel python3-devel python3-pip python3-rpm gcc
 
 printf "${GREEN}Upgrading pip...${NC}\n"
 
