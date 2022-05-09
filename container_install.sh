@@ -30,7 +30,7 @@ yum install -y epel-release-latest-7.noarch.rpm
 # rpm -Uvh http://download.eng.bos.redhat.com/rcm-guest/puddles/RHAOS/AtomicOpenShift/4.0/v4.0.0-0.185.0_2019-02-25.1/x86_64/os/Packages/atomic-openshift-clients-4.0.0-0.185.0.git.0.e883da2.el7.x86_64.rpm
 
 # Installing misc dependencies...
-INSTALL_PKGS="podman git tito koji python2-brewkoji rhpkg krb5-devel python-devel python2-pip gcc"
+INSTALL_PKGS="podman git tito koji python3-brewkoji rhpkg krb5-devel python-devel python3-pip gcc"
 yum install -y $INSTALL_PKGS
 rpm -V $INSTALL_PKGS
 yum clean all

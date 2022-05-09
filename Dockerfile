@@ -19,7 +19,7 @@ RUN update-ca-trust && \
     rpm --import RPM-GPG-KEY-rcminternal && \
     curl -O https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && \
     yum install -y epel-release-latest-7.noarch.rpm && \
-    INSTALL_PKGS="podman git tito koji python2-brewkoji rhpkg krb5-devel python-devel python2-pip gcc" && \
+    INSTALL_PKGS="podman git tito koji python3-brewkoji rhpkg krb5-devel python-devel python3-pip gcc" && \
     yum install -y $INSTALL_PKGS && \
     rpm -V $INSTALL_PKGS && \
     yum clean all && \
