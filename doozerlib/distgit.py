@@ -534,7 +534,11 @@ class ImageDistGitRepo(DistGitRepo):
             }
             if flags:
                 remote_source['flags'] = flags
-            if self.config.content.source.path:  # source is in subdirectory
+            # Allow user to customize `packages` option for Cachito configuration.
+            # See https://osbs.readthedocs.io/en/osbs_ocp3/users.html#remote-source-keys for details.
+            if self.config.cachito.packages is not Missing:
+                remote_source['packages'] = self.config.cachito.packages.primitive()
+            elif self.config.content.source.path:  # source is in subdirectory
                 remote_source['packages'] = {pkg_manager: [{"path": self.config.content.source.path}] for pkg_manager in pkg_managers}
             config_overrides.update({
                 'remote_sources': [
