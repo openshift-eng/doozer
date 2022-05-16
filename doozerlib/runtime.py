@@ -387,8 +387,8 @@ class Runtime(object):
 
         try:
             self.db = dblib.DB(self, self.datastore)
-        except:
-            self.logger.warning('Cannot connect to the DB')
+        except Exception as err:
+            self.logger.warning('Cannot connect to the DB: %s\n%s', str(err), traceback.format_exc())
 
         self.logger.info(f'Initial execution (cwd) directory: {os.getcwd()}')
 
