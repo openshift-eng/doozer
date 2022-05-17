@@ -418,7 +418,7 @@ class ImageDistGitRepo(DistGitRepo):
         self.build_lock.acquire()
         self.rebase_event = Event()
         self.rebase_status = False
-        self.logger = metadata.logger
+        self.logger: logging.Logger = metadata.logger
         self.source_modifier_factory = source_modifier_factory
 
     def clone(self, distgits_root_dir, distgit_branch):
@@ -441,6 +441,24 @@ class ImageDistGitRepo(DistGitRepo):
             build_method = self.config.image_build_method
 
         return build_method
+
+    def _write_fetch_artifacts(self):
+        # Write fetch-artifacts-url.yaml for OSBS to fetch external artifacts
+        # See https://osbs.readthedocs.io/en/osbs_ocp3/users.html#using-artifacts-from-koji-or-project-newcastle-aka-pnc
+        config_value = None
+        if self.config.content.source.artifacts.from_urls is not Missing:
+            config_value = self.config.content.source.artifacts.from_urls.primitive()
+        path = self.dg_path.joinpath('fetch-artifacts-url.yaml')
+        if path.exists():  # upstream provides its own fetch-artifacts-url.yaml
+            if not config_value:
+                self.logger.info("Use fetch-artifacts-url.yaml provided by upstream.")
+                return
+            raise ValueError("Image config option content.source.artifacts.from_urls cannot be used if upstream source has fetch-artifacts-url.yaml")
+        if not config_value:
+            return  # fetch-artifacts-url.yaml is not needed.
+        self.logger.info('Generating fetch-artifacts-url.yaml')
+        with path.open("w") as f:
+            yaml.safe_dump(config_value, f)
 
     def _write_osbs_image_config(self, version: str):
         # Writes OSBS image config (container.yaml).
@@ -1498,6 +1516,8 @@ class ImageDistGitRepo(DistGitRepo):
             self._generate_config_digest()
 
             self._write_cvp_owners()
+
+            self._write_fetch_artifacts()
 
             dfp = DockerfileParser(path=str(dg_path.joinpath('Dockerfile')))
 
