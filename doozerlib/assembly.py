@@ -112,21 +112,14 @@ def _check_recursion(releases_config: Model, assembly: str):
 
 
 def assembly_type(releases_config: Model, assembly: typing.Optional[str]) -> AssemblyTypes:
-
+    # If the assembly is not defined in releases.yml, it defaults to stream
     if not assembly or not isinstance(releases_config, Model):
         return AssemblyTypes.STREAM
-
     target_assembly = releases_config.releases[assembly].assembly
-
     if not target_assembly:
-        # If the assembly is not defined in releases.yml, it defaults to stream
         return AssemblyTypes.STREAM
 
-    str_type = target_assembly['type']
-    if not str_type:
-        # Assemblies which are defined in releases.yml default to standard
-        return AssemblyTypes.STANDARD
-
+    str_type = _assembly_config_struct(releases_config, assembly, 'type', 'standard')
     for assem_type in AssemblyTypes:
         if str_type == assem_type.value:
             return assem_type
@@ -226,15 +219,24 @@ def _assembly_config_struct(releases_config: Model, assembly: typing.Optional[st
 
     _check_recursion(releases_config, assembly)
     target_assembly = releases_config.releases[assembly].assembly
-    key_struct = target_assembly.get(key, default)
+
     if target_assembly.basis.assembly:  # Does this assembly inherit from another?
         # Recursive apply ancestor assemblies
         parent_config_struct = _assembly_config_struct(releases_config, target_assembly.basis.assembly, key, default)
-        key_struct = merger(key_struct, parent_config_struct.primitive())
+        if key in target_assembly:
+            key_struct = target_assembly[key]
+
+            key_struct = merger(key_struct, parent_config_struct.primitive() if hasattr(parent_config_struct, "primitive") else parent_config_struct)
+        else:
+            key_struct = parent_config_struct
+    else:
+        key_struct = target_assembly.get(key, default)
     if isinstance(default, dict):
         return Model(dict_to_model=key_struct)
     elif isinstance(default, list):
         return ListModel(list_to_model=key_struct)
+    elif isinstance(default, (bool, int, float, str, bytes, type(None))):
+        return key_struct
     else:
         raise ValueError(f'Unknown how to derive for default type: {type(default)}')
 
