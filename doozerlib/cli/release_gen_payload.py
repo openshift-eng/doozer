@@ -20,7 +20,7 @@ from doozerlib.runtime import Runtime
 from doozerlib.util import red_print, go_suffix_for_arch, brew_arch_for_go_arch, isolate_nightly_name_components, convert_remote_git_to_https, go_arch_for_brew_arch
 from doozerlib.assembly import AssemblyTypes, assembly_basis, AssemblyIssue, AssemblyIssueCode
 from doozerlib import exectools
-from doozerlib.model import Model
+from doozerlib.model import Model, Missing
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import find_manifest_list_sha
 
@@ -484,6 +484,16 @@ read and propagate/expose this annotation in its display of the release image.
                         nonlocal pruning_tags
                         nonlocal adding_tags
 
+                        new_annotations = dict()
+                        if apiobj.model.metadata.annotations is not Missing:
+                            # We must preserve annotations as they contain release controller configuration information
+                            new_annotations = apiobj.model.metadata.annotations.primitive()
+                            new_annotations.pop("release.openshift.io/inconsistency", None)  # Remove old inconsistency information if it exists
+
+                        new_annotations.update(PayloadGenerator.build_inconsistency_annotation(assembly_issues))
+
+                        apiobj.model.metadata['annotations'] = new_annotations
+
                         incoming_tag_names = set([istag['name'] for istag in istags])
                         existing_tag_names = set([istag['name'] for istag in apiobj.model.spec.tags])
 
@@ -684,9 +694,9 @@ read and propagate/expose this annotation in its display of the release image.
                 multi_art_latest_is = oc.selector(f'imagestream/{imagestream_name}').object()
 
             def add_multi_nightly_release(obj: oc.APIObject):
-                m = obj.model
-                if m.spec.tags is oc.Missing:
-                    m.spec['tags'] = []
+                obj_model = obj.model
+                if obj_model.spec.tags is oc.Missing:
+                    obj_model.spec['tags'] = []
 
                 # For normal 4.x-art-latest, we update the imagestream with individual component images and the release
                 # controller formulates the nightly. For multi-arch, this is not possible (notably, the CI internal
@@ -695,7 +705,7 @@ read and propagate/expose this annotation in its display of the release image.
                 # This means the release controller treats entries in these imagestreams the same way it treats
                 # it when ART tags into is/release; i.e. it treats it as an official release.
                 # With this comes the responsibility to prune nightlies ourselves.
-                release_tags: List = m.spec['tags']
+                release_tags: List = obj_model.spec['tags']
                 while len(release_tags) > 5:
                     release_tags.pop(0)
 
@@ -903,7 +913,7 @@ class PayloadGenerator:
         :return: Returns a imagestreamtag dict for a release payload imagestream.
         """
         return {
-            'annotations': PayloadGenerator._build_inconsistency_annotation(payload_entry.issues),
+            'annotations': PayloadGenerator.build_inconsistency_annotation(payload_entry.issues),
             'name': payload_tag_name,
             'from': {
                 'kind': 'DockerImage',
@@ -928,7 +938,7 @@ class PayloadGenerator:
             'metadata': {
                 'name': imagestream_name,
                 'namespace': imagestream_namespace,
-                'annotations': PayloadGenerator._build_inconsistency_annotation(assembly_wide_inconsistencies)
+                'annotations': PayloadGenerator.build_inconsistency_annotation(assembly_wide_inconsistencies)
             },
             'spec': {
                 'tags': list(payload_istags),
@@ -938,10 +948,10 @@ class PayloadGenerator:
         return istream_obj
 
     @staticmethod
-    def _build_inconsistency_annotation(inconsistencies: Iterable[AssemblyIssue]):
+    def build_inconsistency_annotation(inconsistencies: Iterable[AssemblyIssue]):
         """
         :param inconsistencies: A list of strings to report as inconsistencies within an annotation.
-        :return: Returns a dict containing an inconsistency annotation out of the specified str.
+        :return: Returns a dict containing an inconsistency annotation out of the specified issues list.
                  Returns emtpy {} if there are no inconsistencies in the parameter.
         """
         # given a list of strings, build the annotation for inconsistencies
