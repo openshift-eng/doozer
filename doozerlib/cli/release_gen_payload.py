@@ -20,7 +20,7 @@ from doozerlib.runtime import Runtime
 from doozerlib.util import red_print, go_suffix_for_arch, brew_arch_for_go_arch, isolate_nightly_name_components, convert_remote_git_to_https, go_arch_for_brew_arch
 from doozerlib.assembly import AssemblyTypes, assembly_basis, AssemblyIssue, AssemblyIssueCode
 from doozerlib import exectools
-from doozerlib.model import Model, Missing
+from doozerlib.model import Model
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import find_manifest_list_sha
 
@@ -485,9 +485,9 @@ read and propagate/expose this annotation in its display of the release image.
                         nonlocal adding_tags
 
                         new_annotations = dict()
-                        if apiobj.model.metadata.annotations is not Missing:
+                        if apiobj.model.metadata.annotations is not oc.Missing:
                             # We must preserve annotations as they contain release controller configuration information
-                            new_annotations = apiobj.model.metadata.annotations.primitive()
+                            new_annotations = apiobj.model.metadata.annotations._primitive()
                             new_annotations.pop("release.openshift.io/inconsistency", None)  # Remove old inconsistency information if it exists
 
                         new_annotations.update(PayloadGenerator.build_inconsistency_annotation(assembly_issues))
