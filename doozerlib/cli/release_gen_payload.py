@@ -641,7 +641,7 @@ read and propagate/expose this annotation in its display of the release image.
             arch_release_dests[arch] = arch_release_dest
             if apply_multi_arch:
                 # If we are applying, actually create the arch specific release payload containing tags pointing to manifest list component images.
-                exectools.cmd_assert(f'oc adm release new --name={multi_nightly_name} --reference-mode=source --from-image-stream-file={str(multi_release_is_path)} --to-image-base={cvo_pullspec} --to-image={arch_release_dest}')
+                exectools.cmd_assert(f'oc adm release new --name={multi_nightly_name} --reference-mode=source --keep-manifest-list --from-image-stream-file={str(multi_release_is_path)} --to-image-base={cvo_pullspec} --to-image={arch_release_dest}')
 
         # Create manifest list spec containing references to all the arch specific release payloads we've created
         manifests = []
