@@ -402,7 +402,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
 
         # Now to create a buildconfig for it.
         buildconfig = {
-            'apiVersion': 'v1',
+            'apiVersion': 'build.openshift.io/v1',
             'kind': 'BuildConfig',
             'metadata': {
                 'name': f'{dest_imagestream}-{dest_tag}--art-builder',
