@@ -656,8 +656,26 @@ read and propagate/expose this annotation in its display of the release image.
             arch_release_dest = f'{multi_release_dest}-{arch}'
             arch_release_dests[arch] = arch_release_dest
 
+            new_release_cmd = [
+                'oc',
+                'adm',
+                'release',
+                'new',
+                f'--name={multi_release_name}',
+                '--reference-mode=source',
+                '--keep-manifest-list',
+                f'--from-image-stream-file={str(multi_release_is_path)}',
+                f'--to-image-base={cvo_pullspec}',
+                f'--to-image={arch_release_dest}'
+            ]
+
+            metadata: Dict[str, str] = dict()
+            metadata['release.openshift.io/architecture'] = 'multi'
+            new_release_cmd.append("--metadata")
+            new_release_cmd.append(json.dumps(metadata))
+
             # Create the arch specific release payload containing tags pointing to manifest list component images.
-            exectools.cmd_assert(f'oc adm release new --name={multi_release_name} --reference-mode=source --keep-manifest-list --from-image-stream-file={str(multi_release_is_path)} --to-image-base={cvo_pullspec} --to-image={arch_release_dest}')
+            exectools.cmd_assert(new_release_cmd)
 
         # Create manifest list spec containing references to all the arch specific release payloads we've created
         manifests = []
