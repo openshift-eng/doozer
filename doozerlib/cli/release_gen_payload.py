@@ -520,11 +520,14 @@ read and propagate/expose this annotation in its display of the release image.
 
     # We now generate the artifacts to create heterogeneous release payloads. A heterogeneous or 'multi' release
     # payload is a manifest list (i.e. it consists of N release payload manifests, one for each arch). The release
-    # payload manifests included in the multi-release payload manifest list are themselves composed of references to
-    # manifest list based component images. For example, the `cli` istag in the release imagestream will point to
+    # payload images referenced in the multi-release payload manifest list are themselves somewhat standard release
+    # payloads (i.e. they are based on CVO images for their arch) BUT, each component image they reference
+    # is a manifest list.
+    # For example, the `cli` image in the s390x release payload will point to a
     # a manifest list composed of cli image manifests for each architecture.
-    # In short, the release payload is a manifest list, and each component image referenced by each release manifest
-    # is itself a manifest list.
+    # In short, the highest level release payload pullspec is a manifest list, referencing single
+    # arch release payload images, and these arch specific payload images reference manifest list based components
+    # pullspecs.
     for private_mode in privacy_modes:
 
         if private_mode:
@@ -543,8 +546,18 @@ read and propagate/expose this annotation in its display of the release image.
             'multi', private_mode)
 
         now = datetime.datetime.now()
-        multi_nightly_ts = now.strftime('%Y-%m-%d-%H%M%S')
-        multi_nightly_name = f'{runtime.get_minor_version()}.0-0.nightly{go_suffix_for_arch("multi", private_mode)}-{multi_nightly_ts}'
+        if runtime.assembly == 'stream':
+            # We are publicizing a nightly. Unlike single arch payloads, the release controller is not going to
+            # react to updates to 4.x-art-latest and create timestamp based name. We create a nightly name in
+            # doozer.
+            multi_nightly_ts = now.strftime('%Y-%m-%d-%H%M%S')
+            multi_release_name = f'{runtime.get_minor_version()}.0-0.nightly{go_suffix_for_arch("multi", private_mode)}-{multi_nightly_ts}'
+        else:
+            # This will be the singular tag in an imagestream we create on apps.ci. The actual name
+            # does not matter, because it will not be visible in the release controller and will not
+            # be the ultimate name used to promote the release.
+            # pyartcd promote just needs a predictable tag name.
+            multi_release_name = runtime.get_minor_version() + ".0-multi"
 
         multi_istags: List[Dict] = list()
         for tag_name, arch_to_payload_entry in multi_specs[private_mode].items():
@@ -623,25 +636,28 @@ read and propagate/expose this annotation in its display of the release image.
                 issues=aggregate_issues
             )))
 
-        # For multi-arch, we do not rely on the 4.x-art-latest update to trigger a nightly, we must create
-        # it ourselves.
-        # multi_release_is contains istags which all point to manifest lists. We must run oc adm release new
-        # on this is once for each arch, and then stitch those images together into a release payload manifest
+        # multi_istags contains istags which all point to component manifest lists. We must run oc adm release new
+        # on this set of tags -- once for each arch - to create the arch specific release payloads.
+        # We will then stitch those arch specific payload images together into a release payload manifest
         # list.
-        multi_release_is = PayloadGenerator.build_payload_imagestream(multi_nightly_name, imagestream_namespace, multi_istags, assembly_wide_inconsistencies=assembly_issues)
-        multi_release_is_path = output_path.joinpath(f'{multi_nightly_name}-release-imagestream.yaml')
+        multi_release_is = PayloadGenerator.build_payload_imagestream(imagestream_name,
+                                                                      imagestream_namespace, multi_istags,
+                                                                      assembly_wide_inconsistencies=assembly_issues)
+
+        # Write the imagestream to a file ("oc adm release new" can read from a file instead of openshift cluster API)
+        multi_release_is_path = output_path.joinpath(f'{imagestream_name}-release-imagestream.yaml')
         with multi_release_is_path.open(mode='w+') as mf:
             yaml.safe_dump(multi_release_is, mf)
 
-        multi_release_dest = f'quay.io/{organization}/{release_repository}:{multi_nightly_name}'
-        arch_release_dests: Dict[str, str] = dict()  # Maps arch names to a release payload definition specific for that arch (i.e. based on the arch's CVO image)
+        multi_release_dest = f'quay.io/{organization}/{release_repository}:{imagestream_name}'
+        arch_release_dests: Dict[str, str] = dict()  # This will map arch names to a release payload pullspec we create for that arch (i.e. based on the arch's CVO image)
         for arch, payload_entry in multi_specs[private_mode]['cluster-version-operator'].items():
             cvo_pullspec = payload_entry.dest_pullspec
             arch_release_dest = f'{multi_release_dest}-{arch}'
             arch_release_dests[arch] = arch_release_dest
-            if apply_multi_arch:
-                # If we are applying, actually create the arch specific release payload containing tags pointing to manifest list component images.
-                exectools.cmd_assert(f'oc adm release new --name={multi_nightly_name} --reference-mode=source --keep-manifest-list --from-image-stream-file={str(multi_release_is_path)} --to-image-base={cvo_pullspec} --to-image={arch_release_dest}')
+
+            # Create the arch specific release payload containing tags pointing to manifest list component images.
+            exectools.cmd_assert(f'oc adm release new --name={multi_release_name} --reference-mode=source --keep-manifest-list --from-image-stream-file={str(multi_release_is_path)} --to-image-base={cvo_pullspec} --to-image={arch_release_dest}')
 
         # Create manifest list spec containing references to all the arch specific release payloads we've created
         manifests = []
@@ -658,11 +674,11 @@ read and propagate/expose this annotation in its display of the release image.
                 }
             })
 
-        release_payload_ml_path = output_path.joinpath(f'{multi_nightly_name}.manifest-list.yaml')
+        release_payload_ml_path = output_path.joinpath(f'{imagestream_name}.manifest-list.yaml')
         with release_payload_ml_path.open(mode='w+') as ml:
             yaml.safe_dump(ml_dict, stream=ml, default_flow_style=False)
 
-        # Give the push a try
+        # Construct the top level manifest list release payload
         exectools.cmd_assert(f'manifest-tool push from-spec {str(release_payload_ml_path)}', retries=3)
         # if we are actually pushing a manifest list, then we should derive a sha256 based pullspec
         output_registry_org_repo = multi_release_dest.rsplit(':')[0]   # e.g. quay.io/openshift-release-dev/ocp-release-nightly
@@ -708,7 +724,7 @@ read and propagate/expose this annotation in its display of the release image.
                     'referencePolicy': {
                         'type': 'Source'
                     },
-                    'name': multi_nightly_name,
+                    'name': multi_release_name,
                     'annotations': {
                         'release.openshift.io/rewrite': 'false',  # Prevents the release controller from trying to create a local registry release payload with oc adm release new.
                         # 'release.openshift.io/name': f'{runtime.get_minor_version()}.0-0.nightly',
