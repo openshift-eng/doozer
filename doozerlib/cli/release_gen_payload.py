@@ -546,18 +546,25 @@ read and propagate/expose this annotation in its display of the release image.
             'multi', private_mode)
 
         now = datetime.datetime.now()
+        multi_ts = now.strftime('%Y-%m-%d-%H%M%S')
         if runtime.assembly == 'stream':
             # We are publicizing a nightly. Unlike single arch payloads, the release controller is not going to
             # react to updates to 4.x-art-latest and create timestamp based name. We create a nightly name in
             # doozer.
-            multi_nightly_ts = now.strftime('%Y-%m-%d-%H%M%S')
-            multi_release_name = f'{runtime.get_minor_version()}.0-0.nightly{go_suffix_for_arch("multi", private_mode)}-{multi_nightly_ts}'
+            multi_release_name = f'{runtime.get_minor_version()}.0-0.nightly{go_suffix_for_arch("multi", private_mode)}-{multi_ts}'
+            # tag the release after the name of the release displayed in the release controller
+            multi_release_manifest_list_tag = multi_release_name
         else:
             # This will be the singular tag in an imagestream we create on apps.ci. The actual name
             # does not matter, because it will not be visible in the release controller and will not
             # be the ultimate name used to promote the release.
             # pyartcd promote just needs a predictable tag name.
             multi_release_name = runtime.get_minor_version() + ".0-multi"
+            # Tag the release anything unique. We just don't want it garbage collected. It will
+            # not show up in the release controller. The only purpose of this image is to
+            # provide inputs to the promotion job. Promote looks at the imagestream
+            # and not for this tag.
+            multi_release_manifest_list_tag = imagestream_name + '-' + multi_ts
 
         multi_istags: List[Dict] = list()
         for tag_name, arch_to_payload_entry in multi_specs[private_mode].items():
@@ -649,7 +656,7 @@ read and propagate/expose this annotation in its display of the release image.
         with multi_release_is_path.open(mode='w+') as mf:
             yaml.safe_dump(multi_release_is, mf)
 
-        multi_release_dest = f'quay.io/{organization}/{release_repository}:{imagestream_name}'
+        multi_release_dest = f'quay.io/{organization}/{release_repository}:{multi_release_manifest_list_tag}'
         arch_release_dests: Dict[str, str] = dict()  # This will map arch names to a release payload pullspec we create for that arch (i.e. based on the arch's CVO image)
         for arch, payload_entry in multi_specs[private_mode]['cluster-version-operator'].items():
             cvo_pullspec = payload_entry.dest_pullspec
