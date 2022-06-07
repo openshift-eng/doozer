@@ -540,6 +540,10 @@ read and propagate/expose this annotation in its display of the release image.
         if not apply_multi_arch:
             break
 
+        if not runtime.group_config.multi_arch.enabled:
+            logger.info("--apply-multi-arch is enabled but the group config / assembly does not have group.multi_arch.enabled==true")
+            break
+
         imagestream_name, imagestream_namespace = payload_imagestream_name_and_namespace(
             base_imagestream_name,
             base_istream_namespace,
