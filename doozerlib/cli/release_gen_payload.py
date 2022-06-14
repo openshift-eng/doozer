@@ -569,16 +569,16 @@ read and propagate/expose this annotation in its display of the release image.
             # tag the release after the name of the release displayed in the release controller
             multi_release_manifest_list_tag = multi_release_name
         else:
-            # This will be the singular tag in an imagestream we create on apps.ci. The actual name
-            # does not matter, because it will not be visible in the release controller and will not
-            # be the ultimate name used to promote the release.
-            # pyartcd promote just needs a predictable tag name.
-            multi_release_name = runtime.get_minor_version() + ".0-multi"
             # Tag the release anything unique. We just don't want it garbage collected. It will
             # not show up in the release controller. The only purpose of this image is to
             # provide inputs to the promotion job. Promote looks at the imagestream
             # and not for this tag.
             multi_release_manifest_list_tag = imagestream_name + '-' + multi_ts
+            # This will be the singular tag in an imagestream we create on apps.ci. The actual name
+            # does not matter, because it will not be visible in the release controller and will not
+            # be the ultimate name used to promote the release. It must be unique, however, because
+            # Cincinnati chokes if multiple images exist in the repo with the same release name.
+            multi_release_name = multi_release_manifest_list_tag
 
         multi_istags: List[Dict] = list()
         for tag_name, arch_to_payload_entry in multi_specs[private_mode].items():
