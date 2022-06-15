@@ -1952,6 +1952,9 @@ class ImageDistGitRepo(DistGitRepo):
         csv_file, image_refs = self._get_csv_file_and_refs(csv_config)
         registry = csv_config['registry'].rstrip("/")
         image_map = csv_config.get('image-map', {})
+        namespace = csv_config.get('csv_namespace', self.runtime.group_config.get('csv_namespace', None))
+        if not namespace:
+            raise DoozerFatalError('csv_namespace is required in group.yaml when any image defines update-csv')
 
         for ref in image_refs:
             try:
@@ -1975,9 +1978,6 @@ class ImageDistGitRepo(DistGitRepo):
                     _, v, r = meta.get_latest_build_info()
                     image_tag = '{}:{}-{}'.format(meta.image_name_short, v, r)
 
-                namespace = self.runtime.group_config.get('csv_namespace', None)
-                if not namespace:
-                    raise DoozerFatalError('csv_namespace is required in group.yaml when any image defines update-csv')
                 replace = '{}/{}/{}'.format(registry, namespace, image_tag)
 
                 with io.open(csv_file, 'r+', encoding="utf-8") as f:
