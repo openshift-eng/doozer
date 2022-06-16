@@ -1,9 +1,12 @@
-import yaml
-
 from unittest import TestCase
 
-from doozerlib.assembly import assembly_rhcos_config, merger, assembly_group_config, assembly_metadata_config, assembly_basis_event
-from doozerlib.model import Model, Missing
+import yaml
+
+from doozerlib.assembly import (_assembly_config_struct, assembly_basis_event,
+                                assembly_group_config,
+                                assembly_metadata_config,
+                                assembly_rhcos_config, merger)
+from doozerlib.model import Missing, Model
 
 
 class TestAssembly(TestCase):
@@ -354,3 +357,110 @@ releases:
     def test_assembly_rhcos_config(self):
         rhcos_config = assembly_rhcos_config(self.releases_config, "ART_8")
         self.assertEqual(len(rhcos_config.dependencies.rpms), 3)
+
+    def test_assembly_config_struct(self):
+        release_configs = {
+            "releases": {
+                "child": {
+                    "assembly": {
+                        "basis": {
+                            "assembly": "parent",
+                        }
+                    }
+                },
+                "parent": {
+                    "assembly": {
+                        "type": "custom"
+                    }
+                },
+            }
+        }
+        actual = _assembly_config_struct(Model(release_configs), "child", "type", "standard")
+        self.assertEqual(actual, "custom")
+
+        release_configs = {
+            "releases": {
+                "child": {
+                    "assembly": {
+                        "basis": {
+                            "assembly": "parent",
+                        },
+                        "type": "candidate"
+                    }
+                },
+                "parent": {
+                    "assembly": {
+                        "type": "custom"
+                    }
+                },
+            }
+        }
+        actual = _assembly_config_struct(Model(release_configs), "child", "type", "standard")
+        self.assertEqual(actual, "candidate")
+
+        release_configs = {
+            "releases": {
+                "child": {
+                    "assembly": {
+                        "basis": {
+                            "assembly": "parent",
+                        },
+                    }
+                },
+                "parent": {
+                    "assembly": {
+                    }
+                },
+            }
+        }
+        actual = _assembly_config_struct(Model(release_configs), "child", "type", "standard")
+        self.assertEqual(actual, "standard")
+
+        release_configs = {
+            "releases": {
+                "child": {
+                    "assembly": {
+                        "basis": {
+                            "assembly": "parent",
+                        },
+                    }
+                },
+                "parent": {
+                    "assembly": {
+                        "type": None
+                    },
+                },
+            }
+        }
+        actual = _assembly_config_struct(Model(release_configs), "child", "type", "standard")
+        self.assertEqual(actual, None)
+
+        release_configs = {
+            "releases": {
+                "child": {
+                    "assembly": {
+                        "basis": {
+                            "assembly": "parent",
+                        },
+                        "foo": {
+                            "a": 1,
+                            "b": 2
+                        }
+                    }
+                },
+                "parent": {
+                    "assembly": {
+                        "foo": {
+                            "b": 3,
+                            "c": 4,
+                        }
+                    }
+                },
+            }
+        }
+        actual = _assembly_config_struct(Model(release_configs), "child", "foo", {})
+        self.assertEqual(actual, {
+            "a": 1,
+            "b": 2,
+            "c": 4,
+        })
