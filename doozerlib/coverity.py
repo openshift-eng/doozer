@@ -273,6 +273,9 @@ FROM {parent_image_url}
 LABEL DOOZER_COVSCAN_GROUP_PARENT={cc.runtime.group_config.name}
 USER 0
 
+# Set https proxy
+ENV https_proxy http://proxy.util.phx1.redhat.com:8080
+
 # Add typical build repos to the image, but don't add to /etc/yum.repos.d
 # until we know whether we are on el7 or el8. As of 4.8, repos are only
 # appropriate for el8, so this repo file should only be installed in el8.
