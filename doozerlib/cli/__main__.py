@@ -350,9 +350,10 @@ def images_update_dockerfile(runtime: Runtime, version: Optional[str], release: 
               help='Even if an existing analysis is present for a given hash, re-run')
 @click.option('--ignore-waived', default=False, is_flag=True,
               help='Ignore any previously detected waived results (all=diff)')
+@click.option('--https-proxy', default='', help='HTTPS proxy to be used during image builds')
 @pass_runtime
 def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8, repo_type,
-                   preserve_builder_images, force_analysis, ignore_waived):
+                   preserve_builder_images, force_analysis, ignore_waived, https_proxy):
     """
     Runs a coverity scan against the specified images.
 
@@ -476,7 +477,8 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
             dg_commit_hash, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
             cc = coverity.CoverityContext(image, dg_commit_hash, result_archive, repo_type=repo_type,
                                           local_repo_rhel_7=local_repo_rhel_7, local_repo_rhel_8=local_repo_rhel_8,
-                                          force_analysis=force_analysis, ignore_waived=ignore_waived)
+                                          force_analysis=force_analysis, ignore_waived=ignore_waived,
+                                          https_proxy=https_proxy)
 
             if image.covscan(cc):
                 successes.append(image.distgit_key)
