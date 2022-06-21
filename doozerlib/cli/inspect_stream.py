@@ -1,4 +1,5 @@
 import click
+from pprint import pprint
 
 from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder
 from doozerlib.cli import cli
@@ -25,8 +26,9 @@ def inspect_stream(runtime, code, strict):
     if code == AssemblyIssueCode.INCONSISTENT_RHCOS_RPMS:
         rhcos_builds, rhcos_inconsistencies = _check_inconsistent_rhcos_rpms(runtime, assembly_inspector)
         if rhcos_inconsistencies:
-            msg = f'Found RHCOS inconsistencies in builds {rhcos_builds}: {rhcos_inconsistencies}'
+            msg = f'Found RHCOS inconsistencies in builds {rhcos_builds}'
             print(msg)
+            pprint(rhcos_inconsistencies)
             assembly_issue = AssemblyIssue(msg, component='rhcos', code=code)
             if assembly_inspector.does_permit(assembly_issue):
                 print(f'Assembly permits code {code}.')

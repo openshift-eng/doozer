@@ -875,11 +875,13 @@ class PayloadGenerator:
             for nvr in rhcos_build.get_rpm_nvrs():
                 rpm_name = parse_nvr(nvr)['name']
                 if rpm_name not in rpm_uses:
-                    rpm_uses[rpm_name] = set()
-                rpm_uses[rpm_name].add(nvr)
+                    rpm_uses[rpm_name] = dict()
+                if nvr not in rpm_uses[rpm_name]:
+                    rpm_uses[rpm_name][nvr] = []
+                rpm_uses[rpm_name][nvr].append(rhcos_build.brew_arch)
 
         # Report back rpm name keys which were associated with more than one NVR in the set of RHCOS builds.
-        return {rpm_name: nvr_list for rpm_name, nvr_list in rpm_uses.items() if len(nvr_list) > 1}
+        return {rpm_name: nvr_dict for rpm_name, nvr_dict in rpm_uses.items() if len(nvr_dict) > 1}
 
     @staticmethod
     def get_mirroring_destination(sha256: str, dest_repo: str) -> str:
