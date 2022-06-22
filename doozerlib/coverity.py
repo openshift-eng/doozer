@@ -21,7 +21,7 @@ class CoverityContext(object):
 
     def __init__(self, image, dg_commit_hash: str, result_archive: str, repo_type: str = 'unsigned',
                  local_repo_rhel_7: List[str] = [], local_repo_rhel_8: List[str] = [], force_analysis: bool = False,
-                 ignore_waived: bool = False):
+                 ignore_waived: bool = False, https_proxy: str = ''):
         self.image = image  # ImageMetadata
         self.dg_commit_hash = dg_commit_hash
         self.result_archive_path = pathlib.Path(result_archive)
@@ -37,6 +37,7 @@ class CoverityContext(object):
         self.runtime = image.runtime
         self.force_analysis = force_analysis
         self.ignore_waived = ignore_waived
+        self.https_proxy = https_proxy
 
         # Podman is going to create a significant amount of container image data
         # Make sure there is plenty of space. Override TMPDIR, because podman
@@ -182,6 +183,12 @@ RUN if cat /etc/redhat-release | grep "release 8"; then echo '[covscan_local_{id
 
         return make_image_repo_files, vol_mount_arg
 
+    def build_args(self) -> str:
+        """
+        HTTPS proxy can be specified as build argument and passed to podman build command
+        """
+        return f"--build-arg HTTPS_PROXY='{self.https_proxy}'" if self.https_proxy else ''
+
 
 def _covscan_prepare_parent(cc: CoverityContext, parent_image_name, parent_tag) -> bool:
     """
@@ -273,6 +280,11 @@ FROM {parent_image_url}
 LABEL DOOZER_COVSCAN_GROUP_PARENT={cc.runtime.group_config.name}
 USER 0
 
+# Set https proxy
+ARG HTTPS_PROXY
+RUN if [[ ! -z ${HTTPS_PROXY} ]]; then echo "Using proxy: $HTTPS_PROXY"; fi
+ENV https_proxy ${HTTPS_PROXY}
+
 # Add typical build repos to the image, but don't add to /etc/yum.repos.d
 # until we know whether we are on el7 or el8. As of 4.8, repos are only
 # appropriate for el8, so this repo file should only be installed in el8.
@@ -298,7 +310,7 @@ RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
             df_parent_out.write('ENV PATH=/opt/coverity/bin:${PATH}\n')  # Ensure coverity is in the path
 
         # This will have prepared a parent image we can use during the actual covscan Dockerfile build
-        rc, stdout, stderr = exectools.cmd_gather(f'{cc.podman_cmd} build {mount_args} -t {parent_tag} -f {str(df_parent_path)} {str(dg_path)}', set_env=cc.podman_env)
+        rc, stdout, stderr = exectools.cmd_gather(f'{cc.podman_cmd} build {mount_args} {cc.build_args()} -t {parent_tag} -f {str(df_parent_path)} {str(dg_path)}', set_env=cc.podman_env)
         cc.logger.info(f'''Output from covscan build for {cc.image.distgit_key}
 stdout: {stdout}
 stderr: {stderr}
@@ -499,7 +511,7 @@ RUN cov-manage-emit --dir={container_stage_cov_dir} reset-host-name; timeout 3h 
         # Now, run the build (and execute those steps). The output will be to <cov_path>/<stage_number>
         run_tag = f'{cc.image.image_name_short}_{cc.runtime.group_config.name}'
         rc, stdout, stderr = exectools.cmd_gather(
-            f'{cc.podman_cmd} build -v {str(cc.cov_root_path)}:/cov:z -v {str(dg_path)}:/covscan-src:z -t {run_tag} -f {str(covscan_df)} {str(dg_path)}',
+            f'{cc.podman_cmd} build {cc.build_args()} -v {str(cc.cov_root_path)}:/cov:z -v {str(dg_path)}:/covscan-src:z -t {run_tag} -f {str(covscan_df)} {str(dg_path)}',
             set_env=cc.podman_env)
         cc.logger.info(f'''Output from covscan build for {cc.image.distgit_key}
 stdout: {stdout}
