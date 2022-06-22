@@ -577,8 +577,13 @@ class OLMBundle(object):
             'operators.operatorframework.io.bundle.mediatype.v1': 'registry+v1',
             'operators.operatorframework.io.bundle.metadata.v1': 'metadata/',
             'operators.operatorframework.io.bundle.package.v1': self.package,
+            'operators.openshift.io/valid-subscription': self.valid_subscription_label,
         }
 
     @property
     def target(self):
         return self.runtime.get_default_candidate_brew_tag() or '{}-candidate'.format(self.branch)
+
+    @property
+    def valid_subscription_label(self):
+        return self.operator_csv_config['valid-subscription-label']
