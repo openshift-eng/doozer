@@ -282,8 +282,8 @@ USER 0
 
 # Set https proxy
 ARG HTTPS_PROXY
-RUN if [[ ! -z ${HTTPS_PROXY} ]]; then echo "Using proxy: $HTTPS_PROXY"; fi
-ENV https_proxy ${HTTPS_PROXY}
+RUN if [[ ! -z ${{HTTPS_PROXY}} ]]; then echo "Using proxy: $HTTPS_PROXY"; fi
+ENV https_proxy ${{HTTPS_PROXY}}
 
 # Add typical build repos to the image, but don't add to /etc/yum.repos.d
 # until we know whether we are on el7 or el8. As of 4.8, repos are only
