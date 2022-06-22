@@ -5,6 +5,10 @@ from urllib import request
 from doozerlib.cli import cli
 from doozerlib import constants, util, exectools
 
+# See https://github.com/openshift/machine-config-operator/blob/master/docs/OSUpgrades.md
+# But in the future this will be replaced, see https://github.com/coreos/enhancements/blob/main/os/coreos-layering.md
+OLD_FORMAT_COREOS_TAG = 'machine-os-content'
+
 
 @cli.command("get-nightlies", short_help="Get sets of Accepted nightlies. A set contains nightly for each arch, "
                                          "determined by closest timestamps")
@@ -52,7 +56,7 @@ def get_nightlies(runtime, limit, rhcos, latest):
             nightly_str = f'{nightly} {phase}'
             if rhcos:
                 if phase != 'Pending':
-                    rhcos = get_build_from_payload(get_nightly_pullspec(nightly, arch))
+                    rhcos = get_coreos_build_from_payload(get_nightly_pullspec(nightly, arch))
                     nightly_str += f' {rhcos}'
             print(nightly_str)
         print(",".join(nightly_set))
@@ -64,9 +68,9 @@ def get_nightly_pullspec(release, arch):
     return f'registry.ci.openshift.org/ocp{suffix}/release{suffix}:{release}'
 
 
-def get_build_from_payload(payload_pullspec):
-    rhcos_tag = 'machine-os-content'
-    out, err = exectools.cmd_assert(["oc", "adm", "release", "info", "--image-for", rhcos_tag, "--", payload_pullspec])
+def get_coreos_build_from_payload(payload_pullspec):
+    """Retrive the build version of machine-os-content (e.g. 411.86.202206131434-0)"""
+    out, err = exectools.cmd_assert(["oc", "adm", "release", "info", "--image-for", OLD_FORMAT_COREOS_TAG, "--", payload_pullspec])
     if err:
         raise Exception(f"Error running oc adm: {err}")
     rhcos_pullspec = out.split('\n')[0]
