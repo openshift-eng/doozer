@@ -264,19 +264,25 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
 
     transform_rhel_7_base_repos = 'rhel-7/base-repos'
     transform_rhel_8_base_repos = 'rhel-8/base-repos'
+    transform_rhel_9_base_repos = 'rhel-9/base-repos'
     transform_rhel_7_golang = 'rhel-7/golang'
     transform_rhel_8_golang = 'rhel-8/golang'
+    transform_rhel_9_golang = 'rhel-9/golang'
     transform_rhel_7_ci_build_root = 'rhel-7/ci-build-root'
     transform_rhel_8_ci_build_root = 'rhel-8/ci-build-root'
+    transform_rhel_9_ci_build_root = 'rhel-9/ci-build-root'
 
     # The set of valid transforms
     transforms = set([
         transform_rhel_7_base_repos,
         transform_rhel_8_base_repos,
+        transform_rhel_9_base_repos,
         transform_rhel_7_golang,
         transform_rhel_8_golang,
+        transform_rhel_9_golang,
         transform_rhel_7_ci_build_root,
         transform_rhel_8_ci_build_root,
+        transform_rhel_9_ci_build_root,
     ])
 
     major = runtime.group_config.vars['MAJOR']
@@ -369,6 +375,17 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
                     if not x86_64_url:
                         raise IOError(f'Expected x86_64 baseurl for repo {repo_name}')
                     dfp.add_lines(f"RUN echo -e '[{localdev_repo_name}]\\nname = {localdev_repo_name}\\nid = {localdev_repo_name}\\nbaseurl = {x86_64_url}\\nenabled = 1\\ngpgcheck = 0\\n' > /etc/yum.repos.d/{localdev_repo_name}.repo")
+
+        if transform == transform_rhel_9_base_repos or config.transform == transform_rhel_9_golang:
+            # The repos transform create a build config that will layer the base image with CI appropriate yum
+            # repository definitions.
+            dfp.add_lines(f'RUN rm -rf /etc/yum.repos.d/*.repo && curl http://base-{major}-{minor}-rhel9.ocp.svc > /etc/yum.repos.d/ci-rpm-mirrors.repo')
+
+            # Allow the base repos to be used BEFORE art begins mirroring 4.x to openshift mirrors.
+            # This allows us to establish this locations later -- only disrupting CI for those
+            # components that actually need reposync'd RPMs from the mirrors.
+            dfp.add_lines('RUN yum config-manager --setopt=skip_if_unavailable=True --save')
+            add_localdev_repo_profile('el9')
 
         if transform == transform_rhel_8_base_repos or config.transform == transform_rhel_8_golang:
             # The repos transform create a build config that will layer the base image with CI appropriate yum
