@@ -1,9 +1,8 @@
-import typing
 import copy
-
+import typing
 from enum import Enum
 
-from doozerlib.model import Missing, Model, ListModel
+from doozerlib.model import ListModel, Missing, Model
 
 
 class AssemblyTypes(Enum):
@@ -89,6 +88,7 @@ def merger(a, b):
                 if k not in c:
                     c[k] = v
             elif k.endswith('-'):  # remove key entirely
+                k = k[:-1]
                 c.pop(k, None)
             else:
                 if k in c:

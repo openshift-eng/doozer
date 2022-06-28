@@ -227,6 +227,12 @@ releases:
             {'r': [1, 2]}
         )
 
+        # - key removes itself entirely
+        self.assertEqual(
+            merger({'r-': [1, 2]}, {'r': [3, 4]}),
+            {}
+        )
+
     def test_assembly_basis_event(self):
         self.assertEqual(assembly_basis_event(self.releases_config, 'ART_1'), None)
         self.assertEqual(assembly_basis_event(self.releases_config, 'ART_6'), 5)
