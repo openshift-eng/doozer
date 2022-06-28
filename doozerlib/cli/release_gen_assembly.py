@@ -341,12 +341,15 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
 
     group_info = {}
     if not custom:
+        # Add placeholder advisory numbers and JIRA key.
+        # Those values will be replaced with real values by pyartcd when preparing a release.
         group_info['advisories'] = {
             'image': -1,
             'rpm': -1,
             'extras': -1,
             'metadata': -1,
         }
+        group_info["release_jira"] = "ART-0"
     else:
         # Custom payloads don't require advisories.
         # If the user has specified fewer nightlies than is required by this
