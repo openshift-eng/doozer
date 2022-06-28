@@ -573,7 +573,7 @@ read and propagate/expose this annotation in its display of the release image.
             # not show up in the release controller. The only purpose of this image is to
             # provide inputs to the promotion job. Promote looks at the imagestream
             # and not for this tag.
-            multi_release_manifest_list_tag = imagestream_name + '-' + multi_ts
+            multi_release_manifest_list_tag = f'{runtime.get_minor_version()}.0-0.art-assembly-{runtime.assembly}{go_suffix_for_arch("multi", private_mode)}-{multi_ts}'
             # This will be the singular tag in an imagestream we create on apps.ci. The actual name
             # does not matter, because it will not be visible in the release controller and will not
             # be the ultimate name used to promote the release. It must be unique, however, because
