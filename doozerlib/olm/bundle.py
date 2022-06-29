@@ -570,6 +570,9 @@ class OLMBundle(object):
         if self.runtime.group_config.operator_channel_stable == 'default':
             override_default = stable_channel
 
+        if not self.valid_subscription_label:
+            raise ValueError("missing valid-subscription-label in operator config")
+
         return {
             'operators.operatorframework.io.bundle.channel.default.v1': override_default,
             'operators.operatorframework.io.bundle.channels.v1': override_channel,
