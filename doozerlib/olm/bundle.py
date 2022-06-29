@@ -263,8 +263,11 @@ class OLMBundle(object):
         annotations_file = '{}/metadata/annotations.yaml'.format(self.bundle_clone_path)
         exectools.cmd_assert('mkdir -p {}'.format(os.path.dirname(annotations_file)))
 
+        k = self.operator_framework_tags
+        print(type(k))
+        print(k)
         with io.open(annotations_file, 'w', encoding='utf-8') as writer:
-            writer.write(yaml.dump({'annotations': self.operator_framework_tags}))
+            writer.write(yaml.dump({'annotations': k}))
 
     def generate_bundle_dockerfile(self):
         """Create a Dockerfile with instructions to build the bundle container and a set of LABELs
@@ -569,6 +572,9 @@ class OLMBundle(object):
             override_channel = ','.join({self.channel, stable_channel})
         if self.runtime.group_config.operator_channel_stable == 'default':
             override_default = stable_channel
+
+        if not self.valid_subscription_label:
+            raise ValueError("missing valid-subscription-label in operator config")
 
         return {
             'operators.operatorframework.io.bundle.channel.default.v1': override_default,
