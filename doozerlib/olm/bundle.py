@@ -263,11 +263,8 @@ class OLMBundle(object):
         annotations_file = '{}/metadata/annotations.yaml'.format(self.bundle_clone_path)
         exectools.cmd_assert('mkdir -p {}'.format(os.path.dirname(annotations_file)))
 
-        k = self.operator_framework_tags
-        print(type(k))
-        print(k)
         with io.open(annotations_file, 'w', encoding='utf-8') as writer:
-            writer.write(yaml.dump({'annotations': k}))
+            writer.write(yaml.dump({'annotations': self.operator_framework_tags}))
 
     def generate_bundle_dockerfile(self):
         """Create a Dockerfile with instructions to build the bundle container and a set of LABELs
