@@ -50,6 +50,14 @@ class TestRhcos(unittest.TestCase):
     def tearDown(self):
         pass
 
+    def test_get_primary_container_conf(self):
+        # default is same as it's always been
+        self.assertEqual("machine-os-content", rhcos.RHCOSBuildFinder(self.runtime, "4.6", "x86_64").get_primary_container_conf()["name"])
+
+        # but we can configure a different primary
+        self.runtime.group_config.rhcos = Model(dict(payload_tags=[dict(name="spam"), dict(name="eggs", primary=True)]))
+        self.assertEqual("eggs", rhcos.RHCOSBuildFinder(self.runtime, "4.6", "x86_64").get_primary_container_conf()["name"])
+
     def test_release_url(self):
         self.assertIn("4.6-s390x", rhcos.RHCOSBuildFinder(self.runtime, "4.6", "s390x").rhcos_release_url())
         self.assertNotIn("x86_64", rhcos.RHCOSBuildFinder(self.runtime, "4.6", "x86_64").rhcos_release_url())
@@ -77,13 +85,26 @@ class TestRhcos(unittest.TestCase):
 
     @patch('doozerlib.rhcos.RHCOSBuildFinder.latest_rhcos_build_id')
     @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
-    def test_build_meta(self, meta_mock, id_mock):
+    def test_latest_container(self, meta_mock, id_mock):
+        # "normal" lookup
         id_mock.return_value = "dummy"
         meta_mock.return_value = dict(oscontainer=dict(image="test", digest="sha256:1234abcd"))
-        self.assertEqual(("dummy", "test@sha256:1234abcd"), rhcos.RHCOSBuildFinder(self.runtime, "4.4").latest_machine_os_content())
+        self.assertEqual(("dummy", "test@sha256:1234abcd"), rhcos.RHCOSBuildFinder(self.runtime, "4.4").latest_container())
 
+        # lookup when there is no build to look up
         id_mock.return_value = None
-        self.assertEqual((None, None), rhcos.RHCOSBuildFinder(self.runtime, "4.4").latest_machine_os_content())
+        self.assertEqual((None, None), rhcos.RHCOSBuildFinder(self.runtime, "4.4").latest_container())
+
+        # lookup when we have configured a different primary container
+        self.runtime.group_config.rhcos = Model(dict(payload_tags=[dict(name="spam"), dict(name="eggs", primary=True)]))
+        id_mock.return_value = "dummy"
+        meta_mock.return_value = dict(
+            oscontainer=dict(image="test", digest="sha256:1234abcdstandard"),
+            altcontainer=dict(image="test", digest="sha256:abcd1234alt"),
+        )
+        alt_container = dict(name="rhel-coreos-8", build_metadata_key="altcontainer", primary=True)
+        self.runtime.group_config.rhcos = Model(dict(payload_tags=[alt_container]))
+        self.assertEqual(("dummy", "test@sha256:abcd1234alt"), rhcos.RHCOSBuildFinder(self.runtime, "4.4").latest_container())
 
     @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
     def test_rhcos_build_inspector(self, rhcos_build_meta_mock):

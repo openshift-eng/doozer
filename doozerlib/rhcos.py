@@ -9,18 +9,41 @@ from urllib import request
 from urllib.error import URLError
 from doozerlib.util import brew_suffix_for_arch, isolate_el_version_in_release
 from doozerlib import exectools
-from doozerlib.model import Model, Missing
+from doozerlib.model import ListModel, Model
 from doozerlib import brew
 
 RHCOS_BASE_URL = "https://rhcos-redirector.apps.art.xq1c.p1.openshiftapps.com/art/storage/releases"
+default_primary_container = dict(  # historically the only RHCOS container
+    name="machine-os-content",
+    build_metadata_key="oscontainer",
+    primary=True)
 
 
-def rhcos_content_tag(runtime) -> str:
+def get_container_configs(runtime):
     """
-    :return: Return the tag for packages we expect RHCOS to be built from.
+    look up the group.yml configuration for RHCOS container(s) for this group, or create if missing.
+    @return ListModel with Model entries like ^^ default_primary_container
     """
-    base = runtime.group_config.branch.replace("-rhel-7", "-rhel-8")
-    return f"{base}-candidate"
+    return runtime.group_config.rhcos.payload_tags or ListModel([default_primary_container])
+
+
+def get_container_names(runtime):
+    """
+    look up the payload tags of the group.yml-configured RHCOS container(s) for this group
+    @return list of container names
+    """
+    return {tag.name for tag in get_container_configs(runtime)}
+
+
+def get_primary_container_conf(runtime):
+    """
+    look up the group.yml-configured primary RHCOS container for this group.
+    @return Model with entries for name and build_metadata_key
+    """
+    for tag in get_container_configs(runtime):
+        if tag.primary:
+            return tag
+    raise Exception("Need to provide a group.yml rhcos.payload_tags entry with primary=true")
 
 
 class RHCOSNotFound(Exception):
@@ -44,6 +67,16 @@ class RHCOSBuildFinder:
         self.brew_arch = brew_arch
         self.private = private
         self.custom = custom
+        self._primary_container = None
+
+    def get_primary_container_conf(self):
+        """
+        look up the group.yml-configured primary RHCOS container on demand and retain it.
+        @return Model with entries for name and build_metadata_key
+        """
+        if not self._primary_container:
+            self._primary_container = get_primary_container_conf(self.runtime)
+        return self._primary_container
 
     def rhcos_release_url(self) -> str:
         """
@@ -122,18 +155,27 @@ class RHCOSBuildFinder:
         with request.urlopen(url) as req:
             return json.loads(req.read().decode())
 
-    def latest_machine_os_content(self) -> Tuple[Optional[str], Optional[str]]:
+    def latest_container(self, container_conf: dict = None) -> Tuple[Optional[str], Optional[str]]:
         """
-        :param version: The major.minor of the RHCOS stream the build is associated with (e.g. '4.6')
-        :param brew_arch: The CPU architecture for the build (uses brew naming convention)
-        :param private: Whether this is a private build (NOT CURRENTLY SUPPORTED)
+        :param container_conf: a payload tag conf Model from group.yml (with build_metadata_key)
         :return: Returns (rhcos build id, image pullspec) or (None, None) if not found.
         """
         build_id = self.latest_rhcos_build_id()
         if build_id is None:
             return None, None
-        m_os_c = self.rhcos_build_meta(build_id)['oscontainer']
-        return build_id, m_os_c['image'] + "@" + m_os_c['digest']
+        key = self.get_primary_container_conf().build_metadata_key
+        container = self.rhcos_build_meta(build_id)[key]
+        if 'digest' in container:
+            # "oscontainer": {
+            #   "digest": "sha256:04b54950ce2...",
+            #   "image": "quay.io/openshift-release-dev/ocp-v4.0-art-dev"
+            # },
+            return build_id, container['image'] + "@" + container['digest']
+
+        # "base-oscontainer": {
+        #     "image": "registry.ci.openshift.org/rhcos/rhel-coreos@sha256:b8e1064cae637f..."
+        # },
+        return build_id, container['image']
 
 
 class RHCOSBuildInspector:

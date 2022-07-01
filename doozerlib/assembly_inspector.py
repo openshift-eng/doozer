@@ -319,7 +319,7 @@ class AssemblyInspector:
         if assembly_rhcos_arch_pullspec:
             return RHCOSBuildInspector(runtime, assembly_rhcos_arch_pullspec, brew_arch)
         else:
-            _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private, custom=custom).latest_machine_os_content()
+            _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private, custom=custom).latest_container()
             if not pullspec:
                 raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
             return RHCOSBuildInspector(runtime, pullspec, brew_arch)
