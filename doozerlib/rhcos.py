@@ -13,7 +13,11 @@ from doozerlib.model import ListModel, Model
 from doozerlib import brew
 
 RHCOS_BASE_URL = "https://rhcos-redirector.apps.art.xq1c.p1.openshiftapps.com/art/storage/releases"
-default_primary_container = dict(  # historically the only RHCOS container
+# Historically the only RHCOS container was 'machine-os-content'; see
+# https://github.com/openshift/machine-config-operator/blob/master/docs/OSUpgrades.md
+# But in the future this will change, see
+# https://github.com/coreos/enhancements/blob/main/os/coreos-layering.md
+default_primary_container = dict(
     name="machine-os-content",
     build_metadata_key="oscontainer",
     primary=True)
@@ -44,6 +48,14 @@ def get_primary_container_conf(runtime):
         if tag.primary:
             return tag
     raise Exception("Need to provide a group.yml rhcos.payload_tags entry with primary=true")
+
+
+def get_primary_container_name(runtime):
+    """
+    convenience method to retrieve configured primary RHCOS container name
+    @return primary container name (used in payload tag)
+    """
+    return get_primary_container_conf(runtime).name
 
 
 class RHCOSNotFound(Exception):
