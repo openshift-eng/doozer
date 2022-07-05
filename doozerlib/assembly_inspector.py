@@ -8,7 +8,7 @@ from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, \
     AssemblyIssueCode, assembly_type
-from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder
+from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder, get_primary_container_name
 
 
 class AssemblyInspector:
@@ -310,7 +310,7 @@ class AssemblyInspector:
         runtime.logger.info(f"Getting latest RHCOS source for {brew_arch}...")
 
         # See if this assembly has assembly.rhcos.machine-os-content.images populated for this architecture.
-        assembly_rhcos_arch_pullspec = self.assembly_rhcos_config['machine-os-content'].images[brew_arch]
+        assembly_rhcos_arch_pullspec = self.assembly_rhcos_config[get_primary_container_name(runtime)].images[brew_arch]
 
         if self.runtime.assembly_type != AssemblyTypes.STREAM and not assembly_rhcos_arch_pullspec:
             raise Exception(f'Assembly {runtime.assembly} has is not a STREAM but no assembly.rhcos MOSC image data for {brew_arch}; all MOSC image data must be populated for this assembly to be valid')
