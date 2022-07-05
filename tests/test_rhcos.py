@@ -139,7 +139,7 @@ class TestRhcos(unittest.TestCase):
         self.assertIn("util-linux-2.32.1-24.el8.s390x", rhcos_build.get_rpm_nvras())
         self.assertIn("util-linux-2.32.1-24.el8", rhcos_build.get_rpm_nvrs())
         self.assertEqual(rhcos_build.get_package_build_objects()['dbus']['nvr'], 'dbus-1.12.8-12.el8_3')
-        self.assertEqual(rhcos_build.get_machine_os_content_digest(), 'sha256:d51ca4e301cfdbc98e16ace0bcbee02b143a8be9e454ce5fb196467981141f59')
+        self.assertEqual(rhcos_build.get_container_digest(), 'sha256:d51ca4e301cfdbc98e16ace0bcbee02b143a8be9e454ce5fb196467981141f59')
 
 
 if __name__ == "__main__":

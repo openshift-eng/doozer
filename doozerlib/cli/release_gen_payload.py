@@ -155,7 +155,7 @@ imagestream being updated:
 * For all architectures built, RHCOS builds must have matching versions of any
   unshipped RPM they include (per-entry os metadata - the set of RPMs may differ
   between arches, but versions should not).
-* Any RPMs present in images (including machine-os-content) from unshipped RPM
+* Any RPMs present in images (including RHCOS) from unshipped RPM
   builds included in one of our candidate tags must exactly version-match the
   latest RPM builds in those candidate tags (ONLY; we never flag what we don't
   directly ship.)
@@ -401,7 +401,7 @@ read and propagate/expose this annotation in its display of the release image.
         with src_dest_path.open("w+", encoding="utf-8") as out_file:
             for payload_entry in entries.values():
                 if not payload_entry.archive_inspector:
-                    # Nothing to mirror (e.g. machine-os-content)
+                    # Nothing to mirror (e.g. RHCOS)
                     continue
 
                 def add_image_to_mirror(src_pullspec, dest_pullspec):
@@ -587,7 +587,7 @@ read and propagate/expose this annotation in its display of the release image.
             # 1. The images for ALL arches were part of the same brew built manifest list. In this case, we
             #    want to reuse the manifest list (it was already mirrored during the mirroring step).
             # 2. At least one arch for this component does not have the same manifest list as the
-            #    other images. This will always be true for machine-os-content, but also applies
+            #    other images. This will always be true for RHCOS, but also applies
             #    to -alt images. In this case, we must stitch a manifest list together ourselves.
 
             aggregate_issues: List[AssemblyIssue] = list()
@@ -792,7 +792,7 @@ class PayloadGenerator:
 
         # The final quay.io destination for the manifest list the single arch image
         # might belong to. Most images built in brew will have been part of a
-        # manifest list, but not all release components (e.g. machine-os-content)
+        # manifest list, but not all release components (e.g. RHCOS)
         # will be. We reuse manifest lists where possible for heterogeneous
         # release payloads to save time vs building them ourselves.
         dest_manifest_list_pullspec: str = None
@@ -808,7 +808,7 @@ class PayloadGenerator:
         archive_inspector: Optional[ArchiveImageInspector] = None
 
         """
-        If the entry is for machine-os-content, this value will be set
+        If the entry is for RHCOS, this value will be set
         """
         rhcos_build: Optional[RHCOSBuildInspector] = None
 
@@ -899,7 +899,7 @@ class PayloadGenerator:
     def find_payload_entries(assembly_inspector: AssemblyInspector, arch: str, dest_repo: str) -> Dict[str, PayloadEntry]:
         """
         Returns a list of images which should be included in the architecture specific release payload.
-        This includes images for our group's image metadata as well as machine-os-content.
+        This includes images for our group's image metadata as well as RHCOS.
         :param assembly_inspector: An analyzer for the assembly to generate entries for.
         :param arch: The brew architecture name to create the list for.
         :param dest_repo: The registry/org/repo into which the image should be mirrored.
@@ -1017,7 +1017,7 @@ class PayloadGenerator:
         Each payload tag name used to map exactly to one release imagemeta. With the advent of '-alt' images,
         we need some logic to determine which images map to which payload tags for a given architecture.
         :return: Returns a map[payload_tag_name] -> ArchiveImageInspector containing an image for the payload. The value may be
-                 None if there is no arch specific build for the tag. This does not include machine-os-content since that
+                 None if there is no arch specific build for the tag. This does not include RHCOS since that
                  is not a member of the group.
         """
         brew_arch = brew_arch_for_go_arch(arch)  # Make certain this is brew arch nomenclature
@@ -1120,9 +1120,9 @@ class PayloadGenerator:
                     issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed archive: {entry.archive_inspector.get_archive_id()} and {entry.archive_inspector.get_archive_pullspec()}',
                                                 component='reference-releases'))
             elif entry.rhcos_build:
-                if entry.rhcos_build.get_machine_os_content_digest() != pullspec_sha:
+                if entry.rhcos_build.get_container_digest() != pullspec_sha:
                     # Impermissible because the artist should remove the reference nightlies from the assembly definition
-                    issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed rhcos: {entry.rhcos_build} and {entry.rhcos_build.get_machine_os_content_digest()}',
+                    issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed rhcos: {entry.rhcos_build} and {entry.rhcos_build.get_container_digest()}',
                                                 component='reference-releases'))
             else:
                 raise IOError(f'Unsupported payload entry {entry}')
