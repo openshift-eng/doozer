@@ -8,7 +8,8 @@ import unittest
 import mock
 import yaml.scanner
 
-from doozerlib.source_modifications import AddModifier, SourceModifierFactory
+from doozerlib.source_modifications import (AddModifier, RemoveModifier,
+                                            SourceModifierFactory)
 
 
 class SourceModifierFactoryTestCase(unittest.TestCase):
@@ -88,6 +89,44 @@ class AddModifierTestCase(unittest.TestCase):
             with self.assertRaises(yaml.scanner.ScannerError):
                 context = {"distgit_path": pathlib.Path(self.temp_dir)}
                 modifier.act(ceiling_dir=self.temp_dir, session=session, context=context)
+
+
+class TestRemoveModifier(unittest.TestCase):
+    def test_remove_file(self):
+        distgit_path = pathlib.Path("/path/to/distgit")
+        modifier = RemoveModifier(glob="**/*.txt", distgit_path=distgit_path)
+        context = {
+            "component_name": "foo",
+            "kind": "Dockerfile",
+            "content": "whatever",
+            "distgit_path": distgit_path,
+        }
+        with mock.patch.object(pathlib.Path, "rglob") as rglob, mock.patch.object(pathlib.Path, "unlink") as unlink:
+            rglob.return_value = map(lambda path: distgit_path.joinpath(path), [
+                "1.txt",
+                "a/2.txt",
+                "b/c/d/e/3.txt",
+            ])
+            modifier.act(context=context, ceiling_dir=str(distgit_path))
+            unlink.assert_called()
+
+    def test_remove_file_outside_of_distgit_dir(self):
+        distgit_path = pathlib.Path("/path/to/distgit")
+        modifier = RemoveModifier(glob="**/*.txt", distgit_path=distgit_path)
+        context = {
+            "component_name": "foo",
+            "kind": "Dockerfile",
+            "content": "whatever",
+            "distgit_path": distgit_path,
+        }
+        with mock.patch.object(pathlib.Path, "rglob") as rglob:
+            rglob.return_value = map(lambda path: pathlib.Path("/some/other/path").joinpath(path), [
+                "1.txt",
+                "a/2.txt",
+                "b/c/d/e/3.txt",
+            ])
+            with self.assertRaises(PermissionError):
+                modifier.act(context=context, ceiling_dir=str(distgit_path))
 
 
 if __name__ == "__main__":
