@@ -306,6 +306,13 @@ Task info: https://brewweb.example.com/brew/taskinfo?taskID=123456
         self.assertEqual(actual, expected)
         mocked_cmd_assert_async.assert_called_once_with(["rhpkg", "build", "--nowait", "--target", "my-target2", "--skip-tag"], cwd=dg.dg_path)
 
+        # call with limited arches
+        builder = RPMBuilder(mock.Mock(), scratch=False, dry_run=False)
+        mocked_cmd_assert_async.reset_mock()
+        rpm.config.update({"arches": ["x86_64", "aarch64"]})
+        asyncio.get_event_loop().run_until_complete(builder._build_target_async(rpm, "my-target"))
+        mocked_cmd_assert_async.assert_called_once_with(["rhpkg", "build", "--nowait", "--target", "my-target", "--arches", "x86_64", "aarch64"], cwd=mock.ANY)
+
     @mock.patch("doozerlib.rpm_builder.brew.watch_tasks")
     def test_watch_tasks_async(self, mocked_watch_tasks: mock.Mock):
         task_ids = [10001, 10002]

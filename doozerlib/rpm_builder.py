@@ -390,6 +390,9 @@ class RPMBuilder:
         logger = rpm.logger
         logger.info("Building %s against target %s", rpm.name, target)
         cmd = ["rhpkg", "build", "--nowait", "--target", target]
+        if rpm.config.arches:
+            cmd.append("--arches")
+            [cmd.append(arch) for arch in rpm.config.arches]
         if self._scratch:
             cmd.append("--skip-tag")
         if not self._dry_run:
