@@ -106,8 +106,9 @@ class TestRhcos(unittest.TestCase):
         self.runtime.group_config.rhcos = Model(dict(payload_tags=[alt_container]))
         self.assertEqual(("dummy", "test@sha256:abcd1234alt"), rhcos.RHCOSBuildFinder(self.runtime, "4.4").latest_container())
 
+    @patch('doozerlib.exectools.cmd_assert')
     @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
-    def test_rhcos_build_inspector(self, rhcos_build_meta_mock):
+    def test_rhcos_build_inspector(self, rhcos_build_meta_mock, cmd_assert_mock):
         """
         Tests the RHCOS build inspector abstraction to ensure it correctly parses and utilizes
         pre-canned data.
@@ -120,9 +121,14 @@ class TestRhcos(unittest.TestCase):
         pkg_build_dicts = yaml.safe_load(self.respath.joinpath('rhcos1', '47.83.202107261211-0.pkg_builds.yaml').read_text())
 
         rhcos_build_meta_mock.side_effect = [rhcos_meta, rhcos_commitmeta]
-        rhcos_build = rhcos.RHCOSBuildInspector(self.runtime, '47.83.202107261211-0', 's390x')
+        cmd_assert_mock.return_value = ('{"config": {"config": {"Labels": {"version": "47.83.202107261211-0"}}}}', None)
+        test_digest = 'sha256:spamneggs'
+        test_pullspec = f'somereg/somerepo@{test_digest}'
+        pullspecs = {'machine-os-content': test_pullspec}
+
+        rhcos_build = rhcos.RHCOSBuildInspector(self.runtime, pullspecs, 's390x')
         self.assertEqual(rhcos_build.brew_arch, 's390x')
-        self.assertEqual(rhcos_build.get_image_pullspec(), 'quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:d51ca4e301cfdbc98e16ace0bcbee02b143a8be9e454ce5fb196467981141f59')
+        self.assertEqual(rhcos_build.get_container_pullspec(), test_pullspec)
 
         self.assertEqual(rhcos_build.stream_version, '4.7')
         self.assertEqual(rhcos_build.get_rhel_base_version(), 8)
@@ -139,7 +145,7 @@ class TestRhcos(unittest.TestCase):
         self.assertIn("util-linux-2.32.1-24.el8.s390x", rhcos_build.get_rpm_nvras())
         self.assertIn("util-linux-2.32.1-24.el8", rhcos_build.get_rpm_nvrs())
         self.assertEqual(rhcos_build.get_package_build_objects()['dbus']['nvr'], 'dbus-1.12.8-12.el8_3')
-        self.assertEqual(rhcos_build.get_container_digest(), 'sha256:d51ca4e301cfdbc98e16ace0bcbee02b143a8be9e454ce5fb196467981141f59')
+        self.assertEqual(rhcos_build.get_container_digest(), test_digest)
 
 
 if __name__ == "__main__":

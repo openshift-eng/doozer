@@ -943,11 +943,12 @@ class PayloadGenerator:
                 final_members[tag_name] = pod_entry
 
         rhcos_build: RHCOSBuildInspector = assembly_inspector.get_rhcos_build(arch)
-        final_members['machine-os-content'] = PayloadGenerator.PayloadEntry(
-            dest_pullspec=rhcos_build.get_image_pullspec(),
-            rhcos_build=rhcos_build,
-            issues=list(),
-        )
+        for container_config in rhcos_build.get_container_configs():
+            final_members[container_config.name] = PayloadGenerator.PayloadEntry(
+                dest_pullspec=rhcos_build.get_container_pullspec(container_config),
+                rhcos_build=rhcos_build,
+                issues=list(),
+            )
 
         # Final members should have all tags populated.
         return final_members

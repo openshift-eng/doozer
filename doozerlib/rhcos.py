@@ -196,31 +196,31 @@ class RHCOSBuildFinder:
             return None, None
         return build_id, get_container_pullspec(
             self.rhcos_build_meta(build_id),
-            self.get_primary_container_conf()
+            container_conf or self.get_primary_container_conf()
         )
 
 
 class RHCOSBuildInspector:
 
-    def __init__(self, runtime, pullspec_or_build_id: str, brew_arch: str):
+    def __init__(self, runtime, pullspec_for_tag: Dict[str, str], brew_arch: str):
         self.runtime = runtime
         self.brew_arch = brew_arch
-        self.pullspec = None
-        self._primary_container = None
+        self.pullspec_for_tag = pullspec_for_tag
+        self.build_id = None
 
-        if pullspec_or_build_id[0].isdigit():
-            self.build_id = pullspec_or_build_id
-        else:
-            # Remember the pullspec provided in case it does not match what is in the releases.yaml.
-            # Because of an incident where we needed to repush RHCOS and get a new SHA for 4.10 GA,
-            # trust the exact pullspec in releases.yml instead of what we find in the RHCOS release
-            # browser.
-            self.pullspec = pullspec_or_build_id
-            image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {self.pullspec}', retries=3)
-            image_info = Model(dict_to_model=json.loads(image_info_str))
-            self.build_id = image_info.config.config.Labels.version
-            if not self.build_id:
-                raise Exception(f'Unable to determine RHCOS build_id from: {self.pullspec}. Retrieved image info: {image_info_str}')
+        # Remember the pullspec(s) provided in case it does not match what is in the releases.yaml.
+        # Because of an incident where we needed to repush RHCOS and get a new SHA for 4.10 GA,
+        # trust the exact pullspec in releases.yml instead of what we find in the RHCOS release
+        # browser.
+        for tag, pullspec in pullspec_for_tag.items():
+            image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}', retries=3)
+            image_info = Model(json.loads(image_info_str))
+            build_id = image_info.config.config.Labels.version
+            if not build_id:
+                raise Exception(f'Unable to determine RHCOS build_id from tag {tag} pullspec {pullspec}. Retrieved image info: {image_info_str}')
+            if self.build_id and self.build_id != build_id:
+                raise Exception(f'Found divergent RHCOS build_id for {pullspec_for_tag}. {build_id} versus {self.build_id}')
+            self.build_id = build_id
 
         # The first digits of the RHCOS build are the major.minor of the rhcos stream name.
         # Which, near branch cut, might not match the actual release stream.
@@ -232,20 +232,11 @@ class RHCOSBuildInspector:
             finder = RHCOSBuildFinder(runtime, self.stream_version, self.brew_arch)
             self._build_meta = finder.rhcos_build_meta(self.build_id, meta_type='meta')
             self._os_commitmeta = finder.rhcos_build_meta(self.build_id, meta_type='commitmeta')
-        except:
+        except Exception:
             # Fall back to trying to find a custom build
             finder = RHCOSBuildFinder(runtime, self.stream_version, self.brew_arch, custom=True)
             self._build_meta = finder.rhcos_build_meta(self.build_id, meta_type='meta')
             self._os_commitmeta = finder.rhcos_build_meta(self.build_id, meta_type='commitmeta')
-
-    def get_primary_container_conf(self):
-        """
-        look up the group.yml-configured primary RHCOS container on demand and retain it.
-        @return Model with entries for name and build_metadata_key
-        """
-        if not self._primary_container:
-            self._primary_container = get_primary_container_conf(self.runtime)
-        return self._primary_container
 
     def __repr__(self):
         return f'RHCOSBuild:{self.brew_arch}:{self.build_id}'
@@ -316,14 +307,45 @@ class RHCOSBuildInspector:
 
         return aggregate
 
-    def get_image_pullspec(self) -> str:
-        if self.pullspec:
-            return self.pullspec
-        return get_container_pullspec(
-            self.get_build_metadata(),
-            # NOTE: for now, only need to inspect the primary.
-            self.get_primary_container_conf()
-        )
+    def get_primary_container_conf(self):
+        """
+        look up the group.yml-configured primary RHCOS container.
+        @return Model with entries for name and build_metadata_key
+        """
+        return get_primary_container_conf(self.runtime)
+
+    def get_container_configs(self):
+        """
+        look up the group.yml-configured RHCOS containers and return their configs as a list
+        @return list(Model) with entries for name and build_metadata_key
+        """
+        return get_container_configs(self.runtime)
+
+    def get_container_pullspec(self, container_config: Model = None) -> str:
+        """
+        Determine the pullspec corresponding to the container config given (the
+        primary by default), either as specified at instantiation or from the
+        build metadata.
+
+        @param container_config: Model with fields "name" and "build_metadata_key"
+        :return: pullspec for the requested container image
+        """
+        container_config = container_config or self.get_primary_container_conf()
+        if container_config.name in self.pullspec_for_tag:
+            # per note above... when given a pullspec, prefer that to the build record
+            return self.pullspec_for_tag[container_config.name]
+        return get_container_pullspec(self.get_build_metadata(), container_config)
+
+    def get_container_digest(self, container_config: Model = None) -> str:
+        """
+        Extract the image digest for (by default) the primary container image
+        associated with this build, historically the sha of the
+        machine-os-content image published out on quay.
+
+        @param container_config: Model with fields "name" and "build_metadata_key"
+        :return: shasum from the pullspec for the requested container image
+        """
+        return self.get_container_pullspec(container_config).split("@")[1]
 
     def get_rhel_base_version(self) -> int:
         """
@@ -338,13 +360,6 @@ class RHCOSBuildInspector:
                 return el_ver
 
         raise IOError(f'Unable to determine RHEL version base for rhcos {self.build_id}')
-
-    def get_container_digest(self) -> str:
-        """
-        Returns the image digest for the primary container image associated with this build.
-        Historically the sha of the machine-os-content image published out on quay.
-        """
-        return self.get_image_pullspec().split("@")[1]
 
     def find_non_latest_rpms(self) -> List[Tuple[str, str]]:
         """
