@@ -89,7 +89,7 @@ def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable
         api_obj.replace()
 
 
-@cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
+@cli.command("release:gen-payload", short_help="Mirror release images to quay and release-controller")
 @click.option("--is-name", metavar='NAME', required=False,
               help="ImageStream .metadata.name value. For example '4.2-art-latest'")
 @click.option("--is-namespace", metavar='NAMESPACE', required=False,
@@ -109,19 +109,19 @@ def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable
 @click.option("--emergency-ignore-issues", default=False, is_flag=True,
               help="If you must get this command to permit an assembly despite issues. Do not use without approval.")
 @click.option("--apply", default=False, is_flag=True,
-              help="If doozer should perform the mirroring and imagestream updates.")
+              help="Perform mirroring and imagestream updates.")
 @click.option("--apply-multi-arch", default=False, is_flag=True,
-              help="If doozer should also create a release payload for multi-arch/heterogeneous clusters.")
+              help="Also create a release payload for multi-arch/heterogeneous clusters.")
 @click.option("--moist-run", default=False, is_flag=True,
-              help="Performing mirroring/etc but to not actually update imagestreams.")
+              help="Mirror and determine tags but do not actually update imagestreams.")
 @pass_runtime
 def release_gen_payload(runtime: Runtime, is_name: str, is_namespace: str, organization: str,
                         repository: str, release_repository: str, output_dir: str, exclude_arch: Tuple[str, ...],
                         skip_gc_tagging: bool, emergency_ignore_issues: bool,
                         apply: bool, apply_multi_arch: bool, moist_run: bool):
     """Computes a set of imagestream tags which can be assembled
-into an OpenShift release for this assembly. The tags will not be
-valid unless --apply and is supplied.
+into an OpenShift release for this assembly. The tags may not be
+valid unless --apply or --moist-run triggers mirroring.
 
 Applying the change will cause the OSBS images to be mirrored into the OpenShift release
 repositories on quay.
@@ -143,9 +143,8 @@ quay registry:
         --is-name=4.2-art-latest
 
 Note that if you use -i to include specific images, you should also include
-openshift-enterprise-cli to satisfy any need for the 'cli' tag. The cli image
-is used automatically as a stand-in for images when an arch does not build
-that particular tag.
+openshift-enterprise-pod to supply the 'pod' tag. The 'pod' image is used
+automatically as a payload stand-in for images that do not build on all arches.
 
 ## Validation ##
 
@@ -929,11 +928,11 @@ class PayloadGenerator:
         # necessary on s390x, bit we need to populate that tag with something.
 
         # To do this, we replace missing images with the 'pod' image for the architecture. This should
-        # be available for every CPU architecture. As such, we must find pod to proceed.
+        # be available for every CPU architecture. As such, we must find 'pod' to proceed.
 
         pod_entry = members.get('pod', None)
         if not pod_entry:
-            raise IOError(f'Unable to find pod image archive for architecture: {arch}; unable to construct payload')
+            raise IOError(f"Unable to find 'pod' image archive for architecture: {arch}; unable to construct payload")
 
         final_members: Dict[str, PayloadGenerator.PayloadEntry] = dict()
         for tag_name, entry in members.items():
