@@ -23,6 +23,14 @@ default_primary_container = dict(
     primary=True)
 
 
+class RhcosMissingContainerException(Exception):
+    """
+    Thrown when group.yml configuration expects an RHCOS container but it is
+    not available as specified in the RHCOS metadata.
+    """
+    pass
+
+
 def get_container_configs(runtime):
     """
     look up the group.yml configuration for RHCOS container(s) for this group, or create if missing.
@@ -63,7 +71,12 @@ def get_container_pullspec(build_meta: dict, container_conf: Model) -> str:
     determine the container pullspec from the RHCOS build meta and config
     @return full container pullspec string (registry/repo@sha256:...)
     """
-    container = build_meta[container_conf.build_metadata_key]
+    key = container_conf.build_metadata_key
+    if key not in build_meta:
+        raise RhcosMissingContainerException(f"RHCOS build {build_meta['buildid']} has no '{key}' attribute in its metadata")
+
+    container = build_meta[key]
+
     if 'digest' in container:
         # "oscontainer": {
         #   "digest": "sha256:04b54950ce2...",

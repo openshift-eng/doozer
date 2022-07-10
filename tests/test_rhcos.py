@@ -147,6 +147,22 @@ class TestRhcos(unittest.TestCase):
         self.assertEqual(rhcos_build.get_package_build_objects()['dbus']['nvr'], 'dbus-1.12.8-12.el8_3')
         self.assertEqual(rhcos_build.get_container_digest(), test_digest)
 
+    @patch('doozerlib.exectools.cmd_assert')
+    @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
+    def test_inspector_get_container_pullspec(self, rhcos_build_meta_mock, cmd_assert_mock):
+        # mock out the things RHCOSBuildInspector calls in __init__
+        rhcos_meta = {"buildid": "412.86.bogus"}
+        rhcos_commitmeta = {}
+        rhcos_build_meta_mock.side_effect = [rhcos_meta, rhcos_commitmeta]
+        cmd_assert_mock.return_value = ('{"config": {"config": {"Labels": {"version": "412.86.bogus"}}}}', None)
+        pullspecs = {'machine-os-content': 'spam@eggs'}
+        rhcos_build = rhcos.RHCOSBuildInspector(self.runtime, pullspecs, 's390x')
+
+        # test its behavior on misconfiguration / edge case
+        container_conf = dict(name='spam', build_metadata_key='eggs')
+        with self.assertRaises(rhcos.RhcosMissingContainerException):
+            rhcos_build.get_container_pullspec(Model(container_conf))
+
 
 if __name__ == "__main__":
     unittest.main()

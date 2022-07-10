@@ -8,7 +8,7 @@ from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, \
     AssemblyIssueCode, assembly_type
-from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder, get_container_configs
+from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder, get_container_configs, RhcosMissingContainerException
 
 
 class AssemblyInspector:
@@ -324,13 +324,19 @@ class AssemblyInspector:
                     raise Exception(f'Assembly {runtime.assembly} is not type STREAM but no assembly.rhcos.{container_conf.name} image data for {brew_arch}; all RHCOS image data must be populated for this assembly to be valid')
                 # require the primary container at least to be specified, but
                 # allow the edge case where we add an RHCOS container type and
-                # previous assemblies don't specify it - can just look it up from the build
+                # previous assemblies don't specify it
                 continue
 
-            version = self.runtime.get_minor_version()
-            _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private, custom=custom).latest_container(container_conf)
-            if not pullspec:
-                raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
-            pullspec_for_tag[container_conf.name] = pullspec
+            try:
+                version = self.runtime.get_minor_version()
+                _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private, custom=custom).latest_container(container_conf)
+                if not pullspec:
+                    raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
+                pullspec_for_tag[container_conf.name] = pullspec
+            except RhcosMissingContainerException:
+                if container_conf.primary:
+                    # accommodate RHCOS build metadata not specifying all expected containers, but require primary.
+                    # their absence will be noted when generating payloads anyway.
+                    raise
 
         return RHCOSBuildInspector(runtime, pullspec_for_tag, brew_arch)

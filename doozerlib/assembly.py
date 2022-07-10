@@ -21,6 +21,7 @@ class AssemblyIssueCode(Enum):
     OUTDATED_RPMS_IN_STREAM_BUILD = 4
     INCONSISTENT_RHCOS_RPMS = 5
     MISSING_INHERITED_DEPENDENCY = 6
+    MISSING_RHCOS_CONTAINER = 7
 
 
 class AssemblyIssue:
