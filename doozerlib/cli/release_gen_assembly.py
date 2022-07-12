@@ -366,6 +366,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
         assembly_type = 'custom'
     elif re.search(r'^[fr]c\.[0-9]+$', gen_assembly_name):
         assembly_type = 'candidate'
+    elif re.search(r'^ec\.[0-9]+$', gen_assembly_name):
+        assembly_type = 'preview'
 
     assembly_def = {
         'releases': {
