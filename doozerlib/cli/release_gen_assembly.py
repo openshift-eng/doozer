@@ -73,6 +73,14 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
     if custom and (auto_previous or previous_list or in_flight):
         exit_with_error("Custom release doesn't have previous list.")
 
+    assembly_type = 'standard'
+    if custom:
+        assembly_type = 'custom'
+    elif re.search(r'^[fr]c\.[0-9]+$', gen_assembly_name):
+        assembly_type = 'candidate'
+    elif re.search(r'^ec\.[0-9]+$', gen_assembly_name):
+        assembly_type = 'preview'
+
     # Calculate previous list
     final_previous_list: Set[VersionInfo] = set()
     if in_flight:
@@ -81,7 +89,7 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
         final_previous_list |= set(map(VersionInfo.parse, previous_list))
     elif auto_previous:
         # gen_assembly_name should be in the form of `fc.0`, `rc.1`, or `4.10.1`
-        if gen_assembly_name.startswith("fc") or gen_assembly_name.startswith("rc"):
+        if assembly_type in ['candidate', 'preview']:
             major_minor = runtime.get_minor_version()  # x.y
             version = f"{major_minor}.0-{gen_assembly_name}"
         else:
@@ -340,7 +348,14 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             })
 
     group_info = {}
-    if not custom:
+    if custom:
+        # Custom payloads don't require advisories.
+        # If the user has specified fewer nightlies than is required by this
+        # group, then we need to override the group arches.
+        group_info = {
+            'arches!': list(mosc_by_arch.keys())
+        }
+    if not (custom or assembly_type == 'preview'):
         # Add placeholder advisory numbers and JIRA key.
         # Those values will be replaced with real values by pyartcd when preparing a release.
         group_info['advisories'] = {
@@ -350,24 +365,9 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             'metadata': -1,
         }
         group_info["release_jira"] = "ART-0"
-    else:
-        # Custom payloads don't require advisories.
-        # If the user has specified fewer nightlies than is required by this
-        # group, then we need to override the group arches.
-        group_info = {
-            'arches!': list(mosc_by_arch.keys())
-        }
 
     if final_previous_list:
         group_info['upgrades'] = ','.join(map(str, final_previous_list))
-
-    assembly_type = 'standard'
-    if custom:
-        assembly_type = 'custom'
-    elif re.search(r'^[fr]c\.[0-9]+$', gen_assembly_name):
-        assembly_type = 'candidate'
-    elif re.search(r'^ec\.[0-9]+$', gen_assembly_name):
-        assembly_type = 'preview'
 
     assembly_def = {
         'releases': {
