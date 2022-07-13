@@ -87,9 +87,9 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
         final_previous_list.add(VersionInfo.parse(in_flight))
     if previous_list:
         final_previous_list |= set(map(VersionInfo.parse, previous_list))
-    elif auto_previous:
+    elif auto_previous and assembly_type not in ['preview', 'custom']:
         # gen_assembly_name should be in the form of `fc.0`, `rc.1`, or `4.10.1`
-        if assembly_type in ['candidate', 'preview']:
+        if assembly_type == 'candidate':
             major_minor = runtime.get_minor_version()  # x.y
             version = f"{major_minor}.0-{gen_assembly_name}"
         else:
