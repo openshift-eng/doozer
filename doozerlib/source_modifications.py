@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 
 import requests
 import yaml
+from pathlib import Path
 
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.exectools import cmd_assert
@@ -192,3 +193,40 @@ class CommandModifier(object):
 
 
 SourceModifierFactory.MODIFICATIONS["command"] = CommandModifier
+
+
+class RemoveModifier(object):
+    """ A source modifier that supports removing files from the distgit repository.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """ Initialize CommandModifier
+        :param command: a `str` or `list` of the command with arguments
+        """
+        self.glob = kwargs["glob"]
+
+    def act(self, *args, **kwargs):
+        """ Run the command
+        :param context: A context dict. `context.set_env` is a `dict` of env vars to set for command (overriding existing).
+        """
+        context = kwargs["context"]
+        component = context["component_name"]
+        distgit_path = Path(context['distgit_path'])
+        ceiling_dir = Path(kwargs["ceiling_dir"])
+
+        LOGGER.info("Distgit repo %s: Running 'remove' modification action...", component)
+        removed = []
+        for path in distgit_path.rglob(self.glob):
+            if not is_in_directory(path, ceiling_dir):
+                raise PermissionError("Removing a file from a location outside of directory {} is not allowed.".format(ceiling_dir))
+            relative_path = str(path.relative_to(distgit_path))
+            LOGGER.info("Distgit repo %s: Removing %s", component, relative_path)
+            path.unlink()
+            removed.append(relative_path)
+        if len(removed):
+            LOGGER.info("Distgit repo %s: %s files have been removed:\n%s", component, len(removed), "\n".join(removed))
+        else:
+            LOGGER.warning("Distgit repo %s: No files matching glob `%s`", component, self.glob)
+
+
+SourceModifierFactory.MODIFICATIONS["remove"] = RemoveModifier
