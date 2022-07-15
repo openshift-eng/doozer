@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import yaml
 
 from doozerlib import util
+from doozerlib.assembly import AssemblyTypes
 from doozerlib.cli import cli, pass_runtime
 from doozerlib import exectools
 from doozerlib.model import Model
@@ -70,8 +71,17 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
     if auto_previous and previous_list:
         exit_with_error('Cannot use `--previous` and `--auto-previous` at the same time.')
 
-    if custom and (auto_previous or previous_list or in_flight):
-        exit_with_error("Custom release doesn't have previous list.")
+    assembly_type: AssemblyTypes = AssemblyTypes.STANDARD
+    if custom:
+        assembly_type = AssemblyTypes.CUSTOM
+    elif re.search(r'^[fr]c\.[0-9]+$', gen_assembly_name):
+        assembly_type = AssemblyTypes.CANDIDATE
+    elif re.search(r'^ec\.[0-9]+$', gen_assembly_name):
+        assembly_type = AssemblyTypes.PREVIEW
+
+    if assembly_type in [AssemblyTypes.CUSTOM, AssemblyTypes.PREVIEW]:
+        if auto_previous or previous_list or in_flight:
+            exit_with_error("Custom and preview release doesn't have previous list.")
 
     # Calculate previous list
     final_previous_list: Set[VersionInfo] = set()
@@ -81,7 +91,7 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
         final_previous_list |= set(map(VersionInfo.parse, previous_list))
     elif auto_previous:
         # gen_assembly_name should be in the form of `fc.0`, `rc.1`, or `4.10.1`
-        if gen_assembly_name.startswith("fc") or gen_assembly_name.startswith("rc"):
+        if assembly_type == AssemblyTypes.CUSTOM:
             major_minor = runtime.get_minor_version()  # x.y
             version = f"{major_minor}.0-{gen_assembly_name}"
         else:
@@ -340,7 +350,14 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             })
 
     group_info = {}
-    if not custom:
+    if custom:
+        # Custom payloads don't require advisories.
+        # If the user has specified fewer nightlies than is required by this
+        # group, then we need to override the group arches.
+        group_info = {
+            'arches!': list(mosc_by_arch.keys())
+        }
+    if assembly_type not in [AssemblyTypes.CUSTOM, AssemblyTypes.PREVIEW]:
         # Add placeholder advisory numbers and JIRA key.
         # Those values will be replaced with real values by pyartcd when preparing a release.
         group_info['advisories'] = {
@@ -350,28 +367,15 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             'metadata': -1,
         }
         group_info["release_jira"] = "ART-0"
-    else:
-        # Custom payloads don't require advisories.
-        # If the user has specified fewer nightlies than is required by this
-        # group, then we need to override the group arches.
-        group_info = {
-            'arches!': list(mosc_by_arch.keys())
-        }
 
     if final_previous_list:
         group_info['upgrades'] = ','.join(map(str, final_previous_list))
-
-    assembly_type = 'standard'
-    if custom:
-        assembly_type = 'custom'
-    elif re.search(r'^[fr]c\.[0-9]+$', gen_assembly_name):
-        assembly_type = 'candidate'
 
     assembly_def = {
         'releases': {
             gen_assembly_name: {
                 "assembly": {
-                    'type': assembly_type,
+                    'type': assembly_type.value,
                     'basis': {
                         'brew_event': basis_event,
                         'reference_releases': reference_releases_by_arch,

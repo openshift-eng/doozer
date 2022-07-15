@@ -10,6 +10,7 @@ class AssemblyTypes(Enum):
     STANDARD = "standard"  # All constraints / checks enforced (e.g. consistent RPMs / siblings)
     CANDIDATE = "candidate"  # Indicates release candidate or feature candidate
     CUSTOM = "custom"  # No constraints enforced
+    PREVIEW = "preview"  # Indcates a .next (internal name) or preview release
 
 
 class AssemblyIssueCode(Enum):
