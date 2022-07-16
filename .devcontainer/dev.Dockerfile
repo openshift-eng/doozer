@@ -1,4 +1,4 @@
-FROM fedora:34
+FROM fedora:35
 
 # Trust the Red Hat IT Root CA and set up rcm-tools repo
 RUN curl -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --fail -L \
@@ -51,11 +51,11 @@ RUN groupadd --gid "$USER_GID" "$USERNAME" \
 COPY .devcontainer/krb5-redhat.conf /etc/krb5.conf.d/
 
 # Preinstall dependencies
-COPY ./ /tmp/doozer/
-RUN chown "$USERNAME" -R /tmp/doozer \
- && pushd /tmp/doozer \
- && sudo -u "$USERNAME" pip3 install --user -r ./requirements.txt -r requirements-dev.txt ./ \
- && popd && rm -rf /tmp/doozer
+COPY ./* /workspaces/doozer/
+RUN chown "$USERNAME" -R /workspaces/doozer \
+ && cd /workspaces/doozer \
+ && sudo -u "$USERNAME" pip3 install --user -r ./requirements.txt -r requirements-dev.txt \
+ && sudo -u "$USERNAME" pip3 install --user -e ./
 
 USER "$USER_UID"
 WORKDIR /workspaces/doozer
