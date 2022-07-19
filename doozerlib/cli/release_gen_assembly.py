@@ -13,6 +13,7 @@ from doozerlib.cli import cli, pass_runtime
 from doozerlib import exectools
 from doozerlib.model import Model
 from doozerlib import brew
+from doozerlib import rhcos
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.image import BrewBuildImageInspector
 from doozerlib.runtime import Runtime
@@ -103,7 +104,7 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
     final_previous_list: List[VersionInfo] = sorted(final_previous_list)
 
     reference_releases_by_arch: Dict[str, str] = dict()  # Maps brew arch name to nightly name
-    mosc_by_arch: Dict[str, str] = dict()  # Maps brew arch name to machine-os-content pullspec from nightly
+    rhcos_by_tag: Dict[str, Dict[str, str]] = dict()  # Maps RHCOS container name(s) to brew arch name to pullspec(s) from nightly
     component_image_builds: Dict[str, BrewBuildImageInspector] = dict()  # Maps component package_name to brew build dict found for nightly
     component_rpm_builds: Dict[str, Dict[int, Dict]] = dict()  # Dict[ package_name ] -> Dict[ el? ] -> brew build dict
     basis_event_ts: float = 0.0
@@ -130,6 +131,7 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             raise ValueError(f'Cannot process {standard_release_name} since {release_pullspecs[brew_cpu_arch]} is already included')
         release_pullspecs[brew_cpu_arch] = standard_pullspec
 
+    rhcos_tag_names = rhcos.get_container_names(runtime)
     for brew_cpu_arch, pullspec in release_pullspecs.items():
         runtime.logger.info(f'Processing release: {pullspec}')
 
@@ -143,8 +145,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             payload_tag_name = component_tag.name  # e.g. "aws-ebs-csi-driver"
             payload_tag_pullspec = component_tag['from'].name  # quay pullspec
 
-            if payload_tag_name == 'machine-os-content':
-                mosc_by_arch[brew_cpu_arch] = payload_tag_pullspec
+            if payload_tag_name in rhcos_tag_names:
+                rhcos_by_tag.setdefault(payload_tag_name, {})[brew_cpu_arch] = payload_tag_pullspec
                 continue
 
             # The brew_build_inspector will take this archive image and find the actual
@@ -184,7 +186,7 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             basis_event_ts = max(basis_event_ts, completion_ts + (60.0 * 5))
 
     # basis_event_ts should now be greater than the build completion / target tagging operation
-    # for any (non machine-os-content) image in the nightlies. Because images are built after RPMs,
+    # for any (non RHCOS) image in the nightlies. Because images are built after RPMs,
     # it must also hold that the basis_event_ts is also greater than build completion & tagging
     # of any member RPM.
 
@@ -253,15 +255,16 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
         # image NVR does not need to be pinned. Yeah!
         pass
 
-    # We should have found a machine-os-content for each architecture in the group for a standard assembly
+    # We should have found an RHCOS container for each architecture in the group for a standard assembly
+    primary_rhcos_tag = rhcos.get_primary_container_name(runtime)
     for arch in runtime.arches:
-        if arch not in mosc_by_arch:
+        if arch not in rhcos_by_tag[primary_rhcos_tag]:
             if custom:
                 # This is permitted for custom assemblies which do not need to be assembled for every
                 # architecture. The customer may just need x86_64.
-                logger.info(f'Did not find machine-os-content image for active group architecture: {arch}; ignoring since this is custom.')
+                logger.info(f'Did not find RHCOS "{primary_rhcos_tag}" image for active group architecture: {arch}; ignoring for custom assembly type.')
             else:
-                exit_with_error(f'Did not find machine-os-content image for active group architecture: {arch}')
+                exit_with_error(f'Did not find RHCOS "{primary_rhcos_tag}" image for active group architecture: {arch}')
 
     # We now have a list of image builds that should be selected by the assembly basis event
     # and those that will need to be forced with 'is'. We now need to perform a similar step
@@ -355,7 +358,7 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
         # If the user has specified fewer nightlies than is required by this
         # group, then we need to override the group arches.
         group_info = {
-            'arches!': list(mosc_by_arch.keys())
+            'arches!': list(rhcos_by_tag[primary_rhcos_tag].keys())
         }
     if assembly_type not in [AssemblyTypes.CUSTOM, AssemblyTypes.PREVIEW]:
         # Add placeholder advisory numbers and JIRA key.
@@ -382,9 +385,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
                     },
                     'group': group_info,
                     'rhcos': {
-                        'machine-os-content': {
-                            "images": mosc_by_arch,
-                        }
+                        tag: dict(images={arch: pullspec for arch, pullspec in specs_by_arch.items()})
+                        for tag, specs_by_arch in rhcos_by_tag.items()
                     },
                     'members': {
                         'rpms': rpm_member_overrides,

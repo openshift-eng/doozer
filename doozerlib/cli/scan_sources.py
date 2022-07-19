@@ -36,7 +36,7 @@ def config_scan_source_changes(runtime: Runtime, ci_kubeconfig, as_yaml):
     - If the associated member is a descendant of any image that needs change.
 
     \b
-    It will report machine-os-content updates available per imagestream.
+    It will report RHCOS updates available per imagestream.
     """
     runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
 
@@ -251,7 +251,7 @@ def config_scan_source_changes(runtime: Runtime, ci_kubeconfig, as_yaml):
 
 def _detect_rhcos_status(runtime, kubeconfig) -> list:
     """
-    gather the existing machine-os-content tags and compare them to latest rhcos builds
+    gather the existing RHCOS tags and compare them to latest rhcos builds
     @return a list of status entries like:
         {
             'name': "4.2-x86_64-priv",
@@ -265,30 +265,30 @@ def _detect_rhcos_status(runtime, kubeconfig) -> list:
     for arch in runtime.arches:
         for private in (False, True):
             name = f"{version}-{arch}{'-priv' if private else ''}"
-            tagged_mosc_id = _tagged_mosc_id(kubeconfig, version, arch, private)
+            tagged_rhcos_id = _tagged_rhcos_id(kubeconfig, rhcos.get_primary_container_name(runtime), version, arch, private)
             latest_rhcos_id = _latest_rhcos_build_id(runtime, version, arch, private)
             status = dict(name=name)
             if not latest_rhcos_id:
                 status['changed'] = False
                 status['reason'] = "could not find an RHCOS build to sync"
-            elif tagged_mosc_id == latest_rhcos_id:
+            elif tagged_rhcos_id == latest_rhcos_id:
                 status['changed'] = False
                 status['reason'] = f"latest RHCOS build is still {latest_rhcos_id} -- no change from istag"
             else:
                 status['changed'] = True
-                status['reason'] = f"latest RHCOS build is {latest_rhcos_id} which differs from istag {tagged_mosc_id}"
+                status['reason'] = f"latest RHCOS build is {latest_rhcos_id} which differs from istag {tagged_rhcos_id}"
             statuses.append(status)
 
     return statuses
 
 
-def _tagged_mosc_id(kubeconfig, version, arch, private) -> str:
-    """determine what the most recently tagged machine-os-content is in given imagestream"""
+def _tagged_rhcos_id(kubeconfig, container_name, version, arch, private) -> str:
+    """determine the most recently tagged RHCOS in given imagestream"""
     base_name = rgp.default_imagestream_base_name(version)
     base_namespace = rgp.default_imagestream_namespace_base_name()
     name, namespace = rgp.payload_imagestream_name_and_namespace(base_name, base_namespace, arch, private)
     stdout, _ = exectools.cmd_assert(
-        f"oc --kubeconfig '{kubeconfig}' --namespace '{namespace}' get istag '{name}:machine-os-content'"
+        f"oc --kubeconfig '{kubeconfig}' --namespace '{namespace}' get istag '{name}:{container_name}'"
         " --template '{{.image.dockerImageMetadata.Config.Labels.version}}'",
         retries=3,
         pollrate=5,

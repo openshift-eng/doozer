@@ -4,25 +4,26 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from doozerlib.cli import scan_sources
+from doozerlib.model import Model
 from doozerlib import rhcos
 
 
 class TestScanSourcesCli(TestCase):
 
     @patch("doozerlib.exectools.cmd_assert")
-    def test_tagged_mosc_id(self, mock_cmd):
+    def test_tagged_rhcos_id(self, mock_cmd):
         mock_cmd.return_value = ("id-1", "stderr")
-        self.assertEqual("id-1", scan_sources._tagged_mosc_id("kc.conf", "4.2", "s390x", True))
+        self.assertEqual("id-1", scan_sources._tagged_rhcos_id("kc.conf", "cname", "4.2", "s390x", True))
         self.assertIn("--kubeconfig 'kc.conf'", mock_cmd.call_args_list[0][0][0])
         self.assertIn("--namespace 'ocp-s390x-priv'", mock_cmd.call_args_list[0][0][0])
         self.assertIn("istag '4.2-art-latest-s390x-priv", mock_cmd.call_args_list[0][0][0])
 
-    @patch("doozerlib.cli.scan_sources._tagged_mosc_id", autospec=True)
+    @patch("doozerlib.cli.scan_sources._tagged_rhcos_id", autospec=True)
     @patch("doozerlib.cli.scan_sources._latest_rhcos_build_id", autospec=True)
     def test_detect_rhcos_status(self, mock_latest, mock_tagged):
         mock_tagged.return_value = "id-1"
         mock_latest.return_value = "id-2"
-        runtime = MagicMock()
+        runtime = MagicMock(group_config=Model())
         runtime.get_minor_version.return_value = "4.2"
         runtime.arches = ['s390x']
 

@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 import click
 import yaml
 
-from doozerlib import Runtime, brew, exectools
+from doozerlib import Runtime, brew, exectools, rhcos
 from doozerlib import build_status_detector as bs_detector
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.exceptions import DoozerFatalError
@@ -204,8 +204,12 @@ def detect_embargoes_in_releases(runtime: Runtime, pullspecs: List[str]):
     :return: list of Brew build dicts that have embargoed fixes
     """
     runtime.logger.info(f"Fetching component pullspecs from {len(pullspecs)} release payloads...")
-    jobs = runtime.parallel_exec(lambda pullspec, _: get_image_pullspecs_from_release_payload(pullspec), pullspecs,
-                                 min(len(pullspecs), multiprocessing.cpu_count() * 4, 32))
+    ignore_rhcos_tags = rhcos.get_container_names(runtime)
+    jobs = runtime.parallel_exec(
+        lambda pullspec, _: get_image_pullspecs_from_release_payload(pullspec, ignore_rhcos_tags),
+        pullspecs,
+        min(len(pullspecs), multiprocessing.cpu_count() * 4, 32)
+    )
     pullspec_lists = jobs.get()
     embargoed_releases = []
     embargoed_pullspecs = []
@@ -272,7 +276,7 @@ def get_nvr_by_pullspec(pullspec: str) -> Tuple[str, str, str]:
     return (labels.get("com.redhat.component"), labels.get("version"), labels.get("release"))
 
 
-def get_image_pullspecs_from_release_payload(payload_pullspec: str, ignore={"machine-os-content"}) -> Iterable[str]:
+def get_image_pullspecs_from_release_payload(payload_pullspec: str, ignore=set()) -> Iterable[str]:
     """ Retrieves pullspecs of images in a release payload.
     :param payload_pullspec: release payload pullspec
     :param ignore: a set of image names that we want to exclude from the return value (e.g. machine-os-content)

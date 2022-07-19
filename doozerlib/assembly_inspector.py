@@ -8,7 +8,7 @@ from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, \
     AssemblyIssueCode, assembly_type
-from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder
+from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder, get_container_configs, RhcosMissingContainerException
 
 
 class AssemblyInspector:
@@ -309,17 +309,34 @@ class AssemblyInspector:
         brew_arch = util.brew_arch_for_go_arch(arch)
         runtime.logger.info(f"Getting latest RHCOS source for {brew_arch}...")
 
-        # See if this assembly has assembly.rhcos.machine-os-content.images populated for this architecture.
-        assembly_rhcos_arch_pullspec = self.assembly_rhcos_config['machine-os-content'].images[brew_arch]
+        # See if this assembly has assembly.rhcos.*.images populated for this architecture.
+        pullspec_for_tag = dict()
+        for container_conf in get_container_configs(runtime):
+            # first we look at the assembly definition as the source of truth for RHCOS containers
+            assembly_rhcos_arch_pullspec = self.assembly_rhcos_config[container_conf.name].images[brew_arch]
+            if assembly_rhcos_arch_pullspec:
+                pullspec_for_tag[container_conf.name] = assembly_rhcos_arch_pullspec
+                continue
 
-        if self.runtime.assembly_type != AssemblyTypes.STREAM and not assembly_rhcos_arch_pullspec:
-            raise Exception(f'Assembly {runtime.assembly} has is not a STREAM but no assembly.rhcos MOSC image data for {brew_arch}; all MOSC image data must be populated for this assembly to be valid')
+            # for non-stream assemblies we expect explicit config for RHCOS
+            if self.runtime.assembly_type != AssemblyTypes.STREAM:
+                if container_conf.primary:
+                    raise Exception(f'Assembly {runtime.assembly} is not type STREAM but no assembly.rhcos.{container_conf.name} image data for {brew_arch}; all RHCOS image data must be populated for this assembly to be valid')
+                # require the primary container at least to be specified, but
+                # allow the edge case where we add an RHCOS container type and
+                # previous assemblies don't specify it
+                continue
 
-        version = self.runtime.get_minor_version()
-        if assembly_rhcos_arch_pullspec:
-            return RHCOSBuildInspector(runtime, assembly_rhcos_arch_pullspec, brew_arch)
-        else:
-            _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private, custom=custom).latest_machine_os_content()
-            if not pullspec:
-                raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
-            return RHCOSBuildInspector(runtime, pullspec, brew_arch)
+            try:
+                version = self.runtime.get_minor_version()
+                _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private, custom=custom).latest_container(container_conf)
+                if not pullspec:
+                    raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
+                pullspec_for_tag[container_conf.name] = pullspec
+            except RhcosMissingContainerException:
+                if container_conf.primary:
+                    # accommodate RHCOS build metadata not specifying all expected containers, but require primary.
+                    # their absence will be noted when generating payloads anyway.
+                    raise
+
+        return RHCOSBuildInspector(runtime, pullspec_for_tag, brew_arch)

@@ -12,7 +12,7 @@ import openshift as oc
 from doozerlib.rpm_utils import parse_nvr
 
 from doozerlib.brew import KojiWrapper
-from doozerlib.rhcos import RHCOSBuildInspector
+from doozerlib.rhcos import RHCOSBuildInspector, RhcosMissingContainerException
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.image import ImageMetadata, BrewBuildImageInspector, ArchiveImageInspector
 from doozerlib.assembly_inspector import AssemblyInspector
@@ -89,7 +89,7 @@ def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable
         api_obj.replace()
 
 
-@cli.command("release:gen-payload", short_help="Generate input files for release mirroring")
+@cli.command("release:gen-payload", short_help="Mirror release images to quay and release-controller")
 @click.option("--is-name", metavar='NAME', required=False,
               help="ImageStream .metadata.name value. For example '4.2-art-latest'")
 @click.option("--is-namespace", metavar='NAMESPACE', required=False,
@@ -109,19 +109,19 @@ def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable
 @click.option("--emergency-ignore-issues", default=False, is_flag=True,
               help="If you must get this command to permit an assembly despite issues. Do not use without approval.")
 @click.option("--apply", default=False, is_flag=True,
-              help="If doozer should perform the mirroring and imagestream updates.")
+              help="Perform mirroring and imagestream updates.")
 @click.option("--apply-multi-arch", default=False, is_flag=True,
-              help="If doozer should also create a release payload for multi-arch/heterogeneous clusters.")
+              help="Also create a release payload for multi-arch/heterogeneous clusters.")
 @click.option("--moist-run", default=False, is_flag=True,
-              help="Performing mirroring/etc but to not actually update imagestreams.")
+              help="Mirror and determine tags but do not actually update imagestreams.")
 @pass_runtime
 def release_gen_payload(runtime: Runtime, is_name: str, is_namespace: str, organization: str,
                         repository: str, release_repository: str, output_dir: str, exclude_arch: Tuple[str, ...],
                         skip_gc_tagging: bool, emergency_ignore_issues: bool,
                         apply: bool, apply_multi_arch: bool, moist_run: bool):
     """Computes a set of imagestream tags which can be assembled
-into an OpenShift release for this assembly. The tags will not be
-valid unless --apply and is supplied.
+into an OpenShift release for this assembly. The tags may not be
+valid unless --apply or --moist-run triggers mirroring.
 
 Applying the change will cause the OSBS images to be mirrored into the OpenShift release
 repositories on quay.
@@ -143,9 +143,8 @@ quay registry:
         --is-name=4.2-art-latest
 
 Note that if you use -i to include specific images, you should also include
-openshift-enterprise-cli to satisfy any need for the 'cli' tag. The cli image
-is used automatically as a stand-in for images when an arch does not build
-that particular tag.
+openshift-enterprise-pod to supply the 'pod' tag. The 'pod' image is used
+automatically as a payload stand-in for images that do not build on all arches.
 
 ## Validation ##
 
@@ -155,7 +154,7 @@ imagestream being updated:
 * For all architectures built, RHCOS builds must have matching versions of any
   unshipped RPM they include (per-entry os metadata - the set of RPMs may differ
   between arches, but versions should not).
-* Any RPMs present in images (including machine-os-content) from unshipped RPM
+* Any RPMs present in images (including RHCOS) from unshipped RPM
   builds included in one of our candidate tags must exactly version-match the
   latest RPM builds in those candidate tags (ONLY; we never flag what we don't
   directly ship.)
@@ -320,8 +319,11 @@ read and propagate/expose this annotation in its display of the release image.
             continue
 
         # Whether private or public, the assembly's canonical payload content is the same.
-        entries: Dict[str, PayloadGenerator.PayloadEntry] = PayloadGenerator.find_payload_entries(assembly_inspector, arch, f'quay.io/{organization}/{repository}')  # Key of this dict is release payload tag name
+        entries: Dict[str, PayloadGenerator.PayloadEntry]
+        issues: List[AssemblyIssue]
+        entries, issues = PayloadGenerator.find_payload_entries(assembly_inspector, arch, f'quay.io/{organization}/{repository}')  # Key of this dict is release payload tag name
         entries_by_arch[arch] = entries
+        assembly_issues.extend(issues)
 
         for tag, payload_entry in entries.items():
             if payload_entry.image_meta:
@@ -401,7 +403,7 @@ read and propagate/expose this annotation in its display of the release image.
         with src_dest_path.open("w+", encoding="utf-8") as out_file:
             for payload_entry in entries.values():
                 if not payload_entry.archive_inspector:
-                    # Nothing to mirror (e.g. machine-os-content)
+                    # Nothing to mirror (e.g. RHCOS)
                     continue
 
                 def add_image_to_mirror(src_pullspec, dest_pullspec):
@@ -587,7 +589,7 @@ read and propagate/expose this annotation in its display of the release image.
             # 1. The images for ALL arches were part of the same brew built manifest list. In this case, we
             #    want to reuse the manifest list (it was already mirrored during the mirroring step).
             # 2. At least one arch for this component does not have the same manifest list as the
-            #    other images. This will always be true for machine-os-content, but also applies
+            #    other images. This will always be true for RHCOS, but also applies
             #    to -alt images. In this case, we must stitch a manifest list together ourselves.
 
             aggregate_issues: List[AssemblyIssue] = list()
@@ -792,7 +794,7 @@ class PayloadGenerator:
 
         # The final quay.io destination for the manifest list the single arch image
         # might belong to. Most images built in brew will have been part of a
-        # manifest list, but not all release components (e.g. machine-os-content)
+        # manifest list, but not all release components (e.g. RHCOS)
         # will be. We reuse manifest lists where possible for heterogeneous
         # release payloads to save time vs building them ourselves.
         dest_manifest_list_pullspec: str = None
@@ -808,7 +810,7 @@ class PayloadGenerator:
         archive_inspector: Optional[ArchiveImageInspector] = None
 
         """
-        If the entry is for machine-os-content, this value will be set
+        If the entry is for RHCOS, this value will be set
         """
         rhcos_build: Optional[RHCOSBuildInspector] = None
 
@@ -895,16 +897,24 @@ class PayloadGenerator:
         tag = sha256.replace(":", "-")  # sha256:abcdef -> sha256-abcdef
         return f"{dest_repo}:{tag}"
 
-    @staticmethod
-    def find_payload_entries(assembly_inspector: AssemblyInspector, arch: str, dest_repo: str) -> Dict[str, PayloadEntry]:
+    @classmethod
+    def find_payload_entries(clazz, assembly_inspector: AssemblyInspector, arch: str, dest_repo: str) -> (Dict[str, PayloadEntry], List[AssemblyIssue]):
         """
         Returns a list of images which should be included in the architecture specific release payload.
-        This includes images for our group's image metadata as well as machine-os-content.
+        This includes images for our group's image metadata as well as RHCOS.
         :param assembly_inspector: An analyzer for the assembly to generate entries for.
         :param arch: The brew architecture name to create the list for.
         :param dest_repo: The registry/org/repo into which the image should be mirrored.
         :return: Map[payload_tag_name] -> PayloadEntry.
         """
+        members: Dict[str, PayloadGenerator.PayloadEntry] = clazz._find_initial_payload_entries(assembly_inspector, arch, dest_repo)
+        members = clazz._replace_missing_payload_entries(members, arch)
+        rhcos_members, issues = clazz._find_rhcos_payload_entries(assembly_inspector, arch)
+        members.update(rhcos_members)
+        return members, issues
+
+    @staticmethod
+    def _find_initial_payload_entries(assembly_inspector: AssemblyInspector, arch: str, dest_repo: str) -> Dict[str, PayloadEntry]:
         members: Dict[str, Optional[PayloadGenerator.PayloadEntry]] = dict()  # Maps release payload tag name to the PayloadEntry for the image.
         for payload_tag, archive_inspector in PayloadGenerator.get_group_payload_tag_mapping(assembly_inspector, arch).items():
             if not archive_inspector:
@@ -921,36 +931,56 @@ class PayloadGenerator:
                 dest_manifest_list_pullspec=PayloadGenerator.get_mirroring_destination(archive_inspector.get_brew_build_inspector().get_manifest_list_digest(), dest_repo),
                 issues=list(),
             )
+        return members
 
-        # members now contains a complete map of payload tag keys, but some values may be None. This is an
-        # indication that the architecture did not have a build of one of our group images.
-        # The tricky bit is that all architecture specific release payloads contain the same set of tags
-        # or 'oc adm release new' will have trouble assembling it. i.e. an imagestream tag 'X' may not be
-        # necessary on s390x, bit we need to populate that tag with something.
+    @staticmethod
+    def _replace_missing_payload_entries(members: Dict[str, PayloadEntry], arch: str) -> Dict[str, PayloadEntry]:
+        # members contains a complete map of payload tag keys, but some values may be None,
+        # indicating that the image does not build for this architecture.
+        # However, all architecture-specific release payloads must contain the
+        # full set of tags or 'oc adm release new' will fail; while a tag may
+        # not be logically necessary on e.g. s390x, we still need to populate
+        # that tag with something for metadata references to resolve.
 
         # To do this, we replace missing images with the 'pod' image for the architecture. This should
-        # be available for every CPU architecture. As such, we must find pod to proceed.
+        # be available for every CPU architecture. As such, we must find 'pod' to proceed.
 
         pod_entry = members.get('pod', None)
         if not pod_entry:
-            raise IOError(f'Unable to find pod image archive for architecture: {arch}; unable to construct payload')
+            raise IOError(f"Unable to find 'pod' image archive for architecture: {arch}; unable to construct payload")
 
-        final_members: Dict[str, PayloadGenerator.PayloadEntry] = dict()
-        for tag_name, entry in members.items():
-            if entry:
-                final_members[tag_name] = entry
-            else:
-                final_members[tag_name] = pod_entry
+        return {
+            tag_name: entry or pod_entry
+            for tag_name, entry in members.items()
+        }
 
+    @staticmethod
+    def _find_rhcos_payload_entries(assembly_inspector: AssemblyInspector, arch: str) -> (Dict[str, PayloadEntry], List[AssemblyIssue]):
+        members: Dict[str, PayloadGenerator.PayloadEntry] = dict()
+        issues: List[AssemblyIssue] = list()
         rhcos_build: RHCOSBuildInspector = assembly_inspector.get_rhcos_build(arch)
-        final_members['machine-os-content'] = PayloadGenerator.PayloadEntry(
-            dest_pullspec=rhcos_build.get_image_pullspec(),
-            rhcos_build=rhcos_build,
-            issues=list(),
-        )
+        for container_config in rhcos_build.get_container_configs():
+            try:
+                members[container_config.name] = PayloadGenerator.PayloadEntry(
+                    dest_pullspec=rhcos_build.get_container_pullspec(container_config),
+                    rhcos_build=rhcos_build,
+                    issues=list(),
+                )
+            except RhcosMissingContainerException as ex:
+                if container_config.primary:
+                    # Impermissible, need to be sure of having the primary container in the payload
+                    issues.append(AssemblyIssue(
+                        f'RHCOS build {rhcos_build} metadata lacks entry for primary container {container_config.name}: {ex}',
+                        component=container_config.name
+                    ))
+                else:
+                    issues.append(AssemblyIssue(
+                        f'RHCOS build {rhcos_build} metadata lacks entry for non-primary container {container_config.name}: {ex}',
+                        component=container_config.name,
+                        code=AssemblyIssueCode.MISSING_RHCOS_CONTAINER
+                    ))
 
-        # Final members should have all tags populated.
-        return final_members
+        return members, issues
 
     @staticmethod
     def build_payload_istag(payload_tag_name: str, payload_entry: PayloadEntry) -> Dict:
@@ -1017,7 +1047,7 @@ class PayloadGenerator:
         Each payload tag name used to map exactly to one release imagemeta. With the advent of '-alt' images,
         we need some logic to determine which images map to which payload tags for a given architecture.
         :return: Returns a map[payload_tag_name] -> ArchiveImageInspector containing an image for the payload. The value may be
-                 None if there is no arch specific build for the tag. This does not include machine-os-content since that
+                 None if there is no arch specific build for the tag. This does not include RHCOS since that
                  is not a member of the group.
         """
         brew_arch = brew_arch_for_go_arch(arch)  # Make certain this is brew arch nomenclature
@@ -1099,8 +1129,9 @@ class PayloadGenerator:
         if not release_info.references.spec.tags:
             return terminal_issue(f'Could not find tags in nightly {nightly}')
 
-        issues: List[AssemblyIssue] = list()
-        payload_entries: Dict[str, PayloadGenerator.PayloadEntry] = PayloadGenerator.find_payload_entries(assembly_inspector, arch, '')
+        payload_entries: Dict[str, PayloadGenerator.PayloadEntry]
+        issues: List[AssemblyIssue]
+        payload_entries, issues = PayloadGenerator.find_payload_entries(assembly_inspector, arch, '')
         for component_tag in release_info.references.spec.tags:  # For each tag in the imagestream
             payload_tag_name: str = component_tag.name  # e.g. "aws-ebs-csi-driver"
             payload_tag_pullspec: str = component_tag['from'].name  # quay pullspec
@@ -1120,9 +1151,9 @@ class PayloadGenerator:
                     issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed archive: {entry.archive_inspector.get_archive_id()} and {entry.archive_inspector.get_archive_pullspec()}',
                                                 component='reference-releases'))
             elif entry.rhcos_build:
-                if entry.rhcos_build.get_machine_os_content_digest() != pullspec_sha:
+                if entry.rhcos_build.get_container_digest() != pullspec_sha:
                     # Impermissible because the artist should remove the reference nightlies from the assembly definition
-                    issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed rhcos: {entry.rhcos_build} and {entry.rhcos_build.get_machine_os_content_digest()}',
+                    issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed rhcos: {entry.rhcos_build} and {entry.rhcos_build.get_container_digest()}',
                                                 component='reference-releases'))
             else:
                 raise IOError(f'Unsupported payload entry {entry}')

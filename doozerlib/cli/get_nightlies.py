@@ -4,10 +4,7 @@ import sys
 from urllib import request
 from doozerlib.cli import cli
 from doozerlib import constants, util, exectools
-
-# See https://github.com/openshift/machine-config-operator/blob/master/docs/OSUpgrades.md
-# But in the future this will be replaced, see https://github.com/coreos/enhancements/blob/main/os/coreos-layering.md
-OLD_FORMAT_COREOS_TAG = 'machine-os-content'
+from doozerlib.rhcos import get_primary_container_name
 
 
 @cli.command("get-nightlies", short_help="Get sets of Accepted nightlies. A set contains nightly for each arch, "
@@ -40,6 +37,8 @@ def get_nightlies(runtime, limit, rhcos, latest):
             phase = ''
         nightlies_with_phase[arch] = all_nightlies_in_phase(major, minor, arch, phase)
 
+    primary_coreos_tag = get_primary_container_name(runtime)
+
     i = 0
     for x64_nightly, x64_phase in nightlies_with_phase["amd64"]:
         if i >= limit:
@@ -56,7 +55,7 @@ def get_nightlies(runtime, limit, rhcos, latest):
             nightly_str = f'{nightly} {phase}'
             if rhcos:
                 if phase != 'Pending':
-                    rhcos = get_coreos_build_from_payload(get_nightly_pullspec(nightly, arch))
+                    rhcos = get_coreos_build_from_payload(get_nightly_pullspec(nightly, arch), primary_coreos_tag)
                     nightly_str += f' {rhcos}'
             print(nightly_str)
         print(",".join(nightly_set))
@@ -68,9 +67,9 @@ def get_nightly_pullspec(release, arch):
     return f'registry.ci.openshift.org/ocp{suffix}/release{suffix}:{release}'
 
 
-def get_coreos_build_from_payload(payload_pullspec):
-    """Retrive the build version of machine-os-content (e.g. 411.86.202206131434-0)"""
-    out, err = exectools.cmd_assert(["oc", "adm", "release", "info", "--image-for", OLD_FORMAT_COREOS_TAG, "--", payload_pullspec])
+def get_coreos_build_from_payload(payload_pullspec, primary_coreos_tag):
+    """Retrieve the build version of RHCOS (e.g. 411.86.202206131434-0)"""
+    out, err = exectools.cmd_assert(["oc", "adm", "release", "info", "--image-for", primary_coreos_tag, "--", payload_pullspec])
     if err:
         raise Exception(f"Error running oc adm: {err}")
     rhcos_pullspec = out.split('\n')[0]
