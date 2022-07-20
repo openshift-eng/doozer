@@ -348,15 +348,15 @@ class TestGetNightlies(TestCase):
             },
         ]
         eqset = subject.EquivalenceSet({"x86_64": nightlies[0]})
-        self.assertIsNone(eqset.augment("s390x", nightlies[1]))
+        self.assertFalse(eqset.generate_equivalents_with("s390x", [nightlies[1]]))
 
-        set1 = eqset.augment("aarch64", nightlies[2])
+        set1 = eqset.generate_equivalents_with("aarch64", [nightlies[2]])[0]
         self.assertIsInstance(set1, subject.EquivalenceSet)
         self.assertEqual(set1.timestamp, "2022-07-18")  # greater of first and third
 
-        self.assertIsNone(set1.augment("s390x", nightlies[1]))
+        self.assertFalse(set1.generate_equivalents_with("s390x", [nightlies[1]]))
         with self.assertRaises(subject.EqSetDuplicateArchException):
-            eqset.augment("x86_64", nightlies[0])
+            eqset.generate_equivalents_with("x86_64", nightlies[0])
 
     def test_generate_equivalence_sets(self):
         nightlies_for_arch = {

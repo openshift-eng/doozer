@@ -19,37 +19,60 @@ logger = logutil.getLogger(__name__)
 @click.option("--allow-rejected", is_flag=True, help="Include nightlies that have failed tests")
 @click.option("--exclude-arch", metavar="ARCH", multiple=True, help="Exclude arch(es) normally included in this version (multi,aarch64,...)")
 @click.option("--limit", default=1, metavar='NUM', help="Number of sets of nightlies to print")
-@click.option("--rhcos", is_flag=True, help="Print rhcos build id with nightlies")
+@click.option("--details", is_flag=True, help="Print some nightly details including RHCOS build id")
 @click.option("--latest", is_flag=True, help="Just get the latest nightlies for all arches (accepted or not)")
 @click.pass_obj
 @click_coroutine
-async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str], allow_pending: bool, allow_rejected: bool, limit: str, rhcos: bool, latest: bool):
+async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str], allow_pending: bool, allow_rejected: bool, limit: str, details: bool, latest: bool):
     """
-    Find one or more sets of nightlies (including all arches) that have
-    matching content according to source commits and NVRs (or in the case of
-    RHCOS containers, RPM content).
+    Find set(s) including a nightly for each arch with matching contents
+    according to source commits and NVRs (or in the case of RHCOS containers,
+    RPM content).
 
+    \b
     By default:
-
     * only one set of nightlies (the most recent) is displayed (see --limit)
+    * only accepted nightlies will be examined (see --allow-pending/rejected)
+    * all arches configured for the group will be required (see --exclude-arch)
 
-    * only accepted nightlies will be examined (see --allow-pending / --allow-rejected)
+    You may also specify a desired nightly or nightlies (see --matching) to filter
+    results to only sets that include the matched nightlies in their respective
+    arch(es). Examples:
 
-    * all arches configured for the group will be included (see --exclude-arch)
+     \b
+     $ doozer -q -g openshift-4.8 get-nightlies --limit 3
+     4.8.0-0.nightly-s390x-2022-07-19-121001 4.8.0-0.nightly-ppc64le-2022-07-19-120922 4.8.0-0.nightly-2022-07-19-120845
+     4.8.0-0.nightly-s390x-2022-07-19-001435 4.8.0-0.nightly-ppc64le-2022-07-19-001401 4.8.0-0.nightly-2022-07-19-001308
+     4.8.0-0.nightly-s390x-2022-07-15-184648 4.8.0-0.nightly-ppc64le-2022-07-15-184608 4.8.0-0.nightly-2022-07-15-190253
 
-    You may also specify a desired nightly or nightlies (see --matching), in
-    which case those will be the only nightlies examined in their respective
-    arches.
+     \b
+     Match one preferred nightly:
+     $ doozer -q -g openshift-4.8 get-nightlies --matching 4.8.0-0.nightly-2022-07-19-001308
+     4.8.0-0.nightly-s390x-2022-07-19-001435 4.8.0-0.nightly-ppc64le-2022-07-19-001401 4.8.0-0.nightly-2022-07-19-001308
+     \b
+     Match nightlies in multiple arches:
+     $ doozer -q -g openshift-4.8 get-nightlies --matching 4.8.0-0.nightly-2022-07-19-001308 --matching 4.8.0-0.nightly-ppc64le-2022-07-19-120922
+     No sets of equivalent nightlies found for given parameters.
+     \b
+     Match two nightlies in same arch:
+     $ doozer -q -g openshift-4.8 get-nightlies --limit 3 --matching 4.8.0-0.nightly-2022-07-19-001308 --matching 4.8.0-0.nightly-2022-07-15-190253
+     4.8.0-0.nightly-s390x-2022-07-19-001435 4.8.0-0.nightly-ppc64le-2022-07-19-001401 4.8.0-0.nightly-2022-07-19-001308
+     4.8.0-0.nightly-s390x-2022-07-15-184648 4.8.0-0.nightly-ppc64le-2022-07-15-184608 4.8.0-0.nightly-2022-07-15-190253
+
+    All matches specified must exist (to guard against typo/mis-paste) with the correct state:
+
+     \b
+     $ doozer -q -g openshift-4.8 get-nightlies --matching 4.8.0-that-exists-not
+     Found no nightlies in state {'Accepted'} matching {'4.8.0-that-exists-not'}
 
     If results do not include a nightly that you expect to see, check the
     doozer debug.log where details about equivalence failures are logged.
     Matching is performed in two phases:
 
-    * The first uses only info from the nightly release images for quick
-      comparison in order to construct candidate equivalent sets of nightlies.
-
-    * The second retrieves image info for all payload content in order to
-      compare group image NVRs and RHCOS RPM content.
+      * The first uses only info from the nightly release images for quick
+        comparison in order to construct candidate equivalent sets of nightlies.
+      * The second retrieves image info for all payload content in order to
+        compare group image NVRs and RHCOS RPM content.
     """
     # parameter validation/processing
     limit = int(limit)
@@ -84,7 +107,7 @@ async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str], a
         await eq_set.populate_deeper_equivalence(runtime)
         if eq_set.deeper_equivalence():
             eq_sets.append(eq_set)
-            util.green_print(eq_set)
+            util.green_print(eq_set.details() if details else eq_set)
             if len(eq_sets) >= limit:
                 break  # don't spend time looking for more than were requested
 
@@ -183,7 +206,7 @@ def find_rc_nightlies(runtime, arches: Set[str], allow_pending: bool, allow_reje
     return nightlies_for_arch
 
 
-def rc_api_url(tag, arch):
+def rc_api_url(tag: str, arch: str) -> str:
     """
     base url for a release tag in release controller.
 
@@ -248,7 +271,7 @@ class EquivalenceBase:
             if tag == "pod" or commit != pod_commit
         }
 
-    def __eq__(self, other):
+    def __eq__(self, other: 'EquivalenceBase'):
         """
         Determine whether self and other are superficially equivalent.
         We do not check that all of the same tags are present in both, because
@@ -272,7 +295,7 @@ class EquivalenceBase:
 
         return True
 
-    def retrieve_rhcos_tag_digest(self, tag):
+    def retrieve_rhcos_tag_digest(self, tag: str) -> str:
         """
         From the RHCOS container info extract distingushing characteristics and
         generate a digest of them.
@@ -295,7 +318,7 @@ class EquivalenceBase:
     def __repr__(self):
         return f"{self.commit_for_tag}/{self.rhcos_tag_digests}"
 
-    def retrieve_image_info(self, pullspec):
+    def retrieve_image_info(self, pullspec: str) -> Dict:
         """pull and cache json info for a container pullspec"""
         if pullspec not in image_info_cache:
             image_json_str, _ = exectools.cmd_assert(
@@ -305,7 +328,7 @@ class EquivalenceBase:
             image_info_cache[pullspec] = Model(json.loads(image_json_str))
         return image_info_cache[pullspec]
 
-    async def retrieve_image_info_async(self, pullspec):
+    async def retrieve_image_info_async(self, pullspec: str) -> Dict:
         """pull and cache json info for a container pullspec (enable concurrency)"""
         if pullspec not in image_info_cache:
             image_json_str, _ = await exectools.cmd_assert_async(
@@ -315,7 +338,7 @@ class EquivalenceBase:
             image_info_cache[pullspec] = Model(json.loads(image_json_str))
         return image_info_cache[pullspec]
 
-    async def populate_deeper_equivalence(self, runtime, arch):
+    async def populate_deeper_equivalence(self, runtime, arch: str):
         """Retrieve image NVRs and RHCOS build data concurrently for deeper comparison"""
         await asyncio.gather(*(
             self.retrieve_image_info_async(self.pullspec_for_tag[tag])
@@ -325,7 +348,7 @@ class EquivalenceBase:
             ps4tag = {tag: self.pullspec_for_tag[tag] for tag in self.rhcos_tag_names}
             self.rhcos_inspector = RHCOSBuildInspector(runtime, ps4tag, arch)
 
-    def retrieve_nvr_for_tag(self, tag: str):
+    def retrieve_nvr_for_tag(self, tag: str) -> str:
         """Retrieve group image NVR according to the image info at the tag pullspec"""
         if tag not in self.nvr_for_tag:
             labels = self.retrieve_image_info(self.pullspec_for_tag[tag]).config.config.Labels
@@ -333,7 +356,7 @@ class EquivalenceBase:
             self.nvr_for_tag[tag] = labels if all(labels) else None
         return self.nvr_for_tag[tag]
 
-    def deeper_equivalence(self, other):
+    def deeper_equivalence(self, other: 'EquivalenceBase') -> bool:
         """
         Do a deeper (more expensive) equivalence check that requires
         populate_deeper_equivalence having been called beforehand. This checks
@@ -360,7 +383,7 @@ class EquivalenceBase:
 
         return self.deeper_equivalence_rhcos(other)
 
-    def deeper_equivalence_rhcos(self, other):
+    def deeper_equivalence_rhcos(self, other: 'EquivalenceBase') -> bool:
         """Check that the two have the same RHCOS contents according to build records"""
         for eq_base in (self, other):
             if not eq_base.rhcos_inspector:
@@ -394,25 +417,36 @@ class EquivalenceSet:
         self.nightly_for_arch = nightly_for_arch
         self.timestamp = max(nightly["releaseInfo"]["config"]["created"] for nightly in nightly_for_arch.values())
 
-    def augment(self, arch: str, nightly: Dict):
+    def generate_equivalents_with(self, arch: str, nightlies: List[Dict]) -> List['EquivalenceSet']:
         """
-        If the nightly being added is equivalent to all existing members, spawn
-        a new set that includes it and return that. Otherwise return None.
+        Test each nightly for equivalence with all existing members, and return a list
+        of new sets extended with those that match.
         """
         if arch in self.nightly_for_arch:
             raise EqSetDuplicateArchException(f"Cannot add arch {arch} when already present in {self}")
 
-        nightly_for_arch = {arch: nightly}
-        for arch, existing in self.nightly_for_arch.items():
-            logger.debug(f"comparing {nightly['name']} and {existing['name']}")
-            if nightly["equivalence"] != existing["equivalence"]:
-                return None  # not equivalent
-            nightly_for_arch[arch] = existing
+        new_sets: List[EquivalenceSet] = []
+        for nightly in nightlies:
+            nightly_for_arch = {arch: nightly}  # initialize new set with candidate nightly
+            for exarch, existing in self.nightly_for_arch.items():
+                logger.debug(f"comparing {nightly['name']} and {existing['name']}")
+                if nightly["equivalence"] != existing["equivalence"]:
+                    break  # not equivalent
+                nightly_for_arch[exarch] = existing
 
-        return EquivalenceSet(nightly_for_arch)
+            if len(nightly_for_arch) > len(self.nightly_for_arch):  # all were added
+                new_sets.append(EquivalenceSet(nightly_for_arch))
+
+        return new_sets
 
     def __repr__(self):
         return " ".join(nightly['name'] for nightly in self.nightly_for_arch.values())
+
+    def details(self) -> str:
+        return f"{self}\n" + "".join(
+            f"{arch}: {nightly['name']} {nightly['phase']} rhcos: {nightly['releaseInfo']['displayVersions']['machine-os']['Version']}\n"
+            for arch, nightly in self.nightly_for_arch.items()
+        )
 
     async def populate_deeper_equivalence(self, runtime):
         """Prepare EquivalenceBases for deeper (more expensive) comparison"""
@@ -421,7 +455,7 @@ class EquivalenceSet:
             for arch, nightly in self.nightly_for_arch.items()
         ))
 
-    def deeper_equivalence(self):
+    def deeper_equivalence(self) -> bool:
         """Check that all EquivalenceBases have deeper equivalency"""
         nightlies = list(self.nightly_for_arch.values())
         while len(nightlies) > 1:
@@ -449,16 +483,13 @@ def generate_equivalence_sets(nightlies_for_arch: Dict[str, List[Dict]]) -> List
             # seed with the first arch
             eq_sets = [EquivalenceSet({arch: nightly}) for nightly in nightlies]
             continue
-        # try to combine everything in this arch with existing sets
+
+        # try to combine nightlies in this arch with existing sets
         new_sets: List[EquivalenceSet] = []
         for eq_set in eq_sets:
-            for nightly in nightlies:
-                new_set = eq_set.augment(arch, nightly)
-                if new_set:
-                    new_sets.append(new_set)
-
+            new_sets.extend(eq_set.generate_equivalents_with(arch, nightlies))
         if not new_sets:
-            return new_sets  # no sets left to augment
+            return []  # no sets left to extend
         eq_sets = new_sets
 
     return sorted(eq_sets, reverse=True, key=lambda eq_set: eq_set.timestamp)
