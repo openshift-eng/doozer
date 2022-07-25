@@ -153,6 +153,7 @@ class Runtime(object):
         self.releases_config = None
         self.assembly = 'test'
         self._build_status_detector = None
+        self.disable_gssapi = False
 
         self.stream: List[str] = []  # Click option. A list of image stream overrides from the command line.
         self.stream_overrides: Dict[str, str] = {}  # Dict of stream name -> pullspec from command line.
@@ -739,7 +740,8 @@ class Runtime(object):
         with self.koji_lock:
             if self._koji_client_session is None:
                 self._koji_client_session = self.build_retrying_koji_client()
-                self._koji_client_session.gssapi_login()
+                if not self.disable_gssapi:
+                    self._koji_client_session.gssapi_login()
             yield self._koji_client_session
 
     @contextmanager
