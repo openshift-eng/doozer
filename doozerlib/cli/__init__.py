@@ -73,6 +73,7 @@ def print_version(ctx, param, value):
               help='If a base image is not included, lookup latest FROM tag for parent. Implies --ignore-missing-base')
 @click.option("--quiet", "-q", default=False, is_flag=True, help="Suppress non-critical output")
 @click.option('--debug', default=False, is_flag=True, help='Show debug output on console.')
+@click.option('--disable-gssapi', default=False, is_flag=True, help='Disable gssapi for requests that do not require keytab')
 @click.option("--stream", metavar="STREAM_NAME PULLSPEC", nargs=2, multiple=True,
               help="Override a stream.yml entry with a specific pullspec.  [multiple]")
 @click.option("--lock-upstream", "upstreams", metavar="DISTGIT_KEY COMMIT-ISH", multiple=True, nargs=2,
