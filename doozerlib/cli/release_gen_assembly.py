@@ -29,13 +29,18 @@ def releases_gen_assembly(ctx, name):
 
 
 @releases_gen_assembly.command('from-releases', short_help='Outputs assembly metadata based on a set of specified releases')
-@click.option('--nightly', 'nightlies', metavar='NIGHTLY_NAME', default=[], multiple=True, help='A nightly release name for each architecture (e.g. 4.7.0-0.nightly-2021-07-07-214918)')
-@click.option('--standard', 'standards', metavar='4.y.z-ARCH', default=[], multiple=True, help='The name and arch of an official release (e.g. 4.8.3-x86_64) where ARCH in [x86_64, s390x, ppc64le, aarch64].')
+@click.option('--nightly', 'nightlies', metavar='NIGHTLY_NAME', default=[], multiple=True,
+              help='A nightly release name for each architecture (e.g. 4.7.0-0.nightly-2021-07-07-214918)')
+@click.option('--standard', 'standards', metavar='4.y.z-ARCH', default=[], multiple=True,
+              help='The name and arch of an official release (e.g. 4.8.3-x86_64) where ARCH in [x86_64, s390x, ppc64le, aarch64].')
 @click.option("--custom", default=False, is_flag=True,
-              help="If specified, weaker conformance criteria are applied (e.g. a nightly is not required for every arch).")
+              help="If specified, weaker conformance criteria are applied (e.g. nightly not required for every arch).")
 @click.option('--in-flight', 'in_flight', metavar='EDGE', help='An in-flight release that can upgrade to this release')
-@click.option('--previous', 'previous_list', metavar='EDGES', default=[], multiple=True, help='A list of releases that can upgrade to this release')
-@click.option('--auto-previous', 'auto_previous', is_flag=True, help='If specified, previous list is calculated from Cincinnati graph')
+@click.option('--previous', 'previous_list', metavar='EDGES', default=[], multiple=True,
+              help='A list of releases that can upgrade to this release')
+@click.option('--auto-previous', 'auto_previous', is_flag=True,
+              help='If specified, previous list is calculated from Cincinnati graph')
+@click.option('--date', is_flag=True, help='Planned release date of the assembly release. Format: YYYY-Mon-DD', required=False)
 @click.option("--graph-url", metavar='GRAPH_URL', required=False,
               default='https://api.openshift.com/api/upgrades_info/v1/graph',
               help="When using --auto-previous, set custom Cincinnati graph URL to query")
@@ -48,7 +53,11 @@ def releases_gen_assembly(ctx, name):
               help="When using --auto-previous, set custom suggestions URL, load from {major}-{minor}-{arch}.yaml")
 @pass_runtime
 @click.pass_context
-def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...], standards: Tuple[str, ...], custom: bool, in_flight: Optional[str], previous_list: Tuple[str, ...], auto_previous: bool, graph_url: Optional[str], graph_content_stable: Optional[str], graph_content_candidate: Optional[str], suggestions_url: Optional[str]):
+def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...], standards: Tuple[str, ...],
+                               custom: bool, in_flight: Optional[str], previous_list: Tuple[str, ...],
+                               auto_previous: bool, date: Optional[str], graph_url: Optional[str],
+                               graph_content_stable: Optional[str], graph_content_candidate: Optional[str],
+                               suggestions_url: Optional[str]):
     runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
     logger = runtime.logger
     gen_assembly_name: str = ctx.obj['ASSEMBLY_NAME']  # The name of the assembly we are going to output
@@ -99,7 +108,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             version = gen_assembly_name
         for arch in runtime.arches:
             logger.info("Calculating previous list for %s", arch)
-            previous_list = util.get_release_calc_previous(version, arch, graph_url, graph_content_stable, graph_content_candidate, suggestions_url)
+            previous_list = util.get_release_calc_previous(version, arch, graph_url, graph_content_stable,
+                                                           graph_content_candidate, suggestions_url)
             final_previous_list |= set(map(VersionInfo.parse, previous_list))
     final_previous_list: List[VersionInfo] = sorted(final_previous_list)
 
@@ -237,9 +247,13 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
 
         if package_name not in component_image_builds:
             if custom:
-                logger.warning(f'Unable to find {dgk} in releases despite it being marked as is_payload in ART metadata; this may be because the image is not built for every arch or it is not labeled appropriately for the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
+                logger.warning(f'Unable to find {dgk} in releases despite it being marked as is_payload in ART metadata;'
+                               ' this may be because the image is not built for every arch or it is not labeled '
+                               f'appropriately for the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
             else:
-                logger.error(f'Unable to find {dgk} in releases despite it being marked as is_payload in ART metadata; this may mean the image does not have the proper labeling for being in the payload. Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
+                logger.error(f'Unable to find {dgk} in releases despite it being marked as is_payload in ART metadata; '
+                             'this may mean the image does not have the proper labeling for being in the payload. '
+                             f'Choosing what was in the estimated basis event sweep: {basis_event_build_nvr}')
             component_image_builds[package_name] = basis_event_build_dict
             continue
 
@@ -247,7 +261,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
         ref_nightlies_component_build_nvr = ref_releases_component_build.get_nvr()
 
         if basis_event_build_nvr != ref_nightlies_component_build_nvr:
-            logger.info(f'{dgk} build {basis_event_build_nvr} was selected by estimated basis event. That is not what is in the specified releases, so this image will be pinned.')
+            logger.info(f'{dgk} build {basis_event_build_nvr} was selected by estimated basis event. '
+                        'That is not what is in the specified releases, so this image will be pinned.')
             force_is.add(package_name)
             continue
 
@@ -262,7 +277,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             if custom:
                 # This is permitted for custom assemblies which do not need to be assembled for every
                 # architecture. The customer may just need x86_64.
-                logger.info(f'Did not find RHCOS "{primary_rhcos_tag}" image for active group architecture: {arch}; ignoring for custom assembly type.')
+                logger.info(f'Did not find RHCOS "{primary_rhcos_tag}" image for active group architecture: {arch};'
+                            ' ignoring for custom assembly type.')
             else:
                 exit_with_error(f'Did not find RHCOS "{primary_rhcos_tag}" image for active group architecture: {arch}')
 
@@ -305,7 +321,9 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
                 # estimate comes up with this RPM NVR.
                 basis_event_build_dict = rpm_meta.get_latest_build(el_target=el_ver, complete_before_event=basis_event)
                 if not basis_event_build_dict:
-                    exit_with_error(f'No RPM was found for assembly {runtime.assembly} for component {dgk} at estimated brew event {basis_event}. No normal reason for this to happen so exiting out of caution.')
+                    exit_with_error(f'No RPM was found for assembly {runtime.assembly} for component {dgk} '
+                                    f'at estimated brew event {basis_event}. No normal reason for this to happen so '
+                                    'exiting out of caution.')
 
                 if el_ver in component_rpm_builds[package_name]:
                     # We've already logged a build for this el version before
@@ -316,7 +334,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
                 logger.info(f'{dgk} build {basis_event_build_nvr} selected by scan against estimated basis event')
                 if basis_event_build_nvr != ref_releases_rpm_build['nvr']:
                     # The basis event estimate did not find the RPM from the nightlies. We have to pin the package.
-                    logger.info(f'{dgk} build {basis_event_build_nvr} was selected by estimated basis event. That is not what is in the specified releases, so this RPM will be pinned.')
+                    logger.info(f'{dgk} build {basis_event_build_nvr} was selected by estimated basis event. '
+                                'That is not what is in the specified releases, so this RPM will be pinned.')
                     force_is.add(package_name)
 
     # component_image_builds now contains a mapping of package_name -> BrewBuildImageInspector for all images that should be included
@@ -333,7 +352,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             dgk = build_inspector.get_image_meta().distgit_key
             image_member_overrides.append({
                 'distgit_key': dgk,
-                'why': 'Query from assembly basis event failed to replicate referenced nightly content exactly. Pinning to replicate.',
+                'why': 'Query from assembly basis event failed to replicate referenced nightly content exactly. '
+                       'Pinning to replicate.',
                 'metadata': {
                     'is': {
                         'nvr': build_inspector.get_nvr()
@@ -344,7 +364,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             dgk = package_rpm_meta[package_name].distgit_key
             rpm_member_overrides.append({
                 'distgit_key': dgk,
-                'why': 'Query from assembly basis event failed to replicate referenced nightly content exactly. Pinning to replicate.',
+                'why': 'Query from assembly basis event failed to replicate referenced nightly content exactly. '
+                       'Pinning to replicate.',
                 'metadata': {
                     'is': {
                         f'el{el_ver}': component_rpm_builds[package_name][el_ver]['nvr'] for el_ver in component_rpm_builds[package_name]
@@ -369,6 +390,9 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
             'extras': -1,
             'metadata': -1,
         }
+        if not date:
+            date = "YYYY-Mon-DD"
+        group_info["release_date"] = date
         group_info["release_jira"] = "ART-0"
 
     if final_previous_list:
