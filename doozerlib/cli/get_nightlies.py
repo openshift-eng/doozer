@@ -321,6 +321,7 @@ class Nightly:
             image_info_cache[pullspec] = Model(json.loads(image_json_str))
         return image_info_cache[pullspec]
 
+    @exectools.limit_concurrency(500)
     async def retrieve_image_info_async(self, pullspec: str) -> Model:
         """pull/cache/return json info for a container pullspec (enable concurrency)"""
         if pullspec not in image_info_cache:
