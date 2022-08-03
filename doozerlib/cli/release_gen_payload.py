@@ -425,7 +425,7 @@ read and propagate/expose this annotation in its display of the release image.
 
         if apply or apply_multi_arch:
             logger.info(f'Mirroring images from {str(src_dest_path)}')
-            exectools.cmd_assert(f'oc image mirror --keep-manifest-list --filename={str(src_dest_path)}', retries=3)
+            exectools.cmd_assert(f'oc image mirror --keep-manifest-list --filename={str(src_dest_path)}', retries=3, timeout=1800)
 
         for private_mode in privacy_modes:
             logger.info(f'Building payload files for architecture: {arch}; private: {private_mode}')

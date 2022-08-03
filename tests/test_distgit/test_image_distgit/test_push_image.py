@@ -501,7 +501,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
 
         (flexmock(distgit.exectools)
             .should_receive("cmd_gather")
-            .with_args(expected_cmd)
+            .with_args(expected_cmd, timeout=1800)
             .once()
             .and_return((0, "", "")))
 
@@ -547,7 +547,7 @@ class TestImageDistGitRepoPushImage(unittest.TestCase):
 
         (flexmock(distgit.exectools)
             .should_receive("cmd_gather")
-            .with_args(expected_cmd)
+            .with_args(expected_cmd, timeout=1800)
             .once()
             .and_return((0, "", "")))
 
