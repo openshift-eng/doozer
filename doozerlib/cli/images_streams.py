@@ -117,7 +117,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
                 if dry_run:
                     print(f'For {upstream_entry_name}, would have run: {arm_cmd}')
                 else:
-                    exectools.cmd_assert(arm_cmd, retries=3, realtime=True)
+                    exectools.cmd_assert(arm_cmd, retries=3, realtime=True, timeout=1800)
 
 
 @images_streams.command('check-upstream', short_help='Dumps information about CI buildconfigs/mirrored images associated with this group.')

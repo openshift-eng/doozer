@@ -852,7 +852,7 @@ class ImageDistGitRepo(DistGitRepo):
                     else:
                         for r in range(10):
                             self.logger.info("Mirroring image [retry={}]".format(r))
-                            rc, out, err = exectools.cmd_gather(mirror_cmd)
+                            rc, out, err = exectools.cmd_gather(mirror_cmd, timeout=1800)
                             if rc == 0:
                                 break
                             self.logger.info("Error mirroring image -- retrying in 60 seconds.\n{}".format(err))

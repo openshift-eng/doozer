@@ -74,7 +74,7 @@ def urlopen_assert(url_or_req, httpcode=200, retries=3):
 
 
 def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None,
-               set_env=None, strip=False, log_stdout: bool = False, log_stderr: bool = True) -> Tuple[str, str]:
+               set_env=None, strip=False, log_stdout: bool = False, log_stderr: bool = True, timeout: Optional[int] = None) -> Tuple[str, str]:
     """
     Run a command, logging (using exec_cmd) and raise an exception if the
     return code of the command indicates failure.
@@ -89,6 +89,7 @@ def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None,
     :param strip: Strip extra whitespace from stdout/err before returning.
     :param log_stdout: Whether stdout should be logged into the DEBUG log.
     :param log_stderr: Whether stderr should be logged into the DEBUG log
+    :param timeout: Kill the process if it does not terminate after timeout seconds.
     :return: (stdout,stderr) if exit code is zero
     """
 
@@ -103,7 +104,7 @@ def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None,
                 cmd_gather(on_retry, set_env)
 
         result, stdout, stderr = cmd_gather(cmd, set_env=set_env, realtime=realtime, strip=strip,
-                                            log_stdout=log_stdout, log_stderr=log_stderr)
+                                            log_stdout=log_stdout, log_stderr=log_stderr, timeout=timeout)
         if result == SUCCESS:
             break
 
@@ -121,7 +122,7 @@ cmd_counter_lock = threading.Lock()
 cmd_counter = 0  # Increments atomically to help search logs for command start/stop
 
 
-def cmd_gather(cmd: Union[str, List], set_env: Optional[Dict[str, str]] = None, realtime=False, strip=False, log_stdout=False, log_stderr=True) -> Tuple[int, str, str]:
+def cmd_gather(cmd: Union[str, List], set_env: Optional[Dict[str, str]] = None, realtime=False, strip=False, log_stdout=False, log_stderr=True, timeout: Optional[int] = None) -> Tuple[int, str, str]:
     """
     Runs a command and returns rc,stdout,stderr as a tuple.
 
@@ -135,6 +136,7 @@ def cmd_gather(cmd: Union[str, List], set_env: Optional[Dict[str, str]] = None, 
     :param strip: Strip extra whitespace from stdout/err before returning.
     :param log_stdout: Whether stdout should be logged into the DEBUG log.
     :param log_stderr: Whether stderr should be logged into the DEBUG log
+    :param timeout: Kill the process if it does not terminate after timeout seconds.
     :return: (rc,stdout,stderr)
     """
     global cmd_counter, cmd_counter_lock
@@ -173,7 +175,11 @@ def cmd_gather(cmd: Union[str, List], set_env: Optional[Dict[str, str]] = None, 
             return exc.errno, "", description
 
         if not realtime:
-            out, err = proc.communicate()
+            try:
+                out, err = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                out, err = proc.communicate()
             rc = proc.returncode
         else:
             out = b''
