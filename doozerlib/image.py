@@ -608,7 +608,7 @@ class ArchiveImageInspector:
         self.brew_build_inspector = brew_build_inspector
 
         if self.brew_build_inspector:
-            assert(self.brew_build_inspector.get_brew_build_id() == self.get_brew_build_id())
+            assert (self.brew_build_inspector.get_brew_build_id() == self.get_brew_build_id())
 
     def image_arch(self) -> str:
         """

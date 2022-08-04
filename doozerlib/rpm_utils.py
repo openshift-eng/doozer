@@ -188,15 +188,15 @@ def _rpmvercmp(a: str, b: str):
         # leave one and two pointing to the start of the alpha or numeric
         # segment and walk str1 and str2 to end of segment
         if str1[p].isdigit():
-            while(str1[p] != "\0" and str1[p].isdigit()):
+            while (str1[p] != "\0" and str1[p].isdigit()):
                 p += 1
-            while(str2[q] != "\0" and str2[q].isdigit()):
+            while (str2[q] != "\0" and str2[q].isdigit()):
                 q += 1
             isnum = 1
         else:
-            while(str1[p] != "\0" and str1[p].isalpha()):
+            while (str1[p] != "\0" and str1[p].isalpha()):
                 p += 1
-            while(str2[q] != "\0" and str2[q].isalpha()):
+            while (str2[q] != "\0" and str2[q].isalpha()):
                 q += 1
             isnum = 0
 

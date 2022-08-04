@@ -287,7 +287,7 @@ class OLMBundle(object):
             **self.redhat_delivery_tags,
             **self.operator_framework_tags
         }
-        del(bundle_df.labels['release'])
+        del (bundle_df.labels['release'])
 
     def create_container_yaml(self):
         """Use container.yaml to disable unnecessary multiarch
