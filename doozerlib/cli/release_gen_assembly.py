@@ -402,4 +402,4 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
 
     if output_file:
         with open(output_file, 'w') as file:
-            file.write(yaml.dump(assembly_def))
+            yaml.dump(assembly_def, file)
