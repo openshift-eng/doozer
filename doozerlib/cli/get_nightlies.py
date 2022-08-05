@@ -109,22 +109,23 @@ async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str],
     ])
 
     # find sets of nightlies where all arches have equivalent content
-    nightly_sets = generate_nightly_sets(nightlies_for_arch)
-    consistent_nightly_sets = []
-    for nightly_set in nightly_sets:
+    inconsistent_nightly_sets = []
+    remaining = limit
+    for nightly_set in generate_nightly_sets(nightlies_for_arch):
         # check for deeper equivalence
         await nightly_set.populate_nightly_content(runtime)
         if nightly_set.deeper_equivalence():
-            consistent_nightly_sets.append(nightly_set)
             util.green_print(nightly_set.details() if details else nightly_set)
-            if len(consistent_nightly_sets) >= limit:
+            remaining -= 1
+            if not remaining:
                 break  # don't spend time checking more than were requested
+        else:
+            inconsistent_nightly_sets.append(nightly_set)
 
-    remaining = limit - len(consistent_nightly_sets)
-    if allow_inconsistency and remaining > 0:
-        for nightly_set in nightly_sets[:remaining]:
+    if allow_inconsistency and remaining:
+        for nightly_set in inconsistent_nightly_sets[:remaining]:
             util.yellow_print(nightly_set.details() if details else nightly_set)
-        remaining -= len(nightly_sets)
+            remaining -= 1
 
     if remaining == limit:
         util.red_print("No sets of equivalent nightlies found for given parameters.")
