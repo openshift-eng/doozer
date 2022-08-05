@@ -98,8 +98,8 @@ def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable
               help="Quay ORGANIZATION to mirror into.\ndefault=openshift-release-dev")
 @click.option("--repository", metavar='REPO', required=False, default='ocp-v4.0-art-dev',
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
-@click.option("--release-repository", metavar='REPO', required=False, default='ocp-release',
-              help="Quay REPOSITORY in ORGANIZATION to push release payloads (used for multi-arch)\ndefault=ocp-release")
+@click.option("--release-repository", metavar='REPO', required=False, default='ocp-release-nightly',
+              help="Quay REPOSITORY in ORGANIZATION to push release payloads (used for multi-arch)\ndefault=ocp-release-nightly")
 @click.option("--output-dir", metavar='DIR', required=False, default='.',
               help="Directory into which the mirroring/imagestream artifacts should be written")
 @click.option("--skip-gc-tagging", default=False, is_flag=True,
