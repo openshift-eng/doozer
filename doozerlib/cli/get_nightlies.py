@@ -15,6 +15,7 @@ logger = logutil.getLogger(__name__)
 
 @cli.command("get-nightlies", short_help="Determine set(s) of accepted nightlies with matching contents for all architectures")
 @click.option("--matching", metavar="NIGHTLY_NAME", multiple=True, help="Only report nightlies with the same content as named nightly")
+@click.option("--allow-inconsistency", is_flag=True, help="Allow nightlies that fail deeper consistency checks")
 @click.option("--allow-pending", is_flag=True, help="Include nightlies that have not completed tests")
 @click.option("--allow-rejected", is_flag=True, help="Include nightlies that have failed tests")
 @click.option("--exclude-arch", metavar="ARCH", multiple=True, help="Exclude arch(es) normally included in this version (multi,aarch64,...)")
@@ -23,7 +24,10 @@ logger = logutil.getLogger(__name__)
 @click.option("--latest", is_flag=True, help="Just get the latest nightlies for all arches (accepted or not)")
 @click.pass_obj
 @click_coroutine
-async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str], allow_pending: bool, allow_rejected: bool, limit: str, details: bool, latest: bool):
+async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str],
+                        allow_inconsistency: bool,
+                        allow_pending: bool,
+                        allow_rejected: bool, limit: str, details: bool, latest: bool):
     """
     Find set(s) including a nightly for each arch with matching contents
     according to source commits and NVRs (or in the case of RHCOS containers,
@@ -33,6 +37,7 @@ async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str], a
     By default:
     * only one set of nightlies (the most recent) is displayed (see --limit)
     * only accepted nightlies will be examined (see --allow-pending/rejected)
+    * only 100% consistent nightlies will be displayed (see --allow-inconsistency)
     * all arches configured for the group will be required (see --exclude-arch)
 
     You may also specify a desired nightly or nightlies (see --matching) to filter
@@ -104,17 +109,25 @@ async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str], a
     ])
 
     # find sets of nightlies where all arches have equivalent content
-    nightly_sets = []
+    inconsistent_nightly_sets = []
+    remaining = limit
     for nightly_set in generate_nightly_sets(nightlies_for_arch):
         # check for deeper equivalence
         await nightly_set.populate_nightly_content(runtime)
         if nightly_set.deeper_equivalence():
-            nightly_sets.append(nightly_set)
             util.green_print(nightly_set.details() if details else nightly_set)
-            if len(nightly_sets) >= limit:
+            remaining -= 1
+            if not remaining:
                 break  # don't spend time checking more than were requested
+        else:
+            inconsistent_nightly_sets.append(nightly_set)
 
-    if not nightly_sets:
+    if allow_inconsistency and remaining:
+        for nightly_set in inconsistent_nightly_sets[:remaining]:
+            util.yellow_print(nightly_set.details() if details else nightly_set)
+            remaining -= 1
+
+    if remaining == limit:
         util.red_print("No sets of equivalent nightlies found for given parameters.")
         exit(1)
 

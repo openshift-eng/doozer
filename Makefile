@@ -1,4 +1,7 @@
-.PHONY: venv tox lint test
+.PHONY: venv tox lint test install
+
+install:
+	./venv/bin/pip install -r requirements-dev.txt
 
 venv:
 	python3 -m venv venv
