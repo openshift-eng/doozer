@@ -46,9 +46,10 @@ def releases_gen_assembly(ctx, name):
 @click.option("--suggestions-url", metavar='SUGGESTIONS_URL', required=False,
               default="https://raw.githubusercontent.com/openshift/cincinnati-graph-data/master/build-suggestions/",
               help="When using --auto-previous, set custom suggestions URL, load from {major}-{minor}-{arch}.yaml")
+@click.option('--output-file', '-o', required=False, help='Specify a file path to write the generated assembly definition to')
 @pass_runtime
 @click.pass_context
-def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...], standards: Tuple[str, ...], custom: bool, in_flight: Optional[str], previous_list: Tuple[str, ...], auto_previous: bool, graph_url: Optional[str], graph_content_stable: Optional[str], graph_content_candidate: Optional[str], suggestions_url: Optional[str]):
+def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...], standards: Tuple[str, ...], custom: bool, in_flight: Optional[str], previous_list: Tuple[str, ...], auto_previous: bool, graph_url: Optional[str], graph_content_stable: Optional[str], graph_content_candidate: Optional[str], suggestions_url: Optional[str], output_file: Optional[str]):
     runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
     logger = runtime.logger
     gen_assembly_name: str = ctx.obj['ASSEMBLY_NAME']  # The name of the assembly we are going to output
@@ -398,3 +399,7 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
     }
 
     print(yaml.dump(assembly_def))
+
+    if output_file:
+        with open(output_file, 'w') as file:
+            yaml.safe_dump(assembly_def, file)
