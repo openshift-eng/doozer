@@ -103,7 +103,7 @@ class RHCOSBuildFinder:
         @param brew_arch  architecture we are interested in (e.g. "s390x")
         @param private  boolean, true for private stream, false for public (currently, no effect)
         @param custom If the caller knows this build is custom, the library will only search in the -custom buckets. When the RHCOS pipeline runs a custom build, artifacts
-            should be stored in a different area; e.g. https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases/rhcos-4.8-custom/48.84.....-0/x86_64/commitmeta.json
+            should be stored in a different area; e.g. https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/storage/releases/rhcos-4.8-custom/48.84.....-0/x86_64/commitmeta.json
             This is done by ART's RHCOS pipeline code when a custom build is indicated: https://gitlab.cee.redhat.com/openshift-art/rhcos-upshift/-/blob/fdad7917ebdd9c8b47d952010e56e511394ed348/Jenkinsfile#L30
         """
         self.runtime = runtime
@@ -171,10 +171,10 @@ class RHCOSBuildFinder:
         Queries the RHCOS release browser to return metadata about the specified RHCOS build.
         :param build_id: The RHCOS build_id to check (e.g. 410.81.20200520.0)
         :param meta_type: The data to retrieve. "commitmeta" (aka OS Metadata - ostree content) or "meta" (aka Build Metadata / Build record).
-        :return: Returns a Dict containing the parsed requested metadata. See the RHCOS release browser for examples: https://releases-rhcos-art.cloud.privileged.psi.redhat.com/
+        :return: Returns a Dict containing the parsed requested metadata. See the RHCOS release browser for examples: https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/
 
         Example 'meta.json':
-         https://releases-rhcos-art.cloud.privileged.psi.redhat.com/storage/releases/rhcos-4.1/410.81.20200520.0/meta.json
+         https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/storage/releases/rhcos-4.1/410.81.20200520.0/meta.json
          {
              "buildid": "410.81.20200520.0",
              ...

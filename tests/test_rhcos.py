@@ -113,7 +113,7 @@ class TestRhcos(unittest.TestCase):
         Tests the RHCOS build inspector abstraction to ensure it correctly parses and utilizes
         pre-canned data.
         """
-        # Data source: https://releases-rhcos-art.cloud.privileged.psi.redhat.com/?stream=releases/rhcos-4.7-s390x&release=47.83.202107261211-0#47.83.202107261211-0
+        # Data source: https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/?stream=releases/rhcos-4.7-s390x&release=47.83.202107261211-0#47.83.202107261211-0
         rhcos_meta = json.loads(self.respath.joinpath('rhcos1', '47.83.202107261211-0.meta.json').read_text())
         rhcos_commitmeta = json.loads(self.respath.joinpath('rhcos1', '47.83.202107261211-0.commitmeta.json').read_text())
         # NOTE: loading and parsing these fixtures can take a few seconds, no cause for concern
