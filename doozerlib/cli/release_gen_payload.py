@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple, Dict, NamedTuple, Iterable, Set, Any, 
 
 import click
 import yaml
+from doozerlib import rhcos
 import openshift as oc
 from doozerlib.rpm_utils import parse_nvr
 
@@ -1132,6 +1133,7 @@ class PayloadGenerator:
         payload_entries: Dict[str, PayloadGenerator.PayloadEntry]
         issues: List[AssemblyIssue]
         payload_entries, issues = PayloadGenerator.find_payload_entries(assembly_inspector, arch, '')
+        rhcos_container_configs = {tag.name: tag for tag in rhcos.get_container_configs(runtime)}
         for component_tag in release_info.references.spec.tags:  # For each tag in the imagestream
             payload_tag_name: str = component_tag.name  # e.g. "aws-ebs-csi-driver"
             payload_tag_pullspec: str = component_tag['from'].name  # quay pullspec
@@ -1151,9 +1153,10 @@ class PayloadGenerator:
                     issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed archive: {entry.archive_inspector.get_archive_id()} and {entry.archive_inspector.get_archive_pullspec()}',
                                                 component='reference-releases'))
             elif entry.rhcos_build:
-                if entry.rhcos_build.get_container_digest() != pullspec_sha:
+                actual_digest = entry.rhcos_build.get_container_digest(rhcos_container_configs[payload_tag_name])
+                if actual_digest != pullspec_sha:
                     # Impermissible because the artist should remove the reference nightlies from the assembly definition
-                    issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed rhcos: {entry.rhcos_build} and {entry.rhcos_build.get_container_digest()}',
+                    issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed rhcos: {entry.rhcos_build} and {actual_digest}',
                                                 component='reference-releases'))
             else:
                 raise IOError(f'Unsupported payload entry {entry}')
