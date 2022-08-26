@@ -221,7 +221,7 @@ class AssemblyInspector:
         """
         el_ver = build_inspector.get_rhel_base_version()
         if el_ver:  # We might not find an el_ver for an image (e.g. FROM scratch)
-            for dgk, assembly_rpm_build in self.get_group_rpm_build_dicts(el_ver).items():
+            for rpm_dgk, assembly_rpm_build in self.get_group_rpm_build_dicts(el_ver).items():
                 if not assembly_rpm_build:
                     # The RPM doesn't claim to build for this image's RHEL base, so ignore it.
                     continue
@@ -230,7 +230,7 @@ class AssemblyInspector:
                 if package_name in installed_packages:
                     installed_nvr = installed_packages[package_name]['nvr']
                     if installed_nvr != assembly_nvr:
-                        issues.append(AssemblyIssue(f'Expected image to contain assembly RPM build {assembly_nvr} but found {installed_nvr} installed', component=dgk, code=AssemblyIssueCode.CONFLICTING_GROUP_RPM_INSTALLED))
+                        issues.append(AssemblyIssue(f'Expected image to contain assembly RPM build {assembly_nvr} but found {installed_nvr} installed', component=rpm_dgk, code=AssemblyIssueCode.CONFLICTING_GROUP_RPM_INSTALLED))
 
         """
         Assess whether the image build has the upstream
