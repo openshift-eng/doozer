@@ -1310,9 +1310,7 @@ class Runtime(object):
 
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             try:
-                self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
                 # clone all branches as we must sometimes reference master /OWNERS for maintainer information
-
                 if self.is_branch_commit_hash(branch=clone_branch):
                     gitargs = []
                 else:
