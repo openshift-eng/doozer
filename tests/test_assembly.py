@@ -180,6 +180,7 @@ releases:
         self.assertEqual(merger('4', '5'), '4')
         self.assertEqual(merger(None, '5'), None)
         self.assertEqual(merger(True, None), True)
+        self.assertEqual(merger([1, 2], [2, 3]), [1, 2, 3])
 
         # Dicts are additive
         self.assertEqual(
@@ -451,7 +452,8 @@ releases:
                         "foo": {
                             "a": 1,
                             "b": 2
-                        }
+                        },
+                        "bar": [1, 2, 3]
                     }
                 },
                 "parent": {
@@ -459,7 +461,8 @@ releases:
                         "foo": {
                             "b": 3,
                             "c": 4,
-                        }
+                        },
+                        "bar": [0, 2, 4]
                     }
                 },
             }
@@ -470,3 +473,5 @@ releases:
             "b": 2,
             "c": 4,
         })
+        actual = _assembly_config_struct(Model(release_configs), "child", "bar", [])
+        self.assertEqual(actual, [0, 1, 2, 3, 4])

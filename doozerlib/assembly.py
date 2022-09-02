@@ -227,7 +227,8 @@ def _assembly_config_struct(releases_config: Model, assembly: typing.Optional[st
         parent_config_struct = _assembly_config_struct(releases_config, target_assembly.basis.assembly, key, default)
         if key in target_assembly:
             key_struct = target_assembly[key]
-
+            if hasattr(key_struct, "primitive"):
+                key_struct = key_struct.primitive()
             key_struct = merger(key_struct, parent_config_struct.primitive() if hasattr(parent_config_struct, "primitive") else parent_config_struct)
         else:
             key_struct = parent_config_struct
