@@ -284,16 +284,22 @@ class GenPayloadCli:
 
     def validate_parameters(self):
         """Sanity check the assembly requested and adjust state accordingly."""
-        assembly = self.runtime.assembly
-        if assembly not in {None, "stream", "test"} and assembly not in self.runtime.releases_config.releases:
-            raise DoozerFatalError(f"Assembly '{assembly}' is not explicitly defined.")
+        rt = self.runtime
+        if rt.assembly not in {None, "stream", "test"} and rt.assembly not in rt.releases_config.releases:
+            raise DoozerFatalError(f"Assembly '{rt.assembly}' is not explicitly defined.")
 
-        if assembly and assembly != "stream" and "art-latest" in self.base_imagestream[1]:
+        if rt.assembly and rt.assembly != "stream" and "art-latest" in self.base_imagestream[1]:
             raise ValueError('"art-latest" imagestreams should only be used for the "stream" assembly')
 
-        if self.runtime.assembly_type is AssemblyTypes.STREAM:
+        if rt.assembly_type is AssemblyTypes.STREAM:
             # Only nightlies have the concept of private and public payloads
             self.privacy_modes = [False, True]
+
+        # check that we can produce a full multi nightly if requested
+        if self.apply_multi_arch and (rt.images or rt.exclude or self.exclude_arch):
+            raise DoozerFatalError(
+                "Cannot create a multi nightly without including the full set of images. "
+                "Either include all images/arches or omit --apply-multi-arch")
 
     def generate_assembly_report(self, assembly_inspector: AssemblyInspector) -> Dict:
         """Generate a status report of the search for inconsistencies across all payloads generated."""

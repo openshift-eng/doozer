@@ -78,6 +78,16 @@ class TestGenPayloadCli(TestCase):
         gpcli.validate_parameters()
         self.assertIn(True, gpcli.privacy_modes, "stream assemblies should have private mode")
 
+        # and that we're protected against incomplete multi nightlies
+        gpcli = rgp_cli.GenPayloadCli(
+            apply_multi_arch=True,
+            runtime=MagicMock(
+                assembly="stream",
+                exclude=["some-random-image"],
+            ))
+        with self.assertRaises(DoozerFatalError):
+            gpcli.validate_parameters()
+
     @patch.object(AssemblyInspector, "__init__", lambda *_: None)
     @patch.object(AssemblyInspector, "get_group_release_images", Mock(return_value={}))
     @patch("doozerlib.cli.release_gen_payload.GenPayloadCli.generate_assembly_issues_report")
