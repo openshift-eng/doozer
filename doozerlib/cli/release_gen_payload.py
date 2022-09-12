@@ -759,17 +759,32 @@ class GenPayloadCli:
 
     def sync_heterogeneous_payloads(self, multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]]):
         """
-        We now generate the artifacts to create heterogeneous release payloads. A heterogeneous or
-        'multi' release payload is a manifest list (i.e. it consists of N release payload
-        manifests, one for each arch). The release payload images referenced in the multi-release
-        payload manifest list are themselves somewhat standard release payloads (i.e. they are
-        based on CVO images for their arch) BUT, each component image they reference is a manifest
-        list.
+        We now generate the artifacts to create heterogeneous release payloads (suitable for
+        clusters with multiple arches present). A heterogeneous or 'multi' release payload is a
+        manifest list (i.e. it consists of N release payload manifests, one for each arch).
 
-        For example, the `cli` image in the s390x release payload will point to a a manifest list
-        composed of cli image manifests for each architecture. In short, the highest level release
-        payload pullspec is a manifest list, referencing single arch release payload images, and
-        these arch specific payload images reference manifest list based components pullspecs.
+        The release payload images referenced in the multi-release payload manifest list are
+        themselves somewhat standard release payloads (i.e. they are based on CVO images for their
+        arch) BUT, each component image they reference is a manifest list. For example, the `cli`
+        image in the s390x release payload will point to a a manifest list composed of cli image
+        manifests for each architecture.
+
+        So the top-level release payload pullspec is a manifest list, referencing release payload
+        images for each arch, and these arch specific payload images reference manifest list based
+        components pullspecs.
+
+        The outcome is that this method creates/updates:
+        1. A component imagestream containing a tag per image component, similar to what we do for
+           single-arch assemblies, but written to a file rather than applied to the cluster.
+        2. For each arch, a payload image based on its CVO, built with references to the (multi-arch)
+           components in this imagestream and stored in
+           * quay.io/openshift-release-dev/ocp-release-nightly for nightlies or
+           * quay.io/openshift-release-dev/ocp-release for standard/custom releases.
+        3. A multi payload image, which is a manifest list built from the arch-specific release
+           payload images and stored in the same quay.io repos as above.
+        4. A _release_ imagestream per assembly to record tag(s) for multi-arch payload image(s)
+           created in step 3, e.g. `4.11-art-latest-multi` for `stream` assembly or
+           `4.11-art-assembly-4.11.4-multi` for other assemblies.
         """
         for private_mode in self.privacy_modes:
 
@@ -785,9 +800,9 @@ class GenPayloadCli:
             imagestream_namespace, imagestream_name = payload_imagestream_namespace_and_name(
                 *self.base_imagestream, "multi", private_mode)
 
-            multi_release_name: str  # The name of the multi release payload image
-            multi_release_manifest_list_tag: str  # The tag for the multi imagestream
-            multi_release_name, multi_release_manifest_list_tag = self.get_multi_release_names(private_mode)
+            multi_release_istag: str  # The tag to record the multi release payload image
+            multi_release_manifest_list_tag: str  # The quay.io tag to preserve the multi payload
+            multi_release_istag, multi_release_manifest_list_tag = self.get_multi_release_names(private_mode)
 
             multi_istags: List[Dict] = list(
                 self.build_multi_istag(tag_name, arch_to_payload_entry, imagestream_namespace)
@@ -805,23 +820,27 @@ class GenPayloadCli:
             # manifest list.
             multi_release_dest: str = f"quay.io/{'/'.join(self.release_repo)}:{multi_release_manifest_list_tag}"
             final_multi_pullspec: str = self.create_multi_release_image(
-                imagestream_name, multi_release_is, multi_release_dest, multi_release_name,
+                imagestream_name, multi_release_is, multi_release_dest, multi_release_istag,
                 multi_specs, private_mode)
             self.logger.info(f"The final pull_spec for the multi release payload is: {final_multi_pullspec}")
 
             with oc.project(imagestream_namespace):
-                self.apply_multi_imagestream_update(final_multi_pullspec, imagestream_name, multi_release_name)
+                self.apply_multi_imagestream_update(final_multi_pullspec, imagestream_name, multi_release_istag)
 
     def get_multi_release_names(self, private_mode: bool) -> Tuple[str, str]:
-        """Get the names of the multi release and imagestream tag."""
+        """
+        Determine a unique name for the multi release (recorded in the imagestream for the assembly) and a
+        quay.io tag to prevent garbage collection of the image -- as of 2022-09-09, both tags are
+        the same.
+        """
         multi_ts = datetime.now().strftime("%Y-%m-%d-%H%M%S")
         if self.runtime.assembly_type is AssemblyTypes.STREAM:
             # We are publicizing a nightly. Unlike single-arch payloads, the release controller does
             # not react to 4.x-art-latest updates and create a timestamp-based name. We create the
             # nightly name in doozer.
-            multi_release_name = f"{self.runtime.get_minor_version()}.0-0.nightly{go_suffix_for_arch('multi', private_mode)}-{multi_ts}"
+            multi_release_istag = f"{self.runtime.get_minor_version()}.0-0.nightly{go_suffix_for_arch('multi', private_mode)}-{multi_ts}"
             # Tag the release image with same name as release displayed in the release controller
-            multi_release_manifest_list_tag = multi_release_name
+            multi_release_manifest_list_tag = multi_release_istag
         else:
             # Tag the release image in quay with anything unique; we just don't want it garbage
             # collected. It will not show up in the release controller. The only purpose of this
@@ -832,8 +851,8 @@ class GenPayloadCli:
             # does not matter, because it will not be visible in the release controller and will not
             # be the ultimate name used to promote the release. It must be unique, however, because
             # Cincinnati chokes if multiple images exist in the repo with the same release name.
-            multi_release_name = multi_release_manifest_list_tag
-        return multi_release_name, multi_release_manifest_list_tag
+            multi_release_istag = multi_release_manifest_list_tag
+        return multi_release_istag, multi_release_manifest_list_tag
 
     def build_multi_istag(self, tag_name: str, arch_to_payload_entry: Dict[str, PayloadEntry], imagestream_namespace: str) -> Dict:
         """Build a single imagestream tag for a component in a multi-arch payload."""
@@ -910,7 +929,7 @@ class GenPayloadCli:
     def create_multi_release_image(
             self, imagestream_name: str, multi_release_is: Dict, multi_release_dest: str,
             multi_release_name: str, multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]],
-            private_mode: bool) -> Dict[str, str]:
+            private_mode: bool) -> str:
         """
         Create and publish a "multi" release image for each arch. These all have the same content,
         just the release image itself is arch-specific (based on arch CVO). Then stitch them
@@ -924,7 +943,7 @@ class GenPayloadCli:
             yaml.safe_dump(multi_release_is, mf)
 
         arch_release_dests: Dict[str, str] = dict()  # This will map arch names to a release payload pullspec we create for that arch (i.e. based on the arch's CVO image)
-        for arch, payload_entry in multi_specs[private_mode]["cluster-version-operator"].items():
+        for arch, cvo_entry in multi_specs[private_mode]["cluster-version-operator"].items():
             arch_release_dests[arch] = f"{multi_release_dest}-{arch}"
             # Create the arch specific release payload containing tags pointing to manifest list
             # component images.
@@ -934,7 +953,7 @@ class GenPayloadCli:
                 "--reference-mode=source",
                 "--keep-manifest-list",
                 f"--from-image-stream-file={str(multi_release_is_path)}",
-                f"--to-image-base={payload_entry.dest_pullspec}",
+                f"--to-image-base={cvo_entry.dest_pullspec}",
                 f"--to-image={arch_release_dests[arch]}",
                 "--metadata", json.dumps({"release.openshift.io/architecture": "multi"})
             ])
@@ -943,8 +962,11 @@ class GenPayloadCli:
 
     def create_multi_release_manifest_list(
             self, arch_release_dests: Dict[str, str],
-            imagestream_name: str, multi_release_dest: str):
-        """Create manifest list spec containing references to the arch specific release payloads created"""
+            imagestream_name: str, multi_release_dest: str) -> str:
+        """
+        Create a manifest list spec containing references to the arch specific release payloads
+        created. Return sha-based pullspec.
+        """
         ml_dict = {
             "image": f"{multi_release_dest}",
             "manifests": [
@@ -968,7 +990,7 @@ class GenPayloadCli:
         return exchange_pullspec_tag_for_shasum(
             multi_release_dest, find_manifest_list_sha(multi_release_dest))
 
-    def apply_multi_imagestream_update(self, final_multi_pullspec: str, imagestream_name: str, multi_release_name: str):
+    def apply_multi_imagestream_update(self, final_multi_pullspec: str, imagestream_name: str, multi_release_istag: str):
         """Update the multi-release imagestream, pruning old nightlies and adding the new one."""
         # [lmeyer] Q: but what if this is NOT a nightly? then we should not prune. but it's probably
         # ok because we won't have more than one tag in non-nightly imagestreams?
@@ -1001,7 +1023,7 @@ class GenPayloadCli:
                 "referencePolicy": {
                     "type": "Source"
                 },
-                "name": multi_release_name,
+                "name": multi_release_istag,
                 "annotations": {
                     "release.openshift.io/rewrite": "false",  # Prevents the release controller from trying to create a local registry release payload with oc adm release new.
                     # "release.openshift.io/name": f"{self.runtime.get_minor_version()}.0-0.nightly",
