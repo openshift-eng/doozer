@@ -254,14 +254,7 @@ class OLMBundle(object):
                 contents = self.find_and_replace_image_references_by_sha(f.read())
                 f.seek(0)
                 f.truncate()
-                if "clusterserviceversion.yaml" in file:
-                    if not self.valid_subscription_label:
-                        raise ValueError("missing valid-subscription-label in operator config")
-                    yml_content = yaml.safe_load(contents)
-                    yml_content['metadata']['annotations']['operators.openshift.io/valid-subscription'] = self.valid_subscription_label
-                    f.write(yaml.dump(yml_content))
-                else:
-                    f.write(contents)
+                f.write(contents)
 
     def generate_bundle_annotations(self):
         """Create an annotations YAML file for the bundle, using info extracted from operator's
@@ -577,6 +570,9 @@ class OLMBundle(object):
         if self.runtime.group_config.operator_channel_stable == 'default':
             override_default = stable_channel
 
+        if not self.valid_subscription_label:
+            raise ValueError("missing valid-subscription-label in operator config")
+
         return {
             'operators.operatorframework.io.bundle.channel.default.v1': override_default,
             'operators.operatorframework.io.bundle.channels.v1': override_channel,
@@ -584,6 +580,7 @@ class OLMBundle(object):
             'operators.operatorframework.io.bundle.mediatype.v1': 'registry+v1',
             'operators.operatorframework.io.bundle.metadata.v1': 'metadata/',
             'operators.operatorframework.io.bundle.package.v1': self.package,
+            'operators.openshift.io/valid-subscription': self.valid_subscription_label,
         }
 
     @property
