@@ -1558,7 +1558,9 @@ class ImageDistGitRepo(DistGitRepo):
                 if from_image_metadata is None:
                     if not self.runtime.ignore_missing_base:
                         raise IOError(
-                            "Unable to find base image metadata [%s] in included images. Use --ignore-missing-base to ignore." % base)
+                            "Unable to find base image metadata [%s] in included images. "
+                            "Use --ignore-missing-base to ignore." % base
+                        )
                     elif self.runtime.latest_parent_version or self.runtime.assembly_basis_event:
                         # If there is a basis event, we must look for latest; we can't just persist
                         # what is in the Dockerfile. It has to be constrained to the brew event.
@@ -1579,12 +1581,15 @@ class ImageDistGitRepo(DistGitRepo):
                         from_image_distgit = from_image_metadata.distgit_repo()
                         if from_image_distgit.private_fix is None:  # This shouldn't happen.
                             raise ValueError(
-                                f"Parent image {base} doesn't have .p0/.p1 flag determined. This indicates a bug in Doozer.")
-                        if from_image_distgit.private_fix:  # if the parent we are going to build is embargoed
-                            self.private_fix = True  # this image should also be embargoed
+                                f"Parent image {base} doesn't have .p0/.p1 flag determined. "
+                                f"This indicates a bug in Doozer."
+                            )
+                        # If the parent we are going to build is embargoed, this image should also be embargoed
+                        self.private_fix = from_image_distgit.private_fix
+
                         # Everything in the group is going to be built with the uuid tag, so we must
                         # assume that it will exist for our parent.
-                        mapped_images.append("{}:{}".format(from_image_metadata.config.name, self.uuid_tag))
+                        mapped_images.append(f"{from_image_metadata.config.name}:{self.uuid_tag}")
 
             # Is this image FROM another literal image name:tag?
             elif image.image is not Missing:
@@ -1602,7 +1607,8 @@ class ImageDistGitRepo(DistGitRepo):
                     # consider using 'from!:' in the assembly metadata for this component. This will
                     # all you to fully pin the parent images (e.g. {'from!:' ['image': <pullspec>] })
                     latest_build = self.metadata.get_latest_build(default=None)
-                    assembly_msg = f'{self.metadata.distgit_key} in assembly {self.runtime.assembly} with basis event {self.runtime.assembly_basis_event}'
+                    assembly_msg = f'{self.metadata.distgit_key} in assembly {self.runtime.assembly} ' \
+                                   f'with basis event {self.runtime.assembly_basis_event}'
                     if not latest_build:
                         raise IOError(f'Unable to find latest build for {assembly_msg}')
                     build_model = Model(dict_to_model=latest_build)
@@ -1610,15 +1616,24 @@ class ImageDistGitRepo(DistGitRepo):
                         raise IOError(f'Unable to find latest build parent images in {latest_build} for {assembly_msg}')
                     elif len(build_model.extra.image.parent_images) != len(parent_images):
                         raise IOError(
-                            f'Did not find the expected cardinality ({len(parent_images)} of parent images in {latest_build} for {assembly_msg}')
+                            f'Did not find the expected cardinality ({len(parent_images)} '
+                            f'of parent images in {latest_build} for {assembly_msg}'
+                        )
 
-                    # build_model.extra.image.parent_images is an array of tags (entries like openshift/golang-builder:rhel_8_golang_1.15).
+                    # build_model.extra.image.parent_images is an array of tags
+                    # (entries like openshift/golang-builder:rhel_8_golang_1.15).
                     # We can't use floating tags for this, so we need to look up those tags in parent_image_builds,
-                    # which is also in the extras data.
-                    # example parent_image_builds: {'registry-proxy.engineering.redhat.com/rh-osbs/openshift-base-rhel8:v4.6.0.20210528.150530': {'id': 1616717,
-                    #       'nvr': 'openshift-base-rhel8-container-v4.6.0-202105281403.p0.git.f17f552'},
-                    #      'registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.15': {'id': 1542268,
-                    #       'nvr': 'openshift-golang-builder-container-v1.15.7-202103191923.el8'}}
+                    # which is also in the extras data. Example parent_image_builds:
+                    # {
+                    #     "registry-proxy.engineering.redhat.com/rh-osbs/openshift-base-rhel8:v4.6.0.20210528.150530": {
+                    #         "id": 1616717,
+                    #         "nvr": "openshift-base-rhel8-container-v4.6.0-202105281403.p0.git.f17f552"
+                    #     },
+                    #     "registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.15": {
+                    #         "id": 1542268,
+                    #         "nvr": "openshift-golang-builder-container-v1.15.7-202103191923.el8"
+                    #     }
+                    # }
                     # Note this map actually gets us to an NVR.
                     # Example latest_build return: https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
                     target_parent_name = build_model.extra.image.parent_images[i]  # Which parent are looking for? e.g. 'openshift/golang-builder:rhel_8_golang_1.15'
@@ -1637,7 +1652,9 @@ class ImageDistGitRepo(DistGitRepo):
                         unique_pullspec = tag_pullspec.rsplit(':', 1)[0]  # remove the tag
                     else:
                         raise IOError(f'Unexpected pullspec format: {tag_pullspec}')
-                    unique_pullspec += f':{parent_build_nvr["version"]}-{parent_build_nvr["release"]}'  # qualify with the pullspec using nvr as a tag; e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.15.7-202103191923.el8'
+                    # qualify with the pullspec using nvr as a tag; e.g.
+                    # registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.15.7-202103191923.el8'
+                    unique_pullspec += f':{parent_build_nvr["version"]}-{parent_build_nvr["release"]}'
                     mapped_images.append(unique_pullspec)
 
                 else:
