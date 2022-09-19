@@ -1631,6 +1631,50 @@ class ImageDistGitRepo(DistGitRepo):
         unique_pullspec += f':{parent_build_nvr["version"]}-{parent_build_nvr["release"]}'
         return unique_pullspec
 
+    def _mapped_image_from_stream(self, image, original_parent, dfp):
+        stream = self.runtime.resolve_stream(image.stream)
+
+        if not self.runtime.group_config.canonical_builders_from_upstream:
+            # Do typical stream resolution.
+            return stream.image
+
+        # When canonical_builders_from_upstream flag is set, try to match upstream FROM
+        original_parent = original_parent
+        cmd = f'oc image info {original_parent} -o json'
+        out, _ = exectools.cmd_assert(cmd, retries=3)
+        labels = json.loads(out)['config']['config']['Labels']
+        builder_tag = f'{labels["version"]}-{labels["release"]}'
+
+        # Verify wether the image exists
+        upstream_equivalent = f'registry-proxy.engineering.redhat.com/rh-osbs/' \
+                              f'openshift-golang-builder:{builder_tag}'
+        cmd = f'oc image info {upstream_equivalent} --filter-by-os linux/amd64 -o json'
+        try:
+            out, _ = exectools.cmd_assert(cmd, retries=3)
+            # It does. Use this to rebase FROM directive
+            digest = json.loads(out)['digest']
+            mapped_image = f'openshift/golang-builder@{digest}'
+            # if upstream equivalent does not match ART's config, add a warning to the Dockerfile
+            if mapped_image != stream.image:
+                dfp.add_lines(
+                    "",
+                    "# Parent images were rebased matching upstream equivalent that didn't match ART's config",
+                    "",
+                    at_start=True)
+            return mapped_image
+
+        except ChildProcessError:
+            # It doesn't. Emit a warning and do typical stream resolution
+            logger.warning(f'Could not match upstream parent {original_parent}')
+            stream = self.runtime.resolve_stream(image.stream)
+            dfp.add_lines(
+                "",
+                "# Failed matching upstream equivalent, ART configuration was used to rebase parent images",
+                "",
+                at_start=True
+            )
+            return stream.image
+
     def _rebase_from_directives(self, dfp):
         image_from = Model(self.config.get('from', None))
 
@@ -1666,9 +1710,8 @@ class ImageDistGitRepo(DistGitRepo):
                     # Rebasing for an assembly build
                     mapped_images.append(self._mapped_image_for_assembly_build(parent_images, i))
                 else:
-                    # Othwerwise, do typical stream resolution.
-                    stream = self.runtime.resolve_stream(image.stream)
-                    mapped_images.append(stream.image)
+                    # Rebasing for a stream/test build
+                    mapped_images.append(self._mapped_image_from_stream(image, original_parents[i], dfp))
 
             else:
                 raise IOError("Image in 'from' for [%s] is missing its definition." % image.name)
