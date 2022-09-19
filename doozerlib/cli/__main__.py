@@ -2228,9 +2228,6 @@ def rebase_and_build_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...]
 
 def main():
     try:
-        if 'REQUESTS_CA_BUNDLE' not in os.environ:
-            os.environ['REQUESTS_CA_BUNDLE'] = '/etc/pki/tls/certs/ca-bundle.crt'
-
         cli(obj={})
     except DoozerFatalError as ex:
         # Allow capturing actual tool errors and print them

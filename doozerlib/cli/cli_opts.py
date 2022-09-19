@@ -33,7 +33,7 @@ CLI_OPTS = {
     },
     'user': {
         'env': 'DOOZER_USER',
-        'help': 'Username for running rhpkg / brew / tito'
+        'help': 'Username for running rhpkg / brew'
     },
     'global_opts': {
         'help': 'Global option overrides that can only be set from settings.yaml',

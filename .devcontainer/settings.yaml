@@ -7,5 +7,5 @@ data_path: https://github.com/openshift/ocp-build-data.git
 #Sub-group directory or branch to pull build data
 # group: openshift-4.0
 
-#Username for running rhpkg / brew / tito
+#Username for running rhpkg / brew
 # user: dev

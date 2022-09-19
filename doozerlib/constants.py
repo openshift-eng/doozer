@@ -8,6 +8,7 @@ GIT_NO_PROMPTS = {
 
 GITHUB_TOKEN = "GITHUB_TOKEN"
 BREWWEB_URL = "https://brewweb.engineering.redhat.com/brew"
+DISTGIT_GIT_URL = "git://pkgs.devel.redhat.com"
 
 # Environment variables that should be set for doozer interaction with db for storing and retrieving build records.
 # DB ENV VARS

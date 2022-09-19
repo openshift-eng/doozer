@@ -15,23 +15,6 @@ from .metadata import Metadata
 from .model import Missing
 from .pushd import Dir
 
-RELEASERS_CONF = """
-[{target}]
-releaser = tito.release.DistGitReleaser
-branches = {branch}
-build_targets = {branch}:{brew_target}
-srpm_disttag = .el7aos
-builder.test = 1
-remote_git_name = {name}
-"""
-
-# note; appended to, does not replace existing props
-TITO_PROPS = """
-
-[{target}]
-remote_git_name = {name}
-"""
-
 
 class RPMMetadata(Metadata):
 
