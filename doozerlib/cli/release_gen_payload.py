@@ -1,10 +1,11 @@
-import datetime
+from datetime import datetime
 import hashlib
 import traceback
 import sys
 import json
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict, NamedTuple, Iterable, Set, Any, Callable
+from unittest.mock import MagicMock
 
 import click
 import yaml
@@ -12,7 +13,7 @@ from doozerlib import rhcos
 import openshift as oc
 from doozerlib.rpm_utils import parse_nvr
 
-from doozerlib.brew import KojiWrapper
+from doozerlib.brew import KojiWrapperMetaReturn
 from doozerlib.rhcos import RHCOSBuildInspector, RhcosMissingContainerException
 from doozerlib.cli import cli, pass_runtime
 from doozerlib.image import ImageMetadata, BrewBuildImageInspector, ArchiveImageInspector
@@ -26,86 +27,22 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import find_manifest_list_sha
 
 
-def default_imagestream_base_name(version: str) -> str:
-    return f'{version}-art-latest'
-
-
-def assembly_imagestream_base_name(runtime: Runtime) -> str:
-    version = runtime.get_minor_version()
-    if runtime.assembly is None or runtime.assembly == 'stream':
-        return default_imagestream_base_name(version)
-    else:
-        return f'{version}-art-assembly-{runtime.assembly}'
-
-
-def default_imagestream_namespace_base_name() -> str:
-    return "ocp"
-
-
-def payload_imagestream_name_and_namespace(base_imagestream_name: str, base_namespace: str, brew_arch: str, private: bool) -> Tuple[str, str]:
-    """
-    :return: Returns the imagestream name and namespace to which images for the specified CPU arch and privacy mode should be synced.
-    """
-    arch_suffix = go_suffix_for_arch(brew_arch)
-    priv_suffix = "-priv" if private else ""
-    name = f"{base_imagestream_name}{arch_suffix}{priv_suffix}"
-    namespace = f"{base_namespace}{arch_suffix}{priv_suffix}"
-    return name, namespace
-
-
-def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable[[oc.APIObject], Any], backup_file_path: Path, dry_run: bool):
-    """
-    Receives an APIObject, archives the current state of that object, runs a modifying method on it,
-    archives the new state of the object, and then tries to replace the object on the
-    cluster API server.
-    :param api_obj: The openshift client APIObject to work with.
-    :param modifier_func: A function that will accept the api_obj as its first parameter and make any desired change
-                            to that object.
-    :param backup_file_path: A Path object that can be used to archive pre & post modification states of the object
-                                before triggering the update.
-    :param dry_run: Write archive files but do not actually update the imagestream.
-    """
-    with backup_file_path.joinpath(f'replacing-{api_obj.kind()}.{api_obj.namespace()}.{api_obj.name()}.before-modify.json').open(mode='w+') as backup_file:
-        backup_file.write(api_obj.as_json(indent=4))
-
-    modifier_func(api_obj)
-    api_obj_model = api_obj.model
-
-    # Before replacing api objects on the server, make sure to remove aspects that can
-    # confuse subsequent CLI interactions with the object.
-    if api_obj_model.metadata.annotations['kubectl.kubernetes.io/last-applied-configuration']:
-        api_obj_model.metadata.annotations.pop('kubectl.kubernetes.io/last-applied-configuration')
-
-    # If server-side metadata is being passed in, remove it before we try to replace the object.
-    if api_obj_model.metadata:
-        for md in ['creationTimestamp', 'generation', 'uid']:
-            api_obj_model.metadata.pop(md)
-
-    api_obj_model.pop('status')
-
-    with backup_file_path.joinpath(f'replacing-{api_obj.kind()}.{api_obj.namespace()}.{api_obj.name()}.after-modify.json').open(mode='w+') as backup_file:
-        backup_file.write(api_obj.as_json(indent=4))
-
-    if not dry_run:
-        api_obj.replace()
-
-
 @cli.command("release:gen-payload", short_help="Mirror release images to quay and release-controller")
-@click.option("--is-name", metavar='NAME', required=False,
+@click.option("--is-name", metavar="NAME", required=False,
               help="ImageStream .metadata.name value. For example '4.2-art-latest'")
-@click.option("--is-namespace", metavar='NAMESPACE', required=False,
+@click.option("--is-namespace", metavar="NAMESPACE", required=False,
               help="ImageStream .metadata.namespace value. For example 'ocp'")
-@click.option("--organization", metavar='ORGANIZATION', required=False, default='openshift-release-dev',
+@click.option("--organization", metavar="ORGANIZATION", required=False, default="openshift-release-dev",
               help="Quay ORGANIZATION to mirror into.\ndefault=openshift-release-dev")
-@click.option("--repository", metavar='REPO', required=False, default='ocp-v4.0-art-dev',
+@click.option("--repository", metavar="REPO", required=False, default="ocp-v4.0-art-dev",
               help="Quay REPOSITORY in ORGANIZATION to mirror into.\ndefault=ocp-v4.0-art-dev")
-@click.option("--release-repository", metavar='REPO', required=False, default='ocp-release-nightly',
+@click.option("--release-repository", metavar="REPO", required=False, default="ocp-release-nightly",
               help="Quay REPOSITORY in ORGANIZATION to push release payloads (used for multi-arch)\ndefault=ocp-release-nightly")
-@click.option("--output-dir", metavar='DIR', required=False, default='.',
+@click.option("--output-dir", metavar="DIR", required=False, default=".",
               help="Directory into which the mirroring/imagestream artifacts should be written")
 @click.option("--skip-gc-tagging", default=False, is_flag=True,
               help="By default, for a named assembly, images will be tagged to prevent garbage collection")
-@click.option("--exclude-arch", metavar='ARCH', required=False, multiple=True,
+@click.option("--exclude-arch", metavar="ARCH", required=False, multiple=True,
               help="Architecture (brew nomenclature) to exclude from payload generation")
 @click.option("--emergency-ignore-issues", default=False, is_flag=True,
               help="If you must get this command to permit an assembly despite issues. Do not use without approval.")
@@ -120,45 +57,42 @@ def release_gen_payload(runtime: Runtime, is_name: str, is_namespace: str, organ
                         repository: str, release_repository: str, output_dir: str, exclude_arch: Tuple[str, ...],
                         skip_gc_tagging: bool, emergency_ignore_issues: bool,
                         apply: bool, apply_multi_arch: bool, moist_run: bool):
-    """Computes a set of imagestream tags which can be assembled
-into an OpenShift release for this assembly. The tags may not be
-valid unless --apply or --moist-run triggers mirroring.
+    """
+Computes a set of imagestream tags which can be assembled into an OpenShift release for this
+assembly. The tags may not be valid unless --apply or --moist-run triggers mirroring.
 
 Applying the change will cause the OSBS images to be mirrored into the OpenShift release
 repositories on quay.
 
-Applying will also directly update the imagestreams relevant to assembly (e.g.
-updating 4.9-art-latest for 4.9's stream assembly).
+Applying will also directly update the imagestreams relevant to assembly (e.g. updating
+4.9-art-latest for 4.9's stream assembly).
 
-You may provide the namespace and base name for the image streams, or defaults
-will be used.
+You may provide the namespace and base name for the image streams, or defaults will be used.
 
-The ORGANIZATION and REPOSITORY options are combined into
-ORGANIZATION/REPOSITORY when preparing for mirroring.
+The ORGANIZATION and REPOSITORY options are combined into ORGANIZATION/REPOSITORY when preparing for
+mirroring.
 
-Generate files for mirroring from registry-proxy (OSBS storage) to our
-quay registry:
+Generate files for mirroring from registry-proxy (OSBS storage) to our quay registry:
 
 \b
-    $ doozer --group=openshift-4.2 release:gen-payload \\
-        --is-name=4.2-art-latest
+    $ doozer --group=openshift-4.12 release:gen-payload \\
+        --is-name=4.12-art-latest
 
-Note that if you use -i to include specific images, you should also include
-openshift-enterprise-pod to supply the 'pod' tag. The 'pod' image is used
-automatically as a payload stand-in for images that do not build on all arches.
+Note that if you use -i to include specific images, you should also include openshift-enterprise-pod
+to supply the 'pod' tag. The 'pod' image is used automatically as a payload stand-in for images that
+do not build on all arches.
 
 ## Validation ##
 
-Additionally we want to check that the following conditions are true for each
-imagestream being updated:
+Additionally we want to check that the following conditions are true for each imagestream being
+updated:
 
-* For all architectures built, RHCOS builds must have matching versions of any
-  unshipped RPM they include (per-entry os metadata - the set of RPMs may differ
-  between arches, but versions should not).
-* Any RPMs present in images (including RHCOS) from unshipped RPM
-  builds included in one of our candidate tags must exactly version-match the
-  latest RPM builds in those candidate tags (ONLY; we never flag what we don't
-  directly ship.)
+* For all architectures built, RHCOS builds must have matching versions of any unshipped RPM they
+  include (per-entry os metadata - the set of RPMs may differ between arches, but versions should
+  not).
+* Any RPMs present in images (including RHCOS) from unshipped RPM builds included in one of our
+  candidate tags must exactly version-match the latest RPM builds in those candidate tags (ONLY; we
+  never flag what we don't directly ship.)
 
 These checks (and likely more in the future) should run and any failures should
 be listed in brief via a "release.openshift.io/inconsistency" annotation on the
@@ -166,654 +100,941 @@ relevant image istag (these are publicly visible; ref. https://bit.ly/37cseC1)
 and in more detail in state.yaml. The release-controller, per ART-2195, will
 read and propagate/expose this annotation in its display of the release image.
     """
-    runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
+    runtime.initialize(mode="both", clone_distgits=False, clone_source=False, prevent_cloning=True)
+    GenPayloadCli(
+        runtime,
+        is_name or assembly_imagestream_base_name(runtime),
+        is_namespace or default_imagestream_namespace_base_name(),
+        organization, repository, release_repository,
+        output_dir,
+        exclude_arch,
+        skip_gc_tagging, emergency_ignore_issues,
+        apply, apply_multi_arch, moist_run
+    ).run()
 
-    if runtime.assembly not in {None, "stream", "test"} and runtime.assembly not in runtime.releases_config.releases:
-        raise DoozerFatalError(f"Assembly '{runtime.assembly}' is not explicitly defined.")
 
-    logger = runtime.logger
-    brew_session = runtime.build_retrying_koji_client()
+def default_imagestream_base_name(version: str) -> str:
+    return f"{version}-art-latest"
 
-    base_imagestream_name: str = is_name if is_name else assembly_imagestream_base_name(runtime)
-    base_istream_namespace: str = is_namespace if is_namespace else default_imagestream_namespace_base_name()
 
-    if runtime.assembly and runtime.assembly != 'stream' and 'art-latest' in base_imagestream_name:
-        raise ValueError('The art-latest imagestreams should not be used for an assembly other than "stream"')
-
-    logger.info(f'Collecting latest information associated with the assembly: {runtime.assembly}')
-    assembly_inspector = AssemblyInspector(runtime, brew_session)
-    logger.info('Checking for mismatched siblings...')
-    mismatched_siblings = PayloadGenerator.find_mismatched_siblings(assembly_inspector.get_group_release_images().values())
-
-    # A list of strings that denote inconsistencies across all payloads generated
-    assembly_issues: List[AssemblyIssue] = list()
-
-    for mismatched_bbii, sibling_bbi in mismatched_siblings:
-        mismatch_issue = AssemblyIssue(f'{mismatched_bbii.get_nvr()} was built from a different upstream source commit ({mismatched_bbii.get_source_git_commit()[:7]}) than one of its siblings {sibling_bbi.get_nvr()} from {sibling_bbi.get_source_git_commit()[:7]}',
-                                       component=mismatched_bbii.get_image_meta().distgit_key,
-                                       code=AssemblyIssueCode.MISMATCHED_SIBLINGS)
-        assembly_issues.append(mismatch_issue)
-
-    report = dict()
-    report['non_release_images'] = [image_meta.distgit_key for image_meta in runtime.get_non_release_image_metas()]
-    report['release_images'] = [image_meta.distgit_key for image_meta in runtime.get_for_release_image_metas()]
-    report['missing_image_builds'] = [dgk for (dgk, ii) in assembly_inspector.get_group_release_images().items() if ii is None]  # A list of metas where the assembly did not find a build
-
-    if runtime.assembly_type is AssemblyTypes.STREAM:
-        # Only nightlies have the concept of private and public payloads
-        privacy_modes = [False, True]
+def assembly_imagestream_base_name(runtime: Runtime) -> str:
+    version = runtime.get_minor_version()
+    if runtime.assembly is None or runtime.assembly_type is AssemblyTypes.STREAM:
+        return default_imagestream_base_name(version)
     else:
-        privacy_modes = [False]
+        return f"{version}-art-assembly-{runtime.assembly}"
 
-    # Structure to record rhcos builds we use so that they can be analyzed for inconsistencies
-    targeted_rhcos_builds: Dict[bool, List[RHCOSBuildInspector]] = {
-        False: [],
-        True: []
-    }
+
+def default_imagestream_namespace_base_name() -> str:
+    return "ocp"
+
+
+def payload_imagestream_namespace_and_name(base_namespace: str, base_imagestream_name: str, brew_arch: str, private: bool) -> Tuple[str, str]:
+    """
+    :return: Returns the imagestream name and namespace to which images for the specified CPU arch and privacy mode should be synced.
+    """
+    arch_suffix = go_suffix_for_arch(brew_arch)
+    priv_suffix = "-priv" if private else ""
+    namespace = f"{base_namespace}{arch_suffix}{priv_suffix}"
+    name = f"{base_imagestream_name}{arch_suffix}{priv_suffix}"
+    return namespace, name
+
+
+def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable[[oc.APIObject], Any], backup_file_path: Path, dry_run: bool):
+    """
+    Receives an APIObject, archives the current state of that object, runs a modifying method on it,
+    archives the new state of the object, and then tries to replace the object on the
+    cluster API server.
+    :param api_obj: The openshift client APIObject to work with.
+    :param modifier_func: A function that will accept the api_obj as its first parameter and make
+                          any desired change to that object.
+    :param backup_file_path: A Path object that can be used to archive pre & post modification
+                             states of the object before triggering the update.
+    :param dry_run: Write archive files but do not actually update the imagestream.
+    """
+    with backup_file_path.joinpath(f"replacing-{api_obj.kind()}.{api_obj.namespace()}.{api_obj.name()}.before-modify.json").open(mode="w+") as backup_file:
+        backup_file.write(api_obj.as_json(indent=4))
+
+    modifier_func(api_obj)
+    api_obj_model = api_obj.model
+
+    # Before replacing api objects on the server, make sure to remove aspects that can
+    # confuse subsequent CLI interactions with the object.
+    if api_obj_model.metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"]:
+        api_obj_model.metadata.annotations.pop("kubectl.kubernetes.io/last-applied-configuration")
+
+    # If server-side metadata is being passed in, remove it before we try to replace the object.
+    if api_obj_model.metadata:
+        for md in ["creationTimestamp", "generation", "uid"]:
+            api_obj_model.metadata.pop(md)
+
+    api_obj_model.pop("status")
+
+    with backup_file_path.joinpath(f"replacing-{api_obj.kind()}.{api_obj.namespace()}.{api_obj.name()}.after-modify.json").open(mode="w+") as backup_file:
+        backup_file.write(api_obj.as_json(indent=4))
+
+    if not dry_run:
+        api_obj.replace()
+
+
+class PayloadEntry(NamedTuple):
+
+    # Append any issues for the assembly
+    issues: List[AssemblyIssue]
+
+    # The final quay.io destination for the single-arch pullspec
+    dest_pullspec: str
+
+    # The final quay.io destination for the manifest list the single arch image
+    # might belong to. Most images built in brew will have been part of a
+    # manifest list, but not all release components (e.g. RHCOS)
+    # will be. We reuse manifest lists where possible for heterogeneous
+    # release payloads to save time vs building them ourselves.
+    dest_manifest_list_pullspec: str = None
 
     """
-    Collect a list of builds to tag in order to prevent garbage collection.
-    Note: we also use this list to warm up caches, so don't wrap this section
-    with `if not skip_gc_tagging`.
-
-    To prevent garbage collection for custom
-    assemblies (which won't normally be released via errata tool, triggering
-    the traditional garbage collection prevention), we must tag these builds
-    explicitly to prevent their GC. It is necessary to prevent GC, because
-    we want to be able to build custom releases off of custom releases, and
-    so on. If we loose images and builds for custom releases in brew due
-    to garbage collection, we will not be able to construct derivative
-    release payloads.
+    If the entry is for an image in this doozer group, these values will be set.
     """
-    assembly_build_ids: Set[int] = set()  # This list of builds associated with the group/assembly will be used to warm up caches
+    # The image metadata which associated with the payload
+    image_meta: Optional[ImageMetadata] = None
+    # An inspector associated with the overall brew build (manifest list) found for the release
+    build_inspector: Optional[BrewBuildImageInspector] = None
+    # The brew build archive (arch specific image) that should be tagged into the payload
+    archive_inspector: Optional[ArchiveImageInspector] = None
 
-    list_tags_tasks: Dict[Tuple[int, str], Any] = dict()  # Maps (build_id, tag) tuple to multicall task to list tags
-    with runtime.pooled_koji_client_session() as pcs:
-        with pcs.multicall(strict=True) as m:
-            for bbii in assembly_inspector.get_group_release_images().values():
-                if bbii:
-                    build_id = bbii.get_brew_build_id()
-                    assembly_build_ids.add(build_id)  # Collect up build ids for cache warm up
-                    hotfix_tag = bbii.get_image_meta().hotfix_brew_tag()
-                    list_tags_tasks[(build_id, hotfix_tag)] = m.listTags(build=build_id)
+    """
+    If the entry is for RHCOS, this value will be set
+    """
+    rhcos_build: Optional[RHCOSBuildInspector] = None
 
-            # RPMs can build for multiple versions of RHEL. For example, a single RPM
-            # metadata can target 7 & 8.
-            # For each rhel version targeted by our RPMs, build a list of RPMs
-            # appropriate for the RHEL version with respect to the group/assembly.
-            rhel_version_scanned_for_rpms: Dict[int, bool] = dict()  # Maps rhel version -> bool indicating whether we have processed that rhel version
-            for rpm_meta in runtime.rpm_metas():
-                for el_ver in rpm_meta.determine_rhel_targets():
-                    if el_ver in rhel_version_scanned_for_rpms:
-                        # We've already processed this RHEL version.
-                        continue
-                    hotfix_tag = runtime.get_default_hotfix_brew_tag(el_target=el_ver)
-                    # Otherwise, query the assembly for this rhel version now.
-                    for dgk, rpm_build_dict in assembly_inspector.get_group_rpm_build_dicts(el_ver=el_ver).items():
-                        if not rpm_build_dict:
-                            # RPM not built for this rhel version
-                            continue
-                        build_id = rpm_build_dict['id']
-                        assembly_build_ids.add(build_id)  # For cache warm up later.
-                        list_tags_tasks[(build_id, hotfix_tag)] = m.listTags(build=build_id)
-                    # Record that we are done for this rhel version.
-                    rhel_version_scanned_for_rpms[el_ver] = True
 
-    # Tasks should now contain tag list information for all builds associated with this assembly.
-    # and assembly_build_ids should contain ids for builds that should be cached.
+def exchange_pullspec_tag_for_shasum(tag_pullspec: str, digest: str) -> str:
+    """Create pullspec with the repo from the (tag-specifying) pullspec plus the given digest."""
+    # extract repo e.g. quay.io/openshift-release-dev/ocp-v4.0-art-dev:sha256-b056..84b-ml
+    #                -> quay.io/openshift-release-dev/ocp-v4.0-art-dev
+    output_pullspec: str = tag_pullspec.rsplit(":", 1)[0]
+    # return a sha-based pullspec
+    return output_pullspec + "@" + digest
 
-    # We have a list of image and RPM builds associated with this assembly.
-    # Tag them unless we have been told not to from the command line.
-    if runtime.assembly_type != AssemblyTypes.STREAM and not skip_gc_tagging:
-        with runtime.shared_koji_client_session() as koji_api:
-            koji_api.gssapi_login()  # Tagging requires authentication
-            with koji_api.multicall() as m:
-                for tup, list_tag_task in list_tags_tasks.items():
-                    build_id = tup[0]
-                    desired_tag = tup[1]
-                    current_tags = [tag_entry['name'] for tag_entry in list_tag_task.result]
+
+class GenPayloadCli:
+    """An object to encapsulate the CLI inputs, methods, and state for the release:gen-payload command."""
+    def __init__(
+            self,
+            # leave these all optional to make testing easier
+            runtime: Runtime = None,
+            is_name: str = None, is_namespace: str = None,
+            organization: str = None, repository: str = None, release_repository: str = None,
+            output_dir: str = None,
+            exclude_arch: Tuple[str] = None,
+            skip_gc_tagging: bool = False, emergency_ignore_issues: bool = False,
+            apply: bool = False, apply_multi_arch: bool = False, moist_run: bool = False):
+
+        self.runtime = runtime
+        self.logger = runtime.logger if runtime else MagicMock()  # in tests, blackhole logs by default
+        # release-controller IS to update (modified per arch, privacy)
+        self.base_imagestream = (is_namespace, is_name)
+        # where in the registry to publish/reference component images and release images
+        self.component_repo = (organization, repository)
+        self.release_repo = (organization, release_repository)
+
+        if output_dir:  # where to output yaml report and backed up IS
+            self.output_path = Path(output_dir).absolute()
+            self.output_path.mkdir(parents=True, exist_ok=True)
+
+        self.exclude_arch = exclude_arch
+        self.skip_gc_tagging = skip_gc_tagging  # do not re-tag custom builds in brew
+        self.emergency_ignore_issues = emergency_ignore_issues  # permit any inconsistency
+        self.apply = apply  # actually update the IS
+        self.apply_multi_arch = apply_multi_arch  # update the "multi" IS as well
+        self.moist_run = moist_run  # mirror the images but do not update the IS
+
+        # store generated payload entries: {arch -> dict of payload entries}
+        self.payload_entries_for_arch: Dict[str, Dict[str, PayloadEntry]] = {}
+        # for gathering issues that are found while evaluating the payload:
+        self.assembly_issues: List[AssemblyIssue] = list()
+        # private releases (only nightlies) can reference private component builds
+        self.privacy_modes: List[bool] = [False]
+        # do we proceed with this payload after weighing issues against permits?
+        self.payload_permitted = False
+
+    def run(self):
+        """Main entry point once instantiated with CLI inputs."""
+        self.validate_parameters()
+
+        rt = self.runtime
+        self.logger.info(f"Collecting latest information associated with the assembly: {rt.assembly}")
+        assembly_inspector = AssemblyInspector(rt, rt.build_retrying_koji_client())
+
+        self.payload_entries_for_arch = self.generate_payload_entries(assembly_inspector)
+        assembly_report: Dict = self.generate_assembly_report(assembly_inspector)
+
+        print(yaml.dump(assembly_report["assembly_issues"], default_flow_style=False, indent=2))
+        with self.output_path.joinpath("assembly-report.yaml").open(mode="w") as report_file:
+            yaml.dump(assembly_report, stream=report_file, default_flow_style=False, indent=2)
+
+        self.assess_assembly_viability()
+        self.sync_payloads()  # even when not permitted, produce what we _would have_ synced
+
+        if self.payload_permitted:
+            exit(0)
+
+        red_print("DO NOT PROCEED WITH THIS ASSEMBLY PAYLOAD -- not all detected issues are permitted.", file=sys.stderr)
+        exit(1)
+
+    def validate_parameters(self):
+        """Sanity check the assembly requested and adjust state accordingly."""
+        rt = self.runtime
+        if rt.assembly not in {None, "stream", "test"} and rt.assembly not in rt.releases_config.releases:
+            raise DoozerFatalError(f"Assembly '{rt.assembly}' is not explicitly defined.")
+
+        if rt.assembly and rt.assembly != "stream" and "art-latest" in self.base_imagestream[1]:
+            raise ValueError('"art-latest" imagestreams should only be used for the "stream" assembly')
+
+        if rt.assembly_type is AssemblyTypes.STREAM:
+            # Only nightlies have the concept of private and public payloads
+            self.privacy_modes = [False, True]
+
+        # check that we can produce a full multi nightly if requested
+        if self.apply_multi_arch and (rt.images or rt.exclude or self.exclude_arch):
+            raise DoozerFatalError(
+                "Cannot create a multi nightly without including the full set of images. "
+                "Either include all images/arches or omit --apply-multi-arch")
+
+    def generate_assembly_report(self, assembly_inspector: AssemblyInspector) -> Dict:
+        """Generate a status report of the search for inconsistencies across all payloads generated."""
+        rt = self.runtime
+        report = dict(
+            non_release_images=[image_meta.distgit_key for image_meta in rt.get_non_release_image_metas()],
+            release_images=[image_meta.distgit_key for image_meta in rt.get_for_release_image_metas()],
+            missing_image_builds=[
+                dgk for (dgk, ii) in assembly_inspector.get_group_release_images().items()
+                if ii is None
+            ],  # A list of metas where the assembly did not find a build
+        )
+        report["viable"], report["assembly_issues"] = self.generate_assembly_issues_report(assembly_inspector)
+
+        self.payload_permitted = report["viable"]
+
+        return report
+
+    def generate_assembly_issues_report(self, assembly_inspector: AssemblyInspector) -> (bool, Dict[str, Dict]):
+        """Populate self.assembly_issues and payload entries with inconsistencies found."""
+        rt = self.runtime
+        self.logger.info("Checking assembly content for inconsistencies.")
+
+        self.detect_mismatched_siblings(assembly_inspector)
+        assembly_build_ids: Set[int] = self.collect_assembly_build_ids(assembly_inspector)
+
+        with rt.shared_build_status_detector() as bsd:
+            # Use the list of builds associated with the group/assembly to warm up BSD caches
+            bsd.populate_archive_lists(assembly_build_ids)
+            bsd.find_shipped_builds(assembly_build_ids)
+
+        # check that RPMs belonging to this assembly/group are consistent with the assembly definition.
+        for rpm_meta in rt.rpm_metas():
+            self.assembly_issues.extend(assembly_inspector.check_group_rpm_package_consistency(rpm_meta))
+        if rt.assembly_type is AssemblyTypes.STREAM:
+            self.detect_non_latest_rpms(assembly_inspector)
+        # check that images for this assembly/group are consistent with the assembly definition.
+        self.detect_inconsistent_images(assembly_inspector)
+
+        # update issues found for payload images and check RPM consistency
+        self.detect_extend_payload_entry_issues(assembly_inspector)
+
+        # If the assembly claims to have reference nightlies, assert that our payload matches them exactly.
+        self.assembly_issues.extend(PayloadGenerator.check_nightlies_consistency(assembly_inspector))
+
+        return self.summarize_issue_permits(assembly_inspector)
+
+    def detect_mismatched_siblings(self, assembly_inspector: AssemblyInspector):
+        """mismatched siblings are built from the same repo but at a different commit"""
+        self.logger.debug("Checking for mismatched sibling sources...")
+        group_images: List = assembly_inspector.get_group_release_images().values()
+        for mismatched, sibling in PayloadGenerator.find_mismatched_siblings(group_images):
+            self.assembly_issues.append(AssemblyIssue(
+                f"{mismatched.get_nvr()} was built from a different upstream "
+                f"source commit ({mismatched.get_source_git_commit()[:7]}) "
+                f"than one of its siblings {sibling.get_nvr()} "
+                f"from {sibling.get_source_git_commit()[:7]}",
+                component=mismatched.get_image_meta().distgit_key,
+                code=AssemblyIssueCode.MISMATCHED_SIBLINGS
+            ))
+
+    @staticmethod
+    def generate_id_tags_list(assembly_inspector: AssemblyInspector) -> List[Tuple[int, str]]:
+        """Construct a list of builds and desired tags (we use "hotfix" tags for this)"""
+        return [  # (build_id, desired non-GC tag)
+            (bbii.get_brew_build_id(), bbii.get_image_meta().hotfix_brew_tag())
+            for bbii in assembly_inspector.get_group_release_images().values()
+            if bbii
+        ]
+
+    def collect_assembly_build_ids(self, assembly_inspector: AssemblyInspector) -> Set[int]:
+        """
+        Collect a list of brew builds (images and RPMs) included in the assembly.
+
+        To prevent garbage collection for custom assemblies (which don't have errata tool releases
+        that normally prevent), we must tag these builds explicitly. We want to ensure these builds
+        persist so that later we can build custom releases based on previous custom releases. If we
+        lose images and builds for custom releases in brew due to GC, we will not be able to
+        construct derivative release payloads.
+
+        We do not, however, want to preserve every build destined for a nightly (which is why we do
+        not tag for "stream" assemblies).
+        """
+        self.logger.debug("Finding all builds in the assembly...")
+        id_tags: List[Tuple[int, str]] = self.generate_id_tags_list(assembly_inspector)
+
+        # For each RHEL version targeted by any of our RPMs, find RPM
+        # builds with respect to the group/assembly. (Even single RPMs
+        # can build for multiple versions of RHEL.)
+        rhel_version_seen: Set[int] = set()  # set of rhel versions we have processed
+        for rpm_meta in self.runtime.rpm_metas():
+            for el_ver in rpm_meta.determine_rhel_targets():
+                if el_ver not in rhel_version_seen:
+                    # not processed yet, query the assembly for this rhel version now.
+                    rhel_version_seen.add(el_ver)
+                    hotfix_tag = self.runtime.get_default_hotfix_brew_tag(el_target=el_ver)
+                    id_tags.extend([
+                        (rpm_build_dict["id"], hotfix_tag)
+                        for rpm_build_dict in assembly_inspector.get_group_rpm_build_dicts(el_ver=el_ver).values()
+                        if rpm_build_dict
+                    ])
+
+        # Tag builds for custom assemblies unless we have been told not to from the command line.
+        if self.runtime.assembly_type != AssemblyTypes.STREAM and not self.skip_gc_tagging:
+            self.tag_missing_gc_tags(id_tags)
+
+        # we should now in good conscience be able to put these in a payload
+        return set(build_id for build_id, _ in id_tags)
+
+    def tag_missing_gc_tags(self, id_tags: Tuple[int, str]):
+        """ensure that each build is tagged in brew with its GC-preventing tag"""
+        self.logger.debug("ensuring assembly contents are tagged to avoid brew GC...")
+        # first, find the tags that each build currently has.
+        # construct a list of builds and brew listTags tasks (which run as a multicall at loop/context exit)
+        id_tag_tasks: List[Tuple[int, str, KojiWrapperMetaReturn]] = list()
+        # [(build_id, non-GC tag, multicall task to list tags)]
+        with self.runtime.pooled_koji_client_session() as pooled_kcs:
+            with pooled_kcs.multicall(strict=True) as m:
+                for build_id, desired_tag in id_tags:
+                    id_tag_tasks.append((build_id, desired_tag, m.listTags(build=build_id)))
+
+        # Tasks should now contain tag list information for all builds associated with this assembly.
+        # Now see if the hotfix tag we want is already present, and if not, add it.
+        # Note: shared_koji_client_session authenticates by default (needed for tagging)
+        with self.runtime.shared_koji_client_session() as koji_client:
+            with koji_client.multicall() as m:
+                for build_id, desired_tag, list_tag_task in id_tag_tasks:
+                    current_tags = [tag_entry["name"] for tag_entry in list_tag_task.result]
                     if desired_tag not in current_tags:
                         # The hotfix tag is missing, so apply it.
-                        runtime.logger.info(f'Adding tag {desired_tag} to build: {build_id} to prevent garbage collection.')
+                        self.logger.info(f"Adding tag {desired_tag} to build: {build_id} to prevent garbage collection.")
                         m.tagBuild(desired_tag, build_id)
 
-    with runtime.shared_build_status_detector() as bsd:
-        bsd.populate_archive_lists(assembly_build_ids)
-        bsd.find_shipped_builds(assembly_build_ids)
-
-    """
-    Make sure that RPMs belonging to this assembly/group are consistent with the assembly definition.
-    """
-    for rpm_meta in runtime.rpm_metas():
-        issues = assembly_inspector.check_group_rpm_package_consistency(rpm_meta)
-        assembly_issues.extend(issues)
-
-    """
-    If this is a stream assembly, images which are not using the latest rpm builds should not reach
-    the release controller. Other assemblies are meant to be constructed from non-latest.
-    """
-    if runtime.assembly == 'stream':
+    def detect_non_latest_rpms(self, assembly_inspector: AssemblyInspector):
+        """
+        If this is a stream assembly, images which are not using the latest rpm builds should not reach
+        the release controller. Other assemblies may be deliberately constructed from non-latest.
+        """
+        self.logger.debug("detecting images with group RPMs installed that are not the latest builds...")
         for dgk, build_inspector in assembly_inspector.get_group_release_images().items():
             if build_inspector:
-                non_latest_rpm_nvrs = build_inspector.find_non_latest_rpms()
-                dgk = build_inspector.get_image_meta().distgit_key
-                for installed_nvr, newest_nvr in non_latest_rpm_nvrs:
-                    # This indicates an issue with scan-sources or that an image is no longer successfully building.
-                    # Impermissible as this speaks to a potentially deeper issue of images not being rebuilt
-                    outdated_issue = AssemblyIssue(f'Found outdated RPM ({installed_nvr}) installed in {build_inspector.get_nvr()} when {newest_nvr} was available', component=dgk, code=AssemblyIssueCode.OUTDATED_RPMS_IN_STREAM_BUILD)
-                    assembly_issues.append(outdated_issue)  # Add to overall issues
+                for installed_nvr, newest_nvr in build_inspector.find_non_latest_rpms():
+                    # This could indicate an issue with scan-sources or that an image is no longer successfully building.
+                    # It could also mean that images are pinning content, which may be expected, so allow permits.
+                    self.assembly_issues.append(AssemblyIssue(
+                        f"Found outdated RPM ({installed_nvr}) installed in {build_inspector.get_nvr()} "
+                        f"when {newest_nvr} was available",
+                        component=dgk, code=AssemblyIssueCode.OUTDATED_RPMS_IN_STREAM_BUILD
+                    ))
 
-    """
-    Make sure image builds selected by this assembly/group are consistent with the assembly definition.
-    """
-    for dgk, bbii in assembly_inspector.get_group_release_images().items():
-        if bbii:
-            issues = assembly_inspector.check_group_image_consistency(bbii)
-            assembly_issues.extend(issues)
+    def detect_inconsistent_images(self, assembly_inspector: AssemblyInspector):
+        """Create issues for image builds selected by this assembly/group that are inconsistent with the assembly definition."""
+        self.logger.debug("detecting images inconsistent with the assembly definition ...")
+        for _, bbii in assembly_inspector.get_group_release_images().items():
+            if bbii:
+                self.assembly_issues.extend(assembly_inspector.check_group_image_consistency(bbii))
 
-    output_path = Path(output_dir).absolute()
-    output_path.mkdir(parents=True, exist_ok=True)
-    entries_by_arch: Dict[str, Dict[str, PayloadGenerator.PayloadEntry]] = dict()
-    for arch in runtime.arches:
-        if arch in exclude_arch:
-            logger.info(f'Excluding payload files architecture: {arch}')
-            continue
+    def full_component_repo(self) -> str:
+        """full pullspec for the component repo"""
+        org, repo = self.component_repo
+        return f"quay.io/{org}/{repo}"
 
-        # Whether private or public, the assembly's canonical payload content is the same.
-        entries: Dict[str, PayloadGenerator.PayloadEntry]
-        issues: List[AssemblyIssue]
-        entries, issues = PayloadGenerator.find_payload_entries(assembly_inspector, arch, f'quay.io/{organization}/{repository}')  # Key of this dict is release payload tag name
-        entries_by_arch[arch] = entries
-        assembly_issues.extend(issues)
+    def generate_payload_entries(self, assembly_inspector: AssemblyInspector) -> Dict[str, Dict[str, PayloadEntry]]:
+        """
+        Generate single-arch PayloadEntries for the assembly payload.
+        Payload generation may uncover assembly issues, which are added to the assembly_issues list.
+        Returns a dict of dicts, keyed by architecture, then by payload component name.
+        """
+        entries_for_arch: Dict[str, Dict[str, PayloadEntry]] = dict()  # arch => img tag => PayloadEntry
+        for arch in self.runtime.arches:
+            if arch in self.exclude_arch:
+                self.logger.info(f"Excluding payload files architecture: {arch}")
+                continue
+            # No adjustment for private or public; the assembly's canonical payload content is the same.
 
-        for tag, payload_entry in entries.items():
-            if payload_entry.image_meta:
-                # We already stored inconsistencies for each image_meta; look them up if there are any.
-                payload_entry.issues.extend(filter(lambda ai: ai.component == payload_entry.image_meta.distgit_key, assembly_issues))
-            elif payload_entry.rhcos_build:
-                # Record the build so that we can later evaluate consistency between all RHCOS builds. There are presently
-                # no private RHCOS builds, so add only to private_mode=False.
-                targeted_rhcos_builds[False].append(payload_entry.rhcos_build)
-                assembly_issues.extend(assembly_inspector.check_rhcos_issues(payload_entry.rhcos_build))
-                payload_entry.issues.extend(filter(lambda ai: ai.component == 'rhcos', assembly_issues))
-                if runtime.assembly == 'stream':
-                    # For stream alone, we want to enforce that the very latest RPMs are installed.
-                    non_latest_rpm_nvrs = payload_entry.rhcos_build.find_non_latest_rpms()
-                    for installed_nvr, newest_nvr in non_latest_rpm_nvrs:
-                        assembly_issues.append(AssemblyIssue(f'Found outdated RPM ({installed_nvr}) installed in {payload_entry.rhcos_build} when {newest_nvr} is available',
-                                                             component='rhcos',
-                                                             code=AssemblyIssueCode.OUTDATED_RPMS_IN_STREAM_BUILD))
+            entries: Dict[str, PayloadEntry]  # Key of this dict is release payload tag name
+            issues: List[AssemblyIssue]
+            entries, issues = PayloadGenerator.find_payload_entries(assembly_inspector, arch, self.full_component_repo())
+            entries_for_arch[arch] = entries
+            self.assembly_issues.extend(issues)
+
+        return entries_for_arch
+
+    def detect_extend_payload_entry_issues(self, assembly_inspector: AssemblyInspector):
+        """
+        Associate assembly issues with related payload entries if any.
+        Also look for additional issues related to RHCOS container(s) across
+        the single-arch payloads.
+        """
+        # Structure to record rhcos builds we use so that they can be analyzed for inconsistencies
+        targeted_rhcos_builds: Dict[bool, List[RHCOSBuildInspector]] = {False: [], True: []}  # privacy mode: list of BuildInspector
+        for arch, entries in self.payload_entries_for_arch.items():
+            for tag, payload_entry in entries.items():
+                if payload_entry.image_meta:
+                    # Record the issues previously found for this image in corresponding payload_entry
+                    payload_entry.issues.extend(
+                        ai for ai in self.assembly_issues
+                        if ai.component == payload_entry.image_meta.distgit_key
+                    )
+                elif payload_entry.rhcos_build:
+                    self.detect_rhcos_issues(payload_entry, assembly_inspector)
+                    # Record the build to enable later consistency checks between all RHCOS builds.
+                    # There are presently no private RHCOS builds, so add only to private_mode=False.
+                    targeted_rhcos_builds[False].append(payload_entry.rhcos_build)
+                else:
+                    raise DoozerFatalError(f"Unsupported PayloadEntry: {payload_entry}")
+
+        self.detect_rhcos_inconsistent_rpms(targeted_rhcos_builds)  # across all arches
+
+    def detect_rhcos_issues(self, payload_entry, assembly_inspector: AssemblyInspector):
+        """
+        Associate relevant assembly issues with an RHCOS PayloadEntry.
+        Use assembly inspector to detect assembly issues like RPMs installed in
+        the PayloadEntry that are not what the assembly specifies.
+        """
+        # record issues found in assembly list and per payload entry
+        self.assembly_issues.extend(assembly_inspector.check_rhcos_issues(payload_entry.rhcos_build))
+        payload_entry.issues.extend(ai for ai in self.assembly_issues if ai.component == "rhcos")
+
+        if self.runtime.assembly_type is AssemblyTypes.STREAM:
+            # For stream alone, we want to enforce that the very latest RPMs are installed.
+            for installed_nvr, newest_nvr in payload_entry.rhcos_build.find_non_latest_rpms():
+                self.assembly_issues.append(AssemblyIssue(
+                    f"Found outdated RPM ({installed_nvr}) "
+                    f"installed in {payload_entry.rhcos_build} "
+                    f"when {newest_nvr} is available",
+                    component="rhcos", code=AssemblyIssueCode.OUTDATED_RPMS_IN_STREAM_BUILD
+                ))
+
+    def detect_rhcos_inconsistent_rpms(self, targeted_rhcos_builds: Dict[bool, List[RHCOSBuildInspector]]):
+        """Generate assembly issue(s) if RHCOS builds do not contain consistent RPMs across arches."""
+        for privacy_mode in self.privacy_modes:  # only for relevant modes
+            rhcos_builds = targeted_rhcos_builds[privacy_mode]
+            rhcos_inconsistencies: Dict[str, List[str]] = PayloadGenerator.find_rhcos_build_rpm_inconsistencies(rhcos_builds)
+            if rhcos_inconsistencies:
+                self.assembly_issues.append(AssemblyIssue(
+                    f"Found RHCOS inconsistencies in builds {rhcos_builds} "
+                    f"(private={privacy_mode}): {rhcos_inconsistencies}",
+                    component="rhcos", code=AssemblyIssueCode.INCONSISTENT_RHCOS_RPMS
+                ))
+
+    def summarize_issue_permits(self, assembly_inspector: AssemblyInspector) -> (bool, Dict[str, Dict]):
+        """
+        Check whether the issues found are permitted,
+        and collect issues per component into a serializable report
+        """
+        payload_permitted = True
+        assembly_issues_report: Dict[str, List[Dict]] = dict()
+        for ai in self.assembly_issues:
+            permitted = assembly_inspector.does_permit(ai)
+            payload_permitted &= permitted  # If anything not permitted, payload not permitted
+            assembly_issues_report.setdefault(ai.component, []).append(dict(
+                code=ai.code.name,
+                msg=ai.msg,
+                permitted=permitted
+            ))
+
+        return (payload_permitted, assembly_issues_report)
+
+    def assess_assembly_viability(self):
+        """Adjust assembly viability if needed per emergency_ignore_issues."""
+        if not self.payload_permitted:
+            if self.emergency_ignore_issues:
+                self.logger.warning("Permitting issues only because --emergency-ignore-issues was specified")
+                self.payload_permitted = True
             else:
-                raise IOError(f'Unsupported PayloadEntry: {payload_entry}')
+                self.logger.warning("Assembly is not permitted. Will not apply changes to imagestreams.")
+                self.apply = False
+                self.apply_multi_arch = False
 
-    # Now make sure that all of the RHCOS builds contain consistent RPMs
-    for private_mode in privacy_modes:
-        rhcos_builds = targeted_rhcos_builds[private_mode]
-        rhcos_inconsistencies: Dict[str, List[str]] = PayloadGenerator.find_rhcos_build_rpm_inconsistencies(rhcos_builds)
-        if rhcos_inconsistencies:
-            assembly_issues.append(AssemblyIssue(f'Found RHCOS inconsistencies in builds {rhcos_builds} (private={private_mode}): {rhcos_inconsistencies}', component='rhcos', code=AssemblyIssueCode.INCONSISTENT_RHCOS_RPMS))
+    def sync_payloads(self):
+        """
+        Use the payload entries that have been generated across the arches to mirror the images
+        out to quay and create the imagestream definitions that will update the release-controller.
 
-    # If the assembly claims to have reference nightlies, assert that our payload
-    # matches them exactly.
-    nightly_match_issues = PayloadGenerator.check_nightlies_consistency(assembly_inspector)
-    if nightly_match_issues:
-        assembly_issues.extend(nightly_match_issues)
+        Also re-organize the entries into a hierarchy suitable for creating the heterogeneous
+        "multi" payloads, and create those.
+        """
+        # When we are building a heterogeneous / multiarch payload, we need to
+        # keep track of images that are going into the each single-arch
+        # imagestream. Maps [is_private] -> [tag_name] -> [arch] -> PayloadEntry
+        multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]] = {
+            True: dict(),
+            False: dict()
+        }
 
-    assembly_issues_report: Dict[str, List[Dict]] = dict()
-    report['assembly_issues'] = assembly_issues_report
+        for arch, payload_entries in self.payload_entries_for_arch.items():
+            self.mirror_payload_content(arch, payload_entries)
+            for private_mode in self.privacy_modes:
+                self.logger.info(f"Building payload files for architecture: {arch}; private: {private_mode}")
+                self.generate_specific_payload_imagestreams(arch, private_mode, payload_entries, multi_specs)
 
-    payload_permitted = True
-    for ai in assembly_issues:
-        permitted = assembly_inspector.does_permit(ai)
-        payload_permitted &= permitted  # If anything is not permitted, exit with an error
-        assembly_issues_report.setdefault(ai.component, []).append({
-            'code': ai.code.name,
-            'msg': ai.msg,
-            'permitted': permitted
-        })
+        if self.apply_multi_arch:
+            if self.runtime.group_config.multi_arch.enabled:
+                self.sync_heterogeneous_payloads(multi_specs)
+            else:
+                self.logger.info("--apply-multi-arch is enabled but the group config / assembly does "
+                                 "not have group.multi_arch.enabled==true")
 
-    report['viable'] = payload_permitted
+    def mirror_payload_content(self, arch: str, payload_entries: Dict[str, PayloadEntry]):
+        """Ensure an arch's payload entries are synced out for the public to access."""
+        # Prevents writing the same destination twice (not supported by oc if in the same mirroring file):
+        mirror_src_for_dest: Dict[str, str] = dict()
 
-    print(yaml.dump(report, default_flow_style=False, indent=2))
-    overall_permitted = payload_permitted
-    if not overall_permitted:
-        if emergency_ignore_issues:
-            logger.warning('Permitting issues because --emergency-ignore-issues was specified')
-            overall_permitted = True
-        else:
-            logger.warning('Assembly is not permitted. Disabling apply.')
-            apply = False
-            apply_multi_arch = False
+        for payload_entry in payload_entries.values():
+            if not payload_entry.archive_inspector:
+                continue  # Nothing to mirror (e.g. RHCOS)
+            mirror_src_for_dest[payload_entry.dest_pullspec] = payload_entry.archive_inspector.get_archive_pullspec()
+            if payload_entry.dest_manifest_list_pullspec:
+                # For heterogeneous release payloads, if a component builds for all arches
+                # (without using -alt images), we can use the manifest list for the images directly from OSBS.
+                # This saves a significant amount of time compared to building the manifest list again.
+                mirror_src_for_dest[payload_entry.dest_manifest_list_pullspec] = payload_entry.build_inspector.get_build_pullspec()
 
-    # In case we are building a heterogeneous / multiarch payload, we need to keep track of images that are
-    # going into the each single-arch imagestream. Maps [is_private] -> [tag_name] -> [arch] -> PayloadEntry
-    multi_specs: Dict[bool, Dict[str, Dict[str, PayloadGenerator.PayloadEntry]]] = {
-        True: dict(),
-        False: dict()
-    }
-
-    # Prevents writing the same destination twice (not supported by oc if in the same mirroring file)
-    mirroring_destinations: Set[str] = set()
-
-    for arch, entries in entries_by_arch.items():
         # Save the default SRC=DEST input to a file for syncing by 'oc image mirror'. Why is
         # there no '-priv'? The true images for the assembly are what we are syncing -
         # it is what we update in the imagestreams that defines whether the image will be
         # part of a public vs private release.
-        src_dest_path = output_path.joinpath(f"src_dest.{arch}")
+        src_dest_path = self.output_path.joinpath(f"src_dest.{arch}")
         with src_dest_path.open("w+", encoding="utf-8") as out_file:
-            for payload_entry in entries.values():
-                if not payload_entry.archive_inspector:
-                    # Nothing to mirror (e.g. RHCOS)
-                    continue
+            for dest_pullspec, src_pullspec in mirror_src_for_dest.items():
+                out_file.write(f"{src_pullspec}={dest_pullspec}\n")
 
-                def add_image_to_mirror(src_pullspec, dest_pullspec):
-                    if dest_pullspec in mirroring_destinations:
-                        # oc exists with an error if we have the same destination twice in the same file.
-                        # This can occurs if we have swapped in an unrelated image for a component because
-                        # that component doesn't build for this arch.
-                        return
-                    out_file.write(f"{src_pullspec}={dest_pullspec}\n")
-                    mirroring_destinations.add(dest_pullspec)
+        if self.apply or self.apply_multi_arch:
+            self.logger.info(f"Mirroring images from {str(src_dest_path)}")
+            exectools.cmd_assert(f"oc image mirror --keep-manifest-list --filename={str(src_dest_path)}", retries=3, timeout=1800)
 
-                if payload_entry.dest_manifest_list_pullspec:
-                    # For heterogeneous release payloads, if a component builds for all arches
-                    # (without using -alt images), we can use the manifest list for the images directly from OSBS.
-                    # This saves a significant amount of time compared to building the manifest list again.
-                    add_image_to_mirror(payload_entry.build_inspector.get_build_pullspec(), payload_entry.dest_manifest_list_pullspec)
+    def generate_specific_payload_imagestreams(
+            self, arch: str, private_mode: bool,
+            payload_entries: Dict[str, PayloadEntry],
+            # Map [is_private] -> [tag_name] -> [arch] -> PayloadEntry
+            multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]]):
+        """
+        For the specific arch, -priv, and payload entries, generate the imagestreams.
+        Populate multi_specs with the single-arch images that need composing into the multi-arch imagestream.
+        """
+        # Generate arch/privacy-specific imagestream tags for the payload
+        istags: List[Dict] = []
+        # Typically for a stream update, we want to prune unused imagestream
+        # tags. But setting this flag indicates we don't expect to have all the
+        # tags for a payload, so tags will only be updated, and none removed.
+        incomplete_payload_update: bool = False
 
-                add_image_to_mirror(payload_entry.archive_inspector.get_archive_pullspec(), payload_entry.dest_pullspec)
+        if self.runtime.images or self.runtime.exclude:
+            # If images are being explicitly included or excluded, assume we will not be
+            # performing a full replacement of the imagestream content.
+            incomplete_payload_update = True
 
-        if apply or apply_multi_arch:
-            logger.info(f'Mirroring images from {str(src_dest_path)}')
-            exectools.cmd_assert(f'oc image mirror --keep-manifest-list --filename={str(src_dest_path)}', retries=3, timeout=1800)
+        for payload_tag_name, payload_entry in payload_entries.items():
+            multi_specs[private_mode].setdefault(payload_tag_name, dict())
 
-        for private_mode in privacy_modes:
-            logger.info(f'Building payload files for architecture: {arch}; private: {private_mode}')
-
-            imagestream_name, imagestream_namespace = payload_imagestream_name_and_namespace(
-                base_imagestream_name,
-                base_istream_namespace,
-                arch, private_mode)
-
-            # Compute a list of imagestream tags which we want to update in imagestream.
-            new_tag_names: Set[str] = set()
-            istags: List[Dict] = []
-            incomplete_payload_update: bool = False
-
-            if runtime.images or runtime.exclude:
-                # If images are being explicitly included or excluded, assume we will not be
-                # performing a full replacement of the imagestream content. This flag
-                # instructs the update to not remove existing tags from the imagestream.
+            if private_mode is False and payload_entry.build_inspector and payload_entry.build_inspector.is_under_embargo():
+                # No embargoed images should go to the public release controller, so we will not have
+                # a complete set of payload tags for the public imagestream.
                 incomplete_payload_update = True
+            else:
+                istags.append(PayloadGenerator.build_payload_istag(payload_tag_name, payload_entry))
+                multi_specs[private_mode][payload_tag_name][arch] = payload_entry
 
-            for payload_tag_name, payload_entry in entries.items():
-                new_tag_names.add(payload_tag_name)
+        imagestream_namespace, imagestream_name = payload_imagestream_namespace_and_name(
+            *self.base_imagestream, arch, private_mode)
 
-                if payload_tag_name not in multi_specs[private_mode]:
-                    multi_specs[private_mode][payload_tag_name] = dict()
+        self.write_imagestream_artifact_file(imagestream_namespace, imagestream_name, istags, incomplete_payload_update)
+        if self.apply:
+            self.apply_arch_imagestream(imagestream_namespace, imagestream_name, istags, incomplete_payload_update)
 
-                if payload_entry.build_inspector and payload_entry.build_inspector.is_under_embargo() and private_mode is False:
-                    # No embargoed images should go to the public release controller. Setting this boolean signals
-                    # the applier logic that it should try to preserve any old tag names in the imagestream.
-                    incomplete_payload_update = True
-                else:
-                    istags.append(PayloadGenerator.build_payload_istag(payload_tag_name, payload_entry))
-                    multi_specs[private_mode][payload_tag_name][arch] = payload_entry
+    def write_imagestream_artifact_file(self, imagestream_namespace: str, imagestream_name: str, istags: List[Dict], incomplete_payload_update):
+        """Write the yaml file for the imagestream."""
+        filename = f"updated-tags-for.{imagestream_namespace}.{imagestream_name}{'-partial' if incomplete_payload_update else ''}.yaml"
+        with self.output_path.joinpath(filename).open("w+", encoding="utf-8") as out_file:
+            istream_spec = PayloadGenerator.build_payload_imagestream(
+                imagestream_name, imagestream_namespace,
+                istags, self.assembly_issues
+            )
+            yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
 
-                with output_path.joinpath(f"updated-tags-for.{imagestream_namespace}.{imagestream_name}{'-partial' if incomplete_payload_update else ''}.yaml").open("w+", encoding="utf-8") as out_file:
-                    istream_spec = PayloadGenerator.build_payload_imagestream(imagestream_name, imagestream_namespace, istags, assembly_issues)
-                    yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
+    def apply_arch_imagestream(self, imagestream_namespace: str, imagestream_name: str, istags: List[Dict], incomplete_payload_update: bool):
+        """Orchestrate the update and tag removal for one arch imagestream in the OCP cluster."""
+        with oc.project(imagestream_namespace):
+            istream_apiobj = self.ensure_imagestream_apiobj(imagestream_name)
+            pruning_tags, adding_tags = self.apply_imagestream_update(istream_apiobj, istags, incomplete_payload_update)
 
-            if apply:
-                with oc.project(imagestream_namespace):
-                    is_apiobj = oc.selector(f'imagestream/{imagestream_name}').object(ignore_not_found=True)
-                    if not is_apiobj:
-                        # If the stream has not been bootstrapped, create it.
-                        oc.create({
-                            'apiVersion': 'image.openshift.io/v1',
-                            'kind': 'ImageStream',
-                            'metadata': {
-                                'name': imagestream_name,
-                                'namespace': imagestream_namespace
-                            }
-                        })
-                        is_apiobj = oc.selector(f'imagestream/{imagestream_name}').object()
+            if pruning_tags:
+                self.logger.warning(f"The following tag names are no longer part of the release and will be pruned in {imagestream_namespace}:{imagestream_name}: {pruning_tags}")
+                if not self.moist_run:
+                    for old_tag in pruning_tags:
+                        # Even though we have replaced the .spec on the imagestream, the old tag will still
+                        # be reflected in .status. The release controller considers this a legit declaration,
+                        # so we must remove it explicitly using `oc delete istag`
+                        try:
+                            oc.selector(f"istag/{imagestream_name}:{old_tag}").delete()
+                        except Exception:
+                            # This is not a fatal error, but failure to delete may leave issues being
+                            # displayed on the release controller page.
+                            self.logger.error(f"Unable to delete {old_tag} tag fully from {imagestream_name} imagestream in {imagestream_namespace}:\n{traceback.format_exc()}")
 
-                    pruning_tags = []
-                    adding_tags = []
+            if adding_tags:
+                self.logger.warning(f"The following tag names are net new to {imagestream_namespace}:{imagestream_name}: {adding_tags}")
 
-                    def update_single_arch_istags(apiobj: oc.APIObject):
-                        nonlocal pruning_tags
-                        nonlocal adding_tags
+    def ensure_imagestream_apiobj(self, imagestream_name):
+        """Create the imagestream if it does not exist, and return the api object."""
+        istream_apiobj = oc.selector(f"imagestream/{imagestream_name}").object(ignore_not_found=True)
+        if istream_apiobj:
+            return istream_apiobj
 
-                        new_annotations = dict()
-                        if apiobj.model.metadata.annotations is not oc.Missing:
-                            # We must preserve annotations as they contain release controller configuration information
-                            new_annotations = apiobj.model.metadata.annotations._primitive()
-                            new_annotations.pop("release.openshift.io/inconsistency", None)  # Remove old inconsistency information if it exists
+        # The imagestream has not been bootstrapped; create it.
+        oc.create({
+            "apiVersion": "image.openshift.io/v1",
+            "kind": "ImageStream",
+            "metadata": {
+                "name": imagestream_name,
+            }
+        })
+        return oc.selector(f"imagestream/{imagestream_name}").object()
 
-                        new_annotations.update(PayloadGenerator.build_inconsistency_annotation(assembly_issues))
+    def apply_imagestream_update(self, istream_apiobj, istags: List[Dict], incomplete_payload_update: bool) -> Tuple[Set[str], Set[str]]:
+        """Apply changes for one imagestream object to the OCP cluster."""
+        # gather diffs between old and new, indicating removal or addition
+        pruning_tags: Set[str] = set()
+        adding_tags: Set[str] = set()
 
-                        apiobj.model.metadata['annotations'] = new_annotations
+        # create a closure to be applied below against the api object
+        def update_single_arch_istags(apiobj: oc.APIObject):
+            nonlocal pruning_tags
+            nonlocal adding_tags
 
-                        incoming_tag_names = set([istag['name'] for istag in istags])
-                        existing_tag_names = set([istag['name'] for istag in apiobj.model.spec.tags])
+            new_annotations = dict()
+            if apiobj.model.metadata.annotations is not oc.Missing:
+                # We must preserve annotations as they contain release controller configuration information
+                new_annotations = apiobj.model.metadata.annotations._primitive()
+                new_annotations.pop("release.openshift.io/inconsistency", None)  # Remove old inconsistency information if it exists
 
-                        if incomplete_payload_update:
-                            # If our `istags` don't necessarily include everything in the release,
-                            # we need to preserve old tag values.
-                            for istag in apiobj.model.spec.tags:
-                                if istag.name not in incoming_tag_names:
-                                    istags.append(istag)
-                        else:
-                            # Else, we believe the assembled tags are canonical. Compute
-                            # old tags and new tags.
-                            pruning_tags = existing_tag_names.difference(incoming_tag_names)
-                            adding_tags = incoming_tag_names.difference(existing_tag_names)
+            new_annotations.update(PayloadGenerator.build_inconsistency_annotation(self.assembly_issues))
 
-                        apiobj.model.spec.tags = istags
+            apiobj.model.metadata["annotations"] = new_annotations
 
-                    modify_and_replace_api_object(is_apiobj, update_single_arch_istags, output_path, moist_run)
+            incoming_tag_names = set([istag["name"] for istag in istags])
+            existing_tag_names = set([istag["name"] for istag in apiobj.model.spec.tags])
+            adding_tags = incoming_tag_names - existing_tag_names
 
-                    if pruning_tags:
-                        logger.warning(f'The following tag names are no longer part of the release and will be pruned in {imagestream_namespace}:{imagestream_name}: {pruning_tags}')
-                        # Even though we have replaced the .spec on the imagestream, the old tag will still be reflected in .status.
-                        # The release controller considers this a legit declaration, so we must remove it explicitly using `oc delete istag`
-                        if not moist_run:
-                            for old_tag in pruning_tags:
-                                try:
-                                    oc.selector(f'istag/{imagestream_name}:{old_tag}').delete()
-                                except:
-                                    # This is not a fatal error, but may result in issues being displayed on the release controller page.
-                                    logger.error(f'Unable to delete {old_tag} tag fully from {imagestream_name} imagestream in {imagestream_namespace}:\n{traceback.format_exc()}')
+            new_istags = list(istags)  # copy, don't update/embed list parameter
+            if incomplete_payload_update:
+                # If our incoming `istags` don't necessarily include everything in the release,
+                # we need to preserve existing tag values that were not updated.
+                for istag in apiobj.model.spec.tags:
+                    if istag.name not in incoming_tag_names:
+                        new_istags.append(istag)
+            else:
+                # Else, we believe the assembled tags are canonical. Declare
+                # old tags to prune.
+                pruning_tags = existing_tag_names - incoming_tag_names
 
-                    if adding_tags:
-                        logger.warning(f'The following tag names are net new to {imagestream_namespace}:{imagestream_name}: {adding_tags}')
+            apiobj.model.spec.tags = new_istags
 
-    # We now generate the artifacts to create heterogeneous release payloads. A heterogeneous or 'multi' release
-    # payload is a manifest list (i.e. it consists of N release payload manifests, one for each arch). The release
-    # payload images referenced in the multi-release payload manifest list are themselves somewhat standard release
-    # payloads (i.e. they are based on CVO images for their arch) BUT, each component image they reference
-    # is a manifest list.
-    # For example, the `cli` image in the s390x release payload will point to a
-    # a manifest list composed of cli image manifests for each architecture.
-    # In short, the highest level release payload pullspec is a manifest list, referencing single
-    # arch release payload images, and these arch specific payload images reference manifest list based components
-    # pullspecs.
-    for private_mode in privacy_modes:
+        modify_and_replace_api_object(istream_apiobj, update_single_arch_istags, self.output_path, self.moist_run)
+        return pruning_tags, adding_tags
 
-        if private_mode:
-            # The CI image registry does not support manifest lists. Thus, we need to publish our nightly release
-            # payloads to quay.io. As of this writing, we don't have a private quay repository into which we could
-            # push embargoed release heterogeneous release payloads.
-            red_print('PRIVATE MODE MULTI PAYLOADS ARE CURRENTLY DISABLED. WE NEED A PRIVATE QUAY REPO FOR PRIVATE MULTI RELEASE PAYLOADS')
-            continue
+    def sync_heterogeneous_payloads(self, multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]]):
+        """
+        We now generate the artifacts to create heterogeneous release payloads (suitable for
+        clusters with multiple arches present). A heterogeneous or 'multi' release payload is a
+        manifest list (i.e. it consists of N release payload manifests, one for each arch).
 
-        if not apply_multi_arch:
-            break
+        The release payload images referenced in the multi-release payload manifest list are
+        themselves somewhat standard release payloads (i.e. they are based on CVO images for their
+        arch) BUT, each component image they reference is a manifest list. For example, the `cli`
+        image in the s390x release payload will point to a a manifest list composed of cli image
+        manifests for each architecture.
 
-        if not runtime.group_config.multi_arch.enabled:
-            logger.info("--apply-multi-arch is enabled but the group config / assembly does not have group.multi_arch.enabled==true")
-            break
+        So the top-level release payload pullspec is a manifest list, referencing release payload
+        images for each arch, and these arch specific payload images reference manifest list based
+        components pullspecs.
 
-        imagestream_name, imagestream_namespace = payload_imagestream_name_and_namespace(
-            base_imagestream_name,
-            base_istream_namespace,
-            'multi', private_mode)
+        The outcome is that this method creates/updates:
+        1. A component imagestream containing a tag per image component, similar to what we do for
+           single-arch assemblies, but written to a file rather than applied to the cluster.
+        2. For each arch, a payload image based on its CVO, built with references to the (multi-arch)
+           components in this imagestream and stored in
+           * quay.io/openshift-release-dev/ocp-release-nightly for nightlies or
+           * quay.io/openshift-release-dev/ocp-release for standard/custom releases.
+        3. A multi payload image, which is a manifest list built from the arch-specific release
+           payload images and stored in the same quay.io repos as above.
+        4. A _release_ imagestream per assembly to record tag(s) for multi-arch payload image(s)
+           created in step 3, e.g. `4.11-art-latest-multi` for `stream` assembly or
+           `4.11-art-assembly-4.11.4-multi` for other assemblies.
+        """
+        for private_mode in self.privacy_modes:
 
-        now = datetime.datetime.now()
-        multi_ts = now.strftime('%Y-%m-%d-%H%M%S')
-        if runtime.assembly == 'stream':
-            # We are publicizing a nightly. Unlike single arch payloads, the release controller is not going to
-            # react to updates to 4.x-art-latest and create timestamp based name. We create a nightly name in
-            # doozer.
-            multi_release_name = f'{runtime.get_minor_version()}.0-0.nightly{go_suffix_for_arch("multi", private_mode)}-{multi_ts}'
-            # tag the release after the name of the release displayed in the release controller
-            multi_release_manifest_list_tag = multi_release_name
+            if private_mode:
+                # The CI image registry does not support manifest lists. Thus, we need to publish
+                # our nightly release payloads to quay.io. As of this writing, we don't have a
+                # private quay repository into which we could push embargoed release heterogeneous
+                # release payloads.
+                red_print("PRIVATE MODE MULTI PAYLOADS ARE CURRENTLY DISABLED. "
+                          "WE NEED A PRIVATE QUAY REPO FOR PRIVATE MULTI RELEASE PAYLOADS")
+                continue
+
+            imagestream_namespace, imagestream_name = payload_imagestream_namespace_and_name(
+                *self.base_imagestream, "multi", private_mode)
+
+            multi_release_istag: str  # The tag to record the multi release payload image
+            multi_release_manifest_list_tag: str  # The quay.io tag to preserve the multi payload
+            multi_release_istag, multi_release_manifest_list_tag = self.get_multi_release_names(private_mode)
+
+            multi_istags: List[Dict] = list(
+                self.build_multi_istag(tag_name, arch_to_payload_entry, imagestream_namespace)
+                for tag_name, arch_to_payload_entry in multi_specs[private_mode].items()
+            )
+
+            # now multi_istags contains istags which all point to component manifest lists. We must
+            # run oc adm release new on this set of tags -- once for each arch - to create the arch
+            # specific release payloads.
+            multi_release_is = PayloadGenerator.build_payload_imagestream(
+                imagestream_name, imagestream_namespace, multi_istags,
+                assembly_wide_inconsistencies=self.assembly_issues)
+
+            # We will then stitch those arch specific payload images together into a release payload
+            # manifest list.
+            multi_release_dest: str = f"quay.io/{'/'.join(self.release_repo)}:{multi_release_manifest_list_tag}"
+            final_multi_pullspec: str = self.create_multi_release_image(
+                imagestream_name, multi_release_is, multi_release_dest, multi_release_istag,
+                multi_specs, private_mode)
+            self.logger.info(f"The final pull_spec for the multi release payload is: {final_multi_pullspec}")
+
+            with oc.project(imagestream_namespace):
+                self.apply_multi_imagestream_update(final_multi_pullspec, imagestream_name, multi_release_istag)
+
+    def get_multi_release_names(self, private_mode: bool) -> Tuple[str, str]:
+        """
+        Determine a unique name for the multi release (recorded in the imagestream for the assembly) and a
+        quay.io tag to prevent garbage collection of the image -- as of 2022-09-09, both tags are
+        the same.
+        """
+        multi_ts = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        if self.runtime.assembly_type is AssemblyTypes.STREAM:
+            # We are publicizing a nightly. Unlike single-arch payloads, the release controller does
+            # not react to 4.x-art-latest updates and create a timestamp-based name. We create the
+            # nightly name in doozer.
+            multi_release_istag = f"{self.runtime.get_minor_version()}.0-0.nightly{go_suffix_for_arch('multi', private_mode)}-{multi_ts}"
+            # Tag the release image with same name as release displayed in the release controller
+            multi_release_manifest_list_tag = multi_release_istag
         else:
-            # Tag the release anything unique. We just don't want it garbage collected. It will
-            # not show up in the release controller. The only purpose of this image is to
-            # provide inputs to the promotion job. Promote looks at the imagestream
+            # Tag the release image in quay with anything unique; we just don't want it garbage
+            # collected. It will not show up in the release controller. The only purpose of this
+            # image is to provide inputs to the promotion job, which looks at the imagestream
             # and not for this tag.
-            multi_release_manifest_list_tag = f'{runtime.get_minor_version()}.0-0.art-assembly-{runtime.assembly}{go_suffix_for_arch("multi", private_mode)}-{multi_ts}'
-            # This will be the singular tag in an imagestream we create on apps.ci. The actual name
+            multi_release_manifest_list_tag = f"{self.runtime.get_minor_version()}.0-0.art-assembly-{self.runtime.assembly}{go_suffix_for_arch('multi', private_mode)}-{multi_ts}"
+            # This will be the singular tag we create in an imagestream on app.ci. The actual name
             # does not matter, because it will not be visible in the release controller and will not
             # be the ultimate name used to promote the release. It must be unique, however, because
             # Cincinnati chokes if multiple images exist in the repo with the same release name.
-            multi_release_name = multi_release_manifest_list_tag
+            multi_release_istag = multi_release_manifest_list_tag
+        return multi_release_istag, multi_release_manifest_list_tag
 
-        multi_istags: List[Dict] = list()
-        for tag_name, arch_to_payload_entry in multi_specs[private_mode].items():
+    def build_multi_istag(self, tag_name: str, arch_to_payload_entry: Dict[str, PayloadEntry], imagestream_namespace: str) -> Dict:
+        """Build a single imagestream tag for a component in a multi-arch payload."""
+        # There are two flows:
+        # 1. The images for ALL arches were part of the same brew built manifest list. In this case,
+        #    we want to reuse the manifest list (it was already mirrored during the mirroring step).
+        # 2. At least one arch for this component does not have the same manifest list as the
+        #    other images. This will always be true for RHCOS, but also applies
+        #    to -alt images. In this case, we must stitch a manifest list together ourselves.
+        entries: List[PayloadEntry] = list(arch_to_payload_entry.values())
+        # Determine which flow applies by checking whether all entries have the same manifest list
+        manifest_list_dests: Set[str] = set(entry.dest_manifest_list_pullspec for entry in entries)
+        if len(manifest_list_dests) == 1 and set(manifest_list_dests).pop():  # only one, and not None
+            # Flow 1: Just reuse the manifest list built in brew and synced to a tag in quay.
+            output_digest_pullspec = exchange_pullspec_tag_for_shasum(
+                manifest_list_dests.pop(),
+                entries[0].build_inspector.get_manifest_list_digest())
+            self.logger.info(f"Reusing brew manifest-list {output_digest_pullspec} for component {tag_name}")
+        else:
+            # Flow 2: Build a new manifest list and push it to quay.
+            output_digest_pullspec = self.create_multi_manifest_list(tag_name, arch_to_payload_entry, imagestream_namespace)
 
-            # There are two flows:
-            # 1. The images for ALL arches were part of the same brew built manifest list. In this case, we
-            #    want to reuse the manifest list (it was already mirrored during the mirroring step).
-            # 2. At least one arch for this component does not have the same manifest list as the
-            #    other images. This will always be true for RHCOS, but also applies
-            #    to -alt images. In this case, we must stitch a manifest list together ourselves.
-
-            aggregate_issues: List[AssemblyIssue] = list()
-
-            # Let's see which flow applies and collect all issues along the way
-            manifest_list_destination_exists = True
-            payload_entry_to_match: PayloadGenerator.PayloadEntry = None
-            for arch, payload_entry in arch_to_payload_entry.items():
-                if payload_entry.issues:
-                    aggregate_issues.extend(payload_entry.issues)
-
-                if payload_entry.dest_manifest_list_pullspec:
-                    if payload_entry_to_match is None:
-                        payload_entry_to_match = payload_entry
-                    if payload_entry.dest_manifest_list_pullspec == payload_entry_to_match.dest_manifest_list_pullspec:
-                        continue
-                manifest_list_destination_exists = False
-
-            if manifest_list_destination_exists:
-                # Just reuse the manifest list built in brew
-                output_pullspec = payload_entry_to_match.dest_manifest_list_pullspec
-                output_registry_org_repo = output_pullspec.rsplit(':')[0]  # e.g. quay.io/openshift-release-dev/ocp-v4.0-art-dev:sha256-b056..84b-ml -> quay.io/openshift-release-dev/ocp-v4.0-art-dev
-                output_digest_pullspec = output_registry_org_repo + '@' + payload_entry_to_match.build_inspector.get_manifest_list_digest()  # create a sha based pullspec for the new manifest list
-                logger.info(f'Reusing brew manifest-list {output_digest_pullspec} for component {tag_name}')
-            else:
-                # podman on rhel7.9 (like buildvm) does not support manifest lists. Instead we use a tool named
-                # manifest-list which is available through epel for rhel7 can be installed directly on fedora.
-                # The format for input is https://github.com/estesp/manifest-tool . Let's create some yaml input files.
-                component_manifest_path = output_path.joinpath(f'{imagestream_namespace}.{tag_name}.manifest-list.yaml')
-                logger.info(f'Stitching {component_manifest_path} manifest-list spec for component {tag_name}')
-                manifests = []
-                overall_manifest_hash = hashlib.sha256()
-                # Ensure we create a new tag for each manifest list. Unlike images, if we push a manifest list
-                # that seems to contain the same content (i.e. references the exact same manifest), it will still
-                # have a different digest. This means pushing a seemingly identical manifest list to the same
-                # tag will cause the original to lose the tag and be garbage collected.
-                overall_manifest_hash.update(runtime.uuid.encode('utf-8'))
-                for arch, payload_entry in arch_to_payload_entry.items():
-                    manifests.append({
-                        'image': payload_entry.dest_pullspec,
-                        'platform': {
-                            'os': 'linux',
-                            'architecture': go_arch_for_brew_arch(arch)
-                        }
-                    })
-                    overall_manifest_hash.update(payload_entry.dest_pullspec.encode('utf-8'))
-
-                ml_dict = {
-                    # We need a unique tag for the manifest list image so that it does not get garbage collected.
-                    # To calculate a tag that will vary depending on the individual manifests being added,
-                    # we've calculated a sha256 of all the manifests being added.
-                    'image': f'quay.io/{organization}/{repository}:sha256-{overall_manifest_hash.hexdigest()}',
-                    'manifests': manifests
-                }
-
-                with component_manifest_path.open(mode='w+') as ml:
-                    yaml.safe_dump(ml_dict, stream=ml, default_flow_style=False)
-
-                output_pullspec = ml_dict['image']
-                exectools.cmd_assert(f'manifest-tool push from-spec {str(component_manifest_path)}', retries=3)
-                # if we are actually pushing a manifest list, then we should derive a sha256 based pullspec
-                output_registry_org_repo = output_pullspec.rsplit(':')[0]  # e.g. quay.io/openshift-release-dev/ocp-v4.0-art-dev:sha256-b056..84b-ml -> quay.io/openshift-release-dev/ocp-v4.0-art-dev
-                output_digest_pullspec = output_registry_org_repo + '@' + find_manifest_list_sha(output_pullspec)  # create a sha based pullspec for the new manifest list
-
-            multi_istags.append(PayloadGenerator.build_payload_istag(tag_name, PayloadGenerator.PayloadEntry(
+        issues = list(issue  # collect issues from each payload entry.
+                      for payload_entry in entries
+                      for issue in payload_entry.issues or [])
+        return PayloadGenerator.build_payload_istag(
+            tag_name, PayloadEntry(
                 dest_pullspec=output_digest_pullspec,
-                issues=aggregate_issues
-            )))
+                issues=issues,
+            ))
 
-        # multi_istags contains istags which all point to component manifest lists. We must run oc adm release new
-        # on this set of tags -- once for each arch - to create the arch specific release payloads.
-        # We will then stitch those arch specific payload images together into a release payload manifest
-        # list.
-        multi_release_is = PayloadGenerator.build_payload_imagestream(imagestream_name,
-                                                                      imagestream_namespace, multi_istags,
-                                                                      assembly_wide_inconsistencies=assembly_issues)
-
-        # Write the imagestream to a file ("oc adm release new" can read from a file instead of openshift cluster API)
-        multi_release_is_path = output_path.joinpath(f'{imagestream_name}-release-imagestream.yaml')
-        with multi_release_is_path.open(mode='w+') as mf:
-            yaml.safe_dump(multi_release_is, mf)
-
-        multi_release_dest = f'quay.io/{organization}/{release_repository}:{multi_release_manifest_list_tag}'
-        arch_release_dests: Dict[str, str] = dict()  # This will map arch names to a release payload pullspec we create for that arch (i.e. based on the arch's CVO image)
-        for arch, payload_entry in multi_specs[private_mode]['cluster-version-operator'].items():
-            cvo_pullspec = payload_entry.dest_pullspec
-            arch_release_dest = f'{multi_release_dest}-{arch}'
-            arch_release_dests[arch] = arch_release_dest
-
-            new_release_cmd = [
-                'oc',
-                'adm',
-                'release',
-                'new',
-                f'--name={multi_release_name}',
-                '--reference-mode=source',
-                '--keep-manifest-list',
-                f'--from-image-stream-file={str(multi_release_is_path)}',
-                f'--to-image-base={cvo_pullspec}',
-                f'--to-image={arch_release_dest}'
-            ]
-
-            metadata: Dict[str, str] = dict()
-            metadata['release.openshift.io/architecture'] = 'multi'
-            new_release_cmd.append("--metadata")
-            new_release_cmd.append(json.dumps(metadata))
-
-            # Create the arch specific release payload containing tags pointing to manifest list component images.
-            exectools.cmd_assert(new_release_cmd)
-
-        # Create manifest list spec containing references to all the arch specific release payloads we've created
-        manifests = []
-        ml_dict = {
-            'image': f'{multi_release_dest}',
-            'manifests': manifests
-        }
-        for arch, arch_release_payload in arch_release_dests.items():
+    def create_multi_manifest_list(
+            self, tag_name: str,
+            arch_to_payload_entry: Dict[str, PayloadEntry],
+            imagestream_namespace: str) -> str:
+        """Create and publish a manifest list for a component in a multi-arch payload."""
+        # podman on rhel7.9 (like buildvm) does not support manifest lists. Instead we use a tool
+        # named manifest-list which is available through epel for rhel7 and can be installed
+        # directly on fedora. The format for input is https://github.com/estesp/manifest-tool
+        # Let's create some yaml input files.
+        component_manifest_path: Path = self.output_path.joinpath(f"{imagestream_namespace}.{tag_name}.manifest-list.yaml")
+        self.logger.info(f"Stitching {component_manifest_path} manifest-list spec for component {tag_name}")
+        manifests: List[Dict] = []
+        # Ensure we create a new tag for each manifest list. Unlike images, if we push a manifest
+        # list that seems to contain the same content (i.e. references the exact same manifests), it
+        # will still have a different digest. This means pushing a seemingly identical manifest list
+        # to the same tag will cause the original to lose the tag and be garbage collected.
+        manifest_list_hash = hashlib.sha256(self.runtime.uuid.encode("utf-8"))
+        for arch, payload_entry in arch_to_payload_entry.items():
             manifests.append({
-                'image': arch_release_payload,
-                'platform': {
-                    'os': 'linux',
-                    'architecture': go_arch_for_brew_arch(arch)
+                "image": payload_entry.dest_pullspec,
+                "platform": {
+                    "os": "linux",
+                    "architecture": go_arch_for_brew_arch(arch)
                 }
             })
+            manifest_list_hash.update(payload_entry.dest_pullspec.encode("utf-8"))
 
-        release_payload_ml_path = output_path.joinpath(f'{imagestream_name}.manifest-list.yaml')
-        with release_payload_ml_path.open(mode='w+') as ml:
+        # We need a unique tag for the manifest list image so that it does not get garbage collected.
+        # To calculate a tag that will vary depending on the individual manifests being added,
+        # we've calculated a sha256 of all the manifests being added.
+        output_pullspec: str = f"{self.full_component_repo()}:sha256-{manifest_list_hash.hexdigest()}"
+
+        # write the manifest list to a file and push it to the registry.
+        with component_manifest_path.open(mode="w+") as ml:
+            yaml.safe_dump(
+                dict(image=output_pullspec, manifests=manifests),
+                stream=ml, default_flow_style=False)
+        exectools.cmd_assert(f"manifest-tool push from-spec {str(component_manifest_path)}", retries=3)
+
+        # we are pushing a new manifest list, so return its sha256 based pullspec
+        return exchange_pullspec_tag_for_shasum(output_pullspec, find_manifest_list_sha(output_pullspec))
+
+    def create_multi_release_image(
+            self, imagestream_name: str, multi_release_is: Dict, multi_release_dest: str,
+            multi_release_name: str, multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]],
+            private_mode: bool) -> str:
+        """
+        Create and publish a "multi" release image for each arch. These all have the same content,
+        just the release image itself is arch-specific (based on arch CVO). Then stitch them
+        together into a manifest list.
+        Returns: a pullspec for the manifest list of release images.
+        """
+        # Write the imagestream to a file ("oc adm release new" can read from a file instead of
+        # openshift cluster API)
+        multi_release_is_path: Path = self.output_path.joinpath(f"{imagestream_name}-release-imagestream.yaml")
+        with multi_release_is_path.open(mode="w+") as mf:
+            yaml.safe_dump(multi_release_is, mf)
+
+        arch_release_dests: Dict[str, str] = dict()  # This will map arch names to a release payload pullspec we create for that arch (i.e. based on the arch's CVO image)
+        for arch, cvo_entry in multi_specs[private_mode]["cluster-version-operator"].items():
+            arch_release_dests[arch] = f"{multi_release_dest}-{arch}"
+            # Create the arch specific release payload containing tags pointing to manifest list
+            # component images.
+            exectools.cmd_assert([
+                "oc", "adm", "release", "new",
+                f"--name={multi_release_name}",
+                "--reference-mode=source",
+                "--keep-manifest-list",
+                f"--from-image-stream-file={str(multi_release_is_path)}",
+                f"--to-image-base={cvo_entry.dest_pullspec}",
+                f"--to-image={arch_release_dests[arch]}",
+                "--metadata", json.dumps({"release.openshift.io/architecture": "multi"})
+            ])
+
+        return self.create_multi_release_manifest_list(arch_release_dests, imagestream_name, multi_release_dest)
+
+    def create_multi_release_manifest_list(
+            self, arch_release_dests: Dict[str, str],
+            imagestream_name: str, multi_release_dest: str) -> str:
+        """
+        Create a manifest list spec containing references to the arch specific release payloads
+        created. Return sha-based pullspec.
+        """
+        ml_dict = {
+            "image": f"{multi_release_dest}",
+            "manifests": [
+                {
+                    "image": arch_release_payload,
+                    "platform": {
+                        "os": "linux",
+                        "architecture": go_arch_for_brew_arch(arch)
+                    }
+                } for arch, arch_release_payload in arch_release_dests.items()
+            ]
+        }
+
+        release_payload_ml_path = self.output_path.joinpath(f"{imagestream_name}.manifest-list.yaml")
+        with release_payload_ml_path.open(mode="w+") as ml:
             yaml.safe_dump(ml_dict, stream=ml, default_flow_style=False)
 
         # Construct the top level manifest list release payload
-        exectools.cmd_assert(f'manifest-tool push from-spec {str(release_payload_ml_path)}', retries=3)
+        exectools.cmd_assert(f"manifest-tool push from-spec {str(release_payload_ml_path)}", retries=3)
         # if we are actually pushing a manifest list, then we should derive a sha256 based pullspec
-        output_registry_org_repo = multi_release_dest.rsplit(':')[0]   # e.g. quay.io/openshift-release-dev/ocp-release-nightly
-        final_multi_pullspec = output_registry_org_repo + '@' + find_manifest_list_sha(multi_release_dest)  # create a sha based pullspec for the new manifest list
-        logger.info(f'The final pull_spec for the multi release payload is: {final_multi_pullspec}')
+        return exchange_pullspec_tag_for_shasum(
+            multi_release_dest, find_manifest_list_sha(multi_release_dest))
 
-        with oc.project(imagestream_namespace):
-            multi_art_latest_is = oc.selector(f'imagestream/{imagestream_name}').object(ignore_not_found=True)
-            if not multi_art_latest_is:
-                # If the stream has not been bootstrapped, create it.
-                oc.create({
-                    'apiVersion': 'image.openshift.io/v1',
-                    'kind': 'ImageStream',
-                    'metadata': {
-                        'name': imagestream_name,
-                        'namespace': imagestream_namespace
-                    }
-                })
-                multi_art_latest_is = oc.selector(f'imagestream/{imagestream_name}').object()
+    def apply_multi_imagestream_update(self, final_multi_pullspec: str, imagestream_name: str, multi_release_istag: str):
+        """Update the multi-release imagestream, pruning old nightlies and adding the new one."""
+        # [lmeyer] Q: but what if this is NOT a nightly? then we should not prune. but it's probably
+        # ok because we won't have more than one tag in non-nightly imagestreams?
+        multi_art_latest_is = self.ensure_imagestream_apiobj(imagestream_name)
 
-            def add_multi_nightly_release(obj: oc.APIObject):
-                obj_model = obj.model
-                if obj_model.spec.tags is oc.Missing:
-                    obj_model.spec['tags'] = []
+        def add_multi_nightly_release(obj: oc.APIObject):
+            obj_model = obj.model
+            if obj_model.spec.tags is oc.Missing:
+                obj_model.spec["tags"] = []
 
-                # For normal 4.x-art-latest, we update the imagestream with individual component images and the release
-                # controller formulates the nightly. For multi-arch, this is not possible (notably, the CI internal
-                # registry does not support manifest lists). Instead, in the ocp-multi namespace, the 4.x-art-latest
-                # imagestreams are configured `as: Stable`: https://github.com/openshift/release/pull/24130 .
-                # This means the release controller treats entries in these imagestreams the same way it treats
-                # it when ART tags into is/release; i.e. it treats it as an official release.
-                # With this comes the responsibility to prune nightlies ourselves.
-                release_tags: List = obj_model.spec['tags']
-                while len(release_tags) > 5:
-                    release_tags.pop(0)
+            # For normal 4.x-art-latest, we update the imagestream with individual component images
+            # and the release controller formulates the nightly. For multi-arch, this is not
+            # possible (notably, the CI internal registry does not support manifest lists). Instead,
+            # in the ocp-multi namespace, the 4.x-art-latest imagestreams are configured
+            # `as: Stable`: https://github.com/openshift/release/pull/24130
+            # This means the release controller treats entries in these imagestreams the same way it
+            # treats it when ART tags into is/release; i.e. it treats it as an official release.
+            # With this comes the responsibility to prune nightlies ourselves.
+            release_tags: List = obj_model.spec["tags"]
+            while len(release_tags) > 5:  # keep at most 5 tags
+                release_tags.pop(0)
+                # [lmeyer] Q: doesn't this leave the tag in the status still? are they reliably removed?
 
-                # Now append a tag for our new nightly.
-                release_tags.append({
-                    'from': {
-                        'kind': 'DockerImage',
-                        'name': final_multi_pullspec,
-                    },
-                    'referencePolicy': {
-                        'type': 'Source'
-                    },
-                    'name': multi_release_name,
-                    'annotations': {
-                        'release.openshift.io/rewrite': 'false',  # Prevents the release controller from trying to create a local registry release payload with oc adm release new.
-                        # 'release.openshift.io/name': f'{runtime.get_minor_version()}.0-0.nightly',
-                    }
-                })
-                return True
+            # Now append a tag for our new nightly.
+            release_tags.append({
+                "from": {
+                    "kind": "DockerImage",
+                    "name": final_multi_pullspec,
+                },
+                "referencePolicy": {
+                    "type": "Source"
+                },
+                "name": multi_release_istag,
+                "annotations": {
+                    "release.openshift.io/rewrite": "false",  # Prevents the release controller from trying to create a local registry release payload with oc adm release new.
+                    # "release.openshift.io/name": f"{self.runtime.get_minor_version()}.0-0.nightly",
+                }
+            })
+            return True
 
-            modify_and_replace_api_object(multi_art_latest_is, add_multi_nightly_release, output_path, moist_run)
-
-    if not overall_permitted:
-        red_print('DO NOT PROCEED WITH THIS ASSEMBLY PAYLOAD -- not all detected issues are permitted.', file=sys.stderr)
-        exit(1)
-
-    exit(0)
+        modify_and_replace_api_object(multi_art_latest_is, add_multi_nightly_release, self.output_path, self.moist_run)
 
 
 class PayloadGenerator:
-
-    class PayloadEntry(NamedTuple):
-
-        # Append any issues for the assembly
-        issues: List[AssemblyIssue]
-
-        # The final quay.io destination for the single-arch pullspec
-        dest_pullspec: str
-
-        # The final quay.io destination for the manifest list the single arch image
-        # might belong to. Most images built in brew will have been part of a
-        # manifest list, but not all release components (e.g. RHCOS)
-        # will be. We reuse manifest lists where possible for heterogeneous
-        # release payloads to save time vs building them ourselves.
-        dest_manifest_list_pullspec: str = None
-
-        """
-        If the entry is for an image in this doozer group, these values will be set.
-        """
-        # The image metadata which associated with the payload
-        image_meta: Optional[ImageMetadata] = None
-        # An inspector associated with the overall brew build (manifest list) found for the release
-        build_inspector: Optional[BrewBuildImageInspector] = None
-        # The brew build archive (arch specific image) that should be tagged into the payload
-        archive_inspector: Optional[ArchiveImageInspector] = None
-
-        """
-        If the entry is for RHCOS, this value will be set
-        """
-        rhcos_build: Optional[RHCOSBuildInspector] = None
 
     @staticmethod
     def find_mismatched_siblings(build_image_inspectors: Iterable[Optional[BrewBuildImageInspector]]) -> List[Tuple[BrewBuildImageInspector, BrewBuildImageInspector]]:
@@ -876,7 +1097,7 @@ class PayloadGenerator:
 
         for rhcos_build in rhcos_builds:
             for nvr in rhcos_build.get_rpm_nvrs():
-                rpm_name = parse_nvr(nvr)['name']
+                rpm_name = parse_nvr(nvr)["name"]
                 if rpm_name not in rpm_uses:
                     rpm_uses[rpm_name] = dict()
                 if nvr not in rpm_uses[rpm_name]:
@@ -908,7 +1129,7 @@ class PayloadGenerator:
         :param dest_repo: The registry/org/repo into which the image should be mirrored.
         :return: Map[payload_tag_name] -> PayloadEntry.
         """
-        members: Dict[str, PayloadGenerator.PayloadEntry] = clazz._find_initial_payload_entries(assembly_inspector, arch, dest_repo)
+        members: Dict[str, PayloadEntry] = clazz._find_initial_payload_entries(assembly_inspector, arch, dest_repo)
         members = clazz._replace_missing_payload_entries(members, arch)
         rhcos_members, issues = clazz._find_rhcos_payload_entries(assembly_inspector, arch)
         members.update(rhcos_members)
@@ -916,7 +1137,7 @@ class PayloadGenerator:
 
     @staticmethod
     def _find_initial_payload_entries(assembly_inspector: AssemblyInspector, arch: str, dest_repo: str) -> Dict[str, PayloadEntry]:
-        members: Dict[str, Optional[PayloadGenerator.PayloadEntry]] = dict()  # Maps release payload tag name to the PayloadEntry for the image.
+        members: Dict[str, Optional[PayloadEntry]] = dict()  # Maps release payload tag name to the PayloadEntry for the image.
         for payload_tag, archive_inspector in PayloadGenerator.get_group_payload_tag_mapping(assembly_inspector, arch).items():
             if not archive_inspector:
                 # There is no build for this payload tag for this CPU arch. This
@@ -924,7 +1145,7 @@ class PayloadGenerator:
                 members[payload_tag] = None
                 continue
 
-            members[payload_tag] = PayloadGenerator.PayloadEntry(
+            members[payload_tag] = PayloadEntry(
                 image_meta=archive_inspector.get_image_meta(),
                 build_inspector=archive_inspector.get_brew_build_inspector(),
                 archive_inspector=archive_inspector,
@@ -946,7 +1167,7 @@ class PayloadGenerator:
         # To do this, we replace missing images with the 'pod' image for the architecture. This should
         # be available for every CPU architecture. As such, we must find 'pod' to proceed.
 
-        pod_entry = members.get('pod', None)
+        pod_entry = members.get("pod", None)
         if not pod_entry:
             raise IOError(f"Unable to find 'pod' image archive for architecture: {arch}; unable to construct payload")
 
@@ -957,12 +1178,12 @@ class PayloadGenerator:
 
     @staticmethod
     def _find_rhcos_payload_entries(assembly_inspector: AssemblyInspector, arch: str) -> (Dict[str, PayloadEntry], List[AssemblyIssue]):
-        members: Dict[str, PayloadGenerator.PayloadEntry] = dict()
+        members: Dict[str, PayloadEntry] = dict()
         issues: List[AssemblyIssue] = list()
         rhcos_build: RHCOSBuildInspector = assembly_inspector.get_rhcos_build(arch)
         for container_config in rhcos_build.get_container_configs():
             try:
-                members[container_config.name] = PayloadGenerator.PayloadEntry(
+                members[container_config.name] = PayloadEntry(
                     dest_pullspec=rhcos_build.get_container_pullspec(container_config),
                     rhcos_build=rhcos_build,
                     issues=list(),
@@ -971,12 +1192,12 @@ class PayloadGenerator:
                 if container_config.primary:
                     # Impermissible, need to be sure of having the primary container in the payload
                     issues.append(AssemblyIssue(
-                        f'RHCOS build {rhcos_build} metadata lacks entry for primary container {container_config.name}: {ex}',
+                        f"RHCOS build {rhcos_build} metadata lacks entry for primary container {container_config.name}: {ex}",
                         component=container_config.name
                     ))
                 else:
                     issues.append(AssemblyIssue(
-                        f'RHCOS build {rhcos_build} metadata lacks entry for non-primary container {container_config.name}: {ex}',
+                        f"RHCOS build {rhcos_build} metadata lacks entry for non-primary container {container_config.name}: {ex}",
                         component=container_config.name,
                         code=AssemblyIssueCode.MISSING_RHCOS_CONTAINER
                     ))
@@ -991,11 +1212,11 @@ class PayloadGenerator:
         :return: Returns a imagestreamtag dict for a release payload imagestream.
         """
         return {
-            'annotations': PayloadGenerator.build_inconsistency_annotation(payload_entry.issues),
-            'name': payload_tag_name,
-            'from': {
-                'kind': 'DockerImage',
-                'name': payload_entry.dest_pullspec,
+            "annotations": PayloadGenerator.build_inconsistency_annotation(payload_entry.issues),
+            "name": payload_tag_name,
+            "from": {
+                "kind": "DockerImage",
+                "name": payload_entry.dest_pullspec,
             }
         }
 
@@ -1011,15 +1232,15 @@ class PayloadGenerator:
         """
 
         istream_obj = {
-            'kind': 'ImageStream',
-            'apiVersion': 'image.openshift.io/v1',
-            'metadata': {
-                'name': imagestream_name,
-                'namespace': imagestream_namespace,
-                'annotations': PayloadGenerator.build_inconsistency_annotation(assembly_wide_inconsistencies)
+            "kind": "ImageStream",
+            "apiVersion": "image.openshift.io/v1",
+            "metadata": {
+                "name": imagestream_name,
+                "namespace": imagestream_namespace,
+                "annotations": PayloadGenerator.build_inconsistency_annotation(assembly_wide_inconsistencies)
             },
-            'spec': {
-                'tags': list(payload_istags),
+            "spec": {
+                "tags": list(payload_istags),
             }
         }
 
@@ -1059,7 +1280,7 @@ class PayloadGenerator:
                 # There was no build for this image found associated with the assembly.
                 # In this case, don't put the tag_name into the imagestream. This is not good,
                 # so be verbose.
-                red_print(f'Unable to find build for {dgk} for {assembly_inspector.get_assembly_name()}', file=sys.stderr)
+                red_print(f"Unable to find build for {dgk} for {assembly_inspector.get_assembly_name()}", file=sys.stderr)
                 continue
 
             image_meta: ImageMetadata = assembly_inspector.runtime.image_map[dgk]
@@ -1090,7 +1311,7 @@ class PayloadGenerator:
                 # There is no build for this CPU architecture for this image_meta/build. This finding
                 # conflicts with the `arch not in image_meta.get_arches()` check above.
                 # Best to fail.
-                raise IOError(f'{dgk} claims to be built for {image_meta.get_arches()} but did not find {brew_arch} build for {build_inspector.get_brew_build_webpage_url()}')
+                raise IOError(f"{dgk} claims to be built for {image_meta.get_arches()} but did not find {brew_arch} build for {build_inspector.get_brew_build_webpage_url()}")
 
             members[tag_name] = archive_inspector
 
@@ -1101,57 +1322,57 @@ class PayloadGenerator:
         runtime = assembly_inspector.runtime
 
         def terminal_issue(msg: str) -> List[AssemblyIssue]:
-            return [AssemblyIssue(msg, component='reference-releases')]
+            return [AssemblyIssue(msg, component="reference-releases")]
 
         issues: List[str]
-        runtime.logger.info(f'Processing nightly: {nightly}')
+        runtime.logger.info(f"Processing nightly: {nightly}")
         major_minor, brew_cpu_arch, priv = isolate_nightly_name_components(nightly)
 
         if major_minor != runtime.get_minor_version():
-            return terminal_issue(f'Specified nightly {nightly} does not match group major.minor')
+            return terminal_issue(f"Specified nightly {nightly} does not match group major.minor")
 
         rc_suffix = go_suffix_for_arch(brew_cpu_arch, priv)
 
         retries: int = 3
-        release_json_str = ''
+        release_json_str = ""
         rc = -1
-        pullspec = f'registry.ci.openshift.org/ocp{rc_suffix}/release{rc_suffix}:{nightly}'
+        pullspec = f"registry.ci.openshift.org/ocp{rc_suffix}/release{rc_suffix}:{nightly}"
         while retries > 0:
-            rc, release_json_str, err = exectools.cmd_gather(f'oc adm release info {pullspec} -o=json')
+            rc, release_json_str, err = exectools.cmd_gather(f"oc adm release info {pullspec} -o=json")
             if rc == 0:
                 break
-            runtime.logger.warn(f'Error accessing nightly release info for {pullspec}:  {err}')
+            runtime.logger.warn(f"Error accessing nightly release info for {pullspec}:  {err}")
             retries -= 1
 
         if rc != 0:
-            return terminal_issue(f'Unable to gather nightly release info details: {pullspec}; garbage collected?')
+            return terminal_issue(f"Unable to gather nightly release info details: {pullspec}; garbage collected?")
 
         release_info = Model(dict_to_model=json.loads(release_json_str))
         if not release_info.references.spec.tags:
-            return terminal_issue(f'Could not find tags in nightly {nightly}')
+            return terminal_issue(f"Could not find tags in nightly {nightly}")
 
-        payload_entries: Dict[str, PayloadGenerator.PayloadEntry]
+        payload_entries: Dict[str, PayloadEntry]
         issues: List[AssemblyIssue]
-        payload_entries, issues = PayloadGenerator.find_payload_entries(assembly_inspector, arch, '')
+        payload_entries, issues = PayloadGenerator.find_payload_entries(assembly_inspector, arch, "")
         rhcos_container_configs = {tag.name: tag for tag in rhcos.get_container_configs(runtime)}
         for component_tag in release_info.references.spec.tags:  # For each tag in the imagestream
             payload_tag_name: str = component_tag.name  # e.g. "aws-ebs-csi-driver"
-            payload_tag_pullspec: str = component_tag['from'].name  # quay pullspec
-            if '@' not in payload_tag_pullspec:
+            payload_tag_pullspec: str = component_tag["from"].name  # quay pullspec
+            if "@" not in payload_tag_pullspec:
                 # This speaks to an invalid nightly, so raise and exception
-                raise IOError(f'Expected pullspec in {nightly}:{payload_tag_name} to be sha digest but found invalid: {payload_tag_pullspec}')
+                raise IOError(f"Expected pullspec in {nightly}:{payload_tag_name} to be sha digest but found invalid: {payload_tag_pullspec}")
 
-            pullspec_sha = payload_tag_pullspec.rsplit('@', 1)[-1]
+            pullspec_sha = payload_tag_pullspec.rsplit("@", 1)[-1]
             entry = payload_entries.get(payload_tag_name, None)
 
             if not entry:
-                raise IOError(f'Did not find {nightly} payload tag {payload_tag_name} in computed assembly payload')
+                raise IOError(f"Did not find {nightly} payload tag {payload_tag_name} in computed assembly payload")
 
             if entry.archive_inspector:
                 if entry.archive_inspector.get_archive_digest() != pullspec_sha:
                     # Impermissible because the artist should remove the reference nightlies from the assembly definition
-                    issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed archive: {entry.archive_inspector.get_archive_id()} and {entry.archive_inspector.get_archive_pullspec()}',
-                                                component='reference-releases'))
+                    issues.append(AssemblyIssue(f"{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed archive: {entry.archive_inspector.get_archive_id()} and {entry.archive_inspector.get_archive_pullspec()}",
+                                                component="reference-releases"))
             elif entry.rhcos_build:
                 actual_digest = entry.rhcos_build.get_container_digest(rhcos_container_configs[payload_tag_name])
                 if actual_digest != pullspec_sha:
@@ -1159,7 +1380,7 @@ class PayloadGenerator:
                     issues.append(AssemblyIssue(f'{nightly} contains {payload_tag_name} sha {pullspec_sha} but assembly computed rhcos: {entry.rhcos_build} and {actual_digest}',
                                                 component='reference-releases'))
             else:
-                raise IOError(f'Unsupported payload entry {entry}')
+                raise IOError(f"Unsupported payload entry {entry}")
 
         return issues
 
