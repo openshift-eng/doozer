@@ -83,9 +83,29 @@ class TestImageDistGit(TestDistgit):
     def test_image_build_method_imagebuilder(self):
         get = lambda key, default: dict({"builder": "..."}) if key == "from" else default
 
-        metadata = flexmock(runtime=self.mock_runtime(group_config=flexmock(default_image_build_method="default-method")),
+        metadata = flexmock(runtime=self.mock_runtime(group_config=flexmock(default_image_build_method=distgit.Missing)),
                             config=flexmock(distgit=flexmock(branch=distgit.Missing),
                                             image_build_method=distgit.Missing,
+                                            get=get),
+                            name="_irrelevant_",
+                            logger="_irrelevant_")
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("imagebuilder", repo.image_build_method)
+
+        metadata = flexmock(runtime=self.mock_runtime(group_config=flexmock(default_image_build_method="osbs2")),
+                            config=flexmock(distgit=flexmock(branch=distgit.Missing),
+                                            image_build_method=distgit.Missing,
+                                            get=get),
+                            name="_irrelevant_",
+                            logger="_irrelevant_")
+
+        repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
+        self.assertEqual("osbs2", repo.image_build_method)
+
+        metadata = flexmock(runtime=self.mock_runtime(group_config=flexmock(default_image_build_method="osbs2")),
+                            config=flexmock(distgit=flexmock(branch=distgit.Missing),
+                                            image_build_method="imagebuilder",
                                             get=get),
                             name="_irrelevant_",
                             logger="_irrelevant_")

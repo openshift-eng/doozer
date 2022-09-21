@@ -10,6 +10,7 @@ import pathlib
 import re
 import shutil
 import sys
+import threading
 import time
 import traceback
 from datetime import date
@@ -21,17 +22,19 @@ import bashlex
 import requests
 import yaml
 from dockerfile_parse import DockerfileParser
-from doozerlib.rpm_utils import parse_nvr
 from tenacity import (before_sleep_log, retry, retry_if_not_result,
                       stop_after_attempt, wait_fixed)
 
+import doozerlib
 from doozerlib import assertion, constants, exectools, logutil, state, util
 from doozerlib.assembly import AssemblyTypes
 from doozerlib.brew import get_build_objects, watch_task
 from doozerlib.dblib import Record
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.model import ListModel, Missing, Model
+from doozerlib.osbs2_builder import OSBS2Builder
 from doozerlib.pushd import Dir
+from doozerlib.rpm_utils import parse_nvr
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib.util import convert_remote_git_to_https, yellow_print
 
@@ -94,7 +97,7 @@ class DistGitRepo(object):
     def __init__(self, metadata, autoclone=True):
         self.metadata = metadata
         self.config: Model = metadata.config
-        self.runtime = metadata.runtime
+        self.runtime: "doozerlib.runtime.Runtime" = metadata.runtime
         self.name: str = self.metadata.name
         self.distgit_dir: str = None
         self.dg_path: pathlib.Path = None
@@ -196,7 +199,7 @@ class DistGitRepo(object):
                     timeout = str(self.runtime.global_opts['rhpkg_clone_timeout'])
                     rhpkg_clone_depth = int(self.runtime.global_opts.get('rhpkg_clone_depth', '0'))
 
-                    if self.metadata.namespace == 'containers' and self.runtime.cache_dir:
+                    if self.metadata.namespace == 'containers':
                         # Containers don't generally require distgit lookaside. We can rely on normal
                         # git clone & leverage git caches to greatly accelerate things if the user supplied it.
                         gitargs = ['--branch', distgit_branch]
@@ -421,6 +424,10 @@ class ImageDistGitRepo(DistGitRepo):
         self.logger: logging.Logger = metadata.logger
         self.source_modifier_factory = source_modifier_factory
 
+        self.org_image_name = None
+        self.org_version = None
+        self.org_release = None
+
     def clone(self, distgits_root_dir, distgit_branch):
         super(ImageDistGitRepo, self).clone(distgits_root_dir, distgit_branch)
         self._read_master_data()
@@ -432,10 +439,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     @property
     def image_build_method(self):
-        build_method = self.runtime.group_config.default_image_build_method
-        # If the build is multistage, override with 'imagebuilder' as required for multistage.
-        if 'builder' in self.config.get('from', {}):
-            build_method = 'imagebuilder'
+        build_method = self.runtime.group_config.default_image_build_method or "imagebuilder"
         # If our config specifies something, override with that.
         if self.config.image_build_method is not Missing:
             build_method = self.config.image_build_method
@@ -567,7 +571,7 @@ class ImageDistGitRepo(DistGitRepo):
                 ]
             })
 
-        if self.image_build_method is not Missing:
+        if self.image_build_method is not Missing and self.image_build_method != "osbs2":
             config_overrides['image_build_method'] = self.image_build_method
 
         if arches:
@@ -998,6 +1002,7 @@ class ImageDistGitRepo(DistGitRepo):
             if self.config.wait_for is not Missing:
                 self._set_wait_for(self.config.wait_for, terminate_event)
 
+            push_version, push_release = ('', '')
             if self.runtime.local:
                 self.build_status = self._build_container_local(target_image, profile["repo_type"], realtime)
                 if not self.build_status:
@@ -1029,20 +1034,31 @@ class ImageDistGitRepo(DistGitRepo):
                     raise DoozerFatalError("Building images against multiple targets is not currently supported.")
                 target = self.metadata.targets[0]
 
-                exectools.retry(
-                    retries=retries, wait_f=wait,
-                    task_f=lambda: self._build_container(
-                        target_image, target, profile["signing_intent"], profile["repo_type"], profile["repo_list"], terminate_event,
-                        scratch, record, dry_run=dry_run))
-
-            # Just in case someone else is building an image, go ahead and find what was just
-            # built so that push_image will have a fixed point of reference and not detect any
-            # subsequent builds.
-            push_version, push_release = ('', '')
-            if not dry_run and not scratch:
-                nvr = parse_nvr(record["nvrs"].split(",")[0])
-                push_version = nvr["version"]
-                push_release = nvr["release"]
+                if self.image_build_method == "osbs2":  # use OSBS 2
+                    osbs2 = OSBS2Builder(self.runtime, scratch=scratch, dry_run=dry_run)
+                    task_id, task_url, nvr = osbs2.build(self.metadata, profile, retries=retries)
+                    record["task_id"] = task_id
+                    record["task_url"] = task_url
+                    record["nvrs"] = nvr
+                    if not dry_run:
+                        self.update_build_db(True, task_id=task_id, scratch=scratch)
+                        if not scratch:
+                            nvr_dict = parse_nvr(nvr)
+                            push_version = nvr_dict["version"]
+                            push_release = nvr_dict["release"]
+                else:  # use OSBS 1
+                    exectools.retry(
+                        retries=retries, wait_f=wait,
+                        task_f=lambda: self._build_container(
+                            target_image, target, profile["signing_intent"], profile["repo_type"], profile["repo_list"], terminate_event,
+                            scratch, record, dry_run=dry_run))
+                    # Just in case someone else is building an image, go ahead and find what was just
+                    # built so that push_image will have a fixed point of reference and not detect any
+                    # subsequent builds.
+                    if not dry_run and not scratch:
+                        nvr_dict = parse_nvr(record["nvrs"].split(",")[0])
+                        push_version = nvr_dict["version"]
+                        push_release = nvr_dict["release"]
             record["message"] = "Success"
             record["status"] = 0
             self.build_status = True

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from setuptools import setup, find_packages
 import sys
-if sys.version_info < (3, 6):
-    sys.exit('Sorry, Python < 3.6 is not supported.')
+if sys.version_info < (3, 8):
+    sys.exit('Sorry, Python < 3.8 is not supported.')
 
 with open('./requirements.txt') as f:
     INSTALL_REQUIRES = f.read().splitlines()
@@ -28,14 +28,13 @@ setup(
     install_requires=INSTALL_REQUIRES,
     test_suite='tests',
     dependency_links=[],
-    python_requires='>=3.6',
+    python_requires='>=3.8',
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Environment :: Console",
         "Operating System :: POSIX",
         "License :: OSI Approved :: Apache Software License",
