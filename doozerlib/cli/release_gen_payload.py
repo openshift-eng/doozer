@@ -1001,18 +1001,23 @@ class GenPayloadCli:
             if obj_model.spec.tags is oc.Missing:
                 obj_model.spec["tags"] = []
 
-            # For normal 4.x-art-latest, we update the imagestream with individual component images
-            # and the release controller formulates the nightly. For multi-arch, this is not
-            # possible (notably, the CI internal registry does not support manifest lists). Instead,
-            # in the ocp-multi namespace, the 4.x-art-latest imagestreams are configured
-            # `as: Stable`: https://github.com/openshift/release/pull/24130
-            # This means the release controller treats entries in these imagestreams the same way it
-            # treats it when ART tags into is/release; i.e. it treats it as an official release.
-            # With this comes the responsibility to prune nightlies ourselves.
             release_tags: List = obj_model.spec["tags"]
-            while len(release_tags) > 5:  # keep at most 5 tags
-                release_tags.pop(0)
-                # [lmeyer] Q: doesn't this leave the tag in the status still? are they reliably removed?
+
+            if self.runtime.assembly_type is AssemblyTypes.STREAM:
+                # For normal 4.x-art-latest, we update the imagestream with individual component images
+                # and the release controller formulates the nightly. For multi-arch, this is not
+                # possible (notably, the CI internal registry does not support manifest lists). Instead,
+                # in the ocp-multi namespace, the 4.x-art-latest imagestreams are configured
+                # `as: Stable`: https://github.com/openshift/release/pull/24130
+                # This means the release controller treats entries in these imagestreams the same way it
+                # treats it when ART tags into is/release; i.e. it treats it as an official release.
+                # With this comes the responsibility to prune nightlies ourselves.
+                while len(release_tags) > 5:  # keep at most 5 tags
+                    release_tags.pop(0)
+                    # [lmeyer] Q: doesn't this leave the tag in the status still? are they reliably removed?
+            else:
+                # For non-stream 4.x-art-assembly-$name, old imagestreamtags should be removed.
+                release_tags.clear()
 
             # Now append a tag for our new nightly.
             release_tags.append({
