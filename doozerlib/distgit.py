@@ -416,6 +416,9 @@ class ImageDistGitRepo(DistGitRepo):
 
     def __init__(self, metadata, autoclone=True,
                  source_modifier_factory=SourceModifierFactory()):
+        self.org_image_name = None
+        self.org_version = None
+        self.org_release = None
         super(ImageDistGitRepo, self).__init__(metadata, autoclone=autoclone)
         self.build_lock = Lock()
         self.build_lock.acquire()
@@ -423,10 +426,6 @@ class ImageDistGitRepo(DistGitRepo):
         self.rebase_status = False
         self.logger: logging.Logger = metadata.logger
         self.source_modifier_factory = source_modifier_factory
-
-        self.org_image_name = None
-        self.org_version = None
-        self.org_release = None
 
     def clone(self, distgits_root_dir, distgit_branch):
         super(ImageDistGitRepo, self).clone(distgits_root_dir, distgit_branch)
