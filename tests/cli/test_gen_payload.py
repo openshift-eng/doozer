@@ -593,7 +593,7 @@ manifests:
 
     @patch("doozerlib.cli.release_gen_payload.modify_and_replace_api_object")
     def test_apply_multi_imagestream_update(self, mar_mock):
-        gpcli = flexmock(rgp_cli.GenPayloadCli(output_dir="/tmp"))
+        gpcli = flexmock(rgp_cli.GenPayloadCli(output_dir="/tmp", runtime=MagicMock(assembly_type=AssemblyTypes.STREAM)))
 
         # make MAR method do basically what it would, without writing all the files
         mar_mock.side_effect = lambda apiobj, func, *_: func(apiobj)
