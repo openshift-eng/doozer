@@ -38,10 +38,15 @@ class OSBS2Builder:
             # `targets` is defined as an array just because we want to keep consistency with RPM build.
             raise DoozerFatalError("Building images against multiple targets is not currently supported.")
         target = image.targets[0]
-        logger.warning("[BETA] OSBS 2: Building image %s...", nvr)
-        koji_api = self._runtime.build_retrying_koji_client()
         task_id = 0
         task_url = None
+        build_id = 0
+        build_info = None
+        build_url = None
+        logger.info("OSBS 2: Building image %s...", nvr)
+        koji_api = self._runtime.build_retrying_koji_client()
+        if not koji_api.logged_in:
+            koji_api.gssapi_login()
 
         for attempt in range(retries):
             logger.info("Build attempt %s/%s", attempt + 1, retries)
@@ -57,6 +62,7 @@ class OSBS2Builder:
                     error = brew.watch_task(koji_api, logger.info, task_id, terminate_event=threading.Event())
 
                 # Gather brew-logs
+                logger.info("Gathering brew-logs")
                 cmd = ["brew", "download-logs", "--recurse", "-d", dg._logs_dir(), task_id]
                 if self.dry_run:
                     logger.warning("[DRY RUN] Would have downloaded Brew logs with %s", cmd)
@@ -65,12 +71,9 @@ class OSBS2Builder:
                     if logs_rc != 0:
                         logger.warning("Error downloading build logs from brew for task %s: %s", task_id, logs_err)
 
-                # Get build ID
-                build_id = 0
-                build_info = None
-                if error:  # Build failed
-                    # Looking for something like the following to conclude the image has already been built:
-                    # BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
+                if error:
+                    # Looking for error message like the following to conclude the image has already been built:
+                    #   BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
                     # Note it is possible that a Brew task fails with a build record left (https://issues.redhat.com/browse/ART-1723).
                     # Didn't find a variable in the context to get the Brew NVR or ID. Extracting the build ID from the error message.
                     # Hope the error message format will not change.
@@ -82,48 +85,54 @@ class OSBS2Builder:
                             build_info = builds[0]
                             build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
                             logger.info("Image %s already built against this dist-git commit (or version-release tag): %s", nvr, build_url)
-                            error = None  # Treat as success
-                else:  # Build succeeded
-                    if self.dry_run:
-                        build_id = 0
-                        build_info = {"id": build_id, "nvr": nvr}
-                    else:
-                        # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
-                        taskResult = koji_api.getTaskResult(task_id)
-                        build_id = int(taskResult["koji_builds"][0])
-                        build_info = koji_api.getBuild(build_id)
-                    build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
+                            error = None  # Treat as a success
+
             except Exception as err:
                 error = f"Error building image {nvr}: {str(err)}: {traceback.format_exc()}"
 
-            if error:
-                # An error occurred. We don't have a viable build.
-                message = f"Build failed: {error}"
-                logger.warning(
-                    "Error building rpm %s [attempt #%s] in Brew: %s",
-                    image.name,
-                    attempt + 1,
-                    message,
-                )
-                if attempt < retries - 1:
-                    # Brew does not handle an immediate retry correctly, wait before trying another build
-                    logger.info("Will retry in 5 minutes")
-                    sleep(5 * 60)
-                continue
-
-            if self._runtime.hotfix:
-                # Tag the image so they don't get garbage collected.
-                logger.info(f'Tagging {image.get_component_name()} build {build_info["nvr"]} with {image.hotfix_brew_tag()} to prevent garbage collection')
+            if not error:  # Build succeeded
+                # Get build_id and build_info
                 if self.dry_run:
-                    logger.warning("[DRY RUN] Build %s would have been tagged into %s", nvr, image.hotfix_brew_tag())
-                else:
-                    if not koji_api.logged_in:
-                        koji_api.gssapi_login()
-                    koji_api.tagBuild(image.hotfix_brew_tag(), build_info["nvr"])
-                    logger.warning("Build %s has been tagged into %s", nvr, image.hotfix_brew_tag())
+                    build_id = 0
+                    build_info = {"id": build_id, "nvr": nvr}
+                elif not build_info:
+                    # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
+                    taskResult = koji_api.getTaskResult(task_id)
+                    build_id = int(taskResult["koji_builds"][0])
+                    build_info = koji_api.getBuild(build_id)
+                build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
+                break
 
-            logger.info("Successfully built image %s; task: %s; build record: %s", nvr, task_url, build_url)
-            return task_id, task_url, nvr
+            # An error occurred. We don't have a viable build.
+            message = f"Build failed: {error}"
+            logger.warning(
+                "Error building image %s [attempt #%s] in Brew: %s",
+                image.name,
+                attempt + 1,
+                message,
+            )
+            if attempt < retries - 1:
+                # Brew does not handle an immediate retry correctly, wait before trying another build
+                logger.info("Will retry in 5 minutes")
+                sleep(5 * 60)
+
+        if error:
+            raise exectools.RetryException(
+                f"Giving up after {retries} failed attempt(s): {message}",
+                (task_url, task_url),
+            )
+
+        logger.info("Successfully built image %s; task: %s; build record: %s", nvr, task_url, build_url)
+
+        if self._runtime.hotfix:
+            # Tag the image so it won't get garbage collected.
+            logger.info(f'Tagging {image.get_component_name()} build {build_info["nvr"]} into {image.hotfix_brew_tag()} to prevent garbage collection')
+            if self.dry_run:
+                logger.warning("[DRY RUN] Build %s would have been tagged into %s", nvr, image.hotfix_brew_tag())
+            else:
+                koji_api.tagBuild(image.hotfix_brew_tag(), build_info["nvr"])
+                logger.warning("Build %s has been tagged into %s", nvr, image.hotfix_brew_tag())
+        return task_id, task_url, nvr
 
     def _start_build(self, dg: "distgit.ImageDistGitRepo", target: str, profile: Dict, koji_api: koji.ClientSession):
         logger = dg.logger
@@ -159,7 +168,7 @@ class OSBS2Builder:
             task_id: int = koji_api.buildContainer(src, target, opts=opts, channel="container-binary")
 
         task_url = f"{BREWWEB_URL}/taskinfo?taskID={task_id}"
-        logger.info("OSBS 2 Task ID: %s, url: %s", task_id, task_url)
+        logger.info("OSBS 2 build started. Task ID: %s, url: %s", task_id, task_url)
         return task_id, task_url
 
     def _construct_build_source_url(self, dg: "distgit.ImageDistGitRepo"):
