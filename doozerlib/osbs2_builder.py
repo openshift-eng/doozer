@@ -27,19 +27,21 @@ class OSBS2Builder:
         self._runtime = runtime
         self.scratch = scratch
         self.dry_run = dry_run
+        self.task_id: int = 0
+        self.task_url: str = ""
+        self.nvr: str = ""
 
     def build(self, image: "image.ImageMetadata", profile: Dict, retries: int = 3):
         dg: "distgit.ImageDistGitRepo" = image.distgit_repo()
         logger = dg.logger
         nvr = f"{dg.name}-{dg.org_version}-{dg.org_release}"
+        self.nvr = nvr
         if len(image.targets) > 1:
             # Currently we don't really support building images against multiple targets,
             # or we would overwrite the image tag when pushing to the registry.
             # `targets` is defined as an array just because we want to keep consistency with RPM build.
             raise DoozerFatalError("Building images against multiple targets is not currently supported.")
         target = image.targets[0]
-        task_id = 0
-        task_url = None
         build_id = 0
         build_info = None
         build_url = None
@@ -53,23 +55,23 @@ class OSBS2Builder:
             error = None
             try:
                 # Submit build task
-                task_id, task_url = self._start_build(dg, target, profile, koji_api)
-                logger.info("Waiting for build task %s to complete...", task_id)
+                self._start_build(dg, target, profile, koji_api)
+                logger.info("Waiting for build task %s to complete...", self.task_id)
                 if self.dry_run:
-                    logger.warning("[DRY RUN] Build task %s would have completed", task_id)
+                    logger.warning("[DRY RUN] Build task %s would have completed", self.task_id)
                     error = None
                 else:
-                    error = brew.watch_task(koji_api, logger.info, task_id, terminate_event=threading.Event())
+                    error = brew.watch_task(koji_api, logger.info, self.task_id, terminate_event=threading.Event())
 
                 # Gather brew-logs
                 logger.info("Gathering brew-logs")
-                cmd = ["brew", "download-logs", "--recurse", "-d", dg._logs_dir(), task_id]
+                cmd = ["brew", "download-logs", "--recurse", "-d", dg._logs_dir(), self.task_id]
                 if self.dry_run:
                     logger.warning("[DRY RUN] Would have downloaded Brew logs with %s", cmd)
                 else:
                     logs_rc, _, logs_err = exectools.cmd_gather(cmd)
                     if logs_rc != 0:
-                        logger.warning("Error downloading build logs from brew for task %s: %s", task_id, logs_err)
+                        logger.warning("Error downloading build logs from brew for task %s: %s", self.task_id, logs_err)
 
                 if error:
                     # Looking for error message like the following to conclude the image has already been built:
@@ -97,7 +99,7 @@ class OSBS2Builder:
                     build_info = {"id": build_id, "nvr": nvr}
                 elif not build_info:
                     # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
-                    taskResult = koji_api.getTaskResult(task_id)
+                    taskResult = koji_api.getTaskResult(self.task_id)
                     build_id = int(taskResult["koji_builds"][0])
                     build_info = koji_api.getBuild(build_id)
                 build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
@@ -119,10 +121,10 @@ class OSBS2Builder:
         if error:
             raise exectools.RetryException(
                 f"Giving up after {retries} failed attempt(s): {message}",
-                (task_url, task_url),
+                (self.task_url, self.task_url),
             )
 
-        logger.info("Successfully built image %s; task: %s; build record: %s", nvr, task_url, build_url)
+        logger.info("Successfully built image %s; task: %s; build record: %s", nvr, self.task_url, build_url)
 
         if self._runtime.hotfix:
             # Tag the image so it won't get garbage collected.
@@ -132,7 +134,6 @@ class OSBS2Builder:
             else:
                 koji_api.tagBuild(image.hotfix_brew_tag(), build_info["nvr"])
                 logger.warning("Build %s has been tagged into %s", nvr, image.hotfix_brew_tag())
-        return task_id, task_url, nvr
 
     def _start_build(self, dg: "distgit.ImageDistGitRepo", target: str, profile: Dict, koji_api: koji.ClientSession):
         logger = dg.logger
@@ -158,18 +159,16 @@ class OSBS2Builder:
             'git_branch': dg.branch,
         }
 
-        task_id = 0
         logger.info("Starting OSBS 2 build with source %s and target %s...", src, target)
         if self.dry_run:
             logger.warning("[DRY RUN] Would have started container build")
         else:
             if not koji_api.logged_in:
                 koji_api.gssapi_login()
-            task_id: int = koji_api.buildContainer(src, target, opts=opts, channel="container-binary")
+            self.task_id = koji_api.buildContainer(src, target, opts=opts, channel="container-binary")
 
-        task_url = f"{BREWWEB_URL}/taskinfo?taskID={task_id}"
-        logger.info("OSBS 2 build started. Task ID: %s, url: %s", task_id, task_url)
-        return task_id, task_url
+        self.task_url = f"{BREWWEB_URL}/taskinfo?taskID={self.task_id}"
+        logger.info(f"OSBS2 build started. Task ID: {self.task_id}, url: {self.task_url}")
 
     def _construct_build_source_url(self, dg: "distgit.ImageDistGitRepo"):
         if not dg.sha:
