@@ -162,7 +162,7 @@ class OLMBundle(object):
         if not self.operator_dict or self.operator_dict["nvr"] != self.operator_nvr:
             self.operator_dict = brew.get_build_objects([self.operator_nvr], self.brew_session)[0]
             if not self.operator_dict:
-                raise IOError("Build {self.operator_nvr} doesn't exist in Brew.")
+                raise IOError(f"Build {self.operator_nvr} doesn't exist in Brew.")
 
         source_url = urlparse(self.operator_dict['source'])
         self.operator_repo_name = source_url.path.strip('/')
