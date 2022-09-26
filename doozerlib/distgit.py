@@ -1035,14 +1035,18 @@ class ImageDistGitRepo(DistGitRepo):
 
                 if self.image_build_method == "osbs2":  # use OSBS 2
                     osbs2 = OSBS2Builder(self.runtime, scratch=scratch, dry_run=dry_run)
-                    task_id, task_url, nvr = osbs2.build(self.metadata, profile, retries=retries)
-                    record["task_id"] = task_id
-                    record["task_url"] = task_url
-                    record["nvrs"] = nvr
+                    try:
+                        osbs2.build(self.metadata, profile, retries=retries)
+                    except exectools.RetryException:
+                        raise
+                    finally:
+                        record["task_id"] = osbs2.task_id
+                        record["task_url"] = osbs2.task_url
+                        record["nvrs"] = osbs2.nvr
                     if not dry_run:
-                        self.update_build_db(True, task_id=task_id, scratch=scratch)
+                        self.update_build_db(True, task_id=osbs2.task_id, scratch=scratch)
                         if not scratch:
-                            nvr_dict = parse_nvr(nvr)
+                            nvr_dict = parse_nvr(osbs2.nvr)
                             push_version = nvr_dict["version"]
                             push_release = nvr_dict["release"]
                 else:  # use OSBS 1
