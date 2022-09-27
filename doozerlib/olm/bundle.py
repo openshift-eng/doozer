@@ -257,11 +257,12 @@ class OLMBundle(object):
                 if "clusterserviceversion.yaml" in file:
                     if not self.valid_subscription_label:
                         raise ValueError("missing valid-subscription-label in operator config")
-                    yml_content = yaml.safe_load(contents)
-                    yml_content['metadata']['annotations']['operators.openshift.io/valid-subscription'] = self.valid_subscription_label
-                    f.write(yaml.dump(yml_content))
-                else:
-                    f.write(contents)
+                    contents = re.sub(
+                        'annotations:\n',
+                        'annotations:\n    "operators.openshift.io/valid-subscription": {}\n'.format(
+                            self.valid_subscription_label),
+                        contents, 1)
+                f.write(contents)
 
     def generate_bundle_annotations(self):
         """Create an annotations YAML file for the bundle, using info extracted from operator's
