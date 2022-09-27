@@ -259,7 +259,7 @@ class OLMBundle(object):
                         raise ValueError("missing valid-subscription-label in operator config")
                     contents = re.sub(
                         'annotations:\n',
-                        'annotations:\n    "operators.openshift.io/valid-subscription": {}\n'.format(
+                        'annotations:\n    "operators.openshift.io/valid-subscription": '{}'\n'.format(
                             self.valid_subscription_label),
                         contents, 1)
                 f.write(contents)
