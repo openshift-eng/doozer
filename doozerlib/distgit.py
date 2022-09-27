@@ -1579,7 +1579,7 @@ class ImageDistGitRepo(DistGitRepo):
         # specific sha.
         # If you are here trying to figure out how to change this behavior, you should
         # consider using 'from!:' in the assembly metadata for this component. This will
-        # all you to fully pin the parent images (e.g. {'from!:' ['image': <pullspec>] })
+        # allow you to fully pin the parent images (e.g. {'from!:' ['image': <pullspec>] })
         latest_build = self.metadata.get_latest_build(default=None)
         assembly_msg = f'{self.metadata.distgit_key} in assembly {self.runtime.assembly} ' \
                        f'with basis event {self.runtime.assembly_basis_event}'
@@ -1639,13 +1639,12 @@ class ImageDistGitRepo(DistGitRepo):
             return stream.image
 
         # When canonical_builders_from_upstream flag is set, try to match upstream FROM
-        original_parent = original_parent
         cmd = f'oc image info {original_parent} -o json'
         out, _ = exectools.cmd_assert(cmd, retries=3)
         labels = json.loads(out)['config']['config']['Labels']
         builder_tag = f'{labels["version"]}-{labels["release"]}'
 
-        # Verify wether the image exists
+        # Verify whether the image exists
         upstream_equivalent = f'registry-proxy.engineering.redhat.com/rh-osbs/' \
                               f'openshift-golang-builder:{builder_tag}'
         cmd = f'oc image info {upstream_equivalent} --filter-by-os linux/amd64 -o json'
@@ -1665,8 +1664,7 @@ class ImageDistGitRepo(DistGitRepo):
 
         except ChildProcessError:
             # It doesn't. Emit a warning and do typical stream resolution
-            logger.warning(f'Could not match upstream parent {original_parent}')
-            stream = self.runtime.resolve_stream(image.stream)
+            self.logger.warning(f'Could not match upstream parent {original_parent}')
             dfp.add_lines(
                 "",
                 "# Failed matching upstream equivalent, ART configuration was used to rebase parent images",
