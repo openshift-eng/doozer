@@ -3,6 +3,7 @@ import io
 import os
 import threading
 from typing import Optional
+from doozerlib.assembly import AssemblyTypes
 
 from doozerlib.rpm_utils import labelCompare
 
@@ -88,7 +89,7 @@ class RPMMetadata(Metadata):
 
     def _run_modifications(self, specfile: Optional[os.PathLike] = None, cwd: Optional[os.PathLike] = None):
         """
-        Interprets and applies content.source.modify steps in the image metadata.
+        Interprets and applies content.source.modify steps in the rpm metadata.
 
         :param specfile: Path to an alternative specfile. None means use the specfile in the source dir
         :param cwd: If set, change current working directory. None means use the source dir
@@ -106,18 +107,23 @@ class RPMMetadata(Metadata):
         metadata_scripts_path = self.runtime.data_dir + "/modifications"
         path = os.pathsep.join([os.environ['PATH'], metadata_scripts_path])
         new_specfile_data = specfile_data
+        context = {
+            "component_name": self.name,
+            "kind": "spec",
+            "content": new_specfile_data,
+            "set_env": {"PATH": path},
+            "runtime_assembly": self.runtime.assembly,
+        }
+
+        if self.runtime.assembly_type in [AssemblyTypes.STANDARD, AssemblyTypes.CANDIDATE, AssemblyTypes.PREVIEW]:
+            context["release_name"] = util.get_release_name(self.runtime.assembly_type, self.runtime.group, self.runtime.assembly, None)
 
         for modification in self.config.content.source.modifications:
             if self.source_modifier_factory.supports(modification.action):
                 # run additional modifications supported by source_modifier_factory
                 modifier = self.source_modifier_factory.create(**modification)
                 # pass context as a dict so that the act function can modify its content
-                context = {
-                    "component_name": self.name,
-                    "kind": "spec",
-                    "content": new_specfile_data,
-                    "set_env": {"PATH": path},
-                }
+                context["content"] = new_specfile_data
                 modifier.act(context=context, ceiling_dir=cwd or Dir.getcwd())
                 new_specfile_data = context.get("result")
             else:

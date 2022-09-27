@@ -2522,8 +2522,6 @@ class RPMDistGitRepo(DistGitRepo):
     def __init__(self, metadata, autoclone=True):
         super(RPMDistGitRepo, self).__init__(metadata, autoclone)
         self.source = self.config.content.source
-        # if self.source.specfile is Missing:
-        #     raise ValueError('Must specify spec file name for RPMs.')
 
     async def resolve_specfile_async(self) -> Tuple[pathlib.Path, Tuple[str, str, str], str]:
         """ Returns the path, NVR, and commit hash of the spec file in distgit_dir

@@ -12,8 +12,10 @@ RUN curl -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --fail -L \
 
 RUN dnf install -y \
     # runtime dependencies
-    krb5-workstation git tig rsync koji skopeo podman docker \
+    krb5-workstation git tig rsync koji skopeo podman docker rpmdevtools \
     python3.8 python3-certifi \
+    # required by microshift
+    yq jq golang \
     # provides en_US.UTF-8 locale
     glibc-langpack-en \
     # development dependencies
