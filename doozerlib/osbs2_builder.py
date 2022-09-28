@@ -101,7 +101,7 @@ class OSBS2Builder:
                 # Get build_id and build_info
                 if self.dry_run:
                     build_id = 0
-                    build_info = {"id": build_id, "nvr": f"{dg.name}-container-{dg.org_version}-{dg.org_release}"}
+                    build_info = {"id": build_id, "nvr": f"{dg.metadata.get_component_name()}-{dg.org_version}-{dg.org_release}"}
                 elif not build_info:
                     # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build.
                     # For now, let's use a different approach.
