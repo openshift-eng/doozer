@@ -1042,11 +1042,11 @@ class ImageDistGitRepo(DistGitRepo):
                     finally:
                         record["task_id"] = osbs2.task_id
                         record["task_url"] = osbs2.task_url
-                        record["nvrs"] = osbs2.nvr
+                        record["nvrs"] = osbs2.build_nvrs
                     if not dry_run:
                         self.update_build_db(True, task_id=osbs2.task_id, scratch=scratch)
                         if not scratch:
-                            nvr_dict = parse_nvr(osbs2.nvr)
+                            nvr_dict = parse_nvr(record["nvrs"].split(",")[0])
                             push_version = nvr_dict["version"]
                             push_release = nvr_dict["release"]
                 else:  # use OSBS 1

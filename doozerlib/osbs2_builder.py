@@ -30,6 +30,7 @@ class OSBS2Builder:
         self.task_id: int = 0
         self.task_url: str = ""
         self.nvr: str = ""
+        self.build_nvrs: str = ""
 
     def build(self, image: "image.ImageMetadata", profile: Dict, retries: int = 3):
         dg: "distgit.ImageDistGitRepo" = image.distgit_repo()
@@ -102,6 +103,7 @@ class OSBS2Builder:
                     taskResult = koji_api.getTaskResult(self.task_id)
                     build_id = int(taskResult["koji_builds"][0])
                     build_info = koji_api.getBuild(build_id)
+                    self.build_nvrs = build_info["nvr"]
                 build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
                 break
 
