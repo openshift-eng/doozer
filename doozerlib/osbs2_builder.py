@@ -34,25 +34,24 @@ class OSBS2Builder:
     def build(self, image: "image.ImageMetadata", profile: Dict, retries: int = 3):
         dg: "distgit.ImageDistGitRepo" = image.distgit_repo()
         logger = dg.logger
-        nvr = f"{dg.name}-{dg.org_version}-{dg.org_release}"
-        self.nvr = nvr
+
         if len(image.targets) > 1:
             # Currently we don't really support building images against multiple targets,
             # or we would overwrite the image tag when pushing to the registry.
             # `targets` is defined as an array just because we want to keep consistency with RPM build.
             raise DoozerFatalError("Building images against multiple targets is not currently supported.")
         target = image.targets[0]
-        build_id = 0
         build_info = None
         build_url = None
-        logger.info("OSBS 2: Building image %s...", nvr)
+        logger.info("OSBS 2: Building image %s...", image.name)
         koji_api = self._runtime.build_retrying_koji_client()
         if not koji_api.logged_in:
             koji_api.gssapi_login()
 
+        error = None
+        message = None
         for attempt in range(retries):
             logger.info("Build attempt %s/%s", attempt + 1, retries)
-            error = None
             try:
                 # Submit build task
                 self._start_build(dg, target, profile, koji_api)
@@ -75,9 +74,11 @@ class OSBS2Builder:
 
                 if error:
                     # Looking for error message like the following to conclude the image has already been built:
-                    #   BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
-                    # Note it is possible that a Brew task fails with a build record left (https://issues.redhat.com/browse/ART-1723).
-                    # Didn't find a variable in the context to get the Brew NVR or ID. Extracting the build ID from the error message.
+                    # BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
+                    # Note it is possible that a Brew task fails
+                    # with a build record left (https://issues.redhat.com/browse/ART-1723).
+                    # Didn't find a variable in the context to get the Brew NVR or ID.
+                    # Extracting the build ID from the error message.
                     # Hope the error message format will not change.
                     match = re.search(r"already exists, id (\d+)", error)
                     if match:
@@ -86,23 +87,29 @@ class OSBS2Builder:
                         if builds and builds[0] and builds[0].get('state') == 1:  # State 1 means complete.
                             build_info = builds[0]
                             build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
-                            logger.info("Image %s already built against this dist-git commit (or version-release tag): %s", nvr, build_url)
+                            logger.info(
+                                "Image %s already built against this dist-git commit (or version-release tag): %s",
+                                build_info["nvr"],
+                                build_url
+                            )
                             error = None  # Treat as a success
 
             except Exception as err:
-                error = f"Error building image {nvr}: {str(err)}: {traceback.format_exc()}"
+                error = f"Error building image {image.name}: {str(err)}: {traceback.format_exc()}"
 
             if not error:  # Build succeeded
                 # Get build_id and build_info
                 if self.dry_run:
                     build_id = 0
-                    build_info = {"id": build_id, "nvr": nvr}
+                    build_info = {"id": build_id, "nvr": f"{dg.name}-container-{dg.org_version}-{dg.org_release}"}
                 elif not build_info:
-                    # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
-                    taskResult = koji_api.getTaskResult(self.task_id)
-                    build_id = int(taskResult["koji_builds"][0])
+                    # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build.
+                    # For now, let's use a different approach.
+                    task_result = koji_api.getTaskResult(self.task_id)
+                    build_id = int(task_result["koji_builds"][0])
                     build_info = koji_api.getBuild(build_id)
                 build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
+                self.nvr = build_info["nvr"]
                 break
 
             # An error occurred. We don't have a viable build.
@@ -124,16 +131,17 @@ class OSBS2Builder:
                 (self.task_url, self.task_url),
             )
 
-        logger.info("Successfully built image %s; task: %s; build record: %s", nvr, self.task_url, build_url)
+        logger.info("Successfully built image %s; task: %s; build record: %s", self.nvr, self.task_url, build_url)
 
         if self._runtime.hotfix:
             # Tag the image so it won't get garbage collected.
-            logger.info(f'Tagging {image.get_component_name()} build {build_info["nvr"]} into {image.hotfix_brew_tag()} to prevent garbage collection')
+            logger.info(f'Tagging {image.get_component_name()} build {build_info["nvr"]} into {image.hotfix_brew_tag()}'
+                        f' to prevent garbage collection')
             if self.dry_run:
-                logger.warning("[DRY RUN] Build %s would have been tagged into %s", nvr, image.hotfix_brew_tag())
+                logger.warning("[DRY RUN] Build %s would have been tagged into %s", self.nvr, image.hotfix_brew_tag())
             else:
                 koji_api.tagBuild(image.hotfix_brew_tag(), build_info["nvr"])
-                logger.warning("Build %s has been tagged into %s", nvr, image.hotfix_brew_tag())
+                logger.warning("Build %s has been tagged into %s", self.nvr, image.hotfix_brew_tag())
 
     def _start_build(self, dg: "distgit.ImageDistGitRepo", target: str, profile: Dict, koji_api: koji.ClientSession):
         logger = dg.logger
@@ -149,7 +157,8 @@ class OSBS2Builder:
                 logger.warning("[DRY RUN] Would have checked if cgit repo file is present.")
                 existence, repo_url = True, f"https://cgit.example.com/{repo_file}"
             if not existence:
-                raise FileNotFoundError(f"Repo file {repo_file} is not available on cgit; cgit cache may not be reflecting distgit in a timely manner.")
+                raise FileNotFoundError(f"Repo file {repo_file} is not available on cgit; cgit cache may not be"
+                                        f" reflecting distgit in a timely manner.")
             repo_list = [repo_url]
 
         opts = {
@@ -170,7 +179,8 @@ class OSBS2Builder:
         self.task_url = f"{BREWWEB_URL}/taskinfo?taskID={self.task_id}"
         logger.info(f"OSBS2 build started. Task ID: {self.task_id}, url: {self.task_url}")
 
-    def _construct_build_source_url(self, dg: "distgit.ImageDistGitRepo"):
+    @staticmethod
+    def _construct_build_source_url(dg: "distgit.ImageDistGitRepo"):
         if not dg.sha:
             raise ValueError(f"Image {dg.name} Distgit commit sha is unknown")
         return f"{DISTGIT_GIT_URL}/containers/{quote(dg.name)}#{quote(dg.sha)}"
