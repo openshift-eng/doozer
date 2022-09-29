@@ -1642,17 +1642,26 @@ class ImageDistGitRepo(DistGitRepo):
         cmd = f'oc image info {original_parent} -o json'
         out, _ = exectools.cmd_assert(cmd, retries=3)
         labels = json.loads(out)['config']['config']['Labels']
-        builder_tag = f'{labels["version"]}-{labels["release"]}'
+
+        # Get the exact build NVR
+        build_nvr = f'{labels["com.redhat.component"]}-{labels["version"]}-{labels["release"]}'
+
+        # Query Brew for build info
+        with self.runtime.shared_koji_client_session() as koji_api:
+            if not koji_api.logged_in:
+                koji_api.gssapi_login()
+            build = koji_api.getBuild(build_nvr, strict=True)
+
+        # Get the pullspec for the upstream equivalent
+        upstream_equivalent_pullspec = build['extra']['image']['index']['pull'][1]
 
         # Verify whether the image exists
-        upstream_equivalent = f'registry-proxy.engineering.redhat.com/rh-osbs/' \
-                              f'openshift-golang-builder:{builder_tag}'
-        cmd = f'oc image info {upstream_equivalent} --filter-by-os linux/amd64 -o json'
+        cmd = f'oc image info {upstream_equivalent_pullspec} --filter-by-os linux/amd64 -o json'
         try:
             out, _ = exectools.cmd_assert(cmd, retries=3)
             # It does. Use this to rebase FROM directive
             digest = json.loads(out)['digest']
-            mapped_image = f'openshift/golang-builder@{digest}'
+            mapped_image = f'{labels["name"]}@{digest}'
             # if upstream equivalent does not match ART's config, add a warning to the Dockerfile
             if mapped_image != stream.image:
                 dfp.add_lines(
