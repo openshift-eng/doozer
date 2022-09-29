@@ -11,7 +11,6 @@ import pathlib
 import re
 import shutil
 import sys
-import threading
 import time
 import traceback
 from datetime import date
@@ -33,7 +32,7 @@ from doozerlib.brew import get_build_objects, watch_task
 from doozerlib.dblib import Record
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.model import ListModel, Missing, Model
-from doozerlib.osbs2_builder import OSBS2Builder
+from doozerlib.osbs2_builder import OSBS2Builder, OSBS2BuildError
 from doozerlib.pushd import Dir
 from doozerlib.rpm_utils import parse_nvr
 from doozerlib.source_modifications import SourceModifierFactory
@@ -1039,20 +1038,21 @@ class ImageDistGitRepo(DistGitRepo):
                 if self.image_build_method == "osbs2":  # use OSBS 2
                     osbs2 = OSBS2Builder(self.runtime, scratch=scratch, dry_run=dry_run)
                     try:
-                        osbs2.build(self.metadata, profile, retries=retries)
-                    except exectools.RetryException:
-                        self.update_build_db(False, task_id=osbs2.task_id, scratch=scratch)
+                        task_id, task_url, build_info = asyncio.run(osbs2.build(self.metadata, profile, retries=retries))
+                        record["task_id"] = task_id
+                        record["task_url"] = task_url
+                        if build_info:
+                            record["nvrs"] = build_info["nvr"]
+                        if not dry_run:
+                            self.update_build_db(True, task_id=task_id, scratch=scratch)
+                            if not scratch:
+                                push_version = build_info["version"]
+                                push_release = build_info["release"]
+                    except OSBS2BuildError as build_err:
+                        record["task_id"], record["task_url"] = build_err.task_id, build_err.task_url
+                        if not dry_run:
+                            self.update_build_db(False, task_id=build_err.task_id, scratch=scratch)
                         raise
-                    finally:
-                        record["task_id"] = osbs2.task_id
-                        record["task_url"] = osbs2.task_url
-                        record["nvrs"] = osbs2.nvr
-                    if not dry_run:
-                        self.update_build_db(True, task_id=osbs2.task_id, scratch=scratch)
-                        if not scratch:
-                            nvr_dict = parse_nvr(osbs2.nvr)
-                            push_version = nvr_dict["version"]
-                            push_release = nvr_dict["release"]
                 else:  # use OSBS 1
                     exectools.retry(
                         retries=retries, wait_f=wait,

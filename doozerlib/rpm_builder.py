@@ -2,7 +2,6 @@ import asyncio
 import logging
 import re
 import shutil
-import threading
 import time
 from os import PathLike
 from pathlib import Path
@@ -427,12 +426,4 @@ class RPMBuilder:
         if self._dry_run:
             return {task_id: None for task_id in task_ids}
         brew_session = self._runtime.build_retrying_koji_client()
-        terminate_event = threading.Event()
-        try:
-            errors = await exectools.to_thread(
-                brew.watch_tasks, brew_session, logger.info, task_ids, terminate_event
-            )
-        except (asyncio.CancelledError, KeyboardInterrupt):
-            terminate_event.set()
-            raise
-        return errors
+        return await brew.watch_tasks_async(brew_session, logger.info, task_ids)
