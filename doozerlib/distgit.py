@@ -1639,6 +1639,7 @@ class ImageDistGitRepo(DistGitRepo):
             return stream.image
 
         # When canonical_builders_from_upstream flag is set, try to match upstream FROM
+        self.logger.debug('Retrieving image info for image %s', original_parent)
         cmd = f'oc image info {original_parent} -o json'
         out, _ = exectools.cmd_assert(cmd, retries=3)
         labels = json.loads(out)['config']['config']['Labels']
@@ -1647,6 +1648,7 @@ class ImageDistGitRepo(DistGitRepo):
         build_nvr = f'{labels["com.redhat.component"]}-{labels["version"]}-{labels["release"]}'
 
         # Query Brew for build info
+        self.logger.debug('Retrieving info for Brew build %s', build_nvr)
         with self.runtime.shared_koji_client_session() as koji_api:
             if not koji_api.logged_in:
                 koji_api.gssapi_login()
@@ -1656,6 +1658,7 @@ class ImageDistGitRepo(DistGitRepo):
         upstream_equivalent_pullspec = build['extra']['image']['index']['pull'][1]
 
         # Verify whether the image exists
+        self.logger.debug('Checking for upstream equivalent existence, pullspec: %s', upstream_equivalent_pullspec)
         cmd = f'oc image info {upstream_equivalent_pullspec} --filter-by-os linux/amd64 -o json'
         try:
             out, _ = exectools.cmd_assert(cmd, retries=3)
@@ -1669,6 +1672,7 @@ class ImageDistGitRepo(DistGitRepo):
                     "# Parent images were rebased matching upstream equivalent that didn't match ART's config",
                     "",
                     at_start=True)
+                self.logger.info('Will override %s with upsteam equivalent %s', stream.image, mapped_image)
             return mapped_image
 
         except ChildProcessError:
