@@ -4,6 +4,7 @@ import errno
 import glob
 import hashlib
 import io
+import json
 import logging
 import os
 import pathlib
@@ -113,6 +114,8 @@ class DistGitRepo(object):
         self.source_date_epoch = None
         self.actual_source_url: str = None
         self.public_facing_source_url: str = None
+
+        self.uuid_tag = None
 
         # If this is a standard release, private_fix will be set to True if the source contains
         # embargoed (private) CVE fixes. Defaulting to None which means the value should be determined while rebasing.
@@ -1525,10 +1528,211 @@ class ImageDistGitRepo(DistGitRepo):
                 changed, new_value = self._mangle_yum(entry['value'])
                 if changed:
                     dfp.add_lines_at(entry, "RUN " + new_value, replace=True)
+                    dfp.add_lines_at()
+
+    def _mapped_image_from_member(self, image, original_parents, count):
+        base = image.member
+        from_image_metadata = self.runtime.resolve_image(base, False)
+
+        if from_image_metadata is None:
+            if not self.runtime.ignore_missing_base:
+                raise IOError(
+                    "Unable to find base image metadata [%s] in included images. "
+                    "Use --ignore-missing-base to ignore." % base
+                )
+            elif self.runtime.latest_parent_version or self.runtime.assembly_basis_event:
+                # If there is a basis event, we must look for latest; we can't just persist
+                # what is in the Dockerfile. It has to be constrained to the brew event.
+                self.logger.info(
+                    '[{}] parent image {} not included. Looking up FROM tag.'.format(self.config.name, base))
+                base_meta = self.runtime.late_resolve_image(base)
+                _, v, r = base_meta.get_latest_build_info()
+                if util.isolate_pflag_in_release(r) == 'p1':  # latest parent is embargoed
+                    self.private_fix = True  # this image should also be embargoed
+                return "{}:{}-{}".format(base_meta.config.name, v, r)
+            # Otherwise, the user is not expecting the FROM field to be updated in this Dockerfile.
+            else:
+                return original_parents[count]
+        else:
+            if self.runtime.local:
+                return '{}:latest'.format(from_image_metadata.config.name)
+            else:
+                from_image_distgit = from_image_metadata.distgit_repo()
+                if from_image_distgit.private_fix is None:  # This shouldn't happen.
+                    raise ValueError(
+                        f"Parent image {base} doesn't have .p0/.p1 flag determined. "
+                        f"This indicates a bug in Doozer."
+                    )
+                # If the parent we are going to build is embargoed, this image should also be embargoed
+                self.private_fix = from_image_distgit.private_fix
+
+                # Everything in the group is going to be built with the uuid tag, so we must
+                # assume that it will exist for our parent.
+                return f"{from_image_metadata.config.name}:{self.uuid_tag}"
+
+    def _mapped_image_for_assembly_build(self, parent_images, i):
+        # When rebasing for an assembly build, we want to use the same parent image
+        # as our corresponding basis image. To that end, we cannot rely on a stream.yml
+        # entry -- which usually refers to a floating tag. Instead, we look up the latest
+        # build of this image, relative to the assembly basis event, in brew. It will have
+        # information on the exact parent images used at the time. We want to use that
+        # specific sha.
+        # If you are here trying to figure out how to change this behavior, you should
+        # consider using 'from!:' in the assembly metadata for this component. This will
+        # allow you to fully pin the parent images (e.g. {'from!:' ['image': <pullspec>] })
+        latest_build = self.metadata.get_latest_build(default=None)
+        assembly_msg = f'{self.metadata.distgit_key} in assembly {self.runtime.assembly} ' \
+                       f'with basis event {self.runtime.assembly_basis_event}'
+        if not latest_build:
+            raise IOError(f'Unable to find latest build for {assembly_msg}')
+        build_model = Model(dict_to_model=latest_build)
+        if build_model.extra.image.parent_images is Missing:
+            raise IOError(f'Unable to find latest build parent images in {latest_build} for {assembly_msg}')
+        elif len(build_model.extra.image.parent_images) != len(parent_images):
+            raise IOError(
+                f'Did not find the expected cardinality ({len(parent_images)} '
+                f'of parent images in {latest_build} for {assembly_msg}'
+            )
+
+        # build_model.extra.image.parent_images is an array of tags
+        # (entries like openshift/golang-builder:rhel_8_golang_1.15).
+        # We can't use floating tags for this, so we need to look up those tags in parent_image_builds,
+        # which is also in the extras data. Example parent_image_builds:
+        # {
+        #     "registry-proxy.engineering.redhat.com/rh-osbs/openshift-base-rhel8:v4.6.0.20210528.150530": {
+        #         "id": 1616717,
+        #         "nvr": "openshift-base-rhel8-container-v4.6.0-202105281403.p0.git.f17f552"
+        #     },
+        #     "registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.15": {
+        #         "id": 1542268,
+        #         "nvr": "openshift-golang-builder-container-v1.15.7-202103191923.el8"
+        #     }
+        # }
+        # Note this map actually gets us to an NVR.
+        # Example latest_build return: https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
+        target_parent_name = build_model.extra.image.parent_images[i]  # Which parent are looking for? e.g. 'openshift/golang-builder:rhel_8_golang_1.15'
+        tag_pullspec = self.runtime.resolve_brew_image_url(
+            target_parent_name)  # e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.15
+        parent_build_info = build_model.extra.image.parent_image_builds[tag_pullspec]
+        if parent_build_info is Missing:
+            raise IOError(
+                f'Unable to resolve parent {target_parent_name} in {latest_build} for {assembly_msg}; tried {tag_pullspec}')
+        parent_build_nvr = parse_nvr(parent_build_info.nvr)
+        # Hang in there.. this is a long dance. Now that we know the NVR, we can construct
+        # a truly unique pullspec.
+        if '@' in tag_pullspec:
+            unique_pullspec = tag_pullspec.rsplit('@', 1)[0]  # remove the sha
+        elif ':' in tag_pullspec:
+            unique_pullspec = tag_pullspec.rsplit(':', 1)[0]  # remove the tag
+        else:
+            raise IOError(f'Unexpected pullspec format: {tag_pullspec}')
+        # qualify with the pullspec using nvr as a tag; e.g.
+        # registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.15.7-202103191923.el8'
+        unique_pullspec += f':{parent_build_nvr["version"]}-{parent_build_nvr["release"]}'
+        return unique_pullspec
+
+    def _mapped_image_from_stream(self, image, original_parent, dfp):
+        stream = self.runtime.resolve_stream(image.stream)
+
+        if not self.runtime.group_config.canonical_builders_from_upstream:
+            # Do typical stream resolution.
+            return stream.image
+
+        # When canonical_builders_from_upstream flag is set, try to match upstream FROM
+        self.logger.debug('Retrieving image info for image %s', original_parent)
+        cmd = f'oc image info {original_parent} -o json'
+        out, _ = exectools.cmd_assert(cmd, retries=3)
+        labels = json.loads(out)['config']['config']['Labels']
+
+        # Get the exact build NVR
+        build_nvr = f'{labels["com.redhat.component"]}-{labels["version"]}-{labels["release"]}'
+
+        # Query Brew for build info
+        self.logger.debug('Retrieving info for Brew build %s', build_nvr)
+        with self.runtime.shared_koji_client_session() as koji_api:
+            if not koji_api.logged_in:
+                koji_api.gssapi_login()
+            build = koji_api.getBuild(build_nvr, strict=True)
+
+        # Get the pullspec for the upstream equivalent
+        upstream_equivalent_pullspec = build['extra']['image']['index']['pull'][1]
+
+        # Verify whether the image exists
+        self.logger.debug('Checking for upstream equivalent existence, pullspec: %s', upstream_equivalent_pullspec)
+        cmd = f'oc image info {upstream_equivalent_pullspec} --filter-by-os linux/amd64 -o json'
+        try:
+            out, _ = exectools.cmd_assert(cmd, retries=3)
+            # It does. Use this to rebase FROM directive
+            digest = json.loads(out)['digest']
+            mapped_image = f'{labels["name"]}@{digest}'
+            # if upstream equivalent does not match ART's config, add a warning to the Dockerfile
+            if mapped_image != stream.image:
+                dfp.add_lines(
+                    "",
+                    "# Parent images were rebased matching upstream equivalent that didn't match ART's config",
+                    "",
+                    at_start=True)
+                self.logger.info('Will override %s with upsteam equivalent %s', stream.image, mapped_image)
+            return mapped_image
+
+        except ChildProcessError:
+            # It doesn't. Emit a warning and do typical stream resolution
+            self.logger.warning(f'Could not match upstream parent {original_parent}')
+            dfp.add_lines(
+                "",
+                "# Failed matching upstream equivalent, ART configuration was used to rebase parent images",
+                "",
+                at_start=True
+            )
+            return stream.image
+
+    def _rebase_from_directives(self, dfp):
+        image_from = Model(self.config.get('from', None))
+
+        # Collect all the parent images we're supposed to use
+        parent_images = image_from.builder if image_from.builder is not Missing else []
+        parent_images.append(image_from)
+        if len(parent_images) != len(dfp.parent_images):
+            raise IOError(
+                "Build metadata for {name} expected {count1} image parent(s), but the upstream Dockerfile "
+                "contains {count2} FROM statements. These counts must match. Detail: '{meta_parents}' vs "
+                "'{upstream_parents}'.".format(
+                    name=self.config.name,
+                    count1=len(parent_images),
+                    count2=len(dfp.parent_images),
+                    meta_parents=parent_images,
+                    upstream_parents=dfp.parent_images,
+                ))
+        mapped_images = []
+
+        original_parents = dfp.parent_images
+        count = 0
+        for i, image in enumerate(parent_images):
+            # Does this image inherit from an image defined in a different group member distgit?
+            if image.member is not Missing:
+                mapped_images.append(self._mapped_image_from_member(image, original_parents, count))
+
+            # Is this image FROM another literal image name:tag?
+            elif image.image is not Missing:
+                mapped_images.append(image.image)
+
+            elif image.stream is not Missing:
+                if self.runtime.assembly_basis_event:
+                    # Rebasing for an assembly build
+                    mapped_images.append(self._mapped_image_for_assembly_build(parent_images, i))
+                else:
+                    # Rebasing for a stream/test build
+                    mapped_images.append(self._mapped_image_from_stream(image, original_parents[i], dfp))
+
+            else:
+                raise IOError("Image in 'from' for [%s] is missing its definition." % image.name)
+
+            count += 1
+
+        # Write rebased from directives
+        dfp.parent_images = mapped_images
 
     def update_distgit_dir(self, version, release, prev_release=None, force_yum_updates=False):
-        ignore_missing_base = self.runtime.ignore_missing_base
-
         dg_path = self.dg_path
         with Dir(self.distgit_dir):
             # Source or not, we should find a Dockerfile in the root at this point or something is wrong
@@ -1560,7 +1764,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             self._write_osbs_image_config(version)
 
-            uuid_tag = "%s.%s" % (version, self.runtime.uuid)
+            self.uuid_tag = "%s.%s" % (version, self.runtime.uuid)
 
             # Split the version number v4.3.4 => [ 'v4', '3, '4' ]
             vsplit = version.split(".")
@@ -1595,119 +1799,7 @@ class ImageDistGitRepo(DistGitRepo):
                 dfp.labels[f'io.openshift.maintainer.{k}'] = v
 
             if 'from' in self.config:
-                image_from = Model(self.config.get('from', None))
-
-                # Collect all the parent images we're supposed to use
-                parent_images = image_from.builder if image_from.builder is not Missing else []
-                parent_images.append(image_from)
-                if len(parent_images) != len(dfp.parent_images):
-                    raise IOError("Build metadata for {name} expected {count1} image parent(s), but the upstream Dockerfile contains {count2} FROM statements. These counts must match. Detail: '{meta_parents}' vs '{upstream_parents}'.".format(
-                        name=self.config.name,
-                        count1=len(parent_images),
-                        count2=len(dfp.parent_images),
-                        meta_parents=parent_images,
-                        upstream_parents=dfp.parent_images,
-                    ))
-                mapped_images = []
-
-                original_parents = dfp.parent_images
-                count = 0
-                for i, image in enumerate(parent_images):
-                    # Does this image inherit from an image defined in a different group member distgit?
-                    if image.member is not Missing:
-                        base = image.member
-                        from_image_metadata = self.runtime.resolve_image(base, False)
-
-                        if from_image_metadata is None:
-                            if not ignore_missing_base:
-                                raise IOError("Unable to find base image metadata [%s] in included images. Use --ignore-missing-base to ignore." % base)
-                            elif self.runtime.latest_parent_version or self.runtime.assembly_basis_event:
-                                # If there is a basis event, we must look for latest; we can't just persist
-                                # what is in the Dockerfile. It has to be constrained to the brew event.
-                                self.logger.info('[{}] parent image {} not included. Looking up FROM tag.'.format(self.config.name, base))
-                                base_meta = self.runtime.late_resolve_image(base)
-                                _, v, r = base_meta.get_latest_build_info()
-                                if util.isolate_pflag_in_release(r) == 'p1':  # latest parent is embargoed
-                                    self.private_fix = True  # this image should also be embargoed
-                                mapped_images.append("{}:{}-{}".format(base_meta.config.name, v, r))
-                            # Otherwise, the user is not expecting the FROM field to be updated in this Dockerfile.
-                            else:
-                                mapped_images.append(original_parents[count])
-                        else:
-                            if self.runtime.local:
-                                mapped_images.append('{}:latest'.format(from_image_metadata.config.name))
-                            else:
-                                from_image_distgit = from_image_metadata.distgit_repo()
-                                if from_image_distgit.private_fix is None:  # This shouldn't happen.
-                                    raise ValueError(f"Parent image {base} doesn't have .p0/.p1 flag determined. This indicates a bug in Doozer.")
-                                if from_image_distgit.private_fix:  # if the parent we are going to build is embargoed
-                                    self.private_fix = True  # this image should also be embargoed
-                                # Everything in the group is going to be built with the uuid tag, so we must
-                                # assume that it will exist for our parent.
-                                mapped_images.append("{}:{}".format(from_image_metadata.config.name, uuid_tag))
-
-                    # Is this image FROM another literal image name:tag?
-                    elif image.image is not Missing:
-                        mapped_images.append(image.image)
-
-                    elif image.stream is not Missing:
-                        if self.runtime.assembly_basis_event:
-                            # When rebasing for an assembly build, we want to use the same parent image
-                            # as our corresponding basis image. To that end, we cannot rely on a stream.yml
-                            # entry -- which usually refers to a floating tag. Instead, we look up the latest
-                            # build of this image, relative to the assembly basis event, in brew. It will have
-                            # information on the exact parent images used at the time. We want to use that
-                            # specific sha.
-                            # If you are here trying to figure out how to change this behavior, you should
-                            # consider using 'from!:' in the assembly metadata for this component. This will
-                            # all you to fully pin the parent images (e.g. {'from!:' ['image': <pullspec>] })
-                            latest_build = self.metadata.get_latest_build(default=None)
-                            assembly_msg = f'{self.metadata.distgit_key} in assembly {self.runtime.assembly} with basis event {self.runtime.assembly_basis_event}'
-                            if not latest_build:
-                                raise IOError(f'Unable to find latest build for {assembly_msg}')
-                            build_model = Model(dict_to_model=latest_build)
-                            if build_model.extra.image.parent_images is Missing:
-                                raise IOError(f'Unable to find latest build parent images in {latest_build} for {assembly_msg}')
-                            elif len(build_model.extra.image.parent_images) != len(parent_images):
-                                raise IOError(f'Did not find the expected cardinality ({len(parent_images)} of parent images in {latest_build} for {assembly_msg}')
-
-                            # build_model.extra.image.parent_images is an array of tags (entries like openshift/golang-builder:rhel_8_golang_1.15).
-                            # We can't use floating tags for this, so we need to look up those tags in parent_image_builds,
-                            # which is also in the extras data.
-                            # example parent_image_builds: {'registry-proxy.engineering.redhat.com/rh-osbs/openshift-base-rhel8:v4.6.0.20210528.150530': {'id': 1616717,
-                            #       'nvr': 'openshift-base-rhel8-container-v4.6.0-202105281403.p0.git.f17f552'},
-                            #      'registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.15': {'id': 1542268,
-                            #       'nvr': 'openshift-golang-builder-container-v1.15.7-202103191923.el8'}}
-                            # Note this map actually gets us to an NVR.
-                            # Example latest_build return: https://gist.github.com/jupierce/57e99b80572336e8652df3c6be7bf664
-                            target_parent_name = build_model.extra.image.parent_images[i]  # Which parent are looking for? e.g. 'openshift/golang-builder:rhel_8_golang_1.15'
-                            tag_pullspec = self.runtime.resolve_brew_image_url(target_parent_name)  # e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.15
-                            parent_build_info = build_model.extra.image.parent_image_builds[tag_pullspec]
-                            if parent_build_info is Missing:
-                                raise IOError(f'Unable to resolve parent {target_parent_name} in {latest_build} for {assembly_msg}; tried {tag_pullspec}')
-                            parent_build_nvr = parse_nvr(parent_build_info.nvr)
-                            # Hang in there.. this is a long dance. Now that we know the NVR, we can construct
-                            # a truly unique pullspec.
-                            if '@' in tag_pullspec:
-                                unique_pullspec = tag_pullspec.rsplit('@', 1)[0]  # remove the sha
-                            elif ':' in tag_pullspec:
-                                unique_pullspec = tag_pullspec.rsplit(':', 1)[0]  # remove the tag
-                            else:
-                                raise IOError(f'Unexpected pullspec format: {tag_pullspec}')
-                            unique_pullspec += f':{parent_build_nvr["version"]}-{parent_build_nvr["release"]}'  # qualify with the pullspec using nvr as a tag; e.g. registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.15.7-202103191923.el8'
-                            mapped_images.append(unique_pullspec)
-
-                        else:
-                            # Othwerwise, do typical stream resolution.
-                            stream = self.runtime.resolve_stream(image.stream)
-                            mapped_images.append(stream.image)
-
-                    else:
-                        raise IOError("Image in 'from' for [%s] is missing its definition." % base)
-
-                    count += 1
-
-                dfp.parent_images = mapped_images
+                self._rebase_from_directives(dfp)
 
             # Set image name in case it has changed
             dfp.labels["name"] = self.config.name
