@@ -6,7 +6,7 @@ import click
 
 from doozerlib import exectools
 from doozerlib.cli import (cli, click_coroutine, pass_runtime,
-                           validate_semver_major_minor_patch)
+                           validate_rpm_version)
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.rpm_builder import RPMBuilder
 from doozerlib.rpmcfg import RPMMetadata
@@ -14,7 +14,7 @@ from doozerlib.runtime import Runtime
 
 
 @cli.command("rpms:rebase-and-build", help="Rebase and build rpms in the group or given by --rpms.")
-@click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
+@click.option("--version", metavar='VERSION', default=None, callback=validate_rpm_version,
               help="Version string to populate in specfile.", required=True)
 @click.option("--release", metavar='RELEASE', default=None,
               help="Release label to populate in specfile.", required=True)
@@ -75,7 +75,7 @@ async def _rpms_rebase_and_build(runtime: Runtime, version: str, release: str, e
 
 
 @cli.command("rpms:rebase", help="Rebase rpms in the group or given by --rpms.")
-@click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
+@click.option("--version", metavar='VERSION', default=None, callback=validate_rpm_version,
               help="Version string to populate in specfile.", required=True)
 @click.option("--release", metavar='RELEASE', default=None,
               help="Release label to populate in specfile.", required=True)
