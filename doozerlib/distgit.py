@@ -1667,22 +1667,22 @@ class ImageDistGitRepo(DistGitRepo):
             mapped_image = f'{labels["name"]}@{digest}'
             # if upstream equivalent does not match ART's config, add a warning to the Dockerfile
             if mapped_image != stream.image:
-                dfp.add_lines(
+                dfp.add_lines_at(
+                    0,
                     "",
                     "# Parent images were rebased matching upstream equivalent that didn't match ART's config",
-                    "",
-                    at_start=True)
+                    "")
                 self.logger.info('Will override %s with upsteam equivalent %s', stream.image, mapped_image)
             return mapped_image
 
         except ChildProcessError:
             # It doesn't. Emit a warning and do typical stream resolution
             self.logger.warning(f'Could not match upstream parent {original_parent}')
-            dfp.add_lines(
+            dfp.add_lines_at(
+                0,
                 "",
                 "# Failed matching upstream equivalent, ART configuration was used to rebase parent images",
-                "",
-                at_start=True
+                ""
             )
             return stream.image
 
