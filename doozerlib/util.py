@@ -24,7 +24,7 @@ try:
 except ImportError:
     pass
 
-from doozerlib import constants, exectools
+from doozerlib import assembly, constants, exectools
 
 
 def stringify(val):
@@ -786,3 +786,36 @@ def find_manifest_list_sha(pull_spec):
     if 'listDigest' not in image_data:
         raise ValueError('Specified image is not a manifest-list.')
     return image_data['listDigest']
+
+
+def isolate_major_minor_in_group(group_name: str) -> Tuple[int, int]:
+    """
+    Given a group name, determines whether is contains
+    a OCP major.minor version. If it does, it returns the version value as (int, int).
+    If it is not found, (None, None) is returned.
+    """
+    match = re.fullmatch(r"openshift-(\d+).(\d+)", group_name)
+    if not match:
+        return None, None
+    return int(match[1]), int(match[2])
+
+
+def get_release_name(assembly_type: str, group_name: str, assembly_name: str, release_offset: Optional[int]):
+    major, minor = isolate_major_minor_in_group(group_name)
+    if major is None or minor is None:
+        raise ValueError(f"Invalid group name: {group_name}")
+    if assembly_type == assembly.AssemblyTypes.CUSTOM:
+        if release_offset is None:
+            raise ValueError("release_offset is required for a CUSTOM release.")
+        release_name = f"{major}.{minor}.{release_offset}-assembly.{assembly_name}"
+    elif assembly_type in [assembly.AssemblyTypes.CANDIDATE, assembly.AssemblyTypes.PREVIEW]:
+        if release_offset is not None:
+            raise ValueError(f"release_offset can't be set for a {assembly_type.value} release.")
+        release_name = f"{major}.{minor}.0-{assembly_name}"
+    elif assembly_type == assembly.AssemblyTypes.STANDARD:
+        if release_offset is not None:
+            raise ValueError("release_offset can't be set for a STANDARD release.")
+        release_name = f"{assembly_name}"
+    else:
+        raise ValueError(f"Assembly type {assembly_type} is not supported.")
+    return release_name

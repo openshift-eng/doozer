@@ -84,6 +84,13 @@ class RPMBuilder:
 
         rpm.set_nvr(version, release)
 
+        # run modifications
+        if rpm.config.content.source.modifications is not Missing:
+            logger.info("Running custom modifications...")
+            await exectools.to_thread(
+                rpm._run_modifications, rpm.specfile, rpm.source_path
+            )
+
         # generate new specfile
         tarball_name = f"{rpm.config.name}-{rpm.version}-{rpm.release}.tar.gz"
         logger.info("Creating rpm spec file...")
@@ -153,19 +160,12 @@ class RPMBuilder:
                     )
                 )
             dest.parent.mkdir(parents=True, exist_ok=True)
-            logging.debug("Copying %s", filename)
+            logger.debug("Copying %s", filename)
 
             shutil.copy(src, dest, follow_symlinks=False)
 
-        # run modifications
-        if rpm.config.content.source.modifications is not Missing:
-            logging.info("Running custom modifications...")
-            await exectools.to_thread(
-                rpm._run_modifications, dg_specfile_path, dg.dg_path
-            )
-
         # commit changes
-        logging.info("Committing distgit changes...")
+        logger.info("Committing distgit changes...")
         await aiofiles.os.remove(tarball_path)
         commit_hash = await exectools.to_thread(dg.commit,
                                                 f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].",
