@@ -489,8 +489,8 @@ class Record(object):
                     else:
                         attr_payload[self.db.rename_to_valid_column(k)] = v
                 self.db.create_payload_entry(attr_payload, self.table, self.dry_run)
-        except:
-            pass
+        except Exception as e:
+            self.runtime.logger.error(f"Database error: {e}")
 
         self._tl.record = self.previous_record
 
