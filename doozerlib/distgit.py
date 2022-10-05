@@ -1528,7 +1528,6 @@ class ImageDistGitRepo(DistGitRepo):
                 changed, new_value = self._mangle_yum(entry['value'])
                 if changed:
                     dfp.add_lines_at(entry, "RUN " + new_value, replace=True)
-                    dfp.add_lines_at()
 
     def _mapped_image_from_member(self, image, original_parents, count):
         base = image.member
