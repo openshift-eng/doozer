@@ -1638,29 +1638,30 @@ class ImageDistGitRepo(DistGitRepo):
             return stream.image
 
         # When canonical_builders_from_upstream flag is set, try to match upstream FROM
-        self.logger.debug('Retrieving image info for image %s', original_parent)
-        cmd = f'oc image info {original_parent} -o json'
-        out, _ = exectools.cmd_assert(cmd, retries=3)
-        labels = json.loads(out)['config']['config']['Labels']
-
-        # Get the exact build NVR
-        build_nvr = f'{labels["com.redhat.component"]}-{labels["version"]}-{labels["release"]}'
-
-        # Query Brew for build info
-        self.logger.debug('Retrieving info for Brew build %s', build_nvr)
-        with self.runtime.shared_koji_client_session() as koji_api:
-            if not koji_api.logged_in:
-                koji_api.gssapi_login()
-            build = koji_api.getBuild(build_nvr, strict=True)
-
-        # Get the pullspec for the upstream equivalent
-        upstream_equivalent_pullspec = build['extra']['image']['index']['pull'][1]
-
-        # Verify whether the image exists
-        self.logger.debug('Checking for upstream equivalent existence, pullspec: %s', upstream_equivalent_pullspec)
-        cmd = f'oc image info {upstream_equivalent_pullspec} --filter-by-os linux/amd64 -o json'
         try:
+            self.logger.debug('Retrieving image info for image %s', original_parent)
+            cmd = f'oc image info {original_parent} -o json'
             out, _ = exectools.cmd_assert(cmd, retries=3)
+            labels = json.loads(out)['config']['config']['Labels']
+
+            # Get the exact build NVR
+            build_nvr = f'{labels["com.redhat.component"]}-{labels["version"]}-{labels["release"]}'
+
+            # Query Brew for build info
+            self.logger.debug('Retrieving info for Brew build %s', build_nvr)
+            with self.runtime.shared_koji_client_session() as koji_api:
+                if not koji_api.logged_in:
+                    koji_api.gssapi_login()
+                build = koji_api.getBuild(build_nvr, strict=True)
+
+            # Get the pullspec for the upstream equivalent
+            upstream_equivalent_pullspec = build['extra']['image']['index']['pull'][1]
+
+            # Verify whether the image exists
+            self.logger.debug('Checking for upstream equivalent existence, pullspec: %s', upstream_equivalent_pullspec)
+            cmd = f'oc image info {upstream_equivalent_pullspec} --filter-by-os linux/amd64 -o json'
+            out, _ = exectools.cmd_assert(cmd, retries=3)
+
             # It does. Use this to rebase FROM directive
             digest = json.loads(out)['digest']
             mapped_image = f'{labels["name"]}@{digest}'
@@ -1674,8 +1675,13 @@ class ImageDistGitRepo(DistGitRepo):
                 self.logger.info('Will override %s with upsteam equivalent %s', stream.image, mapped_image)
             return mapped_image
 
-        except ChildProcessError:
-            # It doesn't. Emit a warning and do typical stream resolution
+        except (KeyError, ChildProcessError) as e:
+            # We could get:
+            #   - a ChildProcessError when the upstream equivalent is not found
+            #   - a ChildProcessError when trying to rebase our base images
+            #   - a KeyError when 'com.redhat.component' label is undefined
+            # In all of the above, we'll just do typical stream resolution
+
             self.logger.warning(f'Could not match upstream parent {original_parent}')
             dfp.add_lines_at(
                 0,
