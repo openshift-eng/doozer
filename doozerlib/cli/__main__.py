@@ -1653,7 +1653,7 @@ def config_mode(runtime, mode, push, message):
 
 
 @cli.command("config:print", short_help="View config for given images / rpms")
-@click.option("-n", "--name-only", default=[], is_flag=True, multiple=True,
+@click.option("-n", "--name-only", default=[], is_flag=True,
               help="Just print name of matched configs. Overrides --key")
 @click.option("--key", help="Specific key in config to print", default=None)
 @click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
@@ -2228,9 +2228,6 @@ def rebase_and_build_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...]
 
 def main():
     try:
-        if 'REQUESTS_CA_BUNDLE' not in os.environ:
-            os.environ['REQUESTS_CA_BUNDLE'] = '/etc/pki/tls/certs/ca-bundle.crt'
-
         cli(obj={})
     except DoozerFatalError as ex:
         # Allow capturing actual tool errors and print them

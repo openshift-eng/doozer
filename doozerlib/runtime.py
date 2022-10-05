@@ -478,9 +478,11 @@ class Runtime(object):
         self.assembly_type = assembly_type(self.get_releases_config(), self.assembly)
 
         if not self.brew_event:
+            self.logger.info("Basis brew event is not set. Using the latest event....")
             with self.shared_koji_client_session() as koji_session:
                 # If brew event is not set as part of the assembly and not specified on the command line,
                 # lock in an event so that there are no race conditions.
+                self.logger.info("Getting the latest event....")
                 event_info = koji_session.getLastEvent()
                 self.brew_event = event_info['id']
 
@@ -741,6 +743,7 @@ class Runtime(object):
             if self._koji_client_session is None:
                 self._koji_client_session = self.build_retrying_koji_client()
                 if not self.disable_gssapi:
+                    self.logger.info("Authenticating to Brew...")
                     self._koji_client_session.gssapi_login()
             yield self._koji_client_session
 
@@ -1310,9 +1313,7 @@ class Runtime(object):
 
             self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
             try:
-                self.logger.info("Attempting to checkout source '%s' branch %s in: %s" % (url, clone_branch, source_dir))
                 # clone all branches as we must sometimes reference master /OWNERS for maintainer information
-
                 if self.is_branch_commit_hash(branch=clone_branch):
                     gitargs = []
                 else:

@@ -13,7 +13,6 @@ from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.runtime import Runtime
 
 
-# This command reimplements `rpms:build` without tito. Rename it to `rpms:build` when getting to prod.
 @cli.command("rpms:rebase-and-build", help="Rebase and build rpms in the group or given by --rpms.")
 @click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
               help="Version string to populate in specfile.", required=True)
@@ -165,7 +164,6 @@ async def _rebase_rpm(runtime: Runtime, builder: RPMBuilder, rpm: RPMMetadata, v
     return record["status"]
 
 
-# This command reimplements `rpms:build` without tito. Rename it to `rpms:build` when getting to prod.
 @cli.command("rpms:build", help="Build rpms in the group or given by --rpms.")
 @click.option('--scratch', default=False, is_flag=True, help='Perform a scratch build.')
 @click.option('--dry-run', default=False, is_flag=True, help='Do not build anything, but only print build operations.')

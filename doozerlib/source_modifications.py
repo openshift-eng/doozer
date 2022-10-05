@@ -1,10 +1,10 @@
 import io
 import os
+from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
 import yaml
-from pathlib import Path
 
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.exectools import cmd_assert
@@ -180,16 +180,21 @@ class CommandModifier(object):
         :param command: a `str` or `list` of the command with arguments
         """
         self.command = kwargs["command"]
+        self.env = kwargs.get("env", {})
 
     def act(self, *args, **kwargs):
         """ Run the command
         :param context: A context dict. `context.set_env` is a `dict` of env vars to set for command (overriding existing).
         """
         context = kwargs["context"]
-        set_env = context["set_env"]
+        set_env = {}
+        for k, v in self.env.items():
+            set_env[k] = str(v).format(**context)
+        set_env.update(context["set_env"])
         ceiling_dir = kwargs["ceiling_dir"]
+
         with Dir(ceiling_dir):
-            cmd_assert(self.command, set_env=set_env)
+            cmd_assert(self.command, set_env=set_env, log_stdout=True, log_stderr=True)
 
 
 SourceModifierFactory.MODIFICATIONS["command"] = CommandModifier

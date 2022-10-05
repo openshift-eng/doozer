@@ -27,3 +27,4 @@ cover
 
 # Ignore ocp-build-dat
 ocp-build-data/
+tests_functional.log

@@ -1,7 +1,6 @@
 aiofiles
 bashlex
-click~=8.0
-contextvars ; python_version<"3.7"
+click >= 8.1.3
 dockerfile-parse >= 0.0.13
 future
 koji
@@ -12,7 +11,7 @@ requests_kerberos
 semver
 tenacity
 wrapt
-mysql-connector-python~=8.0.21
-python-dateutil~=2.8.1
-openshift-client~=1.0.12
+mysql-connector-python >= 8.0.21
+python-dateutil >= 2.8.1
+openshift-client >= 1.0.12
 setuptools-scm

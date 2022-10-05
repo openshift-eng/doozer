@@ -4,10 +4,10 @@ coverage
 flake8
 flexmock
 mock
-pygit2 == 1.6.*
+pygit2
 pylint
 pytest
 tox
 typing
 typing-extensions
-setuptools~=49.6.0
+setuptools>=49.6.0

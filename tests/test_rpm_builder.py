@@ -89,7 +89,7 @@ class TestRPMBuilder(unittest.TestCase):
         mocked_cmd_assert_async.assert_called_with(["spectool", "--", dg.dg_path / "foo.spec"], cwd=dg.dg_path)
         mocked_copy.assert_any_call(Path(rpm.source_path) / "a.diff", dg.dg_path / "a.diff", follow_symlinks=False)
         mocked_copy.assert_any_call(Path(rpm.source_path) / "b/c.diff", dg.dg_path / "b/c.diff", follow_symlinks=False)
-        rpm._run_modifications.assert_called_once_with(dg.dg_path / "foo.spec", dg.dg_path)
+        rpm._run_modifications.assert_called_once_with(f"{rpm.source_path}/foo.spec", rpm.source_path)
         dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].",
                                           commit_attributes={
                                               'version': '1.2.3',
@@ -129,7 +129,7 @@ class TestRPMBuilder(unittest.TestCase):
         mocked_cmd_assert_async.assert_called_with(["spectool", "--", dg.dg_path / "foo.spec"], cwd=dg.dg_path)
         mocked_copy.assert_any_call(Path(rpm.source_path) / "a.diff", dg.dg_path / "a.diff", follow_symlinks=False)
         mocked_copy.assert_any_call(Path(rpm.source_path) / "b/c.diff", dg.dg_path / "b/c.diff", follow_symlinks=False)
-        rpm._run_modifications.assert_called_once_with(dg.dg_path / "foo.spec", dg.dg_path)
+        rpm._run_modifications.assert_called_once_with(f'{rpm.source_path}/foo.spec', rpm.source_path)
         dg.commit.assert_called_once_with(f"Automatic commit of package [{rpm.config.name}] release [{rpm.version}-{rpm.release}].",
                                           commit_attributes={
                                               'version': '1.2.3',

@@ -284,9 +284,9 @@ def _detect_rhcos_status(runtime, kubeconfig) -> list:
 
 def _tagged_rhcos_id(kubeconfig, container_name, version, arch, private) -> str:
     """determine the most recently tagged RHCOS in given imagestream"""
-    base_name = rgp.default_imagestream_base_name(version)
     base_namespace = rgp.default_imagestream_namespace_base_name()
-    name, namespace = rgp.payload_imagestream_name_and_namespace(base_name, base_namespace, arch, private)
+    base_name = rgp.default_imagestream_base_name(version)
+    namespace, name = rgp.payload_imagestream_namespace_and_name(base_namespace, base_name, arch, private)
     stdout, _ = exectools.cmd_assert(
         f"oc --kubeconfig '{kubeconfig}' --namespace '{namespace}' get istag '{name}:{container_name}'"
         " --template '{{.image.dockerImageMetadata.Config.Labels.version}}'",

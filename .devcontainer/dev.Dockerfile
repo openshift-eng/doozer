@@ -1,4 +1,7 @@
-FROM fedora:35
+FROM registry.fedoraproject.org/fedora:36
+LABEL name="doozer-dev" \
+  description="Doozer development container image" \
+  maintainer="OpenShift Automated Release Tooling (ART) Team <aos-team-art@redhat.com>"
 
 # Trust the Red Hat IT Root CA and set up rcm-tools repo
 RUN curl -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --fail -L \
@@ -9,12 +12,14 @@ RUN curl -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt --fail -L \
 
 RUN dnf install -y \
     # runtime dependencies
-    krb5-workstation git tig rsync koji skopeo podman docker tito \
-    python36 python3-certifi python3-rpm python3-kobo-rpmlib \
-    # provides en_US.UTF-8 locale required by tito
+    krb5-workstation git tig rsync koji skopeo podman docker rpmdevtools \
+    python3.8 python3-certifi \
+    # required by microshift
+    jq golang \
+    # provides en_US.UTF-8 locale
     glibc-langpack-en \
     # development dependencies
-    gcc krb5-devel \
+    gcc gcc-c++ krb5-devel \
     python3-devel python3-pip python3-wheel \
     # other tools for development and troubleshooting
     bash-completion vim tmux procps-ng psmisc wget net-tools iproute socat \
@@ -24,7 +29,7 @@ RUN dnf install -y \
 
 # include oc client
 ARG OC_VERSION=latest
-RUN wget -O /tmp/openshift-client-linux-"$OC_VERSION".tar.gz https://mirror.openshift.com/pub/openshift-v4/clients/ocp/"$OC_VERSION"/openshift-client-linux.tar.gz \
+RUN wget -O /tmp/openshift-client-linux-"$OC_VERSION".tar.gz https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/"$OC_VERSION"/openshift-client-linux.tar.gz \
   && tar -C /usr/local/bin -xzf  /tmp/openshift-client-linux-"$OC_VERSION".tar.gz oc kubectl \
   && rm /tmp/openshift-client-linux-"$OC_VERSION".tar.gz
 
@@ -55,7 +60,8 @@ COPY ./* /workspaces/doozer/
 RUN chown "$USERNAME" -R /workspaces/doozer \
  && cd /workspaces/doozer \
  && sudo -u "$USERNAME" pip3 install --user -r ./requirements.txt -r requirements-dev.txt \
- && sudo -u "$USERNAME" pip3 install --user -e ./
+ && sudo -u "$USERNAME" pip3 install --user -e ./ \
+ && GOBIN=/usr/bin/ go install github.com/mikefarah/yq/v4@latest
 
 USER "$USER_UID"
 WORKDIR /workspaces/doozer
