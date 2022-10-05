@@ -1682,7 +1682,7 @@ class ImageDistGitRepo(DistGitRepo):
             #   - a KeyError when 'com.redhat.component' label is undefined
             # In all of the above, we'll just do typical stream resolution
 
-            self.logger.warning(f'Could not match upstream parent {original_parent}')
+            self.logger.warning(f'Could not match upstream parent {original_parent}: {e}')
             dfp.add_lines_at(
                 0,
                 "",
