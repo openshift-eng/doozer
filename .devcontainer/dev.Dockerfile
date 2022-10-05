@@ -15,7 +15,7 @@ RUN dnf install -y \
     krb5-workstation git tig rsync koji skopeo podman docker rpmdevtools \
     python3.8 python3-certifi \
     # required by microshift
-    yq jq golang \
+    jq golang \
     # provides en_US.UTF-8 locale
     glibc-langpack-en \
     # development dependencies
@@ -60,7 +60,8 @@ COPY ./* /workspaces/doozer/
 RUN chown "$USERNAME" -R /workspaces/doozer \
  && cd /workspaces/doozer \
  && sudo -u "$USERNAME" pip3 install --user -r ./requirements.txt -r requirements-dev.txt \
- && sudo -u "$USERNAME" pip3 install --user -e ./
+ && sudo -u "$USERNAME" pip3 install --user -e ./ \
+ && GOBIN=/usr/bin/ go install github.com/mikefarah/yq/v4@latest
 
 USER "$USER_UID"
 WORKDIR /workspaces/doozer
