@@ -84,6 +84,14 @@ class FakeRuntime(object):
 
 # Set up your local mariadb database before running this test
 class DBLibWriteTest(unittest.TestCase):
+    """
+    Doozer had been creating new column if a new label was added in a Dockerfile of an Openshift component. But since
+    the length of label names started to increase, doozer could not create a new column, as column names in SQL
+    can't be longer than 64 characters. Since we don't need to log all the labels, we are only storing values
+    into labels that are already present, as a column, in the database.
+
+    These tests will check if only the allowed labels values are inserted into the database.
+    """
     def setUp(self) -> None:
         self.fake_runtime = FakeRuntime()
         self.db = DB(runtime=self.fake_runtime, environment="test")
