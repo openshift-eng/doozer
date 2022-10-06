@@ -134,7 +134,7 @@ class DBLibWriteTest(unittest.TestCase):
         """
         Test if column name of size 64 is inserted after hashing
         """
-        test_data = "a" * 65
+        test_data = "this_is_a_very_very_long_string_dont_you_think_so_cause_I_think_it_is"
         with self.db.record(operation="build", metadata=FakeMetaData()):
             Record.set(test_data, "true")
 
@@ -142,7 +142,7 @@ class DBLibWriteTest(unittest.TestCase):
         cursor.execute(f"show columns from log_build")
         columns = [data[0] for data in cursor]
 
-        expected = f"{test_data[:31]}_{hashlib.sha256(test_data.encode()).hexdigest()[:32]}"
+        expected = "this_is_a_very_very_long_string_08adbf1216745200f7aed78fd27f7a72"
         assert expected in columns
 
         cursor.execute(f"alter table {self.table_name} drop column {expected}")
