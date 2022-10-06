@@ -728,6 +728,14 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
         if not public_branch:
             public_branch = source_repo_branch
 
+        if (public_branch == 'master' or public_branch == 'main') and not prs_in_master:
+            # If a component is not using 'release-4.x' / 'openshift-4.x' branching mechanics,
+            # ART will be falling back to use master/main branch for the content of ALL
+            # releases. In this case, only open a reconciliation PR for when the current
+            # group matches what release CI is tracking in master.
+            logger.info(f'Skipping PR for {runtime.group} : {dgk} / {public_repo_url} since associated public branch is {public_branch} but CI is tracking {master_major}.{master_minor} in that branch.')
+            continue
+
         # There are two standard upstream branching styles:
         # release-4.x   : CI fast-forwards from default branch (master or main) when appropriate
         # openshift-4.x : Upstream team manages completely.
