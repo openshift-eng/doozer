@@ -430,15 +430,6 @@ class ImageDistGitRepo(DistGitRepo):
         self.logger: logging.Logger = metadata.logger
         self.source_modifier_factory = source_modifier_factory
 
-        # Check if we should try to match upstream
-        if self.runtime.group_config.canonical_builders_from_upstream == 'auto':
-            # canonical_builders_from_upstream set to 'auto': rebase according to release schedule
-            feature_freeze_date = ReleaseSchedule(self.runtime).get_ff_date()
-            self.should_match_upstream = datetime.now() < feature_freeze_date
-        else:
-            # canonical_builders_from_upstream set to either 'false' or 'true'
-            self.should_match_upstream = self.runtime.group_config.canonical_builders_from_upstream
-
     def clone(self, distgits_root_dir, distgit_branch):
         super(ImageDistGitRepo, self).clone(distgits_root_dir, distgit_branch)
         self._read_master_data()
@@ -1639,10 +1630,30 @@ class ImageDistGitRepo(DistGitRepo):
         unique_pullspec += f':{parent_build_nvr["version"]}-{parent_build_nvr["release"]}'
         return unique_pullspec
 
+    def _should_match_upstream(self) -> bool:
+        if self.runtime.group_config.canonical_builders_from_upstream is Missing:
+            # Default case: override using ART's config
+            return False
+        elif self.runtime.group_config.canonical_builders_from_upstream == 'auto':
+            # canonical_builders_from_upstream set to 'auto': rebase according to release schedule
+            feature_freeze_date = ReleaseSchedule(self.runtime).get_ff_date()
+            return datetime.now() < feature_freeze_date
+        elif self.runtime.group_config.canonical_builders_from_upstream == 'on':
+            return True
+        elif self.runtime.group_config.canonical_builders_from_upstream == 'off':
+            return False
+        else:
+            # Invalid value
+            self.logger.warning(
+                'Invalid value provided for "canonical_builders_from_upstream": %s',
+                self.runtime.group_config.canonical_builders_from_upstream
+            )
+            return False
+
     def _mapped_image_from_stream(self, image, original_parent, dfp):
         stream = self.runtime.resolve_stream(image.stream)
 
-        if not self.should_match_upstream:
+        if not self._should_match_upstream():
             # Do typical stream resolution.
             return stream.image
 
