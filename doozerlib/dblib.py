@@ -16,7 +16,6 @@ except:
 
 
 class DBLibException(Exception):
-
     """
     Exception class to record exceptions raised within the dblib module.
     """
@@ -235,60 +234,26 @@ class DB(object):
         else:
             return "VARCHAR(1000)", value
 
-    def get_missing_columns(self, attr_payload, table_name):
-
+    def update_table_column_cache(self, table_name):
         """
-        This method fetches all the column in the given table, and compares it with
-        the payload to check if there are any additional keys in the payload.
-        If there are new columns, it returns just the new non-existing columns.
+        This method fetches all the column in the given table.
         """
-
-        for attr_column in attr_payload:
-            if not (attr_column in self._table_column_cache[table_name]):
-                break
-        else:
-            # if the loop runs without breaking all the columns in payload are already present in
-            # the table hence no new columns are required to be added
-            self.runtime.logger.info("Found all the columns in cache for table [{}].".format(table_name))
-            return []
-
-        self.runtime.logger.info("Received new columns in the payload or table [{}] column cache empty."
-                                 .format(table_name))
-
-        payload_columns = set()
-        existing_columns = set()
-        return_columns = []
-
-        for column in attr_payload:
-            payload_columns.add(column)
 
         if not self._table_column_cache[table_name]:
 
-            # if the table's column cache is not updates, load the cache and return
+            # if the table's column cache is empty, load the cache and return
             # the table columns
-
             self.runtime.logger.info("Updating table [{}] column cache.".format(table_name))
 
             cursor = self.connection.cursor()
             cursor.execute(f"show columns from {table_name}")
 
             for data in cursor:
-                existing_columns.add(data[0])
                 self._table_column_cache[table_name][data[0]] = True
         else:
 
             # otherwise if table column cache found, return cache value
-
             self.runtime.logger.info("Found table [{}] column cache.".format(table_name))
-            existing_columns = set(self._table_column_cache[table_name])
-
-        # get the difference column, non-existing table columns which are present in payload
-        missing_columns = list(payload_columns.difference(existing_columns))
-
-        for index, column in enumerate(missing_columns):
-            self.runtime.logger.info("Missing column {}. {}".format(index + 1, column))
-            return_columns.append((column, self.identify_column_type(attr_payload[column])))
-        return return_columns
 
     def handle_missing_table(self, table_name):
 
@@ -310,32 +275,6 @@ class DB(object):
             self.runtime.logger.info("Successfully create table [{}] in database [{}]."
                                      .format(table_name, self.db))
 
-    def handle_missing_columns(self, payload, table_name):
-
-        """
-        :param payload
-        :param table_name
-
-        This method creates missing columns, which are present in payload but not in table.
-        """
-
-        missing_columns = self.get_missing_columns(payload, table_name)
-
-        if missing_columns:
-            cursor = self.connection.cursor()
-
-            for column in missing_columns:
-                missing_column = column[0]
-                column_type = column[1][0]
-                cursor.execute(f"alter table {table_name} add column `{missing_column}` {column_type}")
-                self._table_column_cache[table_name][missing_column] = True
-
-                self.runtime.logger.info("Added new column [{}] of identified type [{}] to table [{}] "
-                                         "of database [{}].".format(missing_column, column_type,
-                                                                    table_name, self.db))
-
-            cursor.close()
-
     def insert_payload(self, payload, table_name, dry_run=False):
 
         """
@@ -353,8 +292,9 @@ class DB(object):
             columns, values = [], []
 
             for column in payload:
-                columns.append(f'`{column}`')
-                values.append(f'"{payload[column]}"')
+                if self._table_column_cache[table_name].get(column, None):
+                    columns.append(f'`{column}`')
+                    values.append(f'"{payload[column]}"')
 
             columns = ",".join(columns)
             values = ",".join(values)
@@ -397,7 +337,7 @@ class DB(object):
         if self.mysql_db_env_var_setup and not self.dry_run and not record_dry_run:
             if self.connection and self.connection.is_connected():
                 self.handle_missing_table(table_name)
-                self.handle_missing_columns(payload, table_name)
+                self.update_table_column_cache(table_name)
                 insert_status = self.insert_payload(payload, table_name)
             else:
                 if not self.mysql_db_env_var_setup:
@@ -489,8 +429,8 @@ class Record(object):
                     else:
                         attr_payload[self.db.rename_to_valid_column(k)] = v
                 self.db.create_payload_entry(attr_payload, self.table, self.dry_run)
-        except:
-            pass
+        except Exception as e:
+            self.runtime.logger.error(f"Payload insert into database failed: {e}")
 
         self._tl.record = self.previous_record
 
