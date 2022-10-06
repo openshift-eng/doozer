@@ -11,10 +11,9 @@ import pathlib
 import re
 import shutil
 import sys
-import threading
 import time
 import traceback
-from datetime import date
+from datetime import date, datetime
 from multiprocessing import Event, Lock
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -35,6 +34,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib.model import ListModel, Missing, Model
 from doozerlib.osbs2_builder import OSBS2Builder
 from doozerlib.pushd import Dir
+from doozerlib.release_schedule import ReleaseSchedule
 from doozerlib.rpm_utils import parse_nvr
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib.util import convert_remote_git_to_https, yellow_print
@@ -429,6 +429,15 @@ class ImageDistGitRepo(DistGitRepo):
         self.rebase_status = False
         self.logger: logging.Logger = metadata.logger
         self.source_modifier_factory = source_modifier_factory
+
+        # Check if we should try to match upstream
+        if self.runtime.group_config.canonical_builders_from_upstream == 'auto':
+            # canonical_builders_from_upstream set to 'auto': rebase according to release schedule
+            feature_freeze_date = ReleaseSchedule(self.runtime).get_ff_date()
+            self.should_match_upstream = datetime.now() < feature_freeze_date
+        else:
+            # canonical_builders_from_upstream set to either 'false' or 'true'
+            self.should_match_upstream = self.runtime.group_config.canonical_builders_from_upstream
 
     def clone(self, distgits_root_dir, distgit_branch):
         super(ImageDistGitRepo, self).clone(distgits_root_dir, distgit_branch)
@@ -1633,11 +1642,11 @@ class ImageDistGitRepo(DistGitRepo):
     def _mapped_image_from_stream(self, image, original_parent, dfp):
         stream = self.runtime.resolve_stream(image.stream)
 
-        if not self.runtime.group_config.canonical_builders_from_upstream:
+        if not self.should_match_upstream:
             # Do typical stream resolution.
             return stream.image
 
-        # When canonical_builders_from_upstream flag is set, try to match upstream FROM
+        # canonical_builders_from_upstream flag is either True, or 'auto' and we are before feature freeze
         try:
             self.logger.debug('Retrieving image info for image %s', original_parent)
             cmd = f'oc image info {original_parent} -o json'
