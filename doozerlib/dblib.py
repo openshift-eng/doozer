@@ -7,6 +7,7 @@ from doozerlib import constants
 import functools
 from .model import Missing
 import datetime
+import hashlib
 
 try:
     import mysql.connector as mysql_connector
@@ -16,7 +17,6 @@ except:
 
 
 class DBLibException(Exception):
-
     """
     Exception class to record exceptions raised within the dblib module.
     """
@@ -487,7 +487,18 @@ class Record(object):
                     if v is None or v is Missing or v == '':
                         continue
                     else:
-                        attr_payload[self.db.rename_to_valid_column(k)] = v
+                        valid_column = self.db.rename_to_valid_column(k)
+
+                        # Database columns cannot be more than 64 characters
+                        if len(valid_column) > 64:
+                            self.runtime.logger.info(f"Column name [{valid_column}] too long. Hashing and truncating.")
+                            # Get the first 32 characters of the hash
+                            hash_string = hashlib.sha256(valid_column.encode()).hexdigest()
+                            # New column: first 31 characters + _ + first 32 characters of the hash
+                            valid_column = f"{valid_column[:31]}_{hash_string[:32]}"
+                            self.runtime.logger.info(f"Column name updated to [{valid_column}]")
+
+                        attr_payload[valid_column] = v
                 self.db.create_payload_entry(attr_payload, self.table, self.dry_run)
         except Exception as e:
             self.runtime.logger.error(f"Database error: {e}")
