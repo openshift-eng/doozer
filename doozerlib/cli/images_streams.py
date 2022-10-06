@@ -1007,7 +1007,7 @@ build_root:
 """
 
             pr_body += """
-If you have any questions about this pull request, please reach out to `@art-team` in the `#aos-art` coreos slack channel.
+If you have any questions about this pull request, please reach out to `@release-artists` in the `#aos-art` coreos slack channel.
 """
 
             parent_pr_url = None
