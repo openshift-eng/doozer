@@ -183,4 +183,4 @@ class OSBS2Builder:
     def _construct_build_source_url(dg: "distgit.ImageDistGitRepo"):
         if not dg.sha:
             raise ValueError(f"Image {dg.name} Distgit commit sha is unknown")
-        return f"{DISTGIT_GIT_URL}/containers/{quote(dg.name)}#{quote(dg.sha)}"
+        return f"{DISTGIT_GIT_URL}/{quote(dg.metadata.namespace)}/{quote(dg.name)}#{quote(dg.sha)}"
