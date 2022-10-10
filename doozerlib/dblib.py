@@ -327,12 +327,17 @@ class DB(object):
             for column in missing_columns:
                 missing_column = column[0]
                 column_type = column[1][0]
-                cursor.execute(f"alter table {table_name} add column `{missing_column}` {column_type}")
-                self._table_column_cache[table_name][missing_column] = True
+                try:
+                    cursor.execute(f"alter table {table_name} add column `{missing_column}` {column_type}")
+                    self._table_column_cache[table_name][missing_column] = True
 
-                self.runtime.logger.info("Added new column [{}] of identified type [{}] to table [{}] "
-                                         "of database [{}].".format(missing_column, column_type,
-                                                                    table_name, self.db))
+                    self.runtime.logger.info("Added new column [{}] of identified type [{}] to table [{}] "
+                                             "of database [{}].".format(missing_column, column_type,
+                                                                        table_name, self.db))
+                except Exception as e:
+                    self.runtime.logger.warning("Could not add new column [{}] of identified type [{}] to table [{}] "
+                                                "of database [{}]. Error: {}".format(missing_column, column_type,
+                                                                                     table_name, self.db, e))
 
             cursor.close()
 
@@ -470,6 +475,14 @@ class Record(object):
 
         self.attrs.update(extras)
 
+        # An allow list for labels that start with io.openshift
+        self.io_label_allow_list = [
+            'label_io_openshift_build_source_location',
+            'label_io_openshift_build_commit_id',
+            'label_io_openshift_build_commit_url',
+            'label_io_openshift_release_operator',
+            'label_io_openshift_build_versions']
+
     def __enter__(self):
         if hasattr(self._tl, 'record'):
             self.previous_record = self._tl.record
@@ -487,10 +500,16 @@ class Record(object):
                     if v is None or v is Missing or v == '':
                         continue
                     else:
-                        attr_payload[self.db.rename_to_valid_column(k)] = v
+                        valid_column_name = self.db.rename_to_valid_column(k)
+
+                        # Only store labels that are in the allow list in the DB
+                        if valid_column_name.startswith("label_io_openshift") and valid_column_name not in self.io_label_allow_list:
+                            continue
+
+                        attr_payload[valid_column_name] = v
                 self.db.create_payload_entry(attr_payload, self.table, self.dry_run)
-        except:
-            pass
+        except Exception as e:
+            self.runtime.logger.error(f"Payload insert into database failed: {e}")
 
         self._tl.record = self.previous_record
 
