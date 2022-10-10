@@ -1041,6 +1041,7 @@ class ImageDistGitRepo(DistGitRepo):
                     try:
                         osbs2.build(self.metadata, profile, retries=retries)
                     except exectools.RetryException:
+                        self.update_build_db(False, task_id=osbs2.task_id, scratch=scratch)
                         raise
                     finally:
                         record["task_id"] = osbs2.task_id
@@ -1185,8 +1186,6 @@ class ImageDistGitRepo(DistGitRepo):
                     try:
                         with self.runtime.shared_koji_client_session() as kcs:
                             task_result = kcs.getTaskResult(task_id, raise_fault=False)
-                            import pprint
-                            pprint.pprint(task_result)
                             """
                             success example result:
                             { 'koji_builds': ['1182060'],    # build_id created by task
