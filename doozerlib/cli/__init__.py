@@ -194,3 +194,34 @@ def validate_semver_major_minor_patch(ctx, param, version):
         raise click.BadParameter('Expected X, X.Y, or X.Y.Z (with optional "v" prefix)')
 
     return f'{vsplit[0]}.{minor_version}.{patch_version}'
+
+
+def validate_rpm_version(ctx, param, version: str):
+    """
+    For non-None, non-auto values, ensures that the incoming parameter meets the criteria vX.Y.Z[~prerelease] or X.Y.Z[~prerelease].
+    If minor or patch is not supplied, the value is modified to possess
+    minor.major to meet semver requirements.
+    :param ctx: Click context
+    :param param: The parameter specified on the command line
+    :param version: The version specified on the command line
+    :return:
+    """
+    if version == 'auto' or version is None:
+        return version
+
+    xyz, prerelease = version.rsplit("~", 1)
+    vsplit = xyz.split(".")
+    try:
+        int(vsplit[0].lstrip('v'))
+        minor_version = int('0' if len(vsplit) < 2 else vsplit[1])
+        patch_version = int('0' if len(vsplit) < 3 else vsplit[2])
+    except ValueError:
+        raise click.BadParameter(f'Invalid version string: {version}')
+
+    if len(vsplit) > 3:
+        raise click.BadParameter('Expected X, X.Y, or X.Y.Z (with optional "v" prefix)')
+
+    result = f'{vsplit[0]}.{minor_version}.{patch_version}'
+    if prerelease:
+        result += f"~{prerelease}"
+    return result
