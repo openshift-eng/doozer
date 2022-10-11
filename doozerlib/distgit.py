@@ -1636,8 +1636,13 @@ class ImageDistGitRepo(DistGitRepo):
             return False
         elif self.runtime.group_config.canonical_builders_from_upstream == 'auto':
             # canonical_builders_from_upstream set to 'auto': rebase according to release schedule
-            feature_freeze_date = ReleaseSchedule(self.runtime).get_ff_date()
-            return datetime.now() < feature_freeze_date
+            try:
+                feature_freeze_date = ReleaseSchedule(self.runtime).get_ff_date()
+                return datetime.now() < feature_freeze_date
+            except ChildProcessError:
+                # Could not access Gitlab: display a warning and fallback to default
+                self.logger.error('Failed retrieving release schedule from Gitlab: fallback to using ART\'s config')
+                return False
         elif self.runtime.group_config.canonical_builders_from_upstream == 'on':
             return True
         elif self.runtime.group_config.canonical_builders_from_upstream == 'off':
