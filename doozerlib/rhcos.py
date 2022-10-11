@@ -220,6 +220,7 @@ class RHCOSBuildInspector:
         self.brew_arch = brew_arch
         self.pullspec_for_tag = pullspec_for_tag
         self.build_id = None
+        self.openshift_os_commit: str = ''
 
         # Remember the pullspec(s) provided in case it does not match what is in the releases.yaml.
         # Because of an incident where we needed to repush RHCOS and get a new SHA for 4.10 GA,
@@ -234,6 +235,13 @@ class RHCOSBuildInspector:
             if self.build_id and self.build_id != build_id:
                 raise Exception(f'Found divergent RHCOS build_id for {pullspec_for_tag}. {build_id} versus {self.build_id}')
             self.build_id = build_id
+            try:
+                openshift_os_commit = str(image_info.config.config.Labels['com.coreos.redhat-coreos-commit'])
+            except AttributeError:
+                raise Exception(f'Unable to determine RHCOS openshift/os commit from tag {tag} pullspec {pullspec}. Retrieved image info: {image_info_str}')
+            if self.openshift_os_commit and self.openshift_os_commit != openshift_os_commit:
+                raise Exception(f'Inconsistent RHCOS openshift/os commits for {pullspec_for_tag}: {self.openshift_os_commit} vs {openshift_os_commit}')
+            self.openshift_os_commit = openshift_os_commit
 
         # The first digits of the RHCOS build are the major.minor of the rhcos stream name.
         # Which, near branch cut, might not match the actual release stream.
