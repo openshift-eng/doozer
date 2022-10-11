@@ -1643,6 +1643,10 @@ class ImageDistGitRepo(DistGitRepo):
                 # Could not access Gitlab: display a warning and fallback to default
                 self.logger.error('Failed retrieving release schedule from Gitlab: fallback to using ART\'s config')
                 return False
+            except ValueError as e:
+                # A GITLAB token env var was not provided: display a warning and fallback to default
+                self.logger.error(f'Fallback to default ART config: {e}')
+                return False
         elif self.runtime.group_config.canonical_builders_from_upstream == 'on':
             return True
         elif self.runtime.group_config.canonical_builders_from_upstream == 'off':

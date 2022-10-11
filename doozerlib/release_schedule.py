@@ -23,7 +23,7 @@ class ReleaseSchedule:
     @classmethod
     def initialize(cls, runtime):
         if 'GITLAB_TOKEN' not in os.environ:
-            raise RuntimeError('A GITLAB_TOKEN env var must be defined')
+            raise ValueError('A GITLAB_TOKEN env var must be defined')
 
         # Clone ocp-release-schedule in doozer working dir
         git_data = gitdata.GitData(
