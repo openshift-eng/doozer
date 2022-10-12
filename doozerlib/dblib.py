@@ -327,12 +327,18 @@ class DB(object):
             for column in missing_columns:
                 missing_column = column[0]
                 column_type = column[1][0]
-                cursor.execute(f"alter table {table_name} add column `{missing_column}` {column_type}")
-                self._table_column_cache[table_name][missing_column] = True
+                try:
+                    cursor.execute(f"alter table {table_name} add column `{missing_column}` {column_type}")
+                    self._table_column_cache[table_name][missing_column] = True
 
-                self.runtime.logger.info("Added new column [{}] of identified type [{}] to table [{}] "
-                                         "of database [{}].".format(missing_column, column_type,
-                                                                    table_name, self.db))
+                    self.runtime.logger.info("Added new column [{}] of identified type [{}] to table [{}] "
+                                             "of database [{}].".format(missing_column, column_type,
+                                                                        table_name, self.db))
+                except Exception as e:
+                    self.runtime.logger.warning("Could not add new column [{}] of identified type [{}] to table [{}] "
+                                                "of database [{}]. Error: {}".format(missing_column, column_type,
+                                                                                     table_name, self.db, e))
+                    del payload[missing_column]  # delete the column from the payload
 
             cursor.close()
 
@@ -489,8 +495,8 @@ class Record(object):
                     else:
                         attr_payload[self.db.rename_to_valid_column(k)] = v
                 self.db.create_payload_entry(attr_payload, self.table, self.dry_run)
-        except:
-            pass
+        except Exception as e:
+            self.runtime.logger.error(f"Payload insert into database failed: {e}")
 
         self._tl.record = self.previous_record
 
