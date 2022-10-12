@@ -1173,9 +1173,16 @@ class ImageDistGitRepo(DistGitRepo):
 
                 Record.set('label.version', dfp.labels.get('version', ''))
                 Record.set('label.release', dfp.labels.get('release', ''))
-                for k, v in dfp.labels.items():
-                    if k.startswith('io.openshift.'):
-                        Record.set(f'label.{k}', dfp.labels[k])
+
+                # Ignore io.openshift labels other than the ones specified below
+                for label in [
+                        'io.openshift.build.source-location',
+                        'io.openshift.build.commit.id',
+                        'io.openshift.build.commit.url',
+                        'io.openshift.release.operator',
+                        'io.openshift.build.versions']:
+                    if label in dfp.labels:
+                        Record.set(f'label.{label}', dfp.labels[label])
 
                 for k, v in dfp.envs.items():
                     if k.startswith('KUBE_') or k.startswith('OS_'):
