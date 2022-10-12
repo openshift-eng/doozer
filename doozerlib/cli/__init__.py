@@ -209,7 +209,10 @@ def validate_rpm_version(ctx, param, version: str):
     if version == 'auto' or version is None:
         return version
 
-    xyz, prerelease = version.rsplit("~", 1)
+    split = version.rsplit("~", 1)
+    xyz, pre_release = split[0], ''
+    if len(split) > 1:
+        pre_release = split[1]
     vsplit = xyz.split(".")
     try:
         int(vsplit[0].lstrip('v'))
@@ -222,6 +225,6 @@ def validate_rpm_version(ctx, param, version: str):
         raise click.BadParameter('Expected X, X.Y, or X.Y.Z (with optional "v" prefix)')
 
     result = f'{vsplit[0]}.{minor_version}.{patch_version}'
-    if prerelease:
-        result += f"~{prerelease}"
+    if pre_release:
+        result += f"~{pre_release}"
     return result
