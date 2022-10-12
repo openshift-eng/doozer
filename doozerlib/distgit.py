@@ -11,10 +11,9 @@ import pathlib
 import re
 import shutil
 import sys
-import threading
 import time
 import traceback
-from datetime import date
+from datetime import date, datetime
 from multiprocessing import Event, Lock
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -35,6 +34,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib.model import ListModel, Missing, Model
 from doozerlib.osbs2_builder import OSBS2Builder
 from doozerlib.pushd import Dir
+from doozerlib.release_schedule import ReleaseSchedule
 from doozerlib.rpm_utils import parse_nvr
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib.util import convert_remote_git_to_https, yellow_print
@@ -1629,14 +1629,43 @@ class ImageDistGitRepo(DistGitRepo):
         unique_pullspec += f':{parent_build_nvr["version"]}-{parent_build_nvr["release"]}'
         return unique_pullspec
 
+    def _should_match_upstream(self) -> bool:
+        if self.runtime.group_config.canonical_builders_from_upstream is Missing:
+            # Default case: override using ART's config
+            return False
+        elif self.runtime.group_config.canonical_builders_from_upstream == 'auto':
+            # canonical_builders_from_upstream set to 'auto': rebase according to release schedule
+            try:
+                feature_freeze_date = ReleaseSchedule(self.runtime).get_ff_date()
+                return datetime.now() < feature_freeze_date
+            except ChildProcessError:
+                # Could not access Gitlab: display a warning and fallback to default
+                self.logger.error('Failed retrieving release schedule from Gitlab: fallback to using ART\'s config')
+                return False
+            except ValueError as e:
+                # A GITLAB token env var was not provided: display a warning and fallback to default
+                self.logger.error(f'Fallback to default ART config: {e}')
+                return False
+        elif self.runtime.group_config.canonical_builders_from_upstream == 'on':
+            return True
+        elif self.runtime.group_config.canonical_builders_from_upstream == 'off':
+            return False
+        else:
+            # Invalid value
+            self.logger.warning(
+                'Invalid value provided for "canonical_builders_from_upstream": %s',
+                self.runtime.group_config.canonical_builders_from_upstream
+            )
+            return False
+
     def _mapped_image_from_stream(self, image, original_parent, dfp):
         stream = self.runtime.resolve_stream(image.stream)
 
-        if not self.runtime.group_config.canonical_builders_from_upstream:
+        if not self._should_match_upstream():
             # Do typical stream resolution.
             return stream.image
 
-        # When canonical_builders_from_upstream flag is set, try to match upstream FROM
+        # canonical_builders_from_upstream flag is either True, or 'auto' and we are before feature freeze
         try:
             self.logger.debug('Retrieving image info for image %s', original_parent)
             cmd = f'oc image info {original_parent} -o json'
