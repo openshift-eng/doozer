@@ -318,19 +318,18 @@ class RPMBuilder:
             "Source0:": f"Source0:        {source_filename}\n",
         }
 
-        # rpm.version example: 3.9.0
+        # rpm.version example: 4.12.0 or 4.12.0~rc.4 if pre-release
         # Extract the major, minor, patch
-        major, minor, patch = rpm.version.split(".")
-        full = "v{}".format(rpm.version)
-
-        # If this is a pre-release RPM, the include the release field in
-        # the full version.
-        # pre-release full version: v3.9.0-0.20.1
-        # release full version: v3.9.0
-        if rpm.release.startswith("0."):
-            full += "-{}".format(rpm.release)
-
+        version_split = rpm.version.split("~", 1)
+        major, minor, patch = version_split[0].split(".", 2)
+        # If rpm.version contains `~`, it is a pre-release
+        pre_release = version_split[1] if len(version_split) > 1 else ""
         commit_sha = rpm.pre_init_sha
+        if pre_release:
+            full = f"{major}.{minor}.{patch}-{pre_release}-{rpm.release}-{commit_sha[0:7]}"
+        else:
+            full = f"{major}.{minor}.{patch}-{rpm.release}-{commit_sha[0:7]}"
+
         current_time = time.strftime('%a %b %d %Y', time.localtime(time.time()))
         changelog_title = f"* {current_time} AOS Automation Release Team <noreply@redhat.com> - {rpm.version}-{rpm.release}"
 
@@ -347,7 +346,7 @@ class RPMBuilder:
             elif "%global os_git_vars " in line:
                 lines[
                     i
-                ] = f"%global os_git_vars OS_GIT_VERSION={major}.{minor}.{patch}-{rpm.release}-{commit_sha[0:7]} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit_sha} OS_GIT_TREE_STATE=clean"
+                ] = f"%global os_git_vars OS_GIT_VERSION={full} OS_GIT_MAJOR={major} OS_GIT_MINOR={minor} OS_GIT_PATCH={patch} OS_GIT_COMMIT={commit_sha} OS_GIT_TREE_STATE=clean"
                 for k, v in rpm.extra_os_git_vars.items():
                     lines[i] += f" {k}={v}"
                 lines[i] += "\n"
