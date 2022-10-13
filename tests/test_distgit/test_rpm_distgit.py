@@ -23,7 +23,7 @@ class TestRPMDistGit(TestDistgit):
         self.rpm_dg.distgit_dir = "/path/to/distgit"
         mocked_file = mocked_open.return_value.__aenter__.return_value
         mocked_file.__aiter__.return_value = iter(["hello", "%global commit abcdef012345", "world!"])
-        actual = asyncio.get_event_loop().run_until_complete(self.rpm_dg.resolve_specfile_async())
+        actual = asyncio.run(self.rpm_dg.resolve_specfile_async())
         expected = (Path("/path/to/distgit/foo.spec"), ["foo", "1.2.3", "1"], "abcdef012345")
         self.assertEqual(actual, expected)
         mocked_open.assert_called_once_with(Path("/path/to/distgit/foo.spec"), "r")

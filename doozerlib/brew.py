@@ -3,18 +3,22 @@ Utility functions for general interactions with Brew and Builds
 """
 
 # stdlib
+import asyncio
 import json
+import logging
 import threading
 import time
 import traceback
 from enum import Enum
 from multiprocessing import Lock
-from typing import Dict, Iterable, List, Optional, Tuple, BinaryIO
+from typing import BinaryIO, Callable, Dict, Iterable, List, Optional, Tuple
 
 # 3rd party
 import koji
 import koji_cli.lib
 import requests
+
+from doozerlib import exectools
 
 from . import logutil
 from .model import Missing
@@ -171,6 +175,42 @@ def watch_tasks(session, log_f, task_ids, terminate_event):
                 log_f(f"Brew task {task_id} was canceled.")
             else:
                 log_f(f"Brew task {task_id} was NOT canceled.")
+    return errors
+
+
+async def watch_task_async(session: koji.ClientSession, log_f: Callable, task_id: int) -> Optional[str]:
+    """ Asynchronously watch a Brew Tasks for completion
+    :param session: Koji client session
+    :param log_f: a log function
+    :param task_id: Brew task ID
+    :return: error or None on success
+    """
+    terminate_event = threading.Event()
+    try:
+        error = await exectools.to_thread(
+            watch_task, session, log_f, task_id, terminate_event
+        )
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        terminate_event.set()
+        raise
+    return error
+
+
+async def watch_tasks_async(session: koji.ClientSession, log_f: Callable, task_ids: List[int]) -> Dict[int, Optional[str]]:
+    """ Asynchronously watches Brew Tasks for completion
+    :param session: Koji client session
+    :param log_f: a log function
+    :param task_ids: List of Brew task IDs
+    :return: a dict of task ID and error message mappings
+    """
+    terminate_event = threading.Event()
+    try:
+        errors = await exectools.to_thread(
+            watch_tasks, session, log_f, task_ids, terminate_event
+        )
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        terminate_event.set()
+        raise
     return errors
 
 

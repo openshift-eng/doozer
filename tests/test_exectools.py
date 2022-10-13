@@ -187,7 +187,6 @@ class TestGather(unittest.TestCase):
         self.assertEqual(len(lines), 6)
 
     def test_cmd_gather_async(self):
-        loop = asyncio.get_event_loop()
         cmd = ["uname", "-a"]
         fake_cwd = "/foo/bar"
         fake_stdout = b"fake_stdout"
@@ -198,27 +197,26 @@ class TestGather(unittest.TestCase):
             proc.returncode = 0
             proc.communicate.return_value = (fake_stdout, fake_stderr)
 
-            rc, out, err = loop.run_until_complete(exectools.cmd_gather_async(cmd, text_mode=True))
+            rc, out, err = asyncio.run(exectools.cmd_gather_async(cmd, text_mode=True))
             create_subprocess_exec.assert_called_once_with(*cmd, cwd=fake_cwd, env=None, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, stdin=asyncio.subprocess.DEVNULL)
             self.assertEqual(rc, 0)
             self.assertEqual(out, fake_stdout.decode("utf-8"))
             self.assertEqual(err, fake_stderr.decode("utf-8"))
 
             create_subprocess_exec.reset_mock()
-            rc, out, err = loop.run_until_complete(exectools.cmd_gather_async(cmd, text_mode=False))
+            rc, out, err = asyncio.run(exectools.cmd_gather_async(cmd, text_mode=False))
             create_subprocess_exec.assert_called_once_with(*cmd, cwd=fake_cwd, env=None, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, stdin=asyncio.subprocess.DEVNULL)
             self.assertEqual(rc, 0)
             self.assertEqual(out, fake_stdout)
             self.assertEqual(err, fake_stderr)
 
     def test_cmd_assert_async(self):
-        loop = asyncio.get_event_loop()
         cmd = ["uname", "-a"]
         fake_cwd = "/foo/bar"
         with mock.patch("doozerlib.exectools.cmd_gather_async") as cmd_gather_async:
             cmd_gather_async.return_value = (0, "fake_stdout", "fake_stderr")
 
-            out, err = loop.run_until_complete(exectools.cmd_assert_async(cmd, cwd=fake_cwd, text_mode=True))
+            out, err = asyncio.run(exectools.cmd_assert_async(cmd, cwd=fake_cwd, text_mode=True))
             cmd_gather_async.assert_called_once_with(cmd, text_mode=True, cwd=fake_cwd, set_env=None, strip=False, log_stdout=False, log_stderr=True)
             self.assertEqual(out, "fake_stdout")
             self.assertEqual(err, "fake_stderr")
@@ -226,7 +224,7 @@ class TestGather(unittest.TestCase):
         with mock.patch("doozerlib.exectools.cmd_gather_async") as cmd_gather_async:
             cmd_gather_async.return_value = (1, "fake_stdout", "fake_stderr")
             with self.assertRaises(ChildProcessError):
-                out, err = loop.run_until_complete(exectools.cmd_assert_async(cmd, cwd=fake_cwd, text_mode=True))
+                out, err = asyncio.run(exectools.cmd_assert_async(cmd, cwd=fake_cwd, text_mode=True))
             cmd_gather_async.assert_called_once_with(cmd, text_mode=True, cwd=fake_cwd, set_env=None, strip=False, log_stdout=False, log_stderr=True)
             self.assertEqual(out, "fake_stdout")
             self.assertEqual(err, "fake_stderr")
