@@ -508,6 +508,7 @@ class GenPayloadCli:
                     raise DoozerFatalError(f"Unsupported PayloadEntry: {payload_entry}")
 
         self.detect_rhcos_inconsistent_rpms(targeted_rhcos_builds)  # across all arches
+        self.detect_rhcos_inconsistent_os_commit(targeted_rhcos_builds)  # across all arches
 
     def detect_rhcos_issues(self, payload_entry, assembly_inspector: AssemblyInspector):
         """
@@ -536,9 +537,21 @@ class GenPayloadCli:
             rhcos_inconsistencies: Dict[str, List[str]] = PayloadGenerator.find_rhcos_build_rpm_inconsistencies(rhcos_builds)
             if rhcos_inconsistencies:
                 self.assembly_issues.append(AssemblyIssue(
-                    f"Found RHCOS inconsistencies in builds {rhcos_builds} "
+                    f"Found inconsistent rpms in RHCOS builds {rhcos_builds} "
                     f"(private={privacy_mode}): {rhcos_inconsistencies}",
                     component="rhcos", code=AssemblyIssueCode.INCONSISTENT_RHCOS_RPMS
+                ))
+
+    def detect_rhcos_inconsistent_os_commit(self, targeted_rhcos_builds: Dict[bool, List[RHCOSBuildInspector]]):
+        """Generate assembly issues if RHCOS builds do not have matching openshift/os commits across arches."""
+        for privacy_mode in self.privacy_modes:  # only for relevant modes
+            rhcos_builds = targeted_rhcos_builds[privacy_mode]
+            os_commit_inconsistencies: Dict[str, List[str]] = PayloadGenerator.find_rhcos_os_commit_inconsistencies(rhcos_builds)
+            if os_commit_inconsistencies:
+                self.assembly_issues.append(AssemblyIssue(
+                    f"Found inconsistent openshift/os commits in RHCOS builds {rhcos_builds} "
+                    f"(private={privacy_mode}): {os_commit_inconsistencies}",
+                    component="rhcos", code=AssemblyIssueCode.INCONSISTENT_OS_COMMIT
                 ))
 
     def summarize_issue_permits(self, assembly_inspector: AssemblyInspector) -> (bool, Dict[str, Dict]):
@@ -1111,6 +1124,21 @@ class PayloadGenerator:
 
         # Report back rpm name keys which were associated with more than one NVR in the set of RHCOS builds.
         return {rpm_name: nvr_dict for rpm_name, nvr_dict in rpm_uses.items() if len(nvr_dict) > 1}
+
+    @staticmethod
+    def find_rhcos_os_commit_inconsistencies(rhcos_builds: List[RHCOSBuildInspector]) -> Dict[str, List[str]]:
+        """
+        Looks through a set of RHCOS builds and finds if the commit of openshift/os it is based on is equal
+        among the arches.
+        :return: Dict of openshift/os commits to list of arch if more than one. Empty dict if consistent.
+        """
+
+        os_commits = dict()
+        for rhcos_build in rhcos_builds:
+            os_commits.setdefault(rhcos_build.openshift_os_commit, []).append(rhcos_build.brew_arch)
+        if len(os_commits) == 1:
+            return {}
+        return os_commits
 
     @staticmethod
     def get_mirroring_destination(sha256: str, dest_repo: str) -> str:
