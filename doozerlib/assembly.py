@@ -22,7 +22,6 @@ class AssemblyIssueCode(Enum):
     INCONSISTENT_RHCOS_RPMS = 5
     MISSING_INHERITED_DEPENDENCY = 6
     MISSING_RHCOS_CONTAINER = 7
-    INCONSISTENT_OS_COMMIT = 8
 
 
 class AssemblyIssue:
