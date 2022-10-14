@@ -1,4 +1,4 @@
-import unittest
+from unittest import TestCase, skip
 from unittest.mock import MagicMock, Mock, patch
 from flexmock import flexmock
 
@@ -15,7 +15,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import rhcos
 
 
-class TestGenPayloadCli(unittest.TestCase):
+class TestGenPayloadCli(TestCase):
 
     def test_find_rhcos_payload_entries(self):
         rhcos_build = MagicMock()
@@ -217,7 +217,6 @@ class TestGenPayloadCli(unittest.TestCase):
         gpcli.should_receive("detect_rhcos_issues").with_args(rhcosEntry, None).once()
         gpcli.should_receive("detect_rhcos_inconsistent_rpms").once().with_args(
             {False: ["rbi"], True: []})
-        gpcli.should_receive("detect_rhcos_inconsistent_os_commit").once()
 
         gpcli.detect_extend_payload_entry_issues(None)
         self.assertEqual(gpcli.assembly_issues, spamEntry.issues)
@@ -253,14 +252,6 @@ class TestGenPayloadCli(unittest.TestCase):
         pg_find_mock.side_effect = [[], ["dummy1", "dummy2"]]
         gpcli.detect_rhcos_inconsistent_rpms({False: ["rbi"], True: []})
         self.assertEqual(gpcli.assembly_issues[0].code, AssemblyIssueCode.INCONSISTENT_RHCOS_RPMS)
-
-    @patch("doozerlib.cli.release_gen_payload.PayloadGenerator.find_rhcos_os_commit_inconsistencies")
-    def test_detect_rhcos_inconsistent_os_commit(self, pg_find_mock):
-        gpcli = rgp_cli.GenPayloadCli()
-        gpcli.privacy_modes = [True, False]
-        pg_find_mock.side_effect = [[], ["dummy1", "dummy2"]]
-        gpcli.detect_rhcos_inconsistent_os_commit({False: ["rbi"], True: []})
-        self.assertEqual(gpcli.assembly_issues[0].code, AssemblyIssueCode.INCONSISTENT_OS_COMMIT)
 
     def test_summarize_issue_permits(self):
         gpcli = rgp_cli.GenPayloadCli()
@@ -626,7 +617,3 @@ manifests:
         self.assertIn(dict(name="spam2"), istream_apiobj.model.spec.tags, "not pruned")
         self.assertEqual({"release.openshift.io/rewrite": "false"},
                          istream_apiobj.model.spec.tags[-1]["annotations"], "added")
-
-
-if __name__ == '__main__':
-    unittest.main()
