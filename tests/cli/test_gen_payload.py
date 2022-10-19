@@ -1,3 +1,4 @@
+import os
 from unittest import TestCase, skip
 from unittest.mock import MagicMock, Mock, patch
 from flexmock import flexmock
@@ -389,18 +390,23 @@ class TestGenPayloadCli(TestCase):
 
     @patch("pathlib.Path.open")
     def test_write_imagestream_artifact_file(self, open_mock):
-        gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp")
+        gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp", runtime=Mock(
+            brew_event="999999",
+            assembly_type=AssemblyTypes.STREAM,
+        ))
 
         buffer = io.StringIO()
         cmgr = MagicMock(__enter__=lambda _: buffer)  # make Path.open() return the buffer
         open_mock.return_value = cmgr
 
         gpcli.write_imagestream_artifact_file("ocp-s390x", "release-s390x", ["rhcos", "eggs"], True)
-        self.assertEqual(buffer.getvalue().strip(), """
+        self.assertEqual(buffer.getvalue().strip(), f"""
 apiVersion: image.openshift.io/v1
 kind: ImageStream
 metadata:
-  annotations: {}
+  annotations:
+    release.openshift.io/build-url: {os.getenv('BUILD_URL', "''")}
+    release.openshift.io/runtime-brew-event: '999999'
   name: release-s390x
   namespace: ocp-s390x
 spec:
@@ -425,10 +431,13 @@ spec:
         oc_mock.selector.return_value = Mock(object=lambda **_: False)  # other branch
         gpcli.ensure_imagestream_apiobj("release-s390x")
 
-    @patch("doozerlib.cli.release_gen_payload.PayloadGenerator.build_inconsistency_annotation")
+    @patch("doozerlib.cli.release_gen_payload.PayloadGenerator.build_inconsistency_annotations")
     @patch("doozerlib.cli.release_gen_payload.modify_and_replace_api_object")
     def test_apply_imagestream_update(self, mar_mock, binc_mock):
-        gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp")
+        gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp", runtime=Mock(
+            brew_event="999999",
+            assembly_type=AssemblyTypes.STREAM,
+        ))
 
         # make method do basically what it would, without writing all the files
         mar_mock.side_effect = lambda apiobj, func, *_: func(apiobj)
@@ -615,5 +624,7 @@ manifests:
         gpcli.apply_multi_imagestream_update("final_pullspec", "is_name", "multi_release_name")
         self.assertNotIn(dict(name="spam1"), istream_apiobj.model.spec.tags, "should have been pruned")
         self.assertIn(dict(name="spam2"), istream_apiobj.model.spec.tags, "not pruned")
-        self.assertEqual({"release.openshift.io/rewrite": "false"},
-                         istream_apiobj.model.spec.tags[-1]["annotations"], "added")
+        new_tag_annotations = istream_apiobj.model.spec.tags[-1]['annotations']
+        self.assertEqual('false', new_tag_annotations['release.openshift.io/rewrite'])
+        self.assertEqual(os.getenv('BUILD_URL', ''), new_tag_annotations['release.openshift.io/build-url'])
+        self.assertIn('release.openshift.io/runtime-brew-event', new_tag_annotations)
