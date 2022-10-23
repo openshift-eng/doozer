@@ -52,11 +52,13 @@ from doozerlib.util import find_manifest_list_sha
               help="Also create a release payload for multi-arch/heterogeneous clusters.")
 @click.option("--moist-run", default=False, is_flag=True,
               help="Mirror and determine tags but do not actually update imagestreams.")
+@click.option("--publish-test-image", default=False, is_flag=True,
+              help="Publish release image(s) directly to registry.ci for testing.")
 @pass_runtime
 def release_gen_payload(runtime: Runtime, is_name: str, is_namespace: str, organization: str,
                         repository: str, release_repository: str, output_dir: str, exclude_arch: Tuple[str, ...],
                         skip_gc_tagging: bool, emergency_ignore_issues: bool,
-                        apply: bool, apply_multi_arch: bool, moist_run: bool):
+                        apply: bool, apply_multi_arch: bool, moist_run: bool, publish_test_image: bool):
     """
 Computes a set of imagestream tags which can be assembled into an OpenShift release for this
 assembly. The tags may not be valid unless --apply or --moist-run triggers mirroring.
@@ -109,7 +111,7 @@ read and propagate/expose this annotation in its display of the release image.
         output_dir,
         exclude_arch,
         skip_gc_tagging, emergency_ignore_issues,
-        apply, apply_multi_arch, moist_run
+        apply, apply_multi_arch, moist_run, publish_test_image
     ).run()
 
 
@@ -228,7 +230,8 @@ class GenPayloadCli:
             output_dir: str = None,
             exclude_arch: Tuple[str] = None,
             skip_gc_tagging: bool = False, emergency_ignore_issues: bool = False,
-            apply: bool = False, apply_multi_arch: bool = False, moist_run: bool = False):
+            apply: bool = False, apply_multi_arch: bool = False,
+            moist_run: bool = False, publish_test_image: bool = False)
 
         self.runtime = runtime
         self.logger = runtime.logger if runtime else MagicMock()  # in tests, blackhole logs by default
@@ -248,6 +251,7 @@ class GenPayloadCli:
         self.apply = apply  # actually update the IS
         self.apply_multi_arch = apply_multi_arch  # update the "multi" IS as well
         self.moist_run = moist_run  # mirror the images but do not update the IS
+        self.publish_test_image = publish_test_image  # publish an image to registry.ci for testing
 
         # store generated payload entries: {arch -> dict of payload entries}
         self.payload_entries_for_arch: Dict[str, Dict[str, PayloadEntry]] = {}
@@ -665,6 +669,8 @@ class GenPayloadCli:
         self.write_imagestream_artifact_file(imagestream_namespace, imagestream_name, istags, incomplete_payload_update)
         if self.apply:
             self.apply_arch_imagestream(imagestream_namespace, imagestream_name, istags, incomplete_payload_update)
+        if self.publish:
+            self.publish_app_ci_image(arch, imagestream_name, imagestream_namespace, private_mode)
 
     def write_imagestream_artifact_file(self, imagestream_namespace: str, imagestream_name: str, istags: List[Dict], incomplete_payload_update):
         """Write the yaml file for the imagestream."""
@@ -675,6 +681,12 @@ class GenPayloadCli:
                 istags, self.assembly_issues
             )
             yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
+
+    def publish_app_ci_image(arch: str, imagestream_name: str, imagestream_namespace: str, private_mode: bool):
+        arch_suffix = go_suffix_for_arch(arch, private_mode)
+        publish_name = f"{self.runtime.get_minor_version()}.0-{self.runtime.assembly}"
+        publish_image = f"registry.ci.openshift.org/{imagestream_namespace}/release{arch_suffix}:{publish_name}"
+        exectools.cmd_assert(f'oc adm release new --to-image={publish_image} --name {publish_name} --reference-mode=source -n {imagestream_namespace} --from-image-stream {imagestream_name}', retries=3)
 
     def apply_arch_imagestream(self, imagestream_namespace: str, imagestream_name: str, istags: List[Dict], incomplete_payload_update: bool):
         """Orchestrate the update and tag removal for one arch imagestream in the OCP cluster."""
