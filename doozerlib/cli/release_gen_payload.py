@@ -2,6 +2,7 @@ from datetime import datetime
 import hashlib
 import traceback
 import sys
+import os
 import json
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict, NamedTuple, Iterable, Set, Any, Callable
@@ -671,6 +672,7 @@ class GenPayloadCli:
         filename = f"updated-tags-for.{imagestream_namespace}.{imagestream_name}{'-partial' if incomplete_payload_update else ''}.yaml"
         with self.output_path.joinpath(filename).open("w+", encoding="utf-8") as out_file:
             istream_spec = PayloadGenerator.build_payload_imagestream(
+                self.runtime,
                 imagestream_name, imagestream_namespace,
                 istags, self.assembly_issues
             )
@@ -732,7 +734,7 @@ class GenPayloadCli:
                 new_annotations = apiobj.model.metadata.annotations._primitive()
                 new_annotations.pop("release.openshift.io/inconsistency", None)  # Remove old inconsistency information if it exists
 
-            new_annotations.update(PayloadGenerator.build_inconsistency_annotation(self.assembly_issues))
+            new_annotations.update(PayloadGenerator.build_imagestream_annotations(self.runtime, self.assembly_issues))
 
             apiobj.model.metadata["annotations"] = new_annotations
 
@@ -813,6 +815,7 @@ class GenPayloadCli:
             # run oc adm release new on this set of tags -- once for each arch - to create the arch
             # specific release payloads.
             multi_release_is = PayloadGenerator.build_payload_imagestream(
+                self.runtime,
                 imagestream_name, imagestream_namespace, multi_istags,
                 assembly_wide_inconsistencies=self.assembly_issues)
 
@@ -991,10 +994,21 @@ class GenPayloadCli:
             multi_release_dest, find_manifest_list_sha(multi_release_dest))
 
     def apply_multi_imagestream_update(self, final_multi_pullspec: str, imagestream_name: str, multi_release_istag: str):
-        """Update the multi-release imagestream, pruning old nightlies and adding the new one."""
-        # [lmeyer] Q: but what if this is NOT a nightly? then we should not prune. but it's probably
-        # ok because we won't have more than one tag in non-nightly imagestreams?
+        """
+        If running with assembly==stream, updates release imagestream with a new imagestream tag for the nightly. Older
+        nightlies are pruned from the release imagestream.
+        When running for non-stream, creates 4.x-art-assembly-$name with the pullspec to contain the newly created
+        pullspec.
+        """
         multi_art_latest_is = self.ensure_imagestream_apiobj(imagestream_name)
+
+        # For nightlies, these will to set as annotations on the release imagestream tag.
+        # For non-nightlies, the new 4.x-art-assembly-$name the annotations will also be
+        # applied at the top level annotations for the imagestream.
+        pipeline_metadata_annotations = {
+            'release.openshift.io/build-url': os.getenv('BUILD_URL', ''),
+            'release.openshift.io/runtime-brew-event': str(self.runtime.brew_event),
+        }
 
         def add_multi_nightly_release(obj: oc.APIObject):
             obj_model = obj.model
@@ -1018,6 +1032,7 @@ class GenPayloadCli:
             else:
                 # For non-stream 4.x-art-assembly-$name, old imagestreamtags should be removed.
                 release_tags.clear()
+                obj_model.metadata.annotations = pipeline_metadata_annotations
 
             # Now append a tag for our new nightly.
             release_tags.append({
@@ -1029,10 +1044,10 @@ class GenPayloadCli:
                     "type": "Source"
                 },
                 "name": multi_release_istag,
-                "annotations": {
-                    "release.openshift.io/rewrite": "false",  # Prevents the release controller from trying to create a local registry release payload with oc adm release new.
-                    # "release.openshift.io/name": f"{self.runtime.get_minor_version()}.0-0.nightly",
-                }
+                "annotations": dict(**{
+                    # Prevents the release controller from trying to create a local registry release payload with oc adm release new.
+                    "release.openshift.io/rewrite": "false",
+                }, **pipeline_metadata_annotations)
             })
             return True
 
@@ -1214,10 +1229,10 @@ class PayloadGenerator:
         """
         :param payload_tag_name: The name of the payload tag for which to create an istag.
         :param payload_entry: The payload entry to serialize into an imagestreamtag.
-        :return: Returns a imagestreamtag dict for a release payload imagestream.
+        :return: Returns an imagestreamtag dict for a release payload imagestream.
         """
         return {
-            "annotations": PayloadGenerator.build_inconsistency_annotation(payload_entry.issues),
+            "annotations": PayloadGenerator.build_inconsistency_annotations(payload_entry.issues),
             "name": payload_tag_name,
             "from": {
                 "kind": "DockerImage",
@@ -1226,9 +1241,10 @@ class PayloadGenerator:
         }
 
     @staticmethod
-    def build_payload_imagestream(imagestream_name: str, imagestream_namespace: str, payload_istags: Iterable[Dict], assembly_wide_inconsistencies: Iterable[AssemblyIssue]) -> Dict:
+    def build_payload_imagestream(runtime, imagestream_name: str, imagestream_namespace: str, payload_istags: Iterable[Dict], assembly_wide_inconsistencies: Iterable[AssemblyIssue]) -> Dict:
         """
         Builds a definition for a release payload imagestream from a set of payload istags.
+        :param runtime: The doozer Runtime.
         :param imagestream_name: The name of the imagstream to generate.
         :param imagestream_namespace: The nemspace in which the imagestream should be created.
         :param payload_istags: A list of istags generated by build_payload_istag.
@@ -1242,7 +1258,7 @@ class PayloadGenerator:
             "metadata": {
                 "name": imagestream_name,
                 "namespace": imagestream_namespace,
-                "annotations": PayloadGenerator.build_inconsistency_annotation(assembly_wide_inconsistencies)
+                "annotations": PayloadGenerator.build_imagestream_annotations(runtime, assembly_wide_inconsistencies)
             },
             "spec": {
                 "tags": list(payload_istags),
@@ -1252,7 +1268,21 @@ class PayloadGenerator:
         return istream_obj
 
     @staticmethod
-    def build_inconsistency_annotation(inconsistencies: Iterable[AssemblyIssue]):
+    def build_pipeline_metadata_annotations(runtime) -> Dict:
+        """
+        :return: If the metadata is available, include information like the Jenkins job URL
+                 in a nightly annotation.
+                 Returns a dict of pipeline metadata annotations.
+        """
+        pipeline_metadata = {
+            'release.openshift.io/build-url': os.getenv('BUILD_URL', ''),
+            'release.openshift.io/runtime-brew-event': str(runtime.brew_event),
+        }
+
+        return pipeline_metadata
+
+    @staticmethod
+    def build_inconsistency_annotations(inconsistencies: Iterable[AssemblyIssue]) -> Dict:
         """
         :param inconsistencies: A list of strings to report as inconsistencies within an annotation.
         :return: Returns a dict containing an inconsistency annotation out of the specified issues list.
@@ -1267,6 +1297,13 @@ class PayloadGenerator:
             # an exhaustive list of the problems may be too large; that goes in the state file.
             msgs[5:] = ["(...and more)"]
         return {"release.openshift.io/inconsistency": json.dumps(msgs)}
+
+    @staticmethod
+    def build_imagestream_annotations(runtime, inconsistencies: Iterable[AssemblyIssue]) -> Dict:
+        annotations = {}
+        annotations.update(PayloadGenerator.build_inconsistency_annotations(inconsistencies))
+        annotations.update(PayloadGenerator.build_pipeline_metadata_annotations(runtime))
+        return annotations
 
     @staticmethod
     def get_group_payload_tag_mapping(assembly_inspector: AssemblyInspector, arch: str) -> Dict[str, Optional[ArchiveImageInspector]]:
