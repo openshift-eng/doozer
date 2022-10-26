@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import threading
 
 import yaml
 
@@ -13,11 +14,16 @@ class ReleaseSchedule:
     """
 
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls, runtime):
         if cls._instance is None:
-            cls._instance = super(ReleaseSchedule, cls).__new__(cls)
-            cls.initialize(runtime)
+            with cls._lock:
+                # Another thread could have created the instance before the lock was acquired
+                # So check that the instance is still nonexistent.
+                if cls._instance is None:
+                    cls._instance = super(ReleaseSchedule, cls).__new__(cls)
+                    cls.initialize(runtime)
         return cls._instance
 
     @classmethod
