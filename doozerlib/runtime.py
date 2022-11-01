@@ -444,8 +444,6 @@ class Runtime(object):
         if self.group_config.assemblies.enabled or self.enable_assemblies:
             if re.fullmatch(r'[\w.]+', self.assembly) is None or self.assembly[0] == '.' or self.assembly[-1] == '.':
                 raise ValueError('Assembly names may only consist of alphanumerics, ., and _, but not start or end with a dot (.).')
-            # FIXME: Hardcoding !=stream in code until we come up with a way to construct meaningful metadata for this convention in group.yml or releases.yml.
-            self.hotfix = self.assembly != "stream"
         else:
             # If assemblies are not enabled for the group,
             # ignore this argument throughout doozer.
@@ -476,6 +474,8 @@ class Runtime(object):
             self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
 
         self.assembly_type = assembly_type(self.get_releases_config(), self.assembly)
+        # This flag indicates builds should be tagged with associated hotfix tag for the artifacts branch
+        self.hotfix = self.assembly_type is not AssemblyTypes.STREAM
 
         if not self.brew_event:
             self.logger.info("Basis brew event is not set. Using the latest event....")
