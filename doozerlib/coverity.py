@@ -187,7 +187,7 @@ RUN if cat /etc/redhat-release | grep "release 8"; then echo '[covscan_local_{id
         """
         HTTPS proxy can be specified as build argument and passed to podman build command
         """
-        return f"--build-arg HTTPS_PROXY='{self.https_proxy}'" if self.https_proxy else ''
+        return f"--build-arg HTTPS_PROXY='{self.https_proxy}'" if self.https_proxy != 'null' else ''
 
 
 def _covscan_prepare_parent(cc: CoverityContext, parent_image_name, parent_tag) -> bool:
