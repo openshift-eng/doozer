@@ -1654,6 +1654,10 @@ class ImageDistGitRepo(DistGitRepo):
                 # A GITLAB token env var was not provided: display a warning and fallback to default
                 self.logger.error(f'Fallback to default ART config: {e}')
                 return False
+            except AttributeError as e:
+                # Catch "'ReleaseSchedule' object has no attribute 'schedule_data'" error
+                self.logger.error(f'Failed getting ff date: {e}')
+                return False
         elif self.runtime.group_config.canonical_builders_from_upstream == 'on':
             return True
         elif self.runtime.group_config.canonical_builders_from_upstream == 'off':
