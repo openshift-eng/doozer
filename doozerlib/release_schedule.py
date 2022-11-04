@@ -22,12 +22,12 @@ class ReleaseSchedule:
                 # Another thread could have created the instance before the lock was acquired
                 # So check that the instance is still nonexistent.
                 if cls._instance is None:
-                    cls._instance = super(ReleaseSchedule, cls).__new__(cls)
-                    cls.initialize(runtime)
+                    instance = super(ReleaseSchedule, cls).__new__(cls)
+                    instance.initialize(runtime)
+                    cls._instance = instance
         return cls._instance
 
-    @classmethod
-    def initialize(cls, runtime):
+    def initialize(self, runtime):
         if 'GITLAB_TOKEN' not in os.environ:
             raise ValueError('A GITLAB_TOKEN env var must be defined')
 
@@ -42,7 +42,7 @@ class ReleaseSchedule:
         minor = runtime.group_config.vars['MINOR']
         config_file = f'{git_data.data_dir}/schedules/{major}.{minor}.yaml'
         with open(config_file) as f:
-            cls._instance.schedule_data = yaml.safe_load(f.read())
+            self.schedule_data = yaml.safe_load(f.read())
 
     def get_ff_date(self) -> datetime:
         event = next(item for item in self.schedule_data['events'] if item["name"] == "feature-freeze")
