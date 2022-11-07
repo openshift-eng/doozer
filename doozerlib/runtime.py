@@ -292,18 +292,27 @@ class Runtime(object):
         # into the YAML content. If `vars` found, the format will be
         # preformed and the YAML model will reloaded from that result
         tmp_config = Model(self.gitdata.load_data(key='group').data)
-        replace_vars = tmp_config.vars or Model()
-        if self.assembly:
-            replace_vars['runtime_assembly'] = self.assembly
-        if replace_vars is not Missing:
-            try:
-                group_yml = yaml.safe_dump(tmp_config.primitive(), default_flow_style=False)
-                self.raw_group_config = yaml.full_load(group_yml.format(**replace_vars))
-                tmp_config = Model(dict(self.raw_group_config))
-            except KeyError as e:
-                raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
+        replace_vars = self._get_replace_vars(tmp_config)
+        try:
+            group_yml = yaml.safe_dump(tmp_config.primitive(), default_flow_style=False)
+            raw_group_config = yaml.full_load(group_yml.format(**replace_vars))
+            tmp_config = Model(dict(raw_group_config))
+        except KeyError as e:
+            raise ValueError('group.yml contains template key `{}` but no value was provided'.format(e.args[0]))
 
         return assembly_group_config(self.get_releases_config(), self.assembly, tmp_config)
+
+    def _get_replace_vars(self, group_config: Model):
+        replace_vars = group_config.vars or Model()
+        # If assembly mode is enabled, `runtime_assembly` will become the assembly name.
+        replace_vars['runtime_assembly'] = ''
+        # If running against an assembly for a named release, release_name will become the release name.
+        replace_vars['release_name'] = ''
+        if self.assembly:
+            replace_vars['runtime_assembly'] = self.assembly
+            if self.assembly_type not in [AssemblyTypes.STREAM, AssemblyTypes.CUSTOM]:
+                replace_vars['release_name'] = util.get_release_name(self.assembly_type, self.group, self.assembly, release_offset=None)
+        return replace_vars
 
     def init_state(self):
         self.state = dict(state.TEMPLATE_BASE_STATE)
@@ -434,7 +443,8 @@ class Runtime(object):
         if self.cache_dir:
             self.cache_dir = os.path.abspath(self.cache_dir)
 
-        self.get_releases_config()  # Init self.releases_config
+        # get_releases_config also inits self.releases_config
+        self.assembly_type = assembly_type(self.get_releases_config(), self.assembly)
 
         self.group_dir = self.gitdata.data_dir
         self.group_config = self.get_group_config()
@@ -449,11 +459,7 @@ class Runtime(object):
             # ignore this argument throughout doozer.
             self.assembly = None
 
-        replace_vars = {}
-        if self.group_config.vars:
-            replace_vars = self.group_config.vars.primitive()
-        if self.assembly:
-            replace_vars['runtime_assembly'] = self.assembly
+        replace_vars = self._get_replace_vars(self.group_config).primitive()
 
         # only initialize group and assembly configs and nothing else
         if config_only:
@@ -473,7 +479,6 @@ class Runtime(object):
             self.brew_event = self.assembly_basis_event
             self.logger.warning(f'Constraining brew event to assembly basis for {self.assembly}: {self.brew_event}')
 
-        self.assembly_type = assembly_type(self.get_releases_config(), self.assembly)
         # This flag indicates builds should be tagged with associated hotfix tag for the artifacts branch
         self.hotfix = self.assembly_type is not AssemblyTypes.STREAM
 
@@ -1044,11 +1049,7 @@ class Runtime(object):
         if distgit_name in self.image_map:
             return self.image_map[distgit_name]
 
-        replace_vars = {}
-        if self.group_config.vars:
-            replace_vars = self.group_config.vars.primitive()
-        if self.assembly:
-            replace_vars['runtime_assembly'] = self.assembly
+        replace_vars = self._get_replace_vars(self.group_config).primitive()
         data_obj = self.gitdata.load_data(path='images', key=distgit_name, replace_vars=replace_vars)
         if not data_obj:
             raise DoozerFatalError('Unable to resolve image metadata for {}'.format(distgit_name))

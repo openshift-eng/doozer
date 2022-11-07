@@ -113,6 +113,7 @@ class RPMMetadata(Metadata):
             "content": new_specfile_data,
             "set_env": {"PATH": path},
             "runtime_assembly": self.runtime.assembly,
+            "release_name": "",
         }
 
         if self.runtime.assembly_type in [AssemblyTypes.STANDARD, AssemblyTypes.CANDIDATE, AssemblyTypes.PREVIEW]:

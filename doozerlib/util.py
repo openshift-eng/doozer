@@ -800,7 +800,7 @@ def isolate_major_minor_in_group(group_name: str) -> Tuple[int, int]:
     return int(match[1]), int(match[2])
 
 
-def get_release_name(assembly_type: str, group_name: str, assembly_name: str, release_offset: Optional[int]):
+def get_release_name(assembly_type: assembly.AssemblyTypes, group_name: str, assembly_name: str, release_offset: Optional[int]):
     major, minor = isolate_major_minor_in_group(group_name)
     if major is None or minor is None:
         raise ValueError(f"Invalid group name: {group_name}")
