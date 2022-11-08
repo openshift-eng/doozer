@@ -12,7 +12,7 @@ from doozerlib import exectools
 from doozerlib.model import ListModel, Model
 from doozerlib import brew
 
-RHCOS_BASE_URL = "https://rhcos-redirector.apps.art.xq1c.p1.openshiftapps.com/art/storage/releases"
+RHCOS_BASE_URL = "https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/storage/releases"
 # Historically the only RHCOS container was 'machine-os-content'; see
 # https://github.com/openshift/machine-config-operator/blob/master/docs/OSUpgrades.md
 # But in the future this will change, see
