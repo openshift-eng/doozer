@@ -270,7 +270,7 @@ class GenPayloadCli:
         self.payload_entries_for_arch = self.generate_payload_entries(assembly_inspector)
         assembly_report: Dict = self.generate_assembly_report(assembly_inspector)
 
-        print(yaml.dump(assembly_report["assembly_issues"], default_flow_style=False, indent=2))
+        print(yaml.dump(assembly_report, default_flow_style=False, indent=2))
         with self.output_path.joinpath("assembly-report.yaml").open(mode="w") as report_file:
             yaml.dump(assembly_report, stream=report_file, default_flow_style=False, indent=2)
 
