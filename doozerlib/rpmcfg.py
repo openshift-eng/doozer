@@ -116,8 +116,8 @@ class RPMMetadata(Metadata):
             "release_name": "",
         }
 
-        if self.runtime.assembly_type in [AssemblyTypes.STANDARD, AssemblyTypes.CANDIDATE, AssemblyTypes.PREVIEW]:
-            context["release_name"] = util.get_release_name(self.runtime.assembly_type, self.runtime.group, self.runtime.assembly, None)
+        if self.runtime.assembly_type is not AssemblyTypes.STREAM:
+            context["release_name"] = util.get_release_name_for_assembly(self.runtime.group, self.runtime.get_releases_config(), self.runtime.assembly)
 
         for modification in self.config.content.source.modifications:
             if self.source_modifier_factory.supports(modification.action):

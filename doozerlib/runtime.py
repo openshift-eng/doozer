@@ -310,8 +310,8 @@ class Runtime(object):
         replace_vars['release_name'] = ''
         if self.assembly:
             replace_vars['runtime_assembly'] = self.assembly
-            if self.assembly_type not in [AssemblyTypes.STREAM, AssemblyTypes.CUSTOM]:
-                replace_vars['release_name'] = util.get_release_name(self.assembly_type, self.group, self.assembly, release_offset=None)
+            if self.assembly_type is not AssemblyTypes.STREAM:
+                replace_vars['release_name'] = util.get_release_name_for_assembly(self.group, self.get_releases_config(), self.assembly)
         return replace_vars
 
     def init_state(self):

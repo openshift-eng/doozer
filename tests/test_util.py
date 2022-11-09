@@ -1,6 +1,7 @@
 import unittest
 
 from doozerlib import util
+from doozerlib.model import Model
 
 
 class TestUtil(unittest.TestCase):
@@ -161,6 +162,85 @@ class TestUtil(unittest.TestCase):
 
         actual = util.isolate_timestamp_in_release("")
         expected = None
+        self.assertEqual(actual, expected)
+
+    def test_get_release_name_for_assembly(self):
+        releases_config = Model({
+            "releases": {
+                "4.12.99": {
+                    "assembly": {
+                        "type": "standard",
+                        "basis": {
+                            "assembly": "4.12.98",
+                        }
+                    }
+                },
+                "4.12.98": {
+                    "assembly": {
+                        "type": "standard",
+                        "basis": {
+                            "event": 12345,
+                        }
+                    }
+                },
+                "art0000": {
+                    "assembly": {
+                        "type": "custom",
+                        "basis": {
+                            "assembly": "4.12.99",
+                        }
+                    }
+                },
+                "art0001": {
+                    "assembly": {
+                        "type": "custom",
+                        "basis": {
+                            "assembly": "art0000",
+                        }
+                    }
+                },
+                "art0002": {
+                    "assembly": {
+                        "type": "custom",
+                        "basis": {
+                            "assembly": "art0001",
+                            "patch_version": 23,
+                        }
+                    }
+                },
+                "art0003": {
+                    "assembly": {
+                        "type": "custom",
+                        "basis": {
+                            "assembly": "art0002",
+                        }
+                    }
+                },
+            }
+        })
+
+        actual = util.get_release_name_for_assembly("openshift-4.12", releases_config, "4.12.99")
+        expected = "4.12.99"
+        self.assertEqual(actual, expected)
+
+        actual = util.get_release_name_for_assembly("openshift-4.12", releases_config, "4.12.98")
+        expected = "4.12.98"
+        self.assertEqual(actual, expected)
+
+        actual = util.get_release_name_for_assembly("openshift-4.12", releases_config, "art0000")
+        expected = "4.12.99-assembly.art0000"
+        self.assertEqual(actual, expected)
+
+        actual = util.get_release_name_for_assembly("openshift-4.12", releases_config, "art0001")
+        expected = "4.12.99-assembly.art0001"
+        self.assertEqual(actual, expected)
+
+        actual = util.get_release_name_for_assembly("openshift-4.12", releases_config, "art0002")
+        expected = "4.12.23-assembly.art0002"
+        self.assertEqual(actual, expected)
+
+        actual = util.get_release_name_for_assembly("openshift-4.12", releases_config, "art0003")
+        expected = "4.12.23-assembly.art0003"
         self.assertEqual(actual, expected)
 
 
