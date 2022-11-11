@@ -1463,7 +1463,7 @@ class ImageDistGitRepo(DistGitRepo):
             self.logger.warning("Exception while trying to analyze build logs in {}: {}".format(logs_dir, e))
 
     @staticmethod
-    def _mangle_yum(cmd):
+    def _mangle_pkgmgr(cmd):
         # alter the arg by splicing its content
         def splice(pos, replacement):
             return cmd[:pos[0]] + replacement + cmd[pos[1]:]
@@ -1494,14 +1494,18 @@ class ImageDistGitRepo(DistGitRepo):
                 cmd = splice(subcmd.pos, "\\\n " + subcmd.op)
                 continue  # not "changed" logically however
 
-            # replace yum-config-manager with a no-op
-            if re.search(r'(^|/)yum-config-manager$', subcmd.parts[0].word):
+            # replace package manager config with a no-op
+            if re.search(r'(^|/)(microdnf\s+|dnf\s+|yum-)config-manager$', subcmd.parts[0].word):
                 cmd = splice(subcmd.pos, ": 'removed yum-config-manager'")
                 changed = True
                 continue
+            if re.search(r'(^|/)(micro)?dnf$', subcmd.parts[0].word) and len(subcmd.parts) > 1 and subcmd.parts[1].word == "config-manager":
+                cmd = splice(subcmd.pos, ": 'removed dnf config-manager'")
+                changed = True
+                continue
 
-            # clear repo options from yum commands
-            if not re.search(r'(^|/)yum$', subcmd.parts[0].word):
+            # clear repo options from yum and dnf commands
+            if not re.search(r'(^|/)(yum|dnf|microdnf)$', subcmd.parts[0].word):
                 continue
             next_word = None
             for word in reversed(subcmd.parts):
@@ -1532,7 +1536,7 @@ class ImageDistGitRepo(DistGitRepo):
         """
         for entry in reversed(dfp.structure):
             if entry['instruction'] == 'RUN':
-                changed, new_value = self._mangle_yum(entry['value'])
+                changed, new_value = self._mangle_pkgmgr(entry['value'])
                 if changed:
                     dfp.add_lines_at(entry, "RUN " + new_value, replace=True)
 
