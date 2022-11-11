@@ -208,13 +208,14 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
         self.assertEqual(gpcli.assembly_issues, ["issues"])
 
     def test_detect_extend_payload_entry_issues(self):
-        gpcli = flexmock(rgp_cli.GenPayloadCli())
+        runtime = MagicMock(group_config=Model())
+        gpcli = flexmock(rgp_cli.GenPayloadCli(runtime))
         spamEntry = rgp_cli.PayloadEntry(
             image_meta=Mock(distgit_key="spam"),
             issues=[], dest_pullspec="dummy",
         )
         rhcosEntry = rgp_cli.PayloadEntry(rhcos_build="rbi", dest_pullspec="dummy", issues=[])
-        gpcli.payload_entries_for_arch = dict(ppc64le=dict(spam=spamEntry, rhcos=rhcosEntry))
+        gpcli.payload_entries_for_arch = dict(ppc64le={"spam": spamEntry, "machine-os-content": rhcosEntry})
         gpcli.assembly_issues = [Mock(component="spam")]  # should associate with spamEntry
 
         gpcli.should_receive("detect_rhcos_issues").with_args(rhcosEntry, None).once()

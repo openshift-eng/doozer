@@ -538,6 +538,10 @@ class GenPayloadCli:
         the single-arch payloads.
         """
 
+        primary_container_name = rhcos.get_primary_container_name(self.runtime)
+        cross_payload_requirements = self.runtime.group_config.rhcos.require_consistency
+        if not cross_payload_requirements:
+            self.runtime.logger.debug("No cross-payload consistency requirements defined in group.yml")
         # Structure to record rhcos builds we use so that they can be analyzed for inconsistencies
         targeted_rhcos_builds: Dict[bool, List[RHCOSBuildInspector]] = \
             {False: [], True: []}  # privacy mode: list of BuildInspector
@@ -550,10 +554,22 @@ class GenPayloadCli:
                         if ai.component == payload_entry.image_meta.distgit_key
                     )
                 elif payload_entry.rhcos_build:
+                    if tag != primary_container_name:
+                        continue  # RHCOS is one build, only analyze once (for primary container)
+
                     self.detect_rhcos_issues(payload_entry, assembly_inspector)
                     # Record the build to enable later consistency checks between all RHCOS builds.
                     # There are presently no private RHCOS builds, so add only to private_mode=False.
                     targeted_rhcos_builds[False].append(payload_entry.rhcos_build)
+
+                    if cross_payload_requirements:
+                        self.assembly_issues.extend(
+                            PayloadGenerator.find_rhcos_payload_rpm_inconsistencies(
+                                payload_entry.rhcos_build,
+                                assembly_inspector.get_group_release_images(),
+                                cross_payload_requirements,
+                            )
+                        )
                 else:
                     raise DoozerFatalError(f"Unsupported PayloadEntry: {payload_entry}")
 
@@ -1262,6 +1278,86 @@ class PayloadGenerator:
 
         # Report back rpm name keys which were associated with more than one NVR in the set of RHCOS builds.
         return {rpm_name: nvr_dict for rpm_name, nvr_dict in rpm_uses.items() if len(nvr_dict) > 1}
+
+    @staticmethod
+    def find_rhcos_payload_rpm_inconsistencies(
+            primary_rhcos_build: RHCOSBuildInspector,
+            payload_bbii: Dict[str, BrewBuildImageInspector],
+            # payload tag -> [pkg_name1, ...]
+            payload_consistency_config: Dict[str, List[str]]) -> List[AssemblyIssue]:
+        """
+        Compares designated brew packages installed in designated payload members with the RPMs
+        in an RHCOS build, ensuring that both have the same version installed.
+
+        This is a little more tricky with RHCOS than other payload content because RHCOS metadata
+        supplies only the installed RPMs, not the package NVRs that brew metadata supplies for
+        containers, and the containers may install different subsets of the RPMs a package build
+        provides. So we have to do a little more work to find all RPMs for the NVRs installed in the
+        member and compare.
+
+        :return: Returns a list of AssemblyIssue objects describing any inconsistencies found.
+        """
+        issues: List[AssemblyIssue] = []
+
+        # index by name the RPMs installed in the RHCOS build
+        rhcos_rpm_vrs: Dict[str, str] = {}  # name -> version-release
+        for rpm in primary_rhcos_build.get_os_metadata_rpm_list():
+            name, _, version, release, _ = rpm
+            rhcos_rpm_vrs[name] = f"{version}-{release}"
+
+        # check that each member consistency condition is met
+        primary_rhcos_build.runtime.logger.debug(f"Running payload consistency checks against {primary_rhcos_build}")
+        for payload_tag, consistent_pkgs in payload_consistency_config.items():
+            bbii = payload_bbii.get(payload_tag)
+            if not bbii:
+                issues.append(AssemblyIssue(
+                    f"RHCOS consistency configuration specifies a payload tag '{payload_tag}'"
+                    " that does not exist", payload_tag, AssemblyIssueCode.IMPERMISSIBLE))
+                continue
+
+            # check that each specified package in the member is consistent with the RHCOS build
+            for pkg in consistent_pkgs:
+                issues.append(PayloadGenerator.validate_pkg_consistency_req(payload_tag, pkg, bbii, rhcos_rpm_vrs))
+
+        return [issue for issue in issues if issue]
+
+    @staticmethod
+    def validate_pkg_consistency_req(
+            payload_tag: str, pkg: str,
+            bbii: BrewBuildImageInspector,
+            rhcos_rpm_vrs: Dict[str, str]) -> Optional[AssemblyIssue]:
+        """check that the specified package in the member is consistent with the RHCOS build"""
+        logger = bbii.runtime.logger
+        logger.debug(f"Checking consistency of {pkg} for {payload_tag} against RHCOS")
+        member_nvrs: Dict[str, Dict] = bbii.get_all_installed_package_build_dicts()  # by name
+        try:
+            build = member_nvrs[pkg]
+        except KeyError:
+            return AssemblyIssue(
+                f"RHCOS consistency configuration specifies that payload tag '{payload_tag}' "
+                f"should install package '{pkg}', but it does not",
+                payload_tag, AssemblyIssueCode.FAILED_CONSISTENCY_REQUIREMENT)
+
+        # get names of all the actual RPMs included in this package build, because that's what we
+        # have for comparison in the RHCOS metadata (not the package name).
+        rpm_names = set(rpm["name"] for rpm in bbii.get_rpms_in_pkg_build(build["build_id"]))
+
+        # find package RPM names in the RHCOS build and check that they have the same version
+        required_vr = "-".join([build["version"], build["release"]])
+        logger.debug(f"{payload_tag} {pkg} has RPMs {rpm_names} at version {required_vr}")
+        for name in rpm_names:
+            vr = rhcos_rpm_vrs.get(name)
+            if vr:
+                logger.debug(f"RHCOS RPM {name} version is {vr}")
+            if vr and vr != required_vr:
+                return AssemblyIssue(
+                    f"RHCOS and '{payload_tag}' should both use the same build of "
+                    f"package '{pkg}', but RHCOS has installed {name}-{vr} and "
+                    f"'{payload_tag}' has installed from {build['nvr']}",
+                    payload_tag, AssemblyIssueCode.FAILED_CONSISTENCY_REQUIREMENT)
+                # no need to check other RPMs from this package build, one is enough
+
+        return None
 
     @staticmethod
     def get_mirroring_destination(sha256: str, dest_repo: str) -> str:

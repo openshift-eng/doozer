@@ -56,6 +56,11 @@ class AssemblyIssueCode(Enum):
     # configured in the RHCOS pipeline for all arches.
     MISSING_RHCOS_CONTAINER = 7
 
+    # A consistency requirement for packages between members (currently only
+    # specifiable in group.yml rhcos config) failed -- the members did not have
+    # the same version installed.
+    FAILED_CONSISTENCY_REQUIREMENT = 8
+
 
 class AssemblyIssue:
     """

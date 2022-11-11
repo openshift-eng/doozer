@@ -1394,6 +1394,7 @@ class Runtime(object):
                 hash, the hash will be returned without modification.
         """
         self.logger.info('Checking if target branch {} exists in {}'.format(branch, git_url))
+
         try:
             out, _ = exectools.cmd_assert('git ls-remote --heads {} {}'.format(git_url, branch), retries=3)
         except Exception as err:
