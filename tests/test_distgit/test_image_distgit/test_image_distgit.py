@@ -260,23 +260,32 @@ class TestImageDistGit(TestDistgit):
         output = self.stream.getvalue()
         self.assertIn("Exception while trying to analyze build logs", output)
 
-    def test_mangle_yum_cmds_unchanged(self):
+    def test_mangle_pkgmgr_cmds_unchanged(self):
         unchanging = [
             "yum install foo",
+            "dnf install foo",
+            "microdnf install foo",
             "ignore yum-config-manager here",
             "foo && yum install && bar",
+            "ignore dnf config-manager here",
+            "ignore microdnf config-manager here",
         ]
         for cmd in unchanging:
-            self.assertFalse(distgit.ImageDistGitRepo._mangle_yum(cmd)[0])
+            self.assertFalse(distgit.ImageDistGitRepo._mangle_pkgmgr(cmd)[0])
 
-    def test_mangle_yum_cmds_changed(self):
+    def test_mangle_pkgmgr_cmds_changed(self):
         # note: adjacent spaces are not removed, so removals may result in redundant spaces
         changes = {
             "yum-config-manager foo bar baz": ": 'removed yum-config-manager'",
+            "dnf config-manager foo bar baz": ": 'removed dnf config-manager'",
             "yum --enablerepo=bar install foo --disablerepo baz": "yum  install foo  ",
+            "microdnf --enablerepo=bar install foo --disablerepo baz": "microdnf  install foo  ",
 
             "yum-config-manager foo bar baz && yum --enablerepo=bar install foo && build stuff":
                 ": 'removed yum-config-manager' \\\n && yum  install foo \\\n && build stuff",
+
+            "dnf config-manager foo bar baz && microdnf --enablerepo=bar install foo && build stuff":
+                ": 'removed dnf config-manager' \\\n && microdnf  install foo \\\n && build stuff",
 
             """yum repolist && yum-config-manager\
                --enable blah\
@@ -292,13 +301,13 @@ class TestImageDistGit(TestDistgit):
                ( foo \\\n || : 'removed yum-config-manager' \\\n && verify-something )"""
         }
         for cmd, expect in changes.items():
-            changed, result = distgit.ImageDistGitRepo._mangle_yum(cmd)
-            self.assertTrue(changed)
+            changed, result = distgit.ImageDistGitRepo._mangle_pkgmgr(cmd)
             self.assertEqual(result, expect)
+            self.assertTrue(changed)
 
-    def test_mangle_yum_parse_err(self):
+    def test_mangle_pkgmgr_parse_err(self):
         with self.assertRaises(IOError) as e:
-            distgit.ImageDistGitRepo._mangle_yum("! ( && || $ ) totally broken")
+            distgit.ImageDistGitRepo._mangle_pkgmgr("! ( && || $ ) totally broken")
         self.assertIn("totally broken", str(e.exception))
 
     @unittest.skip("raising IOError: [Errno 2] No such file or directory: '/tmp/ocp-cd-test-logsMpNctA/test_file'")
