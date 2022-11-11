@@ -918,6 +918,13 @@ class BrewBuildImageInspector:
 
         return self._cache[cn]
 
+    def get_rpms_in_pkg_build(self, build_id: int) -> List[Dict]:
+        """
+        :return: Returns a list of brew RPM records from a single package build.
+        """
+        with self.runtime.pooled_koji_client_session() as koji_api:
+            return koji_api.listRPMs(buildID=build_id)
+
     def get_all_installed_rpm_dicts(self) -> List[Dict]:
         """
         :return: Returns an aggregate set of all brew rpm definitions
@@ -936,10 +943,10 @@ class BrewBuildImageInspector:
 
     def get_all_installed_package_build_dicts(self) -> Dict[str, Dict]:
         """
-        :return: Returns an aggregate set of all brew build dicts for
-        packages installed on ALL architectures of this image build. This
-        code assumes that all image archives install the same package NVR
-        if they install it.
+        :return: Returns a Dict[package name -> brew build dict] for all
+        packages installed on ANY architecture of this image build.
+        (OSBS enforces that all image archives install the same package NVR
+        if they install it at all.)
         """
         cn = 'get_all_installed_package_build_dicts'
         if cn not in self._cache:

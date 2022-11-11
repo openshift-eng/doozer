@@ -17,11 +17,11 @@ def inspect_stream(runtime, code, strict):
     code = AssemblyIssueCode[code]
     if runtime.assembly != 'stream':
         print(f'Disregarding non-stream assembly: {runtime.assembly}. This command is only intended for stream')
-    runtime.assembly = 'stream'
+        runtime.assembly = 'stream'
     runtime.initialize(clone_distgits=False)
-    assembly_inspector = AssemblyInspector(runtime, lite=True)
 
     if code == AssemblyIssueCode.INCONSISTENT_RHCOS_RPMS:
+        assembly_inspector = AssemblyInspector(runtime, lookup_mode=None)
         rhcos_builds, rhcos_inconsistencies = _check_inconsistent_rhcos_rpms(runtime, assembly_inspector)
         if rhcos_inconsistencies:
             msg = f'Found RHCOS inconsistencies in builds {rhcos_builds}'
@@ -35,18 +35,46 @@ def inspect_stream(runtime, code, strict):
                 print('Running in strict mode')
             exit(1)
         print(f'RHCOS builds consistent {rhcos_builds}')
-        exit(0)
+    elif code == AssemblyIssueCode.FAILED_CONSISTENCY_REQUIREMENT:
+        requirements = runtime.group_config.rhcos.require_consistency
+        if not requirements:
+            print("No cross-payload consistency requirements defined in group.yml")
+            exit(0)
+
+        runtime.logger.info("Checking cross-payload consistency requirements defined in group.yml")
+        assembly_inspector = AssemblyInspector(runtime, lookup_mode="images")
+        issues = _check_cross_payload_consistency_requirements(runtime, assembly_inspector, requirements)
+        if issues:
+            print('Payload contents consistency requirements not satisfied')
+            pprint(issues)
+            not_permitted = [issue for issue in issues if not assembly_inspector.does_permit(issue)]
+            if not_permitted:
+                print(f'Assembly does not permit: {not_permitted}')
+                exit(1)
+            elif strict:
+                print('Running in strict mode; saw: {issues}')
+                exit(1)
+        print('Payload contents consistency requirements satisfied')
     else:
         print(f'AssemblyIssueCode {code} not supported at this time :(')
         exit(1)
 
 
 def _check_inconsistent_rhcos_rpms(runtime, assembly_inspector):
-    logger = runtime.logger
     rhcos_builds = []
     for arch in runtime.group_config.arches:
         build_inspector = assembly_inspector.get_rhcos_build(arch)
         rhcos_builds.append(build_inspector)
-    logger.info(f"Checking following builds for inconsistency: {rhcos_builds}")
+    runtime.logger.info(f"Checking following builds for inconsistency: {rhcos_builds}")
     rhcos_inconsistencies = PayloadGenerator.find_rhcos_build_rpm_inconsistencies(rhcos_builds)
     return rhcos_builds, rhcos_inconsistencies
+
+
+def _check_cross_payload_consistency_requirements(runtime, assembly_inspector, requirements):
+    issues = []
+    for arch in runtime.group_config.arches:
+        issues.extend(PayloadGenerator.find_rhcos_payload_rpm_inconsistencies(
+            assembly_inspector.get_rhcos_build(arch),
+            assembly_inspector.get_group_release_images(),
+            requirements))
+    return issues

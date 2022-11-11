@@ -13,24 +13,28 @@ from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder, get_container
 
 class AssemblyInspector:
     """ It inspects an assembly """
-    def __init__(self, runtime: Runtime, brew_session: ClientSession = None, lite: bool = False):
+    def __init__(self, runtime: Runtime, brew_session: ClientSession = None, lookup_mode: str = "both"):
         """
         :param runtime: Doozer runtime
         :param brew_session: Brew session object to use for communicating with Brew
-        :param lite: Create a lite version without the ability to inspect Images; can be used to check AssemblyIssues,
-        fetch rhcos_builds and other defined methods
+        :param lookup_mode:
+            None: Create a lite version without the ability to inspect Images; can be used to check
+                  AssemblyIssues, fetch rhcos_builds and other defined methods
+            "images": Do the lookups to enable image inspection, but expect code touching group RPMs
+                      to fail (limited use case)
+            "both": Do the lookups for a full inspection
         """
         self.runtime = runtime
         self.brew_session = brew_session
-        if not lite and runtime.mode != 'both':
-            raise ValueError('Runtime must be initialized with "both"')
+        if lookup_mode and runtime.mode != lookup_mode:
+            raise ValueError(f'Runtime must be initialized with "{lookup_mode}"')
 
         self.assembly_rhcos_config = assembly_rhcos_config(self.runtime.releases_config, self.runtime.assembly)
         self.assembly_type: AssemblyTypes = assembly_type(self.runtime.releases_config, self.runtime.assembly)
         self._rpm_build_cache: Dict[int, Dict[str, Optional[Dict]]] = {}  # Dict[rhel_ver] -> Dict[distgit_key] -> Optional[BuildDict]
         self._permits = assembly_permits(self.runtime.releases_config, self.runtime.assembly)
 
-        if lite:
+        if not lookup_mode:  # do no lookups
             return
         # If an image component has a latest build, an ImageInspector associated with the image.
         self._release_image_inspectors: Dict[str, Optional[BrewBuildImageInspector]] = dict()
@@ -287,7 +291,7 @@ class AssemblyInspector:
                 if el_ver in rpm_meta.determine_rhel_targets():
                     latest_build = rpm_meta.get_latest_build(default=None, el_target=el_ver)
                     if not latest_build:
-                        raise IOError(f'RPM {rpm_meta.distgit_key} claims to have a rhel-{el_ver} build target, but not build was detected')
+                        raise IOError(f'RPM {rpm_meta.distgit_key} claims to have a rhel-{el_ver} build target, but no build was detected')
                     assembly_rpm_dicts[rpm_meta.distgit_key] = latest_build
                 else:
                     # The RPM does not claim to build for this rhel version, so return None as a value.
