@@ -15,15 +15,15 @@ from typing import NamedTuple
 import dateutil.parser
 
 from dockerfile_parse import DockerfileParser
+import doozerlib
 
-from .pushd import Dir
-from .distgit import ImageDistGitRepo, RPMDistGitRepo
-from . import exectools
-from . import logutil
-from .brew import BuildStates
-from .util import isolate_el_version_in_brew_tag, isolate_git_commit_in_release
+from doozerlib.pushd import Dir
+from doozerlib.distgit import ImageDistGitRepo, RPMDistGitRepo
+from doozerlib import exectools, logutil
+from doozerlib.brew import BuildStates
+from doozerlib.util import isolate_el_version_in_brew_tag, isolate_git_commit_in_release
 
-from .model import Model, Missing
+from doozerlib.model import Model, Missing
 from doozerlib.assembly import assembly_metadata_config, assembly_basis_event
 
 
@@ -80,7 +80,7 @@ class RebuildHint(NamedTuple):
 
 
 class Metadata(object):
-    def __init__(self, meta_type: str, runtime, data_obj: Dict, commitish: Optional[str] = None, prevent_cloning: Optional[bool] = False):
+    def __init__(self, meta_type: str, runtime: "doozerlib.Runtime", data_obj: Dict, commitish: Optional[str] = None, prevent_cloning: Optional[bool] = False):
         """
         :param meta_type - a string. Index to the sub-class <'rpm'|'image'>.
         :param runtime - a Runtime object.
@@ -169,6 +169,7 @@ class Metadata(object):
                 pass
             else:
                 # Ooof.. it is not defined in the assembly, so we need to find it dynamically.
+                self.logger.info("A commitish is not explicitly specified for %s. Determining from the latest build...", self.name)
                 build_obj = self.get_latest_build(default=None, el_target=self.determine_rhel_targets()[0])
                 if build_obj:
                     self.commitish = isolate_git_commit_in_release(build_obj['nvr'])

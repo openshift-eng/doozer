@@ -19,6 +19,8 @@ import click
 import semver
 import yaml
 
+from doozerlib.model import Missing, Model
+
 try:
     from reprlib import repr
 except ImportError:
@@ -819,3 +821,25 @@ def get_release_name(assembly_type: assembly.AssemblyTypes, group_name: str, ass
     else:
         raise ValueError(f"Assembly type {assembly_type} is not supported.")
     return release_name
+
+
+def get_release_name_for_assembly(group_name: str, releases_config: Model, assembly_name: str):
+    """ Get release name for an assembly.
+    """
+    assembly_type = assembly.assembly_type(releases_config, assembly_name)
+    patch_version = assembly.assembly_basis(releases_config, assembly_name).get('patch_version')
+    if assembly_type is assembly.AssemblyTypes.CUSTOM:
+        patch_version = assembly.assembly_basis(releases_config, assembly_name).get('patch_version')
+        # If patch_version is not set, go through the chain of assembly inheritance and determine one
+        current_assembly = assembly_name
+        while patch_version is None:
+            parent_assembly = releases_config.releases[current_assembly].assembly.basis.assembly
+            if parent_assembly is Missing:
+                break
+            if assembly.assembly_type(releases_config, parent_assembly) is assembly.AssemblyTypes.STANDARD:
+                patch_version = int(parent_assembly.rsplit('.', 1)[-1])
+                break
+            current_assembly = parent_assembly
+        if patch_version is None:
+            raise ValueError("patch_version is not set in assembly definition and can't be auto-determined through the chain of inheritance.")
+    return get_release_name(assembly_type, group_name, assembly_name, patch_version)
