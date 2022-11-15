@@ -537,29 +537,27 @@ def from_tags(config: SimpleNamespace, brew_tag: Tuple[Tuple[str, str], ...], em
         component_builds.update(tagged_builds)
         signable_components |= tagged_builds.keys()  # components from our tag are always signable
 
-        if runtime.assembly_basis_event:
-            # If an assembly has a basis event, rpms pinned by "is" and group dependencies should take precedence over every build from the tag
-            el_version_match = re.search(r"rhel-(\d+)", tag)
-            el_version = int(el_version_match[1]) if el_version_match else 0
-            if el_version:  # Only honor pinned rpms if this tag is relevant to a RHEL version
-                # Honors pinned NVRs by "is"
-                pinned_by_is = builder.from_pinned_by_is(el_version, runtime.assembly, runtime.get_releases_config(), runtime.rpm_map)
-                # Builds pinned by "is" should take precedence over every build from tag
-                for component, pinned_build in pinned_by_is.items():
-                    pinned_nvres[component] = to_nvre(pinned_build)
-                    if component in component_builds and pinned_build["id"] != component_builds[component]["id"]:
-                        logger.warning("Swapping stream nvr %s for pinned nvr %s...", component_builds[component]["nvr"], pinned_build["nvr"])
-                component_builds.update(pinned_by_is)  # pinned rpms take precedence over those from tags
-                signable_components |= pinned_by_is.keys()  # ART-managed rpms are always signable
+        # rpms pinned by "is" and group dependencies should take precedence over every build from the tag
+        el_version = isolate_el_version_in_brew_tag(tag)
+        if el_version:  # Only honor pinned rpms if this tag is relevant to a RHEL version
+            # Honors pinned NVRs by "is"
+            pinned_by_is = builder.from_pinned_by_is(el_version, runtime.assembly, runtime.get_releases_config(), runtime.rpm_map)
+            # Builds pinned by "is" should take precedence over every build from tag
+            for component, pinned_build in pinned_by_is.items():
+                pinned_nvres[component] = to_nvre(pinned_build)
+                if component in component_builds and pinned_build["id"] != component_builds[component]["id"]:
+                    logger.warning("Swapping nvr %s from brew tag for pinned nvr %s...", component_builds[component]["nvr"], pinned_build["nvr"])
+            component_builds.update(pinned_by_is)  # pinned rpms take precedence over those from tags
+            signable_components |= pinned_by_is.keys()  # ART-managed rpms are always signable
 
-                # Honors group dependencies
-                group_deps = builder.from_group_deps(el_version, runtime.group_config, runtime.rpm_map)  # the return value doesn't include any ART managed rpms
-                # Group dependencies should take precedence over anything previously determined except those pinned by "is".
-                for component, dep_build in group_deps.items():
-                    pinned_nvres[component] = to_nvre(dep_build)
-                    if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
-                        logger.warning("Swapping stream nvr %s for group dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
-                component_builds.update(group_deps)
+            # Honors group dependencies
+            group_deps = builder.from_group_deps(el_version, runtime.group_config, runtime.rpm_map)  # the return value doesn't include any ART managed rpms
+            # Group dependencies should take precedence over anything previously determined except those pinned by "is".
+            for component, dep_build in group_deps.items():
+                pinned_nvres[component] = to_nvre(dep_build)
+                if component in component_builds and dep_build["id"] != component_builds[component]["id"]:
+                    logger.warning("Swapping stream nvr %s for group dependency nvr %s...", component_builds[component]["nvr"], dep_build["nvr"])
+            component_builds.update(group_deps)
 
         for build in component_builds.values():
             package_name = build['package_name']
