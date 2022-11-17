@@ -120,7 +120,7 @@ def default_imagestream_base_name(version: str) -> str:
 
 def assembly_imagestream_base_name(runtime: Runtime) -> str:
     version = runtime.get_minor_version()
-    if runtime.assembly is None or runtime.assembly_type is AssemblyTypes.STREAM:
+    if runtime.assembly == 'stream' and runtime.assembly_type is AssemblyTypes.STREAM:
         return default_imagestream_base_name(version)
     else:
         return f"{version}-art-assembly-{runtime.assembly}"
