@@ -1,14 +1,15 @@
-from typing import List, Dict, Optional, Set, Tuple
 import asyncio
-import click
-import hashlib
 import json
-import sys
+from typing import Dict, List, Sequence, Set, Tuple
 from urllib import request
+
+import click
+
+from doozerlib import constants, exectools, logutil, util
 from doozerlib.cli import cli, click_coroutine
 from doozerlib.model import Model
-from doozerlib import constants, util, exectools, logutil
 from doozerlib.rhcos import RHCOSBuildInspector
+from doozerlib.runtime import Runtime
 
 logger = logutil.getLogger(__name__)
 
@@ -18,16 +19,16 @@ logger = logutil.getLogger(__name__)
 @click.option("--allow-inconsistency", is_flag=True, help="Allow nightlies that fail deeper consistency checks")
 @click.option("--allow-pending", is_flag=True, help="Include nightlies that have not completed tests")
 @click.option("--allow-rejected", is_flag=True, help="Include nightlies that have failed tests")
-@click.option("--exclude-arch", metavar="ARCH", multiple=True, help="Exclude arch(es) normally included in this version (multi,aarch64,...)")
-@click.option("--limit", default=1, metavar='NUM', help="Number of sets of nightlies to print")
+@click.option("--exclude-arch", "exclude_arches", metavar="ARCH", multiple=True, help="Exclude arch(es) normally included in this version (multi,aarch64,...)")
+@click.option("--limit", default=1, type=int, metavar='NUM', help="Number of sets of nightlies to print")
 @click.option("--details", is_flag=True, help="Print some nightly details including RHCOS build id")
 @click.option("--latest", is_flag=True, help="Just get the latest nightlies for all arches (accepted or not)")
 @click.pass_obj
 @click_coroutine
-async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str],
+async def get_nightlies(runtime: Runtime, matching: Tuple[str, ...], exclude_arches: Tuple[str, ...],
                         allow_inconsistency: bool,
                         allow_pending: bool,
-                        allow_rejected: bool, limit: str, details: bool, latest: bool):
+                        allow_rejected: bool, limit: int, details: bool, latest: bool):
     """
     Find set(s) including a nightly for each arch with matching contents
     according to source commits and NVRs (or in the case of RHCOS containers,
@@ -80,7 +81,6 @@ async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str],
         compare group image NVRs and RHCOS RPM content.
     """
     # parameter validation/processing
-    limit = int(limit)
     if latest and limit > 1:
         raise ValueError("Don't use --latest and --limit > 1")
     if limit < 1:
@@ -89,7 +89,7 @@ async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str],
         allow_pending = True
         allow_rejected = True
     runtime.initialize(clone_distgits=False)
-    include_arches: Set[str] = determine_arch_list(runtime, set(exclude_arch))
+    include_arches: Set[str] = determine_arch_list(runtime, set(exclude_arches))
 
     # make lists of nightly objects per arch
     try:
@@ -132,11 +132,11 @@ async def get_nightlies(runtime, matching: List[str], exclude_arch: List[str],
         exit(1)
 
 
-def determine_arch_list(runtime, exclude_arches: Set[str]) -> Set[str]:
+def determine_arch_list(runtime: Runtime, exclude_arches: Set[str]) -> Set[str]:
     """
     Validate exclude_arches and return group-configured arches without them
     """
-    available_arches: Set[str] = set(runtime.group_config.arches or [])
+    available_arches: Set[str] = set(runtime.arches)
     # TODO: managing multi requires an oc new enough to understand
     # manifest-listed release images, and possibly other complications - tackle
     # this when we get closer to releasing multi.
@@ -166,7 +166,7 @@ class EmptyArchException(Exception):
     pass
 
 
-def find_rc_nightlies(runtime, arches: Set[str], allow_pending: bool, allow_rejected: bool, matching: Optional[List[str]] = []) -> Dict[str, List[Dict]]:
+def find_rc_nightlies(runtime: Runtime, arches: Set[str], allow_pending: bool, allow_rejected: bool, matching: Sequence[str] = []) -> Dict[str, List[Dict]]:
     """
     Retrieve current nightly dicts for each arch, in order RC gives them (most
     recent to oldest). Filter to Accepted unless allow_pending/rejected is true.
@@ -179,6 +179,7 @@ def find_rc_nightlies(runtime, arches: Set[str], allow_pending: bool, allow_reje
       "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-132344"
     }
     """
+    matching = set(matching)
     found_matching: Dict[str, bool] = {name: False for name in matching}
     nightlies_for_arch: Dict[str, List[Dict]] = {}
     allowed_phases = {"Accepted"}

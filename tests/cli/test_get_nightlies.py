@@ -9,10 +9,13 @@ from doozerlib.model import Model
 
 class TestGetNightlies(TestCase):
     def setUp(self):
-        self.runtime = MagicMock(group_config=Model(dict(
-            arches=["x86_64", "s390x", "ppc64le", "aarch64"],
-            multi_arch=dict(enabled=True),
-        )))
+        self.runtime = MagicMock(
+            group_config=Model(dict(
+                arches=["x86_64", "s390x", "ppc64le", "aarch64"],
+                multi_arch=dict(enabled=True),
+            )),
+            arches=["x86_64", "s390x", "ppc64le", "aarch64"]
+        )
         subject.image_info_cache = {}
 
     def test_determine_arch_list(self):
@@ -22,7 +25,7 @@ class TestGetNightlies(TestCase):
             set(subject.determine_arch_list(self.runtime, ["s390x", "ppc64le"]))
         )
 
-        runtime = MagicMock(group_config=Model(dict(arches=["x86_64", "aarch64"])))
+        runtime = MagicMock(arches=["x86_64", "aarch64"])
         with self.assertRaises(ValueError, msg="should fail when specifying non-configured arch"):
             subject.determine_arch_list(runtime, ["bogus"])
         # with self.assertRaises(ValueError, msg="should fail when specifying multi if not configured"):
