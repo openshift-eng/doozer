@@ -134,6 +134,8 @@ class RHCOSBuildFinder:
 
         if self.runtime.group_config.urls.rhcos_release_base[bucket]:
             return self.runtime.group_config.urls.rhcos_release_base[bucket]
+        elif self.runtime.group_config.urls.rhcos_release_base["multi"]:
+            return self.runtime.group_config.urls.rhcos_release_base["multi"]
 
         bucket_suffix = brew_suffix_for_arch(self.brew_arch)
         if self.custom:
