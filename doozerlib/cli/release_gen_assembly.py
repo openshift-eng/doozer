@@ -81,9 +81,9 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
     elif re.search(r'^ec\.[0-9]+$', gen_assembly_name):
         assembly_type = AssemblyTypes.PREVIEW
 
-    if assembly_type in [AssemblyTypes.CUSTOM, AssemblyTypes.PREVIEW]:
+    if assembly_type in [AssemblyTypes.CUSTOM]:
         if auto_previous or previous_list or in_flight:
-            exit_with_error("Custom and preview release doesn't have previous list.")
+            exit_with_error("Custom releases don't have previous list.")
 
     # Calculate previous list
     final_previous_list: Set[VersionInfo] = set()
@@ -92,8 +92,8 @@ def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...]
     if previous_list:
         final_previous_list |= set(map(VersionInfo.parse, previous_list))
     elif auto_previous:
-        # gen_assembly_name should be in the form of `fc.0`, `rc.1`, or `4.10.1`
-        if assembly_type == AssemblyTypes.CANDIDATE:
+        # gen_assembly_name should be in the form of `ec.0`, `fc.0`, `rc.1`, or `4.10.1`
+        if assembly_type == AssemblyTypes.CANDIDATE or assembly_type == AssemblyTypes.PREVIEW:
             major_minor = runtime.get_minor_version()  # x.y
             version = f"{major_minor}.0-{gen_assembly_name}"
         else:
