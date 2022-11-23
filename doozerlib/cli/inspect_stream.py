@@ -1,9 +1,7 @@
 import click
 from pprint import pprint
 
-from doozerlib.rhcos import RHCOSBuildInspector, RHCOSBuildFinder
 from doozerlib.cli import cli
-from doozerlib.util import brew_arches
 from doozerlib.cli.release_gen_payload import PayloadGenerator
 from doozerlib.assembly import AssemblyIssueCode
 from doozerlib.assembly import AssemblyIssue
