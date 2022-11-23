@@ -628,7 +628,8 @@ def from_tags(config: SimpleNamespace, brew_tag: Tuple[Tuple[str, str], ...], em
             if package_name.startswith(tuple(include_previous_for)) or include_previous:
                 # The user has asked for non-latest entry for this package to be included in the plashet.
                 if package_name in pinned_nvres:
-                    raise IOError(f'Unable to build plashet. Build {nvre} is required by the assembly config but also asked to include a previous version.')
+                    logger.warning("Previous version of %s package will not be included because %s is required by the assembly config", package_name, nvre)
+                    continue
 
                 # we can try to find this by looking at the packages full history in this tag. Listing is
                 # newest -> oldest tagging event for this tag/package combination.
