@@ -221,25 +221,30 @@ class RHCOSBuildFinder:
 
 class RHCOSBuildInspector:
 
-    def __init__(self, runtime, pullspec_for_tag: Dict[str, str], brew_arch: str):
+    def __init__(self, runtime, pullspec_for_tag: Dict[str, str], brew_arch: str, build_id: Optional[str] = None):
         self.runtime = runtime
         self.brew_arch = brew_arch
         self.pullspec_for_tag = pullspec_for_tag
-        self.build_id = None
+        self.build_id = build_id
 
         # Remember the pullspec(s) provided in case it does not match what is in the releases.yaml.
         # Because of an incident where we needed to repush RHCOS and get a new SHA for 4.10 GA,
         # trust the exact pullspec in releases.yml instead of what we find in the RHCOS release
         # browser.
         for tag, pullspec in pullspec_for_tag.items():
-            image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}', retries=3)
+            try:
+                image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}', retries=3)
+            except ChildProcessError as e:
+                raise Exception(f'Error fetching RHCOS build {build_id}: {e}')
+
             image_info = Model(json.loads(image_info_str))
-            build_id = image_info.config.config.Labels.version
-            if not build_id:
+            image_build_id = image_info.config.config.Labels.version
+            if not image_build_id:
                 raise Exception(f'Unable to determine RHCOS build_id from tag {tag} pullspec {pullspec}. Retrieved image info: {image_info_str}')
-            if self.build_id and self.build_id != build_id:
-                raise Exception(f'Found divergent RHCOS build_id for {pullspec_for_tag}. {build_id} versus {self.build_id}')
-            self.build_id = build_id
+            if self.build_id and self.build_id != image_build_id:
+                raise Exception(f'Found divergent RHCOS build_id for {pullspec_for_tag}. {image_build_id} versus'
+                                f' {self.build_id}')
+            self.build_id = image_build_id
 
         # The first digits of the RHCOS build are the major.minor of the rhcos stream name.
         # Which, near branch cut, might not match the actual release stream.

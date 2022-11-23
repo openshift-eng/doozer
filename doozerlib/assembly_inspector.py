@@ -307,6 +307,7 @@ class AssemblyInspector:
         """
         runtime = self.runtime
         brew_arch = util.brew_arch_for_go_arch(arch)
+        build_id = None
         runtime.logger.info(f"Getting latest RHCOS source for {brew_arch}...")
 
         # See if this assembly has assembly.rhcos.*.images populated for this architecture.
@@ -329,7 +330,8 @@ class AssemblyInspector:
 
             try:
                 version = self.runtime.get_minor_version()
-                _, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private, custom=custom).latest_container(container_conf)
+                build_id, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private,
+                                                      custom=custom).latest_container(container_conf)
                 if not pullspec:
                     raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
                 pullspec_for_tag[container_conf.name] = pullspec
@@ -339,4 +341,4 @@ class AssemblyInspector:
                     # their absence will be noted when generating payloads anyway.
                     raise
 
-        return RHCOSBuildInspector(runtime, pullspec_for_tag, brew_arch)
+        return RHCOSBuildInspector(runtime, pullspec_for_tag, brew_arch, build_id)
