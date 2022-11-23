@@ -781,9 +781,9 @@ def get_release_calc_previous(version, arch,
     return sort_semver(list(upgrade_from))
 
 
-def find_manifest_list_sha(pull_spec):
+async def find_manifest_list_sha(pull_spec):
     cmd = 'oc image info --filter-by-os=linux/amd64 -o json {}'.format(pull_spec)
-    out, err = exectools.cmd_assert(cmd, retries=3)
+    out, err = await exectools.cmd_assert_async(cmd, retries=3)
     image_data = json.loads(out)
     if 'listDigest' not in image_data:
         raise ValueError('Specified image is not a manifest-list.')
