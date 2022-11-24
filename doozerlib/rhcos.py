@@ -167,9 +167,22 @@ class RHCOSBuildFinder:
 
         if not data["builds"]:
             return None
-        build = data["builds"][0]
-        # old schema just had the id as a string; newer has it in a dict
-        return build if isinstance(build, str) else build["id"]
+
+        multi_builds_enabled = bool(self.runtime.group_config.urls.rhcos_release_base["multi"])
+        if not multi_builds_enabled:
+            build_id = data["builds"][0]["id"]
+        else:
+            for build in data["builds"]:
+                build_id = build["id"]
+                pullspec = f'quay.io/openshift-release-dev/ocp-v4.0-art-dev:{build_id}'
+                try:
+                    image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}', retries=2)
+                except ChildProcessError as e:
+                    raise Exception(f'Error fetching RHCOS build {build_id}: {e}')
+
+                image_info = Model(json.loads(image_info_str))
+                image_build_id = image_info.config.config.Labels.version
+        return build_id
 
     @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
     def rhcos_build_meta(self, build_id: str, meta_type: str = "meta") -> Dict:

@@ -470,6 +470,11 @@ class GenPayloadCli:
         Returns a dict of dicts, keyed by architecture, then by payload component name.
         """
         entries_for_arch: Dict[str, Dict[str, PayloadEntry]] = dict()  # arch => img tag => PayloadEntry
+
+        arches = set(self.runtime.arches) - set(self.exclude_arch)
+        rhcos_entries, issues = PayloadGenerator.find_rhcos_payload_entries(assembly_inspector, arches)
+        self.assembly_issues.extend(issues)
+
         for arch in self.runtime.arches:
             if arch in self.exclude_arch:
                 self.logger.info(f"Excluding payload files architecture: {arch}")
@@ -478,9 +483,9 @@ class GenPayloadCli:
 
             entries: Dict[str, PayloadEntry]  # Key of this dict is release payload tag name
             issues: List[AssemblyIssue]
-            entries, issues = PayloadGenerator.find_payload_entries(assembly_inspector, arch, self.full_component_repo())
+            entries = PayloadGenerator.find_payload_entries(assembly_inspector, arch, self.full_component_repo())
+            entries.update(rhcos_entries[arch])
             entries_for_arch[arch] = entries
-            self.assembly_issues.extend(issues)
 
         return entries_for_arch
 
@@ -1140,10 +1145,9 @@ class PayloadGenerator:
         return f"{dest_repo}:{tag}"
 
     @classmethod
-    def find_payload_entries(clazz, assembly_inspector: AssemblyInspector, arch: str, dest_repo: str) -> (Dict[str, PayloadEntry], List[AssemblyIssue]):
+    def find_payload_entries(clazz, assembly_inspector: AssemblyInspector, arch: str, dest_repo: str) -> (Dict[str, PayloadEntry]):
         """
-        Returns a list of images which should be included in the architecture specific release payload.
-        This includes images for our group's image metadata as well as RHCOS.
+        Returns a list of images which should be included in the architecture specific release payload except rhcos
         :param assembly_inspector: An analyzer for the assembly to generate entries for.
         :param arch: The brew architecture name to create the list for.
         :param dest_repo: The registry/org/repo into which the image should be mirrored.
@@ -1151,9 +1155,7 @@ class PayloadGenerator:
         """
         members: Dict[str, PayloadEntry] = clazz._find_initial_payload_entries(assembly_inspector, arch, dest_repo)
         members = clazz._replace_missing_payload_entries(members, arch)
-        rhcos_members, issues = clazz._find_rhcos_payload_entries(assembly_inspector, arch)
-        members.update(rhcos_members)
-        return members, issues
+        return members
 
     @staticmethod
     def _find_initial_payload_entries(assembly_inspector: AssemblyInspector, arch: str, dest_repo: str) -> Dict[str, PayloadEntry]:
@@ -1196,11 +1198,11 @@ class PayloadGenerator:
             for tag_name, entry in members.items()
         }
 
-    @staticmethod
-    def _find_rhcos_payload_entries(assembly_inspector: AssemblyInspector, arch: str) -> (Dict[str, PayloadEntry], List[AssemblyIssue]):
+    @classmethod
+    def find_rhcos_payload_entries(clazz, assembly_inspector: AssemblyInspector, arches: Iterable[str]) -> (Dict[str, Dict[str, PayloadEntry]], List[AssemblyIssue]):
         members: Dict[str, PayloadEntry] = dict()
         issues: List[AssemblyIssue] = list()
-        rhcos_build: RHCOSBuildInspector = assembly_inspector.get_rhcos_build(arch)
+        rhcos_build: RHCOSBuildInspector = assembly_inspector.get_rhcos_builds(arches)
         for container_config in rhcos_build.get_container_configs():
             try:
                 members[container_config.name] = PayloadEntry(
