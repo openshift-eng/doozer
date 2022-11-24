@@ -37,13 +37,13 @@ class DirTestCase(unittest.TestCase):
         Execute the concurrency test for 10 threads
         """
         thread_count = 10
-        pool = Pool(thread_count)
-        results = [
-            pool.apply_async(lambda: self.test_getcwd(concurrent=True))
-            for _ in range(thread_count)
-        ]
-        for result in results:
-            result.get()
+        with Pool(thread_count) as pool:
+            results = [
+                pool.apply_async(lambda: self.test_getcwd(concurrent=True))
+                for _ in range(thread_count)
+            ]
+            for result in results:
+                result.get()
 
 
 if __name__ == "__main__":
