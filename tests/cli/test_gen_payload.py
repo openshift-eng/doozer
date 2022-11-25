@@ -1,4 +1,3 @@
-import asyncio
 import os
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock, Mock, patch
@@ -292,15 +291,15 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
         gpcli.payload_entries_for_arch = dict(x86_64=["x86_entries"], aarch64=["arm_entries"])
 
         gpcli.mirror_payload_content = AsyncMock()
-        gpcli.generate_specific_payload_imagestreams = Mock()
+        gpcli.generate_specific_payload_imagestreams = AsyncMock()
         gpcli.sync_heterogeneous_payloads = AsyncMock()
 
         await gpcli.sync_payloads()
         self.assertEqual(gpcli.mirror_payload_content.await_count, 2)
-        self.assertEqual(gpcli.generate_specific_payload_imagestreams.call_count, 2)
+        self.assertEqual(gpcli.generate_specific_payload_imagestreams.await_count, 2)
         gpcli.sync_heterogeneous_payloads.assert_awaited_once()
 
-    @patch("pathlib.Path.open")
+    @patch("aiofiles.open")
     @patch("doozerlib.exectools.cmd_assert_async")
     async def test_mirror_payload_content(self, exec_mock, open_mock):
         gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp", apply=True)
@@ -321,8 +320,7 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
         )
 
         buffer = io.StringIO()
-        cmgr = MagicMock(__enter__=lambda _: buffer)  # make Path.open() return the buffer
-        open_mock.return_value = cmgr
+        open_mock.return_value.__aenter__.return_value.write = AsyncMock(side_effect=lambda s: buffer.write(s))
         exec_mock.return_value = None  # do not actually run the command
 
         await gpcli.mirror_payload_content("s390x", payload_entries)
@@ -335,7 +333,7 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
         ])  # rhcos notably absent from mirroring
 
     @patch("doozerlib.cli.release_gen_payload.PayloadGenerator.build_payload_istag")
-    def test_generate_specific_payload_imagestreams(self, build_mock):
+    async def test_generate_specific_payload_imagestreams(self, build_mock):
         build_mock.side_effect = lambda name, _: name  # just to make the test simpler
         runtime = MagicMock(images=[], exclude=[])
         gpcli = flexmock(rgp_cli.GenPayloadCli(
@@ -359,14 +357,12 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
         )
 
         # these need to be true across two calls to generate_specific_payload_imagestreams()
-        gpcli.should_receive("write_imagestream_artifact_file").once().with_args(
-            "ocp-s390x", "release-s390x", ["rhcos", "eggs"], True  # "spam" is embargoed
-        ).and_return(None)
-        gpcli.should_receive("apply_arch_imagestream").once().and_return(None)
+        gpcli.write_imagestream_artifact_file = AsyncMock()
+        gpcli.apply_arch_imagestream = AsyncMock()
 
         # test when we're building a public payload with an embargoed image
         multi_specs = {True: dict(), False: dict()}
-        gpcli.generate_specific_payload_imagestreams("s390x", False, payload_entries, multi_specs)
+        await gpcli.generate_specific_payload_imagestreams("s390x", False, payload_entries, multi_specs)
         self.maxDiff = None
         self.assertEqual(multi_specs, {
             True: dict(
@@ -376,14 +372,15 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
                 eggs=dict(s390x=payload_entries["eggs"]),
             )
         })
+        gpcli.write_imagestream_artifact_file.assert_awaited_once_with(
+            "ocp-s390x", "release-s390x", ["rhcos", "eggs"], True)
+        gpcli.apply_arch_imagestream.assert_awaited_once()
 
         # and when we're building a private payload too
-        gpcli.should_receive("write_imagestream_artifact_file").once().with_args(
-            "ocp-s390x-priv", "release-s390x-priv", ["rhcos", "spam", "eggs"], True
-        ).and_return(None)
+        gpcli.write_imagestream_artifact_file = AsyncMock()
         runtime.images.append("anything")  # just to exercise the other branch of logic
         gpcli.apply = False  # just to exercise the other branch of logic
-        gpcli.generate_specific_payload_imagestreams("s390x", True, payload_entries, multi_specs)
+        await gpcli.generate_specific_payload_imagestreams("s390x", True, payload_entries, multi_specs)
         self.assertEqual(multi_specs, {
             True: dict(
                 rhcos=dict(s390x=payload_entries["rhcos"]),
@@ -395,19 +392,21 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
                 eggs=dict(s390x=payload_entries["eggs"]),
             )
         })
+        gpcli.write_imagestream_artifact_file.assert_awaited_once_with(
+            "ocp-s390x-priv", "release-s390x-priv", ["rhcos", "spam", "eggs"], True)
+        gpcli.apply_arch_imagestream.assert_awaited_once()
 
-    @patch("pathlib.Path.open")
-    def test_write_imagestream_artifact_file(self, open_mock):
+    @patch("aiofiles.open")
+    async def test_write_imagestream_artifact_file(self, open_mock):
         gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp", runtime=Mock(
             brew_event="999999",
             assembly_type=AssemblyTypes.STREAM,
         ))
 
         buffer = io.StringIO()
-        cmgr = MagicMock(__enter__=lambda _: buffer)  # make Path.open() return the buffer
-        open_mock.return_value = cmgr
+        open_mock.return_value.__aenter__.return_value.write = AsyncMock(side_effect=lambda s: buffer.write(s))
 
-        gpcli.write_imagestream_artifact_file("ocp-s390x", "release-s390x", ["rhcos", "eggs"], True)
+        await gpcli.write_imagestream_artifact_file("ocp-s390x", "release-s390x", ["rhcos", "eggs"], True)
         self.assertEqual(buffer.getvalue().strip(), f"""
 apiVersion: image.openshift.io/v1
 kind: ImageStream
@@ -424,12 +423,15 @@ spec:
         """.strip())
 
     @patch("doozerlib.cli.release_gen_payload.oc")
-    def test_apply_arch_imagestream(self, oc_mock):
+    async def test_apply_arch_imagestream(self, oc_mock):
         # pretty much just ensuring names aren't messed up, not checking logic
         gpcli = flexmock(rgp_cli.GenPayloadCli())
-        gpcli.should_receive("ensure_imagestream_apiobj")
-        gpcli.should_receive("apply_imagestream_update").and_return(["prune-me"], ["add-me"])
-        gpcli.apply_arch_imagestream("ocp-s390x", "release-s390x", ["prune-me", "add-me"], True)
+        gpcli.ensure_imagestream_apiobj = Mock()
+        gpcli.apply_imagestream_update = AsyncMock()
+        gpcli.apply_imagestream_update.return_value = ["prune-me", "add-me"]
+        await gpcli.apply_arch_imagestream("ocp-s390x", "release-s390x", ["prune-me", "add-me"], True)
+        gpcli.ensure_imagestream_apiobj.assert_called()
+        gpcli.apply_imagestream_update.assert_awaited()
 
     @patch("doozerlib.cli.release_gen_payload.oc")
     def test_ensure_imagestream_apiobj(self, oc_mock):
@@ -441,7 +443,7 @@ spec:
 
     @patch("doozerlib.cli.release_gen_payload.PayloadGenerator.build_inconsistency_annotations")
     @patch("doozerlib.cli.release_gen_payload.modify_and_replace_api_object")
-    def test_apply_imagestream_update(self, mar_mock, binc_mock):
+    async def test_apply_imagestream_update(self, mar_mock, binc_mock):
         gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp", runtime=Mock(
             brew_event="999999",
             assembly_type=AssemblyTypes.STREAM,
@@ -463,7 +465,7 @@ spec:
         new_istags = [dict(name="eggs")]
 
         # test when it's a partial update, should just be additive
-        (pruning, adding) = gpcli.apply_imagestream_update(istream_apiobj, new_istags, True)
+        (pruning, adding) = await gpcli.apply_imagestream_update(istream_apiobj, new_istags, True)
         self.assertEqual(pruning, set(), "nothing should be pruned in partial update")
         self.assertEqual(adding, {"eggs"}, "new thing added with update")
         self.assertEqual(
@@ -473,7 +475,7 @@ spec:
 
         # test when it's a full update, only the new should remain
         gpcli.assembly_issues = ["issue1", "issue2"]
-        (pruning, adding) = gpcli.apply_imagestream_update(istream_apiobj, new_istags, False)
+        (pruning, adding) = await gpcli.apply_imagestream_update(istream_apiobj, new_istags, False)
         self.assertEqual(istream_apiobj.model.spec.tags, [dict(name="eggs")], "should be only new tags")
         self.assertEqual(pruning, {"spam"}, "should be pruned with complete update")
         self.assertEqual(adding, set(), "eggs added in previous update")
@@ -537,14 +539,13 @@ spec:
 
     @patch("doozerlib.cli.release_gen_payload.find_manifest_list_sha")
     @patch("doozerlib.exectools.cmd_assert_async")
-    @patch("pathlib.Path.open")
+    @patch("aiofiles.open")
     async def test_create_multi_manifest_list(self, open_mock, exec_mock, fmlsha_mock):
         runtime = MagicMock(uuid="uuid")
         gpcli = rgp_cli.GenPayloadCli(runtime, output_dir="/tmp", organization="org", repository="repo")
 
         buffer = io.StringIO()
-        cmgr = MagicMock(__enter__=lambda _: buffer)  # make Path.open() return the buffer
-        open_mock.return_value = cmgr
+        open_mock.return_value.__aenter__.return_value.write = AsyncMock(side_effect=lambda s: buffer.write(s))
         exec_mock.return_value = None  # do not actually run the command
         fmlsha_mock.return_value = "sha256:abcdef"
 
@@ -592,14 +593,13 @@ spec:
     @patch("doozerlib.cli.release_gen_payload.find_manifest_list_sha")
     @patch("doozerlib.cli.release_gen_payload.GenPayloadCli.mirror_payload_content")
     @patch("doozerlib.exectools.cmd_assert_async")
-    @patch("pathlib.Path.open")
+    @patch("aiofiles.open")
     async def test_create_multi_release_manifest_list(self, open_mock, exec_mock, mirror_payload_content_mock, fmlsha_mock):
         gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp")
 
         exec_mock.return_value = None  # do not actually execute command
         buffer = io.StringIO()
-        cmgr = MagicMock(__enter__=lambda _: buffer)  # mock Path.open()
-        open_mock.return_value = cmgr
+        open_mock.return_value.__aenter__.return_value.write = AsyncMock(side_effect=lambda s: buffer.write(s))
         fmlsha_mock.return_value = "sha256:abcdef"
 
         pullspec = await gpcli.create_multi_release_manifest_list(
@@ -620,7 +620,7 @@ manifests:
         """.strip())
 
     @patch("doozerlib.cli.release_gen_payload.modify_and_replace_api_object")
-    def test_apply_multi_imagestream_update(self, mar_mock):
+    async def test_apply_multi_imagestream_update(self, mar_mock):
         gpcli = flexmock(rgp_cli.GenPayloadCli(output_dir="/tmp", runtime=MagicMock(assembly_type=AssemblyTypes.STREAM)))
 
         # make MAR method do basically what it would, without writing all the files
@@ -640,7 +640,7 @@ manifests:
         )))
         gpcli.should_receive("ensure_imagestream_apiobj").once().and_return(istream_apiobj)
 
-        gpcli.apply_multi_imagestream_update("final_pullspec", "is_name", "multi_release_name")
+        await gpcli.apply_multi_imagestream_update("final_pullspec", "is_name", "multi_release_name")
         self.assertNotIn(dict(name="spam1"), istream_apiobj.model.spec.tags, "should have been pruned")
         self.assertIn(dict(name="spam2"), istream_apiobj.model.spec.tags, "not pruned")
         new_tag_annotations = istream_apiobj.model.spec.tags[-1]['annotations']
