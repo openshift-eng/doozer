@@ -1,9 +1,12 @@
+import asyncio
 import os
-from unittest import TestCase, skip
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock, Mock, patch
+
 from flexmock import flexmock
 
 import io
+from mock import AsyncMock
 import yaml
 import openshift as oc
 
@@ -16,7 +19,7 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import rhcos
 
 
-class TestGenPayloadCli(TestCase):
+class TestGenPayloadCli(IsolatedAsyncioTestCase):
 
     def test_find_rhcos_payload_entries(self):
         rhcos_build = MagicMock()
@@ -92,7 +95,7 @@ class TestGenPayloadCli(TestCase):
     @patch.object(AssemblyInspector, "__init__", lambda *_: None)
     @patch.object(AssemblyInspector, "get_group_release_images", Mock(return_value={}))
     @patch("doozerlib.cli.release_gen_payload.GenPayloadCli.generate_assembly_issues_report")
-    def test_generate_assembly_report(self, gai_report_mock):
+    async def test_generate_assembly_report(self, gai_report_mock):
         empty_arr = Mock(return_value=[])
         rt = Mock(
             build_retrying_koji_client=empty_arr,
@@ -104,12 +107,12 @@ class TestGenPayloadCli(TestCase):
 
         self.assertFalse(gpcli.payload_permitted, "payload not permitted by default")
         gai_report_mock.return_value = (True, {})
-        gpcli.generate_assembly_report(assembly_inspector)
+        await gpcli.generate_assembly_report(assembly_inspector)
         self.assertTrue(gpcli.payload_permitted, "payload permitted according to assembly report")
 
     # this mainly checks that method names are valid and it executes
     @patch("doozerlib.cli.release_gen_payload.PayloadGenerator.check_nightlies_consistency")
-    def test_generate_assembly_issues_report(self, cnc_mock):
+    async def test_generate_assembly_issues_report(self, cnc_mock):
         gpcli = flexmock(
             rgp_cli.GenPayloadCli(runtime=MagicMock(assembly="stream")),
             collect_assembly_build_ids={1, 2, 3},
@@ -120,7 +123,7 @@ class TestGenPayloadCli(TestCase):
             summarize_issue_permits=(True, {}),
         )
         cnc_mock.return_value = ["spam"]
-        gpcli.generate_assembly_issues_report(Mock(AssemblyInspector))
+        await gpcli.generate_assembly_issues_report(Mock(AssemblyInspector))
         self.assertEqual(gpcli.assembly_issues, ["spam"])
 
     @patch("doozerlib.cli.release_gen_payload.PayloadGenerator.find_mismatched_siblings")
@@ -283,18 +286,23 @@ class TestGenPayloadCli(TestCase):
         self.assertFalse(gpcli.payload_permitted)
         self.assertFalse(gpcli.apply)
 
-    def test_sync_payloads(self):
+    async def test_sync_payloads(self):
         runtime = MagicMock(group_config=Model(dict(multi_arch=dict(enabled=True))))
-        gpcli = flexmock(rgp_cli.GenPayloadCli(runtime, apply_multi_arch=True))
+        gpcli = rgp_cli.GenPayloadCli(runtime, apply_multi_arch=True)
         gpcli.payload_entries_for_arch = dict(x86_64=["x86_entries"], aarch64=["arm_entries"])
-        gpcli.should_receive("mirror_payload_content").twice()
-        gpcli.should_receive("generate_specific_payload_imagestreams").twice()
-        gpcli.should_receive("sync_heterogeneous_payloads").once()
-        gpcli.sync_payloads()
+
+        gpcli.mirror_payload_content = AsyncMock()
+        gpcli.generate_specific_payload_imagestreams = Mock()
+        gpcli.sync_heterogeneous_payloads = AsyncMock()
+
+        await gpcli.sync_payloads()
+        self.assertEqual(gpcli.mirror_payload_content.await_count, 2)
+        self.assertEqual(gpcli.generate_specific_payload_imagestreams.call_count, 2)
+        gpcli.sync_heterogeneous_payloads.assert_awaited_once()
 
     @patch("pathlib.Path.open")
-    @patch("doozerlib.exectools.cmd_assert")
-    def test_mirror_payload_content(self, exec_mock, open_mock):
+    @patch("doozerlib.exectools.cmd_assert_async")
+    async def test_mirror_payload_content(self, exec_mock, open_mock):
         gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp", apply=True)
         payload_entries = dict(
             rhcos=rgp_cli.PayloadEntry(
@@ -317,7 +325,7 @@ class TestGenPayloadCli(TestCase):
         open_mock.return_value = cmgr
         exec_mock.return_value = None  # do not actually run the command
 
-        gpcli.mirror_payload_content("s390x", payload_entries)
+        await gpcli.mirror_payload_content("s390x", payload_entries)
 
         lines = sorted(buffer.getvalue().splitlines())
         self.assertEqual(lines, [
@@ -487,7 +495,7 @@ spec:
         expected = r"^4.10.0-0.art-assembly-spam-multi[-\d]+$"
         self.assertRegex(gpcli.get_multi_release_names(False)[0], expected)
 
-    def test_build_multi_istag(self):
+    async def test_build_multi_istag(self):
         gpcli = flexmock(rgp_cli.GenPayloadCli())
         bbii = Mock(get_manifest_list_digest=lambda: "sha256:abcdef")
         args = dict(
@@ -502,27 +510,35 @@ spec:
         )
 
         # test that we get the first flow where it just reuses the pullspec w/ digest
-        gpcli.should_receive("create_multi_manifest_list").never()
-        self.assertEqual(gpcli.build_multi_istag("spam", arch_to_payload_entry, "ocp"), {
-            "annotations": {},
-            "from": dict(kind="DockerImage", name="quay.io/org/repo@sha256:abcdef"),
-            "name": "spam",
-        })
+        gpcli.create_multi_manifest_list = AsyncMock(return_value="")
+        self.assertEqual(
+            await gpcli.build_multi_istag("spam", arch_to_payload_entry, "ocp"),
+            {
+                "annotations": {},
+                "from": dict(kind="DockerImage", name="quay.io/org/repo@sha256:abcdef"),
+                "name": "spam",
+            }
+        )
+        gpcli.create_multi_manifest_list.assert_not_awaited()
 
         # test that we get the second flow with mismatched entries where it creates a manifest list
         args["dest_manifest_list_pullspec"] = "quay.io/org/repo:spam-alt"
         arch_to_payload_entry["x86_64"] = rgp_cli.PayloadEntry(**args)
-        gpcli.should_receive("create_multi_manifest_list").once().and_return("new-manifest-list-pullspec")
-        self.assertEqual(gpcli.build_multi_istag("spam", arch_to_payload_entry, "ocp"), {
-            "annotations": {},
-            "from": dict(kind="DockerImage", name="new-manifest-list-pullspec"),
-            "name": "spam",
-        })
+        gpcli.create_multi_manifest_list = AsyncMock(return_value="new-manifest-list-pullspec")
+        self.assertEqual(
+            await gpcli.build_multi_istag("spam", arch_to_payload_entry, "ocp"),
+            {
+                "annotations": {},
+                "from": dict(kind="DockerImage", name="new-manifest-list-pullspec"),
+                "name": "spam",
+            }
+        )
+        gpcli.create_multi_manifest_list.assert_awaited_once_with("spam", arch_to_payload_entry, "ocp")
 
     @patch("doozerlib.cli.release_gen_payload.find_manifest_list_sha")
-    @patch("doozerlib.exectools.cmd_assert")
+    @patch("doozerlib.exectools.cmd_assert_async")
     @patch("pathlib.Path.open")
-    def test_create_multi_manifest_list(self, open_mock, exec_mock, fmlsha_mock):
+    async def test_create_multi_manifest_list(self, open_mock, exec_mock, fmlsha_mock):
         runtime = MagicMock(uuid="uuid")
         gpcli = rgp_cli.GenPayloadCli(runtime, output_dir="/tmp", organization="org", repository="repo")
 
@@ -542,7 +558,7 @@ spec:
                 dest_pullspec="quay.io/org/repo:eggs-ppc64le",
             ),
         )
-        gpcli.create_multi_manifest_list("spam", arch_to_payload_entry, "ocp-multi")
+        await gpcli.create_multi_manifest_list("spam", arch_to_payload_entry, "ocp-multi")
         self.assertEqual(
             exec_mock.call_args[0][0],
             "manifest-tool push from-spec /tmp/ocp-multi.spam.manifest-list.yaml")
@@ -550,31 +566,34 @@ spec:
         self.assertRegex(ml["image"], r"^quay.io/org/repo:sha256-")
         self.assertEqual(len(ml["manifests"]), 2)
 
-    @patch("doozerlib.exectools.cmd_assert")
+    @patch("doozerlib.exectools.cmd_assert_async")
     @patch("pathlib.Path.open")
-    def test_create_multi_release_images(self, open_mock, exec_mock):
+    async def test_create_multi_release_images(self, open_mock, exec_mock):
         gpcli = flexmock(rgp_cli.GenPayloadCli(output_dir="/tmp"))
 
         exec_mock.return_value = None  # do not actually execute command
         cmgr = MagicMock(__enter__=lambda _: io.StringIO())  # mock Path.open()
         open_mock.return_value = cmgr
 
-        gpcli.should_receive("create_multi_release_manifest_list").never()  # if args are wrong
-        (gpcli.should_receive("create_multi_release_manifest_list").once()
-              .with_args({"arch": "quay.io/org/repo:spam-arch"}, str, str))
+        gpcli.create_multi_release_manifest_list = AsyncMock(return_value="some_pullspec")
 
-        gpcli.create_multi_release_image(
-            imagestream_name="isname", multi_release_is=dict(example="spam"),
-            multi_release_dest="quay.io/org/repo:spam",
-            multi_release_name="relname",
-            multi_specs={False: {"cluster-version-operator": dict(arch=Mock(dest_pullspec="dest"))}},
-            private_mode=False
+        self.assertEqual(
+            await gpcli.create_multi_release_image(
+                imagestream_name="isname", multi_release_is=dict(example="spam"),
+                multi_release_dest="quay.io/org/repo:spam",
+                multi_release_name="relname",
+                multi_specs={False: {"cluster-version-operator": dict(arch=Mock(dest_pullspec="dest"))}},
+                private_mode=False),
+            "some_pullspec"
         )
+        gpcli.create_multi_release_manifest_list.assert_awaited_once_with(
+            {"arch": "quay.io/org/repo:spam-arch"}, 'isname', 'quay.io/org/repo:spam')
 
     @patch("doozerlib.cli.release_gen_payload.find_manifest_list_sha")
-    @patch("doozerlib.exectools.cmd_assert")
+    @patch("doozerlib.cli.release_gen_payload.GenPayloadCli.mirror_payload_content")
+    @patch("doozerlib.exectools.cmd_assert_async")
     @patch("pathlib.Path.open")
-    def test_create_multi_release_manifest_list(self, open_mock, exec_mock, fmlsha_mock):
+    async def test_create_multi_release_manifest_list(self, open_mock, exec_mock, mirror_payload_content_mock, fmlsha_mock):
         gpcli = rgp_cli.GenPayloadCli(output_dir="/tmp")
 
         exec_mock.return_value = None  # do not actually execute command
@@ -583,7 +602,7 @@ spec:
         open_mock.return_value = cmgr
         fmlsha_mock.return_value = "sha256:abcdef"
 
-        pullspec = gpcli.create_multi_release_manifest_list(
+        pullspec = await gpcli.create_multi_release_manifest_list(
             arch_release_dests=dict(x86_64="pullspec:x86"),
             imagestream_name="isname", multi_release_dest="quay.io/org/repo:spam",
         )
