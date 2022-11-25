@@ -66,30 +66,6 @@ def get_primary_container_name(runtime):
     return get_primary_container_conf(runtime).name
 
 
-def get_container_pullspec(build_meta: dict, container_conf: Model) -> str:
-    """
-    determine the container pullspec from the RHCOS build meta and config
-    @return full container pullspec string (registry/repo@sha256:...)
-    """
-    key = container_conf.build_metadata_key
-    if key not in build_meta:
-        raise RhcosMissingContainerException(f"RHCOS build {build_meta['buildid']} has no '{key}' attribute in its metadata")
-
-    container = build_meta[key]
-
-    if 'digest' in container:
-        # "oscontainer": {
-        #   "digest": "sha256:04b54950ce2...",
-        #   "image": "quay.io/openshift-release-dev/ocp-v4.0-art-dev"
-        # },
-        return container['image'] + "@" + container['digest']
-
-    # "base-oscontainer": {
-    #     "image": "registry.ci.openshift.org/rhcos/rhel-coreos@sha256:b8e1064cae637f..."
-    # },
-    return container['image']
-
-
 class RHCOSNotFound(Exception):
     pass
 
@@ -112,6 +88,33 @@ class RHCOSBuildFinder:
         self.private = private
         self.custom = custom
         self._primary_container = None
+        self.build_id = None
+        self.build_meta = None
+
+    def get_container_pullspec(self, container_conf: Model) -> str:
+        """
+        determine the container pullspec from the RHCOS build meta and config
+        @return full container pullspec string (registry/repo@sha256:...)
+        """
+        key = container_conf.build_metadata_key
+        if key not in self.build_meta:
+            raise RhcosMissingContainerException(
+                f"RHCOS build {self.build_meta['buildid']} has no '{key}' attribute in "
+                f"its metadata")
+
+        container = self.build_meta[key]
+
+        if 'digest' in container:
+            # "oscontainer": {
+            #   "digest": "sha256:04b54950ce2...",
+            #   "image": "quay.io/openshift-release-dev/ocp-v4.0-art-dev"
+            # },
+            return container['image'] + "@" + container['digest']
+
+        # "base-oscontainer": {
+        #     "image": "registry.ci.openshift.org/rhcos/rhel-coreos@sha256:b8e1064cae637f..."
+        # },
+        return container['image']
 
     def get_primary_container_conf(self):
         """
@@ -148,12 +151,13 @@ class RHCOSBuildFinder:
         return f"{RHCOS_BASE_URL}/rhcos-{self.version}{bucket_suffix}"
 
     @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
-    def latest_rhcos_build_id(self) -> Optional[str]:
+    def find_latest(self) -> Optional[str]:
         """
         :return: Returns the build id for the latest RHCOS build for the specific CPU arch. Return None if not found.
         """
         # this is hard to test with retries, so wrap testable method
-        return self._latest_rhcos_build_id()
+        self.build_id = self._latest_rhcos_build_id()
+        self.build_meta = self.rhcos_build_meta(self.build_id)
 
     def _latest_rhcos_build_id(self) -> Optional[str]:
         # returns the build id string or None (raises RHCOSNotFound for failure to retrieve)
@@ -218,16 +222,12 @@ class RHCOSBuildFinder:
         with request.urlopen(url) as req:
             return json.loads(req.read().decode())
 
-    def latest_container(self, container_conf: dict = None) -> Tuple[Optional[str], Optional[str]]:
+    def container_pullspec(self, container_conf: dict = None) -> Tuple[Optional[str], Optional[str]]:
         """
         :param container_conf: a payload tag conf Model from group.yml (with build_metadata_key)
         :return: Returns (rhcos build id, image pullspec) or (None, None) if not found.
         """
-        build_id = self.latest_rhcos_build_id()
-        if build_id is None:
-            return None, None
-        return build_id, get_container_pullspec(
-            self.rhcos_build_meta(build_id),
+        return self.get_container_pullspec(
             container_conf or self.get_primary_container_conf()
         )
 

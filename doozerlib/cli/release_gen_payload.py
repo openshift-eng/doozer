@@ -1200,31 +1200,36 @@ class PayloadGenerator:
 
     @classmethod
     def find_rhcos_payload_entries(clazz, assembly_inspector: AssemblyInspector, arches: Iterable[str]) -> (Dict[str, Dict[str, PayloadEntry]], List[AssemblyIssue]):
-        members: Dict[str, PayloadEntry] = dict()
+        arch_members: Dict[str, Dict] = dict()
         issues: List[AssemblyIssue] = list()
-        rhcos_build: RHCOSBuildInspector = assembly_inspector.get_rhcos_builds(arches)
-        for container_config in rhcos_build.get_container_configs():
-            try:
-                members[container_config.name] = PayloadEntry(
-                    dest_pullspec=rhcos_build.get_container_pullspec(container_config),
-                    rhcos_build=rhcos_build,
-                    issues=list(),
-                )
-            except RhcosMissingContainerException as ex:
-                if container_config.primary:
-                    # Impermissible, need to be sure of having the primary container in the payload
-                    issues.append(AssemblyIssue(
-                        f"RHCOS build {rhcos_build} metadata lacks entry for primary container {container_config.name}: {ex}",
-                        component=container_config.name
-                    ))
-                else:
-                    issues.append(AssemblyIssue(
-                        f"RHCOS build {rhcos_build} metadata lacks entry for non-primary container {container_config.name}: {ex}",
-                        component=container_config.name,
-                        code=AssemblyIssueCode.MISSING_RHCOS_CONTAINER
-                    ))
+        rhcos_builds: Dict[str, RHCOSBuildInspector] = assembly_inspector.get_rhcos_builds(arches)
 
-        return members, issues
+        for arch in arches:
+            members: Dict[str, PayloadEntry] = dict()
+            rhcos_build = rhcos_builds[arch]
+            for container_config in rhcos_build.get_container_configs():
+                try:
+                    members[container_config.name] = PayloadEntry(
+                        dest_pullspec=rhcos_build.get_container_pullspec(container_config),
+                        rhcos_build=rhcos_build,
+                        issues=list(),
+                    )
+                except RhcosMissingContainerException as ex:
+                    if container_config.primary:
+                        # Impermissible, need to be sure of having the primary container in the payload
+                        issues.append(AssemblyIssue(
+                            f"RHCOS build {rhcos_build} metadata lacks entry for primary container {container_config.name}: {ex}",
+                            component=container_config.name
+                        ))
+                    else:
+                        issues.append(AssemblyIssue(
+                            f"RHCOS build {rhcos_build} metadata lacks entry for non-primary container {container_config.name}: {ex}",
+                            component=container_config.name,
+                            code=AssemblyIssueCode.MISSING_RHCOS_CONTAINER
+                        ))
+            arch_members[arch] = members
+
+        return arch_members, issues
 
     @staticmethod
     def build_payload_istag(payload_tag_name: str, payload_entry: PayloadEntry) -> Dict:

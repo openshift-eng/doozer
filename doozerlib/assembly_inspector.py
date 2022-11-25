@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Iterable
 
 from koji import ClientSession
 from doozerlib.rpm_utils import parse_nvr
@@ -296,9 +296,9 @@ class AssemblyInspector:
 
         return self._rpm_build_cache[el_ver]
 
-    def get_rhcos_build(self, arch: str, private: bool = False, custom: bool = False) -> RHCOSBuildInspector:
+    def get_rhcos_builds(self, arches: Iterable[str], private: bool = False, custom: bool = False) -> RHCOSBuildInspector:
         """
-        :param arch: The CPU architecture of the build to retrieve.
+        :param arches: The CPU architectures of the builds to retrieve.
         :param private: If this should be a private build (NOT CURRENTLY SUPPORTED)
         :param custom: If this is a custom RHCOS build (see https://gitlab.cee.redhat.com/openshift-art/rhcos-upshift/-/blob/fdad7917ebdd9c8b47d952010e56e511394ed348/Jenkinsfile#L30).
         :return: Returns an RHCOSBuildInspector for the specified arch. For non-STREAM assemblies, this will be the RHCOS builds
@@ -306,39 +306,65 @@ class AssemblyInspector:
                  in the app.ci imagestream for ART's release/arch (e.g. ocp-s390x:is/4.7-art-latest-s390x).
         """
         runtime = self.runtime
-        brew_arch = util.brew_arch_for_go_arch(arch)
-        build_id = None
-        runtime.logger.info(f"Getting latest RHCOS source for {brew_arch}...")
+        arch_dict: Dict[str, RHCOSBuildInspector] = dict()
+        rhcos_tags = get_container_configs(runtime)
+        if self.runtime.assembly_type != AssemblyTypes.STREAM:
+            for arch in arches:
+                brew_arch = util.brew_arch_for_go_arch(arch)
+                build_id = None
+                runtime.logger.info(f"Getting RHCOS source for {brew_arch}...")
 
-        # See if this assembly has assembly.rhcos.*.images populated for this architecture.
-        pullspec_for_tag = dict()
-        for container_conf in get_container_configs(runtime):
-            # first we look at the assembly definition as the source of truth for RHCOS containers
-            assembly_rhcos_arch_pullspec = self.assembly_rhcos_config[container_conf.name].images[brew_arch]
-            if assembly_rhcos_arch_pullspec:
-                pullspec_for_tag[container_conf.name] = assembly_rhcos_arch_pullspec
-                continue
+                # See if this assembly has assembly.rhcos.*.images populated for this architecture.
+                pullspec_for_tag = dict()
+                for tag in rhcos_tags:
+                    # first we look at the assembly definition as the source of truth for RHCOS containers
+                    assembly_rhcos_arch_pullspec = self.assembly_rhcos_config[tag.name].images[brew_arch]
+                    if assembly_rhcos_arch_pullspec:
+                        pullspec_for_tag[tag.name] = assembly_rhcos_arch_pullspec
+                        continue
 
-            # for non-stream assemblies we expect explicit config for RHCOS
-            if self.runtime.assembly_type != AssemblyTypes.STREAM:
-                if container_conf.primary:
-                    raise Exception(f'Assembly {runtime.assembly} is not type STREAM but no assembly.rhcos.{container_conf.name} image data for {brew_arch}; all RHCOS image data must be populated for this assembly to be valid')
-                # require the primary container at least to be specified, but
-                # allow the edge case where we add an RHCOS container type and
-                # previous assemblies don't specify it
-                continue
+                    # for non-stream assemblies we expect explicit config for RHCOS
+                    if tag.primary:
+                        raise Exception(
+                            f'Assembly {runtime.assembly} is not type STREAM but no assembly.rhcos.{tag.name}'
+                            f' image data for {brew_arch}; all RHCOS image data must be populated for this assembly '
+                            f'to be valid')
+                arch_dict[arch] = RHCOSBuildInspector(runtime, pullspec_for_tag, brew_arch, build_id)
+        else:
+            latest_rhcos_arches_to_fetch = []
+            for arch in arches:
+                brew_arch = util.brew_arch_for_go_arch(arch)
+                build_id = None
+                runtime.logger.info(f"Getting latest RHCOS source for {brew_arch}...")
 
-            try:
+                # See if stream assembly has assembly.rhcos.*.images populated for this architecture.
+                pullspec_for_tag = dict()
+                for tag in rhcos_tags:
+                    assembly_rhcos_arch_pullspec = self.assembly_rhcos_config[tag.name].images[brew_arch]
+                    if assembly_rhcos_arch_pullspec:
+                        pullspec_for_tag[tag.name] = assembly_rhcos_arch_pullspec
+
+                # pinned images found in stream assembly
+                if pullspec_for_tag:
+                    if len(pullspec_for_tag) != len(rhcos_tags):
+                        raise Exception(f"All rhcos image tags need to be pinned in stream assembly: "
+                                        f"{[t.name for t in rhcos_tags]}")
+                    arch_dict[arch] = RHCOSBuildInspector(runtime, pullspec_for_tag, brew_arch, build_id)
+                else:
+                    latest_rhcos_arches_to_fetch.append(arch)
+
+            if latest_rhcos_arches_to_fetch:
                 version = self.runtime.get_minor_version()
-                build_id, pullspec = RHCOSBuildFinder(runtime, version, brew_arch, private,
-                                                      custom=custom).latest_container(container_conf)
-                if not pullspec:
-                    raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
-                pullspec_for_tag[container_conf.name] = pullspec
-            except RhcosMissingContainerException:
-                if container_conf.primary:
-                    # accommodate RHCOS build metadata not specifying all expected containers, but require primary.
-                    # their absence will be noted when generating payloads anyway.
-                    raise
-
-        return RHCOSBuildInspector(runtime, pullspec_for_tag, brew_arch, build_id)
+                for arch in arches:
+                    brew_arch = util.brew_arch_for_go_arch(arch)
+                    pullspec_for_tag = dict()
+                    build_finder: RHCOSBuildFinder = RHCOSBuildFinder(runtime, version, brew_arch, private,
+                                                                      custom=custom)
+                    build_finder.find_latest()
+                    for tag in rhcos_tags:
+                        pullspec = build_finder.container_pullspec(tag)
+                        if not pullspec:
+                            raise IOError(f"No RHCOS latest found for {version} / {brew_arch}")
+                        pullspec_for_tag[tag.name] = pullspec
+                    arch_dict[arch] = RHCOSBuildInspector(runtime, pullspec_for_tag, brew_arch, build_finder.build_id)
+        return
