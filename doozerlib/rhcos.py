@@ -167,9 +167,19 @@ class RHCOSBuildFinder:
 
         if not data["builds"]:
             return None
-        build = data["builds"][0]
-        # old schema just had the id as a string; newer has it in a dict
-        return build if isinstance(build, str) else build["id"]
+
+        multi_url = self.runtime.group_config.urls.rhcos_release_base["multi"]
+        build_id = None
+        if multi_url:
+            # Make sure all rhcos arch builds are complete
+            arches_building = self.runtime.group_config.arches
+            for b in data["builds"]:
+                if len(b["arches"]) == len(arches_building):
+                    build_id = b["id"]
+                    break
+        else:
+            build_id = data["builds"][0]["id"]
+        return build_id
 
     @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
     def rhcos_build_meta(self, build_id: str, meta_type: str = "meta") -> Dict:
