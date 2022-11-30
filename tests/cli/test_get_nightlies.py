@@ -1,13 +1,13 @@
-from typing import List, Dict, Optional, Set, Tuple
-from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from typing import Dict
+from unittest import IsolatedAsyncioTestCase
+from unittest.mock import MagicMock, patch, AsyncMock
 import json
 
 from doozerlib.cli import get_nightlies as subject
 from doozerlib.model import Model
 
 
-class TestGetNightlies(TestCase):
+class TestGetNightlies(IsolatedAsyncioTestCase):
     def setUp(self):
         self.runtime = MagicMock(
             group_config=Model(dict(
@@ -34,47 +34,48 @@ class TestGetNightlies(TestCase):
         self.assertEqual({"aarch64"}, subject.determine_arch_list(runtime, {"x86_64"}))
         self.assertEqual({"x86_64", "aarch64"}, subject.determine_arch_list(runtime, set()))
 
-    @patch('urllib.request.urlopen')
-    def test_find_rc_nightlies(self, urlopen_mock):
-        data = """
-        {
+    @patch('aiohttp.client.ClientSession.get')
+    async def test_find_rc_nightlies(self, session_get_mock):
+        data = {
           "name": "4.12.0-0.nightly",
           "tags": [
-            {
-              "name": "4.12.0-0.nightly-2022-07-15-132344",
-              "phase": "Ready",
-              "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-132344",
-              "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-132344"
-            },
-            {
-              "name": "4.12.0-0.nightly-2022-07-15-065851",
-              "phase": "Rejected",
-              "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-065851",
-              "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-065851"
-            },
-            {
-              "name": "4.12.0-0.nightly-2022-07-15-024227",
-              "phase": "Accepted",
-              "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-024227",
-              "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-024227"
-            }
-        ]}
-        """
-        cm = MagicMock(getcode=200)
-        cm.read.return_value = bytes(data, encoding="utf-8")
-        cm.__enter__.return_value = cm
-        urlopen_mock.return_value = cm
+              {
+                  "name": "4.12.0-0.nightly-2022-07-15-132344",
+                  "phase": "Ready",
+                  "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-132344",
+                  "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-132344"
+              },
+              {
+                  "name": "4.12.0-0.nightly-2022-07-15-065851",
+                  "phase": "Rejected",
+                  "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-065851",
+                  "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-065851"
+              },
+              {
+                  "name": "4.12.0-0.nightly-2022-07-15-024227",
+                  "phase": "Accepted",
+                  "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-024227",
+                  "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-024227"
+              }
+            ]
+        }
 
-        self.assertEqual(1, len(subject.find_rc_nightlies(self.runtime, {"x86_64"}, False, False)["x86_64"]))
-        self.assertEqual(3, len(subject.find_rc_nightlies(self.runtime, {"x86_64"}, True, True)["x86_64"]))
-        self.assertEqual(1, len(subject.find_rc_nightlies(self.runtime, {"x86_64"}, True, True, ["4.12.0-0.nightly-2022-07-15-132344"])["x86_64"]))
+        session_get_mock.return_value.__aenter__.return_value.json = AsyncMock(return_value=data)
+
+        nightlies = await subject.find_rc_nightlies(self.runtime, {"x86_64"}, False, False)
+        self.assertEqual(1, len(nightlies["x86_64"]))
+        nightlies = await subject.find_rc_nightlies(self.runtime, {"x86_64"}, True, True)
+        self.assertEqual(3, len(nightlies["x86_64"]))
+        nightlies = await subject.find_rc_nightlies(
+            self.runtime, {"x86_64"}, True, True, ["4.12.0-0.nightly-2022-07-15-132344"])
+        self.assertEqual(1, len(nightlies["x86_64"]))
 
         with self.assertRaises(subject.NoMatchingNightlyException):
-            subject.find_rc_nightlies(self.runtime, {"x86_64"}, True, True, ["not-found-name"])
+            await subject.find_rc_nightlies(self.runtime, {"x86_64"}, True, True, ["not-found-name"])
 
-        cm.read.return_value = b"{}"
+        session_get_mock.return_value.__aenter__.return_value.json = AsyncMock(return_value={})
         with self.assertRaises(subject.EmptyArchException):
-            subject.find_rc_nightlies(self.runtime, {"x86_64"}, True, True)
+            await subject.find_rc_nightlies(self.runtime, {"x86_64"}, True, True)
 
     @staticmethod
     def vanilla_nightly(release_image_info=None, name=None):
@@ -179,39 +180,40 @@ class TestGetNightlies(TestCase):
         self.assertEqual(n["two-tags"], n["cvo-tag-replaced-by-pod"])
         self.assertNotEqual(n["two-tags"], n["two-tag-different-pod"])
 
-    @patch('doozerlib.cli.get_nightlies.Nightly.retrieve_image_info')
-    def test_retrieve_nvr_for_tag(self, mock_rii):
-        mock_rii.return_value = Model(dict(config=dict(config=dict(Labels={
+    # @patch('doozerlib.cli.get_nightlies.Nightly.retrieve_image_info')
+    async def test_retrieve_nvr_for_tag(self):
+        nightly = self.vanilla_nightly()
+        nightly.retrieve_image_info_async = AsyncMock()
+        nightly.retrieve_image_info_async.return_value = Model(dict(config=dict(config=dict(Labels={
             "com.redhat.component": "spam",
             "version": "1.0",
             "release": "1.el8",
         }))))
-        nightly = self.vanilla_nightly()
-        self.assertEqual(("spam", "1.0", "1.el8"), nightly.retrieve_nvr_for_tag("pod"))
+        self.assertEqual(("spam", "1.0", "1.el8"), await nightly.retrieve_nvr_for_tag("pod"))
 
-        mock_rii.return_value = Exception()  # should be cached from last call
-        self.assertEqual(("spam", "1.0", "1.el8"), nightly.retrieve_nvr_for_tag("pod"))
+        nightly.retrieve_image_info_async.return_value = Exception()  # should be cached from last call
+        self.assertEqual(("spam", "1.0", "1.el8"), await nightly.retrieve_nvr_for_tag("pod"))
 
-        mock_rii.return_value = Model()  # no labels provided
+        nightly.retrieve_image_info_async.return_value = Model()  # no labels provided
         nightly.pullspec_for_tag["rhcos"] = "rhcos_ps"
-        self.assertIsNone(nightly.retrieve_nvr_for_tag("rhcos"))
+        self.assertIsNone(await nightly.retrieve_nvr_for_tag("rhcos"))
 
-    def test_deeper_nightly(self):
+    async def test_deeper_nightly(self):
         n1 = self.vanilla_nightly()
         n2 = self.vanilla_nightly()
         n1.rhcos_inspector = n2.rhcos_inspector = MagicMock()  # always match
         n1.commit_for_tag["pod"] = n2.commit_for_tag["pod"] = "commit1"
         n1.nvr_for_tag["pod"] = n2.nvr_for_tag["pod"] = ("nvr", "1", "1")
-        self.assertTrue(n1.deeper_equivalence(n2))
+        self.assertTrue(await n1.deeper_equivalence(n2))
 
         # works with missing entries too
         n1.commit_for_tag["missing1"] = n2.commit_for_tag["missing2"] = "mcommit"
-        self.assertTrue(n1.deeper_equivalence(n2), "un-shared tags are ignored")
-        self.assertTrue(n2.deeper_equivalence(n1), "... in both directions")
+        self.assertTrue(await n1.deeper_equivalence(n2), "un-shared tags are ignored")
+        self.assertTrue(await n2.deeper_equivalence(n1), "... in both directions")
 
         # get a failure
         n2.nvr_for_tag["pod"] = ("nvr", "2", "2")
-        self.assertFalse(n1.deeper_equivalence(n2))
+        self.assertFalse(await n1.deeper_equivalence(n2))
 
         # give alt images (where components differ for the same tag) a pass.
         # most of the time they'll have the same VR but that's not absolutely
@@ -219,7 +221,7 @@ class TestGetNightlies(TestCase):
         # so just rely on source commit equivalence (already verified)
         # and ignore the slim possibility that the RPMs installed differ.
         n2.nvr_for_tag["pod"] = ("nvr-alt", "1", "1")
-        self.assertTrue(n1.deeper_equivalence(n2), "alt images allowed to differ")
+        self.assertTrue(await n1.deeper_equivalence(n2), "alt images allowed to differ")
 
     def test_deeper_nightly_rhcos(self):
         n1 = self.vanilla_nightly()
