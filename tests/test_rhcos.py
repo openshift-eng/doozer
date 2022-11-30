@@ -69,13 +69,22 @@ class TestRhcos(unittest.TestCase):
 
     @patch('urllib.request.urlopen')
     def test_build_id(self, mock_urlopen):
-        _urlopen_json_cm(mock_urlopen, dict(builds=['id-1', 'id-2']))
+        builds = [{'id': 'id-1'}, {'id': 'id-2'}]
+        _urlopen_json_cm(mock_urlopen, dict(builds=builds))
         self.assertEqual('id-1', rhcos.RHCOSBuildFinder(self.runtime, "4.4")._latest_rhcos_build_id())
         self.assertIn('/rhcos-4.4/', mock_urlopen.call_args_list[0][0][0])
 
         _urlopen_json_cm(mock_urlopen, dict(builds=[]))
         self.assertIsNone(rhcos.RHCOSBuildFinder(self.runtime, "4.2", "ppc64le")._latest_rhcos_build_id())
         self.assertIn('/rhcos-4.2-ppc64le/', mock_urlopen.call_args_list[1][0][0])
+
+    @patch('urllib.request.urlopen')
+    def test_build_id_multi(self, mock_urlopen):
+        builds = [{'id': 'id-1', 'arches': ['arch1', 'arch2']}, {'id': 'id-2', 'arches': ['arch1', 'arch2', 'arch3']}]
+        _urlopen_json_cm(mock_urlopen, dict(builds=builds))
+        self.runtime.group_config.urls = Model(dict(rhcos_release_base=dict(multi='some_url')))
+        self.runtime.group_config.arches = ['arch1', 'arch2', 'arch3']
+        self.assertEqual('id-2', rhcos.RHCOSBuildFinder(self.runtime, "4.4")._latest_rhcos_build_id())
 
     @patch('urllib.request.urlopen')
     def test_build_find_failure(self, mock_urlopen):
