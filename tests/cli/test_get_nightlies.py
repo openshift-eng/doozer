@@ -36,31 +36,32 @@ class TestGetNightlies(IsolatedAsyncioTestCase):
 
     @patch('aiohttp.client.ClientSession.get')
     async def test_find_rc_nightlies(self, session_get_mock):
-        data = {
+        data = """
+        {
           "name": "4.12.0-0.nightly",
           "tags": [
-              {
-                  "name": "4.12.0-0.nightly-2022-07-15-132344",
-                  "phase": "Ready",
-                  "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-132344",
-                  "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-132344"
-              },
-              {
-                  "name": "4.12.0-0.nightly-2022-07-15-065851",
-                  "phase": "Rejected",
-                  "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-065851",
-                  "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-065851"
-              },
-              {
-                  "name": "4.12.0-0.nightly-2022-07-15-024227",
-                  "phase": "Accepted",
-                  "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-024227",
-                  "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-024227"
-              }
-            ]
-        }
+            {
+              "name": "4.12.0-0.nightly-2022-07-15-132344",
+              "phase": "Ready",
+              "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-132344",
+              "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-132344"
+            },
+            {
+              "name": "4.12.0-0.nightly-2022-07-15-065851",
+              "phase": "Rejected",
+              "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-065851",
+              "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-065851"
+            },
+            {
+              "name": "4.12.0-0.nightly-2022-07-15-024227",
+              "phase": "Accepted",
+              "pullSpec": "registry.ci.openshift.org/ocp/release:4.12.0-0.nightly-2022-07-15-024227",
+              "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-024227"
+            }
+        ]}
+        """
 
-        session_get_mock.return_value.__aenter__.return_value.json = AsyncMock(return_value=data)
+        session_get_mock.return_value.__aenter__.return_value.json = AsyncMock(return_value=json.loads(data))
 
         nightlies = await subject.find_rc_nightlies(self.runtime, {"x86_64"}, False, False)
         self.assertEqual(1, len(nightlies["x86_64"]))
