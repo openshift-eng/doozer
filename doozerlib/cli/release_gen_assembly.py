@@ -334,15 +334,15 @@ class GenAssemblyCli:
 
             if package_name not in self.component_image_builds:
                 if self.custom:
-                    self.logger.warning(f'Unable to find %s in releases despite it being marked as is_payload '
-                                        f'in ART metadata; this may be because the image is not built for every arch '
-                                        f'or it is not labeled appropriately for the payload. '
-                                        f'Choosing what was in the estimated basis event sweep: %s',
+                    self.logger.warning('Unable to find %s in releases despite it being marked as is_payload '
+                                        'in ART metadata; this may be because the image is not built for every arch '
+                                        'or it is not labeled appropriately for the payload. '
+                                        'Choosing what was in the estimated basis event sweep: %s',
                                         dgk, basis_event_build_nvr)
                 else:
-                    self.logger.error(f'Unable to find %s in releases despite it being marked as is_payload '
-                                      f'in ART metadata; this may mean the image does not have the proper labeling for '
-                                      f'being in the payload. Choosing what was in the estimated basis event sweep: %s',
+                    self.logger.error('Unable to find %s in releases despite it being marked as is_payload '
+                                      'in ART metadata; this may mean the image does not have the proper labeling for '
+                                      'being in the payload. Choosing what was in the estimated basis event sweep: %s',
                                       dgk, basis_event_build_nvr)
                 self.component_image_builds[package_name] = basis_event_build_dict
                 continue
@@ -351,8 +351,8 @@ class GenAssemblyCli:
             ref_nightlies_component_build_nvr = ref_releases_component_build.get_nvr()
 
             if basis_event_build_nvr != ref_nightlies_component_build_nvr:
-                self.logger.info(f'%s build %s was selected by estimated basis event. That is not what is in the '
-                                 f'specified releases, so this image will be pinned.', dgk, basis_event_build_nvr)
+                self.logger.info('%s build %s was selected by estimated basis event. That is not what is in the '
+                                 'specified releases, so this image will be pinned.', dgk, basis_event_build_nvr)
                 self.force_is.add(package_name)
                 continue
 
@@ -370,8 +370,8 @@ class GenAssemblyCli:
             if self.custom:
                 # This is permitted for custom assemblies which do not need to be assembled for every
                 # architecture. The customer may just need x86_64.
-                self.logger.info(f'Did not find RHCOS "%s" image for active group architecture: %s; '
-                                 f'ignoring for custom assembly type.', self.primary_rhcos_tag, arch)
+                self.logger.info('Did not find RHCOS "%s" image for active group architecture: %s; '
+                                 'ignoring for custom assembly type.', self.primary_rhcos_tag, arch)
             else:
                 self._exit_with_error(
                     f'Did not find RHCOS "{self.primary_rhcos_tag}" image for active group architecture: {arch}')
@@ -442,8 +442,8 @@ class GenAssemblyCli:
 
                 if basis_event_build_nvr != ref_releases_rpm_build['nvr']:
                     # The basis event estimate did not find the RPM from the nightlies. We have to pin the package.
-                    self.logger.info(f'%s build %s was selected by estimated basis event. '
-                                     f'That is not what is in the specified releases, so this RPM will be pinned.',
+                    self.logger.info('%s build %s was selected by estimated basis event. '
+                                     'That is not what is in the specified releases, so this RPM will be pinned.',
                                      dgk, basis_event_build_nvr)
                     self.force_is.add(package_name)
 

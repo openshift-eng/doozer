@@ -116,7 +116,7 @@ class TestGenPayloadCli(TestCase):
         self.assertEqual(
             gacli.release_pullspecs,
             {'x86_64': 'registry.ci.openshift.org/ocp/release:4.13.0-0.nightly-2022-12-01-153811'}
-         )
+        )
         self.assertEqual(
             gacli.reference_releases_by_arch['x86_64'],
             '4.13.0-0.nightly-2022-12-01-153811'
@@ -157,7 +157,7 @@ class TestGenPayloadCli(TestCase):
         self.assertEqual(
             gacli.release_pullspecs,
             {'x86_64': 'quay.io/openshift-release-dev/ocp-release:4.11.18-x86_64'}
-         )
+        )
         self.assertEqual(
             gacli.reference_releases_by_arch,
             {}
