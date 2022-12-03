@@ -228,3 +228,30 @@ def validate_rpm_version(ctx, param, version: str):
     if pre_release:
         result += f"~{pre_release}"
     return result
+
+
+class RemoteRequired(click.Option):
+    """
+    Option wrapper class for items that aren't needed for local
+    builds. Automatically handles them being required for remote
+    but ignored when building local.
+    When specified, options are assumed to be required for remote.
+    There is no need to include `required=True` in the click.Option init.
+    """
+    def __init__(self, *args, **kwargs):
+        kwargs['help'] = (
+            kwargs.get('help', '') + '\nNOTE: This argument is ignored with the global option --local'
+        ).strip()
+        super(RemoteRequired, self).__init__(*args, **kwargs)
+
+    def handle_parse_result(self, ctx, opts, args):
+        if not ctx.obj.local and not (self.name in opts):
+            self.required = True
+
+        return super(RemoteRequired, self).handle_parse_result(
+            ctx, opts, args)
+
+
+option_commit_message = click.option("--message", "-m", cls=RemoteRequired, metavar='MSG', help="Commit message for dist-git.")
+option_push = click.option('--push/--no-push', default=False, is_flag=True,
+                           help='Pushes to distgit after local changes (--no-push by default).')
