@@ -2083,6 +2083,7 @@ class ImageDistGitRepo(DistGitRepo):
         for cand in ref_candidates:
             if os.path.isfile(cand):
                 refs = cand
+                break
         if not refs:
             raise DoozerFatalError('{}: image-references file not found in any location: {}'.format(self.metadata.distgit_key, ref_candidates))
 
