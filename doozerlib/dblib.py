@@ -7,16 +7,10 @@ from doozerlib import constants
 import functools
 from .model import Missing
 import datetime
-
-try:
-    import mysql.connector as mysql_connector
-except:
-    # Allow this module to be missing
-    pass
+import mysql.connector as mysql_connector
 
 
 class DBLibException(Exception):
-
     """
     Exception class to record exceptions raised within the dblib module.
     """
@@ -69,7 +63,6 @@ def try_connecting(func):
 
 
 class DB(object):
-
     def __init__(self, runtime, environment, dry_run=False):
         """
         :param runtime: The runtime
@@ -90,11 +83,8 @@ class DB(object):
         # mysql config for build records
         self.mysql_db_env_var_setup = True
         self.mysql_db_env_var_setup = self.check_missing_db_env_var() and self.check_database_exists()
-
         self.lock = threading.Lock()
-
         self.connection = None
-
         self._table_column_cache = {}
 
     def check_missing_db_env_var(self):
@@ -110,8 +100,6 @@ class DB(object):
                                      "in no DB use mode.")
             return False
 
-        import mysql.connector as mysql_connector
-
         # if required configuration parameters are found, set instance attributes to configuration values
         self.host = os.getenv(constants.DB_HOST, constants.default_db_params[constants.DB_HOST])
         self.port = os.getenv(constants.DB_PORT, constants.default_db_params[constants.DB_PORT])
@@ -123,7 +111,6 @@ class DB(object):
         return True
 
     def select(self, expr, limit=100):
-
         """
         :param expr [string] the SQL command want to query from DB
         :param limit [number] limit the length of the return value
@@ -132,7 +119,6 @@ class DB(object):
         This funtion pass the native SQL query command to DB, return the query result in dict format.
         If query failed or get nothing then return empty dict.
         By default limit the result length to 100.
-
         """
 
         exeresult = []
@@ -153,7 +139,6 @@ class DB(object):
         return exeresult
 
     def check_database_exists(self):
-
         """
         This method checks if the configured database is present.
         If present returns True.
@@ -175,8 +160,7 @@ class DB(object):
         exception_raised = False
 
         if cursor.fetchone()[0] != 0:
-            self.runtime.logger.info("Configured database [{}] present on MySQL host.".
-                                     format(self.db))
+            self.runtime.logger.info(f"Configured database [{self.db}] present on MySQL host.")
             return True
         else:
             create_db_cursor = db_check_connection.cursor()
@@ -192,7 +176,6 @@ class DB(object):
         return not exception_raised
 
     def check_table_exist(self, table_name):
-
         """
         :param table_name
         This method returns True, if the table to which the record is attempted to be created in is true. Otherwise
@@ -470,6 +453,11 @@ class Record(object):
             'runtime.user': self.runtime.user or '',
             'group': self.runtime.group_config['name'],
         }
+        try:
+            if self.runtime.group_config.assemblies.enabled:
+                self.attrs['assembly'] = self.runtime.assembly
+        except AttributeError:
+            pass
 
         for jenkins_var in ['BUILD_NUMBER', 'BUILD_URL', 'JOB_NAME', 'NODE_NAME', 'JOB_URL']:
             self.attrs[f'jenkins.{jenkins_var.lower()}'] = os.getenv(jenkins_var, '')

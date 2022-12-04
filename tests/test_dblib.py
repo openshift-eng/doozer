@@ -6,7 +6,6 @@ import datetime
 import pathlib
 import traceback
 import sys
-import mock
 
 
 class FakeMetaData(object):
@@ -19,7 +18,6 @@ class FakeMetaData(object):
 
 
 class FakeRuntime(object):
-
     """This is a fake runtime class to inject into dblib running tests."""
 
     mutex = RLock()
@@ -35,6 +33,7 @@ class FakeRuntime(object):
 
         self.group_config = dict()
         self.group_config["name"] = "test"
+        self.assembly = 'stream'
 
         # Cooperative threads can request exclusive access to directories.
         # This is usually only necessary if two threads want to make modifications
@@ -92,58 +91,42 @@ class DBLibTest(unittest.TestCase):
             self.db = DB(runtime=self.fake_runtime, environment="test")
         except Exception:
             traceback.print_exc()
-            self.setup_failed = True
 
     def test_select_withoutenv(self):
-        if not self.setup_failed:
-            self.assertEqual(len(self.db.select("select * from test", 10)), 0)
+        self.assertEqual(len(self.db.select("select * from test", 10)), 0)
 
     def test_record(self):
-        if not self.setup_failed:
-            try:
-                with self.db.record(operation="build", metadata=None):
-                    Record.set("name", "test")
-                    Record.set("position", "record")
+        try:
+            with self.db.record(operation="build", metadata=None):
+                Record.set("name", "test")
+                Record.set("position", "record")
 
-                with self.db.record(operation="build", metadata=None):
-                    Record.set("name", "test2")
-                    Record.set("position", "record2")
-                    Record.set("position2", "r_record2")
-
-            except Exception:
-                self.fail(msg="Failed to record.")
-        else:
-            self.skipTest(reason="DB setup failed for running test.")
+            with self.db.record(operation="build", metadata=None):
+                Record.set("name", "test2")
+                Record.set("position", "record2")
+                Record.set("position2", "r_record2")
+        except Exception:
+            self.fail(msg="Failed to record.")
 
     def test_record_with_metadata(self):
-
-        if not self.setup_failed:
-            try:
-                with self.db.record(operation="build", metadata=FakeMetaData()):
-                    Record.set("name", "test")
-                    Record.set("position", "record")
-                    Record.set("country", "USA")
-                    Record.set("population", 45435432523)
-            except Exception:
-                self.fail(msg="Failed to create record with extras.")
-        else:
-            self.skipTest(reason="DB setup failed for running test.")
+        try:
+            with self.db.record(operation="build", metadata=FakeMetaData()):
+                Record.set("name", "test")
+                Record.set("position", "record")
+                Record.set("country", "USA")
+                Record.set("population", 45435432523)
+        except Exception:
+            self.fail(msg="Failed to create record with extras.")
 
     def test_record_with_empty_value(self):
-        if not self.setup_failed:
-            try:
-                with self.db.record(operation='build', metadata=None):
-                    Record.set("name", "test")
-                    Record.set("position", None)
-                    Record.set("country", "")
-                    Record.set("population", 0)
-            except Exception:
-                self.fail(msg="Failed to create record with missing attribute value.")
-        else:
-            self.skipTest(reason="DB setup failed for running test.")
-
-    def tearDown(self):
-        pass
+        try:
+            with self.db.record(operation='build', metadata=None):
+                Record.set("name", "test")
+                Record.set("position", None)
+                Record.set("country", "")
+                Record.set("population", 0)
+        except Exception:
+            self.fail(msg="Failed to create record with missing attribute value.")
 
 
 if __name__ == "__main__":
