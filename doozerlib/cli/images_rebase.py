@@ -69,48 +69,61 @@ def images_rebase(runtime: Runtime, version: Optional[str], release: Optional[st
     metas = runtime.ordered_image_metas()
     lstate['total'] = len(metas)
 
-    def dgr_rebase(image_meta, terminate_event):
-        try:
+    def dgr_rebase(image_meta, terminate_event, runtime):
+        with runtime.db.record('rebase', metadata=image_meta) as db_entry:
+            db_entry.update({'state': 'unstarted', 'embargoed': str(embargoed)})
             dgr = image_meta.distgit_repo()
+            db_entry.update({'upstream_repo': dgr.config.content.source.git.url or '', 'upstream_branch': dgr.config.content.source.git.branch.target or ''})
             if embargoed:
                 dgr.private_fix = True
-            (real_version, real_release) = dgr.rebase_dir(version, release, terminate_event, force_yum_updates)
-            sha = dgr.commit(message, log_diff=True)
-            dgr.tag(real_version, real_release)
-            runtime.add_record(
-                "distgit_commit",
-                distgit=image_meta.qualified_name,
-                image=image_meta.config.name,
-                sha=sha,
-            )
-            state.record_image_success(lstate, image_meta)
+            try:
+                (real_version, real_release, upstream_commit) = dgr.rebase_dir(version, release, terminate_event, force_yum_updates)
 
-            if push:
-                (meta, success) = dgr.push()
-                if success is not True:
-                    state.record_image_fail(lstate, meta, success)
-                dgr.wait_on_cgit_file()
+                distgit_commit = dgr.commit(message, log_diff=True)
+                db_entry.update({'upstream_commit': upstream_commit, 'distgit_commit': distgit_commit})
+                dgr.tag(real_version, real_release)
+                db_entry.set('state', 'rebase_done')
+                runtime.add_record(
+                    "distgit_commit",
+                    distgit=image_meta.qualified_name,
+                    image=image_meta.config.name,
+                    sha=distgit_commit,
+                )
+                state.record_image_success(lstate, image_meta)
 
-        except Exception as ex:
-            # Only the message will recorded in the state. Make sure we print out a stacktrace in the logs.
-            traceback.print_exc()
+                if push:
+                    (meta, result) = dgr.push()
+                    if result is not True:
+                        db_entry.set('state', 'push_failed')
+                        state.record_image_fail(lstate, meta, result)
+                        return False
 
-            owners = image_meta.config.owners
-            owners = ",".join(list(owners) if owners is not Missing else [])
-            runtime.add_record(
-                "distgit_commit_failure",
-                distgit=image_meta.qualified_name,
-                image=image_meta.config.name,
-                owners=owners,
-                message=str(ex).replace("|", ""),
-            )
-            msg = str(ex)
-            state.record_image_fail(lstate, image_meta, msg, runtime.logger)
-            return False
-        return True
+                    if not dgr.wait_on_cgit_file():
+                        db_entry.set('state', 'cgit_failed')
+                        return False
+
+            except Exception as ex:
+                # Only the message will recorded in the state. Make sure we print out a stacktrace in the logs.
+                traceback.print_exc()
+
+                owners = image_meta.config.owners
+                owners = ",".join(list(owners) if owners is not Missing else [])
+                runtime.add_record(
+                    "distgit_commit_failure",
+                    distgit=image_meta.qualified_name,
+                    image=image_meta.config.name,
+                    owners=owners,
+                    message=str(ex).replace("|", ""),
+                )
+                msg = str(ex)
+                db_entry.update({'exception': msg, 'state': 'failed'})
+                state.record_image_fail(lstate, image_meta, msg, runtime.logger)
+                return False
+            db_entry.set('state', 'success')
+            return True
 
     jobs = runtime.parallel_exec(
-        lambda image_meta, terminate_event: dgr_rebase(image_meta, terminate_event),
+        lambda image_meta, terminate_event: dgr_rebase(image_meta, terminate_event, runtime),
         metas,
     )
     jobs.get()

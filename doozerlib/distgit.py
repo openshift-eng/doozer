@@ -1995,7 +1995,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             self._update_csv(version, release)
 
-            return version, release
+            return version, release, self.source_full_sha or ''
 
     def _update_yum_update_commands(self, force_yum_updates: bool, df_fileobj: io.TextIOBase) -> io.StringIO:
         """ If force_yum_updates is True, inject "yum updates -y" in the final build stage; Otherwise, remove the lines we injected.
@@ -2593,12 +2593,12 @@ class ImageDistGitRepo(DistGitRepo):
             return version, prev_release, private_fix
         return None, None, None
 
-    def rebase_dir(self, version: str, release: str, terminate_event, force_yum_updates=False) -> Tuple[str, str]:
+    def rebase_dir(self, version: str, release: str, terminate_event, force_yum_updates=False) -> Tuple[str, str, str]:
         """
         - Copies the checked out upstream source commit over the content the checked out distgit commit.
         - Runs any configured source modifications for the component.
         - Updates the version and release fields in the appropriate files in the checked out distgit.
-        :return: Returns a Tuple[applied_version, applied_release]. This may not match the incoming 'version'
+        :return: Returns a Tuple[applied_version, applied_release, upstream_commit]. This may not match the incoming 'version'
                     and 'release' fields since the called may not have supplied literal values (e.g. release == '+').
         """
         try:
@@ -2644,9 +2644,9 @@ class ImageDistGitRepo(DistGitRepo):
             if self.private_fix:
                 self.logger.warning("The source of this image contains embargoed fixes.")
 
-            real_version, real_release = self.update_distgit_dir(version, release, prev_release, force_yum_updates)
+            real_version, real_release, upstream_commit = self.update_distgit_dir(version, release, prev_release, force_yum_updates)
             self.rebase_status = True
-            return real_version, real_release
+            return real_version, real_release, upstream_commit
         except Exception:
             self.rebase_status = False
             raise
