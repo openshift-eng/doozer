@@ -2119,9 +2119,10 @@ class ImageDistGitRepo(DistGitRepo):
 
             try:
                 distgit = self.runtime.name_in_bundle_map.get(name, None)
-                # if upstream is referring to an image we don't actually build, give up.
+                # fail if upstream is referring to an image we don't actually build
                 if not distgit:
                     raise DoozerFatalError('Unable to find {} in image-references data for {}'.format(name, self.metadata.distgit_key))
+
                 meta = self.runtime.image_map.get(distgit, None)
                 if meta:  # image is currently be processed
                     uuid_tag = "%s.%s" % (version, self.runtime.uuid)  # applied by additional-tags
@@ -2130,6 +2131,10 @@ class ImageDistGitRepo(DistGitRepo):
                     meta = self.runtime.late_resolve_image(distgit)
                     _, v, r = meta.get_latest_build_info()
                     image_tag = '{}:{}-{}'.format(meta.image_name_short, v, r)
+
+                if self.metadata.distgit_key != meta.distgit_key:
+                    if self.metadata.distgit_key not in meta.config.dependents:
+                        raise DoozerFatalError(f'Related image contains {meta.distgit_key} but this does not have {self.metadata.distgit_key} in dependents')
 
                 namespace = self.runtime.group_config.get('csv_namespace', None)
                 if not namespace:
