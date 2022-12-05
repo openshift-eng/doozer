@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 import hashlib
 import traceback
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Dict, NamedTuple, Iterable, Set, Any, Callable
 from unittest.mock import MagicMock
 
+import aiofiles
 import click
 import yaml
 from doozerlib import rhcos
@@ -102,7 +104,7 @@ and in more detail in state.yaml. The release-controller, per ART-2195, will
 read and propagate/expose this annotation in its display of the release image.
     """
     runtime.initialize(mode="both", clone_distgits=False, clone_source=False, prevent_cloning=True)
-    GenPayloadCli(
+    pipeline = GenPayloadCli(
         runtime,
         is_name or assembly_imagestream_base_name(runtime),
         is_namespace or default_imagestream_namespace_base_name(),
@@ -111,7 +113,9 @@ read and propagate/expose this annotation in its display of the release image.
         exclude_arch,
         skip_gc_tagging, emergency_ignore_issues,
         apply, apply_multi_arch, moist_run
-    ).run()
+    )
+
+    asyncio.get_event_loop().run_until_complete(pipeline.run())
 
 
 def default_imagestream_base_name(version: str) -> str:
@@ -141,7 +145,7 @@ def payload_imagestream_namespace_and_name(base_namespace: str, base_imagestream
     return namespace, name
 
 
-def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable[[oc.APIObject], Any], backup_file_path: Path, dry_run: bool):
+async def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable[[oc.APIObject], Any], backup_file_path: Path, dry_run: bool):
     """
     Receives an APIObject, archives the current state of that object, runs a modifying method on it,
     archives the new state of the object, and then tries to replace the object on the
@@ -153,8 +157,11 @@ def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable
                              states of the object before triggering the update.
     :param dry_run: Write archive files but do not actually update the imagestream.
     """
-    with backup_file_path.joinpath(f"replacing-{api_obj.kind()}.{api_obj.namespace()}.{api_obj.name()}.before-modify.json").open(mode="w+") as backup_file:
-        backup_file.write(api_obj.as_json(indent=4))
+
+    filepath = backup_file_path.joinpath(
+        f"replacing-{api_obj.kind()}.{api_obj.namespace()}.{api_obj.name()}.before-modify.json")
+    async with aiofiles.open(filepath, mode='w+') as backup_file:
+        await backup_file.write(api_obj.as_json(indent=4))
 
     modifier_func(api_obj)
     api_obj_model = api_obj.model
@@ -171,8 +178,10 @@ def modify_and_replace_api_object(api_obj: oc.APIObject, modifier_func: Callable
 
     api_obj_model.pop("status")
 
-    with backup_file_path.joinpath(f"replacing-{api_obj.kind()}.{api_obj.namespace()}.{api_obj.name()}.after-modify.json").open(mode="w+") as backup_file:
-        backup_file.write(api_obj.as_json(indent=4))
+    filepath = backup_file_path.joinpath(
+        f"replacing-{api_obj.kind()}.{api_obj.namespace()}.{api_obj.name()}.after-modify.json")
+    async with aiofiles.open(filepath, mode="w+") as backup_file:
+        await backup_file.write(api_obj.as_json(indent=4))
 
     if not dry_run:
         api_obj.replace()
@@ -259,7 +268,7 @@ class GenPayloadCli:
         # do we proceed with this payload after weighing issues against permits?
         self.payload_permitted = False
 
-    def run(self):
+    async def run(self):
         """Main entry point once instantiated with CLI inputs."""
         self.validate_parameters()
 
@@ -268,14 +277,14 @@ class GenPayloadCli:
         assembly_inspector = AssemblyInspector(rt, rt.build_retrying_koji_client())
 
         self.payload_entries_for_arch = self.generate_payload_entries(assembly_inspector)
-        assembly_report: Dict = self.generate_assembly_report(assembly_inspector)
+        assembly_report: Dict = await self.generate_assembly_report(assembly_inspector)
 
         print(yaml.dump(assembly_report, default_flow_style=False, indent=2))
         with self.output_path.joinpath("assembly-report.yaml").open(mode="w") as report_file:
             yaml.dump(assembly_report, stream=report_file, default_flow_style=False, indent=2)
 
         self.assess_assembly_viability()
-        self.sync_payloads()  # even when not permitted, produce what we _would have_ synced
+        await self.sync_payloads()  # even when not permitted, produce what we _would have_ synced
 
         if self.payload_permitted:
             exit(0)
@@ -302,7 +311,7 @@ class GenPayloadCli:
                 "Cannot create a multi nightly without including the full set of images. "
                 "Either include all images/arches or omit --apply-multi-arch")
 
-    def generate_assembly_report(self, assembly_inspector: AssemblyInspector) -> Dict:
+    async def generate_assembly_report(self, assembly_inspector: AssemblyInspector) -> Dict:
         """Generate a status report of the search for inconsistencies across all payloads generated."""
         rt = self.runtime
         report = dict(
@@ -313,13 +322,13 @@ class GenPayloadCli:
                 if ii is None
             ],  # A list of metas where the assembly did not find a build
         )
-        report["viable"], report["assembly_issues"] = self.generate_assembly_issues_report(assembly_inspector)
+        report["viable"], report["assembly_issues"] = await self.generate_assembly_issues_report(assembly_inspector)
 
         self.payload_permitted = report["viable"]
 
         return report
 
-    def generate_assembly_issues_report(self, assembly_inspector: AssemblyInspector) -> (bool, Dict[str, Dict]):
+    async def generate_assembly_issues_report(self, assembly_inspector: AssemblyInspector) -> (bool, Dict[str, Dict]):
         """Populate self.assembly_issues and payload entries with inconsistencies found."""
         rt = self.runtime
         self.logger.info("Checking assembly content for inconsistencies.")
@@ -344,7 +353,7 @@ class GenPayloadCli:
         self.detect_extend_payload_entry_issues(assembly_inspector)
 
         # If the assembly claims to have reference nightlies, assert that our payload matches them exactly.
-        self.assembly_issues.extend(PayloadGenerator.check_nightlies_consistency(assembly_inspector))
+        self.assembly_issues.extend(await PayloadGenerator.check_nightlies_consistency(assembly_inspector))
 
         return self.summarize_issue_permits(assembly_inspector)
 
@@ -571,7 +580,7 @@ class GenPayloadCli:
                 self.apply = False
                 self.apply_multi_arch = False
 
-    def sync_payloads(self):
+    async def sync_payloads(self):
         """
         Use the payload entries that have been generated across the arches to mirror the images
         out to quay and create the imagestream definitions that will update the release-controller.
@@ -587,20 +596,24 @@ class GenPayloadCli:
             False: dict()
         }
 
+        tasks = []
         for arch, payload_entries in self.payload_entries_for_arch.items():
-            self.mirror_payload_content(arch, payload_entries)
+            tasks.append(self.mirror_payload_content(arch, payload_entries))
             for private_mode in self.privacy_modes:
                 self.logger.info(f"Building payload files for architecture: {arch}; private: {private_mode}")
-                self.generate_specific_payload_imagestreams(arch, private_mode, payload_entries, multi_specs)
+                tasks.append(
+                    self.generate_specific_payload_imagestreams(arch, private_mode, payload_entries, multi_specs))
+        await asyncio.gather(*tasks)
 
         if self.apply_multi_arch:
             if self.runtime.group_config.multi_arch.enabled:
-                self.sync_heterogeneous_payloads(multi_specs)
+                await self.sync_heterogeneous_payloads(multi_specs)
             else:
                 self.logger.info("--apply-multi-arch is enabled but the group config / assembly does "
                                  "not have group.multi_arch.enabled==true")
 
-    def mirror_payload_content(self, arch: str, payload_entries: Dict[str, PayloadEntry]):
+    @exectools.limit_concurrency(500)
+    async def mirror_payload_content(self, arch: str, payload_entries: Dict[str, PayloadEntry]):
         """Ensure an arch's payload entries are synced out for the public to access."""
         # Prevents writing the same destination twice (not supported by oc if in the same mirroring file):
         mirror_src_for_dest: Dict[str, str] = dict()
@@ -620,15 +633,19 @@ class GenPayloadCli:
         # it is what we update in the imagestreams that defines whether the image will be
         # part of a public vs private release.
         src_dest_path = self.output_path.joinpath(f"src_dest.{arch}")
-        with src_dest_path.open("w+", encoding="utf-8") as out_file:
+        async with aiofiles.open(src_dest_path, mode="w+", encoding="utf-8") as out_file:
             for dest_pullspec, src_pullspec in mirror_src_for_dest.items():
-                out_file.write(f"{src_pullspec}={dest_pullspec}\n")
+                await out_file.write(f"{src_pullspec}={dest_pullspec}\n")
 
         if self.apply or self.apply_multi_arch:
             self.logger.info(f"Mirroring images from {str(src_dest_path)}")
-            exectools.cmd_assert(f"oc image mirror --keep-manifest-list --filename={str(src_dest_path)}", retries=3, timeout=1800)
+            try:
+                await asyncio.wait_for(exectools.cmd_assert_async(
+                    f"oc image mirror --keep-manifest-list --filename={str(src_dest_path)}", retries=3), timeout=1800)
+            except asyncio.TimeoutError:
+                pass
 
-    def generate_specific_payload_imagestreams(
+    async def generate_specific_payload_imagestreams(
             self, arch: str, private_mode: bool,
             payload_entries: Dict[str, PayloadEntry],
             # Map [is_private] -> [tag_name] -> [arch] -> PayloadEntry
@@ -663,26 +680,27 @@ class GenPayloadCli:
         imagestream_namespace, imagestream_name = payload_imagestream_namespace_and_name(
             *self.base_imagestream, arch, private_mode)
 
-        self.write_imagestream_artifact_file(imagestream_namespace, imagestream_name, istags, incomplete_payload_update)
+        await self.write_imagestream_artifact_file(imagestream_namespace, imagestream_name, istags, incomplete_payload_update)
         if self.apply:
-            self.apply_arch_imagestream(imagestream_namespace, imagestream_name, istags, incomplete_payload_update)
+            await self.apply_arch_imagestream(imagestream_namespace, imagestream_name, istags, incomplete_payload_update)
 
-    def write_imagestream_artifact_file(self, imagestream_namespace: str, imagestream_name: str, istags: List[Dict], incomplete_payload_update):
+    async def write_imagestream_artifact_file(self, imagestream_namespace: str, imagestream_name: str, istags: List[Dict], incomplete_payload_update):
         """Write the yaml file for the imagestream."""
-        filename = f"updated-tags-for.{imagestream_namespace}.{imagestream_name}{'-partial' if incomplete_payload_update else ''}.yaml"
-        with self.output_path.joinpath(filename).open("w+", encoding="utf-8") as out_file:
+        filename = f"updated-tags-for.{imagestream_namespace}.{imagestream_name}" \
+                   f"{'-partial' if incomplete_payload_update else ''}.yaml"
+        async with aiofiles.open(self.output_path.joinpath(filename), mode="w+", encoding="utf-8") as out_file:
             istream_spec = PayloadGenerator.build_payload_imagestream(
                 self.runtime,
                 imagestream_name, imagestream_namespace,
                 istags, self.assembly_issues
             )
-            yaml.safe_dump(istream_spec, out_file, indent=2, default_flow_style=False)
+            await out_file.write(yaml.safe_dump(istream_spec, indent=2, default_flow_style=False))
 
-    def apply_arch_imagestream(self, imagestream_namespace: str, imagestream_name: str, istags: List[Dict], incomplete_payload_update: bool):
+    async def apply_arch_imagestream(self, imagestream_namespace: str, imagestream_name: str, istags: List[Dict], incomplete_payload_update: bool):
         """Orchestrate the update and tag removal for one arch imagestream in the OCP cluster."""
         with oc.project(imagestream_namespace):
             istream_apiobj = self.ensure_imagestream_apiobj(imagestream_name)
-            pruning_tags, adding_tags = self.apply_imagestream_update(istream_apiobj, istags, incomplete_payload_update)
+            pruning_tags, adding_tags = await self.apply_imagestream_update(istream_apiobj, istags, incomplete_payload_update)
 
             if pruning_tags:
                 self.logger.warning(f"The following tag names are no longer part of the release and will be pruned in {imagestream_namespace}:{imagestream_name}: {pruning_tags}")
@@ -717,7 +735,7 @@ class GenPayloadCli:
         })
         return oc.selector(f"imagestream/{imagestream_name}").object()
 
-    def apply_imagestream_update(self, istream_apiobj, istags: List[Dict], incomplete_payload_update: bool) -> Tuple[Set[str], Set[str]]:
+    async def apply_imagestream_update(self, istream_apiobj, istags: List[Dict], incomplete_payload_update: bool) -> Tuple[Set[str], Set[str]]:
         """Apply changes for one imagestream object to the OCP cluster."""
         # gather diffs between old and new, indicating removal or addition
         pruning_tags: Set[str] = set()
@@ -756,10 +774,10 @@ class GenPayloadCli:
 
             apiobj.model.spec.tags = new_istags
 
-        modify_and_replace_api_object(istream_apiobj, update_single_arch_istags, self.output_path, self.moist_run)
+        await modify_and_replace_api_object(istream_apiobj, update_single_arch_istags, self.output_path, self.moist_run)
         return pruning_tags, adding_tags
 
-    def sync_heterogeneous_payloads(self, multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]]):
+    async def sync_heterogeneous_payloads(self, multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]]):
         """
         We now generate the artifacts to create heterogeneous release payloads (suitable for
         clusters with multiple arches present). A heterogeneous or 'multi' release payload is a
@@ -806,10 +824,10 @@ class GenPayloadCli:
             multi_release_manifest_list_tag: str  # The quay.io tag to preserve the multi payload
             multi_release_istag, multi_release_manifest_list_tag = self.get_multi_release_names(private_mode)
 
-            multi_istags: List[Dict] = list(
-                self.build_multi_istag(tag_name, arch_to_payload_entry, imagestream_namespace)
-                for tag_name, arch_to_payload_entry in multi_specs[private_mode].items()
-            )
+            tasks = []
+            for tag_name, arch_to_payload_entry in multi_specs[private_mode].items():
+                tasks.append(self.build_multi_istag(tag_name, arch_to_payload_entry, imagestream_namespace))
+            multi_istags: List[Dict] = await asyncio.gather(*tasks)
 
             # now multi_istags contains istags which all point to component manifest lists. We must
             # run oc adm release new on this set of tags -- once for each arch - to create the arch
@@ -822,13 +840,13 @@ class GenPayloadCli:
             # We will then stitch those arch specific payload images together into a release payload
             # manifest list.
             multi_release_dest: str = f"quay.io/{'/'.join(self.release_repo)}:{multi_release_manifest_list_tag}"
-            final_multi_pullspec: str = self.create_multi_release_image(
+            final_multi_pullspec: str = await self.create_multi_release_image(
                 imagestream_name, multi_release_is, multi_release_dest, multi_release_istag,
                 multi_specs, private_mode)
             self.logger.info(f"The final pull_spec for the multi release payload is: {final_multi_pullspec}")
 
             with oc.project(imagestream_namespace):
-                self.apply_multi_imagestream_update(final_multi_pullspec, imagestream_name, multi_release_istag)
+                await self.apply_multi_imagestream_update(final_multi_pullspec, imagestream_name, multi_release_istag)
 
     def get_multi_release_names(self, private_mode: bool) -> Tuple[str, str]:
         """
@@ -857,7 +875,7 @@ class GenPayloadCli:
             multi_release_istag = multi_release_manifest_list_tag
         return multi_release_istag, multi_release_manifest_list_tag
 
-    def build_multi_istag(self, tag_name: str, arch_to_payload_entry: Dict[str, PayloadEntry], imagestream_namespace: str) -> Dict:
+    async def build_multi_istag(self, tag_name: str, arch_to_payload_entry: Dict[str, PayloadEntry], imagestream_namespace: str) -> Dict:
         """Build a single imagestream tag for a component in a multi-arch payload."""
         # There are two flows:
         # 1. The images for ALL arches were part of the same brew built manifest list. In this case,
@@ -876,7 +894,8 @@ class GenPayloadCli:
             self.logger.info(f"Reusing brew manifest-list {output_digest_pullspec} for component {tag_name}")
         else:
             # Flow 2: Build a new manifest list and push it to quay.
-            output_digest_pullspec = self.create_multi_manifest_list(tag_name, arch_to_payload_entry, imagestream_namespace)
+            output_digest_pullspec = \
+                await self.create_multi_manifest_list(tag_name, arch_to_payload_entry, imagestream_namespace)
 
         issues = list(issue  # collect issues from each payload entry.
                       for payload_entry in entries
@@ -887,7 +906,7 @@ class GenPayloadCli:
                 issues=issues,
             ))
 
-    def create_multi_manifest_list(
+    async def create_multi_manifest_list(
             self, tag_name: str,
             arch_to_payload_entry: Dict[str, PayloadEntry],
             imagestream_namespace: str) -> str:
@@ -920,16 +939,15 @@ class GenPayloadCli:
         output_pullspec: str = f"{self.full_component_repo()}:sha256-{manifest_list_hash.hexdigest()}"
 
         # write the manifest list to a file and push it to the registry.
-        with component_manifest_path.open(mode="w+") as ml:
-            yaml.safe_dump(
-                dict(image=output_pullspec, manifests=manifests),
-                stream=ml, default_flow_style=False)
-        exectools.cmd_assert(f"manifest-tool push from-spec {str(component_manifest_path)}", retries=3)
+        async with aiofiles.open(component_manifest_path, mode="w+") as ml:
+            await ml.write(yaml.safe_dump(dict(image=output_pullspec, manifests=manifests), default_flow_style=False))
+        await exectools.cmd_assert_async(f"manifest-tool push from-spec {str(component_manifest_path)}", retries=3)
 
         # we are pushing a new manifest list, so return its sha256 based pullspec
-        return exchange_pullspec_tag_for_shasum(output_pullspec, find_manifest_list_sha(output_pullspec))
+        sha = await find_manifest_list_sha(output_pullspec)
+        return exchange_pullspec_tag_for_shasum(output_pullspec, sha)
 
-    def create_multi_release_image(
+    async def create_multi_release_image(
             self, imagestream_name: str, multi_release_is: Dict, multi_release_dest: str,
             multi_release_name: str, multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]],
             private_mode: bool) -> str:
@@ -942,28 +960,32 @@ class GenPayloadCli:
         # Write the imagestream to a file ("oc adm release new" can read from a file instead of
         # openshift cluster API)
         multi_release_is_path: Path = self.output_path.joinpath(f"{imagestream_name}-release-imagestream.yaml")
-        with multi_release_is_path.open(mode="w+") as mf:
-            yaml.safe_dump(multi_release_is, mf)
+        async with aiofiles.open(multi_release_is_path, mode="w+") as mf:
+            await mf.write(yaml.safe_dump(multi_release_is))
 
         arch_release_dests: Dict[str, str] = dict()  # This will map arch names to a release payload pullspec we create for that arch (i.e. based on the arch's CVO image)
+        tasks = []
         for arch, cvo_entry in multi_specs[private_mode]["cluster-version-operator"].items():
             arch_release_dests[arch] = f"{multi_release_dest}-{arch}"
             # Create the arch specific release payload containing tags pointing to manifest list
             # component images.
-            exectools.cmd_assert([
-                "oc", "adm", "release", "new",
-                f"--name={multi_release_name}",
-                "--reference-mode=source",
-                "--keep-manifest-list",
-                f"--from-image-stream-file={str(multi_release_is_path)}",
-                f"--to-image-base={cvo_entry.dest_pullspec}",
-                f"--to-image={arch_release_dests[arch]}",
-                "--metadata", json.dumps({"release.openshift.io/architecture": "multi"})
-            ])
+            tasks.append(
+                exectools.cmd_assert_async([
+                    "oc", "adm", "release", "new",
+                    f"--name={multi_release_name}",
+                    "--reference-mode=source",
+                    "--keep-manifest-list",
+                    f"--from-image-stream-file={str(multi_release_is_path)}",
+                    f"--to-image-base={cvo_entry.dest_pullspec}",
+                    f"--to-image={arch_release_dests[arch]}",
+                    "--metadata", json.dumps({"release.openshift.io/architecture": "multi"})
+                ])
+            )
+        await asyncio.gather(*tasks)
 
-        return self.create_multi_release_manifest_list(arch_release_dests, imagestream_name, multi_release_dest)
+        return await self.create_multi_release_manifest_list(arch_release_dests, imagestream_name, multi_release_dest)
 
-    def create_multi_release_manifest_list(
+    async def create_multi_release_manifest_list(
             self, arch_release_dests: Dict[str, str],
             imagestream_name: str, multi_release_dest: str) -> str:
         """
@@ -984,16 +1006,16 @@ class GenPayloadCli:
         }
 
         release_payload_ml_path = self.output_path.joinpath(f"{imagestream_name}.manifest-list.yaml")
-        with release_payload_ml_path.open(mode="w+") as ml:
-            yaml.safe_dump(ml_dict, stream=ml, default_flow_style=False)
+        async with aiofiles.open(release_payload_ml_path, mode="w+") as ml:
+            await ml.write(yaml.safe_dump(ml_dict, default_flow_style=False))
 
         # Construct the top level manifest list release payload
-        exectools.cmd_assert(f"manifest-tool push from-spec {str(release_payload_ml_path)}", retries=3)
+        await exectools.cmd_assert_async(f"manifest-tool push from-spec {str(release_payload_ml_path)}", retries=3)
         # if we are actually pushing a manifest list, then we should derive a sha256 based pullspec
-        return exchange_pullspec_tag_for_shasum(
-            multi_release_dest, find_manifest_list_sha(multi_release_dest))
+        sha = await find_manifest_list_sha(multi_release_dest)
+        return exchange_pullspec_tag_for_shasum(multi_release_dest, sha)
 
-    def apply_multi_imagestream_update(self, final_multi_pullspec: str, imagestream_name: str, multi_release_istag: str):
+    async def apply_multi_imagestream_update(self, final_multi_pullspec: str, imagestream_name: str, multi_release_istag: str):
         """
         If running with assembly==stream, updates release imagestream with a new imagestream tag for the nightly. Older
         nightlies are pruned from the release imagestream.
@@ -1051,7 +1073,8 @@ class GenPayloadCli:
             })
             return True
 
-        modify_and_replace_api_object(multi_art_latest_is, add_multi_nightly_release, self.output_path, self.moist_run)
+        await modify_and_replace_api_object(
+            multi_art_latest_is, add_multi_nightly_release, self.output_path, self.moist_run)
 
 
 class PayloadGenerator:
@@ -1360,7 +1383,7 @@ class PayloadGenerator:
         return members
 
     @staticmethod
-    def _check_nightly_consistency(assembly_inspector: AssemblyInspector, nightly: str, arch: str) -> List[AssemblyIssue]:
+    async def _check_nightly_consistency(assembly_inspector: AssemblyInspector, nightly: str, arch: str) -> List[AssemblyIssue]:
         runtime = assembly_inspector.runtime
 
         def terminal_issue(msg: str) -> List[AssemblyIssue]:
@@ -1380,7 +1403,7 @@ class PayloadGenerator:
         rc = -1
         pullspec = f"registry.ci.openshift.org/ocp{rc_suffix}/release{rc_suffix}:{nightly}"
         while retries > 0:
-            rc, release_json_str, err = exectools.cmd_gather(f"oc adm release info {pullspec} -o=json")
+            rc, release_json_str, err = await exectools.cmd_gather_async(f"oc adm release info {pullspec} -o=json")
             if rc == 0:
                 break
             runtime.logger.warn(f"Error accessing nightly release info for {pullspec}:  {err}")
@@ -1427,7 +1450,7 @@ class PayloadGenerator:
         return issues
 
     @staticmethod
-    def check_nightlies_consistency(assembly_inspector: AssemblyInspector) -> List[AssemblyIssue]:
+    async def check_nightlies_consistency(assembly_inspector: AssemblyInspector) -> List[AssemblyIssue]:
         """
         If this assembly has reference-releases, check whether the current images selected by the
         assembly are an exact match for the nightly contents.
@@ -1437,7 +1460,9 @@ class PayloadGenerator:
             return []
 
         issues: List[AssemblyIssue] = []
+        tasks = []
         for arch, nightly in basis.reference_releases.primitive().items():
-            issues.extend(PayloadGenerator._check_nightly_consistency(assembly_inspector, nightly, arch))
+            tasks.append(PayloadGenerator._check_nightly_consistency(assembly_inspector, nightly, arch))
+        issues.extend(await asyncio.gather(*tasks))
 
         return issues
