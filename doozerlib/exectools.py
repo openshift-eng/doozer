@@ -112,8 +112,8 @@ def cmd_assert(cmd, realtime=False, retries=1, pollrate=60, on_retry=None,
 
     assertion.success(
         result,
-        "Error running [{}] {}. See debug log.".
-        format(pushd.Dir.getcwd(), cmd))
+        "Error running [{}] {}: {} See debug log for more details.".
+        format(pushd.Dir.getcwd(), cmd, stderr))
 
     return stdout, stderr
 
