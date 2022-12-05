@@ -60,6 +60,7 @@ class OSBS2Builder:
 
         error = None
         message = None
+        nvr = f"{image.get_component_name()}-{dg.org_version}-{dg.org_release}"
         for attempt in range(retries):
             logger.info("Build attempt %s/%s", attempt + 1, retries)
             try:
@@ -83,22 +84,12 @@ class OSBS2Builder:
                         logger.warning("Error downloading build logs from brew for task %s: %s", task_id, logs_err)
 
                 if error:
-                    # Looking for error message like the following to conclude the image has already been built:
-                    # BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
-                    # Note it is possible that a Brew task fails
-                    # with a build record left (https://issues.redhat.com/browse/ART-1723).
-                    # Didn't find a variable in the context to get the Brew NVR or ID.
-                    # Extracting the build ID from the error message.
-                    # Hope the error message format will not change.
-                    match = re.search(r"already exists, id (\d+)", error)
-                    if match:
-                        build_id = int(match[1])
-                        builds = brew.get_build_objects([build_id], koji_api)
-                        if builds and builds[0] and builds[0].get('state') == 1:  # State 1 means complete.
-                            build_info = builds[0]
-                            build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
-                            logger.info("Image %s already built against this dist-git commit (or version-release tag): %s", build_info["nvr"], build_url)
-                            error = None  # Treat as a success
+                    # Error in task does not necessarily mean error in build. Look if the build is successful
+                    build_info = koji_api.getBuild(nvr)
+                    if build_info and build_info.get('state') == 1:  # State 1 means complete.
+                        build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
+                        logger.info("Image %s already built against this dist-git commit (or version-release tag): %s", build_info["nvr"], build_url)
+                        error = None  # Treat as a success
 
             except Exception as err:
                 error = f"Error building image {image.name}: {str(err)}: {traceback.format_exc()}"
@@ -112,7 +103,7 @@ class OSBS2Builder:
                         "name": image.get_component_name(),
                         "version": dg.org_version,
                         "release": dg.org_release,
-                        "nvr": f"{image.get_component_name()}-{dg.org_version}-{dg.org_release}"
+                        "nvr": nvr,
                     }
                     build_url = f"{BREWWEB_URL}/buildinfo?buildID={build_info['id']}"
                 elif not build_info and not self.scratch:
