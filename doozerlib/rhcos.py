@@ -243,9 +243,9 @@ class RHCOSBuildInspector:
         # browser.
         for tag, pullspec in pullspec_for_tag.items():
             try:
-                image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}', retries=3)
+                image_info_str, err = exectools.cmd_assert(f'oc image info -o json {pullspec}', retries=3)
             except ChildProcessError as e:
-                raise Exception(f'Error fetching RHCOS build {build_id}: {e}')
+                raise Exception(f'Error fetching RHCOS build {build_id}: {e}: {err}')
 
             image_info = Model(json.loads(image_info_str))
             image_build_id = image_info.config.config.Labels.version
