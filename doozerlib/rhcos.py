@@ -242,13 +242,6 @@ class RHCOSBuildInspector:
         # trust the exact pullspec in releases.yml instead of what we find in the RHCOS release
         # browser.
         for tag, pullspec in pullspec_for_tag.items():
-            stdout, _ = exectools.cmd_assert(f'oc version --client', retries=3)
-            print(stdout)
-            stdout, _ = exectools.cmd_assert(f'oc config current-context', retries=3)
-            print(stdout)
-            stdout, _ = exectools.cmd_assert(f'oc registry info', retries=3)
-            print(stdout)
-
             try:
                 image_info_str, _ = exectools.cmd_assert(f'oc image info -o json {pullspec}', retries=3)
             except ChildProcessError as e:
