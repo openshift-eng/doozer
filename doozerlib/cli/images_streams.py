@@ -367,14 +367,14 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
                 repo_conf = repo_desc.conf
                 ci_alignment = repo_conf.ci_alignment
                 if ci_alignment.localdev.enabled and profile in ci_alignment.profiles:
-                    # CI only really deals with with x86_64 at this time.
+                    # CI only really deals with x86_64 at this time.
                     if repo_conf.baseurl.unsigned:
                         x86_64_url = repo_conf.baseurl.unsigned.x86_64
                     else:
                         x86_64_url = repo_conf.baseurl.x86_64
                     if not x86_64_url:
                         raise IOError(f'Expected x86_64 baseurl for repo {repo_name}')
-                    dfp.add_lines(f"RUN echo -e '[{localdev_repo_name}]\\nname = {localdev_repo_name}\\nid = {localdev_repo_name}\\nbaseurl = {x86_64_url}\\nenabled = 1\\ngpgcheck = 0\\n' > /etc/yum.repos.d/{localdev_repo_name}.repo")
+                    dfp.add_lines(f"RUN echo -e '[{localdev_repo_name}]\\nname = {localdev_repo_name}\\nid = {localdev_repo_name}\\nbaseurl = {x86_64_url}\\nenabled = 1\\ngpgcheck = 0\\nsslverify=0\\n' > /etc/yum.repos.d/{localdev_repo_name}.repo")
 
         if transform == transform_rhel_9_base_repos or config.transform == transform_rhel_9_golang:
             # The repos transform create a build config that will layer the base image with CI appropriate yum
