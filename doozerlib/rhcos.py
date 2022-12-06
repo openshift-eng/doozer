@@ -290,10 +290,30 @@ class RHCOSBuildInspector:
     def get_os_metadata_rpm_list(self) -> List[List]:
         """
         :return: Returns the raw RPM entries from the OS metadata. Example entry: ['NetworkManager', '1', '1.14.0', '14.el8', 'x86_64' ]
+        Also include entries from the build meta.json extensions manifest. We don't have epoch for
+        these so we just use 0 which may not be correct. So far nothing looks at epoch so it's not a problem.
         """
         entries = self.get_os_metadata()['rpmostree.rpmdb.pkglist']
         if not entries:
             raise Exception(f"no pkglist in OS Metadata for build {self.build_id}")
+
+        # items like kernel-rt that are only present in extensions are not listed in the os
+        # metadata, so we need to add them in separately.
+        try:
+            extensions = self.get_build_metadata()['extensions']['manifest']
+        except KeyError:
+            extensions = dict()  # no extensions before 4.8; ignore missing
+        for name, vra in extensions.items():
+            # e.g. "kernel-rt-core": "4.18.0-372.32.1.rt7.189.el8_6.x86_64"
+            # or "qemu-img": "15:6.2.0-11.module+el8.6.0+16538+01ea313d.6.x86_64"
+            version, ra = vra.rsplit('-', 1)
+            # if epoch is not specified, just use 0. for some reason it's included in the version in
+            # RHCOS metadata as "epoch:version"; but if we query brew for it that way, it does not
+            # like the format, so we separate it out from the version.
+            epoch, version = version.split(':', 1) if ':' in version else ('0', version)
+            release, arch = ra.rsplit('.', 1)
+            entries.append([name, epoch, version, release, arch])
+
         return entries
 
     def get_rpm_nvrs(self) -> List[str]:

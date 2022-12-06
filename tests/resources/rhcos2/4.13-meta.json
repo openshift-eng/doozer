@@ -1,0 +1,233 @@
+{
+    "ostree-n-metadata-total": 10317,
+    "ostree-n-metadata-written": 3756,
+    "ostree-n-content-total": 6662,
+    "ostree-n-content-written": 1388,
+    "ostree-n-cache-hits": 22458,
+    "ostree-content-bytes-written": 432771952,
+    "ostree-commit": "cda78f22e7508d737da97758beec502e2d72a0e04f5b495e0d8c3daa09de434d",
+    "ostree-content-checksum": "6c407824d5e0dca4b29c7ef5ab491c9d51bd44e89e681274cc65f5ab33274dd9",
+    "ostree-version": "413.86.202212021619-0",
+    "ostree-timestamp": "2022-12-02T16:22:24Z",
+    "rpm-ostree-inputhash": "8ca9d06e68375491b3a2544b153d2a4aef7e026f9fa9cc63237c87c098be8f13",
+    "buildid": "413.86.202212021619-0",
+    "coreos-assembler.image-genver": 0,
+    "name": "rhcos",
+    "summary": "OpenShift 4",
+    "coreos-assembler.build-timestamp": "2022-12-02T16:23:04Z",
+    "coreos-assembler.image-config-checksum": "bca73137c40e95be358c8649bd9b9f8786164d6439e003a66be211609cb1e776",
+    "coreos-assembler.image-input-checksum": "b3492693e31543b93f28e3c430c2450ef25997e81c79fef82fcafb4ab1ee56c7",
+    "coreos-assembler.code-source": "container",
+    "coreos-assembler.container-config-git": {
+        "branch": "master",
+        "commit": "4aff7031440d1650da72522e1e10a4ec1d1d643c",
+        "dirty": "false",
+        "origin": "https://github.com/openshift/os"
+    },
+    "coreos-assembler.meta-stamp": 1670002913605557296,
+    "coreos-assembler.delayed-meta-merge": false,
+    "pkgdiff": [],
+    "advisories-diff": [],
+    "images": {
+        "extensions-container": {
+            "path": "rhcos-413.86.202212021619-0-extensions-container.x86_64.ociarchive",
+            "sha256": "6942598ce94ef7e27a88a4c6ea5d5129600c64088203a04b2a732c5162c7df8d",
+            "size": 311401984,
+            "skip-compression": true
+        },
+        "ostree": {
+            "path": "rhcos-413.86.202212021619-0-ostree.x86_64.ociarchive",
+            "sha256": "df7adc47fb4ebde9d37b1c821394f2a864e0337a7f4c0d2d9ff9a44d7b60fad6",
+            "size": 1100330496,
+            "skip-compression": true
+        },
+        "qemu": {
+            "path": "rhcos-413.86.202212021619-0-qemu.x86_64.qcow2.gz",
+            "sha256": "aa5309c03ab09bc59b9bf92b73a410641d993c23935a48e66cf51d73f4a58bbf",
+            "size": 1222923434,
+            "uncompressed-sha256": "947cecc43ceb50990eab7c09979621c08b55c75d386042ec3cb498ab11034347",
+            "uncompressed-size": 3027238912
+        },
+        "openstack": {
+            "path": "rhcos-413.86.202212021619-0-openstack.x86_64.qcow2.gz",
+            "sha256": "bc408e8fb1857e6ff39979a8cccde1e347ac9e3419a1f7aaee10d2e59544d2a7",
+            "size": 1221844966,
+            "uncompressed-sha256": "8bf79cc9eabfde063d281e896cf53441068229fbcb3b16588a1946c1cf377a10",
+            "uncompressed-size": 2981298176
+        },
+        "aliyun": {
+            "path": "rhcos-413.86.202212021619-0-aliyun.x86_64.qcow2.gz",
+            "sha256": "5359d0bb899d034fd9269db5d4b1ece904befd0cd1e6ca0a3c09b2e935ca73bf",
+            "size": 1221839552,
+            "uncompressed-sha256": "c285941c581929b28fa7e3c9a4d2474e222a9fc5b95b328b01ed243d0d1d3434",
+            "uncompressed-size": 2981298176
+        },
+        "metal4k": {
+            "path": "rhcos-413.86.202212021619-0-metal4k.x86_64.raw.gz",
+            "sha256": "d81dd85aa711d87706d5000b601559d6d1c74310a2fbfb78af25043dd5c083db",
+            "size": 1218994507,
+            "uncompressed-sha256": "fbb963712ffa1ff7b26b508da4138a31f5ff2d1f6620a6d8e2a1f9113e7d0cd6",
+            "uncompressed-size": 4522508288
+        },
+        "metal": {
+            "path": "rhcos-413.86.202212021619-0-metal.x86_64.raw.gz",
+            "sha256": "5fe188d87ac9fe1c8cdba84b1b8d7dfa290595334883c0348be0dbd63f5ae27e",
+            "size": 1221700603,
+            "uncompressed-sha256": "c937c650d87f9ded833890efa9099dfa0fa37ce63bf266d8a0aa8cae79606a4f",
+            "uncompressed-size": 4522508288
+        },
+        "aws": {
+            "path": "rhcos-413.86.202212021619-0-aws.x86_64.vmdk.gz",
+            "sha256": "04fcf567b99004dda9c5bdc69225be6ac2759e2d0561b084947ae789bfdeea76",
+            "size": 1217404898,
+            "uncompressed-sha256": "711a1e7b34161f87b78e448b72ec5f06cefe35a6825e386f6e80c324a3f6bec9",
+            "uncompressed-size": 1258071552
+        },
+        "legacy-oscontainer": {
+            "path": "rhcos-413.86.202212021619-0-legacy-oscontainer.x86_64.ociarchive",
+            "sha256": "63e17f149e9ca2585b33a7a7d394b9d9c33f1e250f0e30b2b86537e5af104d35",
+            "size": 1395326464,
+            "skip-compression": true
+        },
+        "ibmcloud": {
+            "path": "rhcos-413.86.202212021619-0-ibmcloud.x86_64.qcow2.gz",
+            "sha256": "af5b7b6db2b25f039107b37cfdb289d02f927c1531dae28e66879a2f6d2977da",
+            "size": 1221843807,
+            "uncompressed-sha256": "b9f33f52541af6a5b09446edcf73b6a0eef3e0143cc3d6bce27ff87dfd408ca3",
+            "uncompressed-size": 2981298176
+        },
+        "azure": {
+            "path": "rhcos-413.86.202212021619-0-azure.x86_64.vhd.gz",
+            "sha256": "510a5ea981994b047bf28a7805a4084c390b16a06ed7d47f73a14ac2f810a152",
+            "size": 1235648114,
+            "uncompressed-sha256": "cd2c362d32bcd35c18f3285e2eadab0ecaf9710c45a843988315c0c83ee69a29",
+            "uncompressed-size": 17179869696
+        },
+        "azurestack": {
+            "path": "rhcos-413.86.202212021619-0-azurestack.x86_64.vhd.gz",
+            "sha256": "4c8638533354a3930612d3af789be4da7be5fcb000c0dd8a83ce0bf0585df7ec",
+            "size": 1235644188,
+            "uncompressed-sha256": "c91befa02181f19ce85beecf6e729fe3f397109e405270d2669c5b13f419d0a0",
+            "uncompressed-size": 17179869696
+        },
+        "nutanix": {
+            "path": "rhcos-413.86.202212021619-0-nutanix.x86_64.qcow2",
+            "sha256": "e81a2aee062d7814173b06a28b14e1347b82b953a1c8a4e7277864fb467e7016",
+            "size": 1314390016,
+            "skip-compression": true
+        },
+        "vmware": {
+            "path": "rhcos-413.86.202212021619-0-vmware.x86_64.ova",
+            "sha256": "d9858787b346268fa5452d4c4ce835c5412b40d4cf3fe27b651745cff44f9331",
+            "size": 1258086400,
+            "skip-compression": true
+        },
+        "live-iso": {
+            "path": "rhcos-413.86.202212021619-0-live.x86_64.iso",
+            "sha256": "f2be13d1c9b8294863a518b1f19ab963c76cdef0346a16cbd69195adde246951",
+            "skip-compression": true
+        },
+        "live-kernel": {
+            "path": "rhcos-413.86.202212021619-0-live-kernel-x86_64",
+            "sha256": "556a360b654ee95cb83cb5e985c930217ab5e7afec0078f2fb1d5cb7298b7dfa",
+            "skip-compression": true
+        },
+        "live-initramfs": {
+            "path": "rhcos-413.86.202212021619-0-live-initramfs.x86_64.img",
+            "sha256": "bf8a73c539f17e239c0064f6b8847d503e2e262e59c7227e34f69af36631921a",
+            "skip-compression": true
+        },
+        "live-rootfs": {
+            "path": "rhcos-413.86.202212021619-0-live-rootfs.x86_64.img",
+            "sha256": "c8eae3f7f58f1c278f36adbe0c9875142a60c024c5c34c3344d98f0913360f39",
+            "skip-compression": true
+        },
+        "gcp": {
+            "path": "rhcos-413.86.202212021619-0-gcp.x86_64.tar.gz",
+            "sha256": "1908debe5dd49f7eb86a4ca23bd2ff6e0df784de18679da08825bf8ca78dd227",
+            "size": 1215779539,
+            "skip-compression": true,
+            "uncompressed-sha256": "9b037c05c8de583ee3a80d15f1f80154c22e8a7bc2a2b6dddd44b62857e87e13",
+            "uncompressed-size": 2924339200
+        }
+    },
+    "coreos-assembler.container-image-git": {
+        "branch": "HEAD",
+        "commit": "1297893a37ca30f8d35d9da24a977e4ff9727932",
+        "dirty": "false",
+        "origin": "https://github.com/coreos/coreos-assembler.git"
+    },
+    "coreos-assembler.yumrepos-git": {
+        "branch": "master",
+        "commit": "7329e7c70e0b3d338a4207522b6e1131693e6d43",
+        "dirty": "false",
+        "origin": "https://gitlab.cee.redhat.com/coreos/redhat-coreos.git"
+    },
+    "coreos-assembler.config-gitrev": "4aff7031440d1650da72522e1e10a4ec1d1d643c",
+    "coreos-assembler.config-dirty": "false",
+    "coreos-assembler.basearch": "x86_64",
+    "extensions": {
+        "path": "rhcos-413.86.202212021619-0-extensions.x86_64.tar",
+        "sha256": "c5ede77cadd92ca64a2e764fe4eaf0659f265a652abca65ec39d653f509c1d0a",
+        "rpm-ostree-state": "e9abd9d66677871e1efd0723ce2ad5ec233c2f9542c685f63610fab1db8f1e24e1360468e08c06481c41270aef20358c3a364639c951974766a2c6d6c983f6d6",
+        "manifest": {
+            "edk2-ovmf": "20220126gitbb1bba3d77-2.el8.noarch",
+            "ipxe-roms-qemu": "20181214-9.git133f4c47.el8.noarch",
+            "kata-containers": "2.5.2-1.el8.x86_64",
+            "kernel": "4.18.0-372.32.1.el8_6.x86_64",
+            "kernel-core": "4.18.0-372.32.1.el8_6.x86_64",
+            "kernel-devel": "4.18.0-372.32.1.el8_6.x86_64",
+            "kernel-headers": "4.18.0-372.32.1.el8_6.x86_64",
+            "kernel-modules": "4.18.0-372.32.1.el8_6.x86_64",
+            "kernel-modules-extra": "4.18.0-372.32.1.el8_6.x86_64",
+            "kernel-rt-core": "4.18.0-372.32.1.rt7.189.el8_6.x86_64",
+            "kernel-rt-devel": "4.18.0-372.32.1.rt7.189.el8_6.x86_64",
+            "kernel-rt-kvm": "4.18.0-372.32.1.rt7.189.el8_6.x86_64",
+            "kernel-rt-modules": "4.18.0-372.32.1.rt7.189.el8_6.x86_64",
+            "kernel-rt-modules-extra": "4.18.0-372.32.1.rt7.189.el8_6.x86_64",
+            "krb5-workstation": "1.18.2-15.el8_6.x86_64",
+            "libfdt": "1.6.0-1.el8.x86_64",
+            "libkadm5": "1.18.2-15.el8_6.x86_64",
+            "libpmem": "1.6.1-1.el8.x86_64",
+            "libqb": "1.0.3-12.el8.x86_64",
+            "librdmacm": "37.2-1.el8.x86_64",
+            "pixman": "0.38.4-2.el8.x86_64",
+            "protobuf": "3.5.0-13.el8.x86_64",
+            "qemu-img": "15:6.2.0-11.module+el8.6.0+16538+01ea313d.6.x86_64",
+            "qemu-kvm-common": "15:6.2.0-11.module+el8.6.0+16538+01ea313d.6.x86_64",
+            "qemu-kvm-core": "15:6.2.0-11.module+el8.6.0+16538+01ea313d.6.x86_64",
+            "seabios-bin": "1.15.0-2.module+el8.6.0+14757+c25ee005.noarch",
+            "seavgabios-bin": "1.15.0-2.module+el8.6.0+14757+c25ee005.noarch",
+            "sgabios-bin": "1:0.20170427git-3.module+el8.6.0+14480+c0a3aa0f.noarch",
+            "usbguard": "1.0.0-8.el8.x86_64",
+            "usbguard-selinux": "1.0.0-8.el8.noarch"
+        }
+    },
+    "gcp": {
+        "image": "rhcos-413-86-202212021619-0-gcp-x86-64",
+        "project": "rhcos-cloud",
+        "url": "https://storage.googleapis.com/rhcos/rhcos/rhcos-413-86-202212021619-0-gcp-x86-64.tar.gz"
+    },
+    "azure": {
+        "image": "rhcos-413.86.202212021619-0-azure.x86_64.vhd",
+        "url": "https://rhcos.blob.core.windows.net/imagebucket/rhcos-413.86.202212021619-0-azure.x86_64.vhd"
+    },
+    "amis": [
+        {
+            "name": "us-gov-west-1",
+            "hvm": "ami-0c174ad0e47a87cbe",
+            "snapshot": "snap-0638ab173936602e0"
+        },
+        {
+            "name": "us-east-1",
+            "hvm": "ami-0902f2255acbbe30e",
+            "snapshot": "snap-08a2fe9d027c0e29b"
+        }
+    ],
+    "aliyun": [
+        {
+            "name": "us-east-1",
+            "id": "m-0xiev71adrelm3dc6u56"
+        }
+    ]
+}

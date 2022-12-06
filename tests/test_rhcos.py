@@ -158,6 +158,27 @@ class TestRhcos(unittest.TestCase):
 
     @patch('doozerlib.exectools.cmd_assert')
     @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
+    def test_rhcos_build_inspector_extension(self, rhcos_build_meta_mock, cmd_assert_mock):
+        """
+        Tests the RHCOS build inspector to ensure it additionally includes RPMs from extensions.
+        """
+        # Data source: https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/storage/prod/streams/4.13/builds/413.86.202212021619-0/x86_64/commitmeta.json
+        rhcos_meta = json.loads(self.respath.joinpath('rhcos2', '4.13-meta.json').read_text())
+        rhcos_commitmeta = json.loads(self.respath.joinpath('rhcos2', '4.13-commitmeta.json').read_text())
+        rhcos_build_meta_mock.side_effect = [rhcos_meta, rhcos_commitmeta]
+
+        pullspecs = {'machine-os-content': 'somereg/somerepo@sha256:spamneggs'}
+        cmd_assert_mock.return_value = ('{"config": {"config": {"Labels": {"version": "412.86.bogus"}}}}', None)
+
+        rhcos_build = rhcos.RHCOSBuildInspector(self.runtime, pullspecs, 'x86_64')
+
+        self.assertIn("kernel-rt-core-4.18.0-372.32.1.rt7.189.el8_6.x86_64", rhcos_build.get_rpm_nvras())
+        self.assertIn("kernel-rt-core-4.18.0-372.32.1.rt7.189.el8_6", rhcos_build.get_rpm_nvrs())
+        self.assertIn("qemu-img-6.2.0-11.module+el8.6.0+16538+01ea313d.6",
+                      rhcos_build.get_rpm_nvrs())  # epoch stripped
+
+    @patch('doozerlib.exectools.cmd_assert')
+    @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
     def test_inspector_get_container_pullspec(self, rhcos_build_meta_mock, cmd_assert_mock):
         # mock out the things RHCOSBuildInspector calls in __init__
         rhcos_meta = {"buildid": "412.86.bogus"}
