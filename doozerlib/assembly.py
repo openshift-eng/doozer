@@ -14,13 +14,46 @@ class AssemblyTypes(Enum):
 
 
 class AssemblyIssueCode(Enum):
+
+    # A class of issue so severe that we should not allow permits around it.
     IMPERMISSIBLE = 0
+
+    # Expected member images to contain an assembly-specified override
+    # dependency at a specified NVR, but it was found installed at a
+    # different version, indicating that image needs a rebuild or a
+    # reconfiguration.
     CONFLICTING_INHERITED_DEPENDENCY = 1
+
+    # Different members of the assembly installed different versions of the
+    # same group RPM build, so may omit bug fixes or introduce subtle bugs.
     CONFLICTING_GROUP_RPM_INSTALLED = 2
+
+    # Two containers built from the same source are not built from the same
+    # commit. Devs warn this can introduce subtle compatibility bugs.
     MISMATCHED_SIBLINGS = 3
+
+    # The container includes a different version of an RPM than the assembly
+    # so there is a risk of not officially shipping the RPM we are using, or
+    # of misreporting bug fixes. We may either rebuild the container or change
+    # the assembly to resolve.
     OUTDATED_RPMS_IN_STREAM_BUILD = 4
+
+    # The arch-specific builds of RHCOS did not all install the same RPM
+    # versions (if they installed at all).
     INCONSISTENT_RHCOS_RPMS = 5
+
+    # A dependency was defined explicitly for an assembly member, but it is not
+    # installed, i.e. the ARTists expected something to be installed, but it
+    # wasn't found in the final image.
+    # In rare circumstances the specified RPM may be used by a build stage of
+    # the Dockerfile and not installed in the final stage, in which case, the
+    # assembly definition should be altered to permit it.
     MISSING_INHERITED_DEPENDENCY = 6
+
+    # group config specifies an RHCOS container expected in the RHCOS build
+    # metadata, but it is not present for the current build. We experienced
+    # this when RHCOS was introducing a new container, but it was not yet
+    # configured in the RHCOS pipeline for all arches.
     MISSING_RHCOS_CONTAINER = 7
 
 
