@@ -301,13 +301,8 @@ class RPMBuilder:
         """
         if not rpm.source_path:
             raise ValueError("Source is not cloned.")
-        maintainer = await exectools.to_thread(rpm.get_maintainer_info)
-        maintainer_string = ""
-        if maintainer:
-            flattened_info = ", ".join(f"{k}: {v}" for (k, v) in maintainer.items())
-            # The space before the [Maintainer] information is actual rpm spec formatting
-            # clue to preserve the line instead of assuming it is part of a paragraph.
-            maintainer_string = f"[Maintainer] {flattened_info}"
+        project, component = await exectools.to_thread(rpm.get_jira_info)
+        maintainer_string = f'[Maintainer] project: {project}, component: {component}'
 
         # otherwise, make changes similar to tito tagging
         rpm_spec_tags = {

@@ -756,62 +756,23 @@ class Metadata(object):
         return RebuildHint(code=RebuildHintCode.BUILD_IS_UP_TO_DATE,
                            reason=f'Build already exists for current upstream commit {upstream_commit_hash}: {latest_build}')
 
-    def get_maintainer_info(self):
+    def get_jira_info(self) -> Tuple[str, str]:
         """
-        :return: Returns a dict of identifying maintainer information. Dict might be empty if no maintainer information is available.
-            fields are generally [ component: '...', subcomponent: '...', and product: '...' ] if available. These
-            are coordinates for product security to figure out where to file bugs when an image or RPM has an issue.
+        :return: Returns Jira project name and component. These
+            are coordinates for where to file bugs.
         """
 
-        # We are trying to discover some team information that indicates which BZ or Jira board bugs for this
+        # We are trying to discover some team information that indicates which Jira project bugs for this
         # component should be filed against. This information can be stored in the doozer metadata OR
-        # in upstream source. Metadata overrides, as usual.
-
-        source_dir = self.runtime.resolve_source(self)
+        # in prodsec's component mapping. Metadata overrides, as usual.
 
         # Maintainer info can be defined in metadata, so try there first.
-        maintainer = self.config.maintainer.copy() or dict()
+        maintainer = self.config.jira.copy() or dict()
 
-        # This tuple will also define key ordering in the returned OrderedDict
-        known_fields = ('product', 'component', 'subcomponent')
+        prodsec_mapping = self.runtime.get_openshift4_component_mapping()
+        prodsec_jira_component = prodsec_mapping.get(self.get_component_name(), 'Unknown')
 
-        # Fill in any missing attributes from upstream source
-        if source_dir:
-            with Dir(source_dir):
-                # Not every repo has a master branch, they may have a different default; detect it.
-                if self.public_upstream_url:
-                    # If there is a public upstream, query it for the default branch. The openshift-priv
-                    # clones seem to be non-deterministic on which branch is set as default.
-                    remote_info, _ = exectools.cmd_assert('git remote show public_upstream')
-                else:
-                    remote_info, _ = exectools.cmd_assert('git remote show origin')
-                head_branch_lines = [i for i in remote_info.splitlines() if i.strip().startswith('HEAD branch:')]  # e.g. [ "  HEAD branch: master" ]
-                if not head_branch_lines:
-                    raise IOError('Error trying to detect remote default branch')
-                default_branch = head_branch_lines[0].strip().split()[-1]  # [ "  HEAD branch: master" ] => "master"
-
-                _, owners_yaml, _ = exectools.cmd_gather(f'git --no-pager show origin/{default_branch}:OWNERS')
-                if owners_yaml.strip():
-                    owners = yaml.safe_load(owners_yaml)
-                    for field in known_fields:
-                        if field not in maintainer and field in owners:
-                            maintainer[field] = owners[field]
-
-        if 'product' not in maintainer:
-            maintainer['product'] = 'OpenShift Container Platform'  # Safe bet - we are ART.
-
-        # Just so we return things in a defined order (avoiding unnecessary changes in git commits)
-        sorted_maintainer = OrderedDict()
-        for k in known_fields:
-            if k in maintainer:
-                sorted_maintainer[k] = maintainer[k]
-
-        # Add anything remaining in alpha order
-        for k in sorted(maintainer.keys()):
-            if k not in sorted_maintainer:
-                sorted_maintainer[k] = maintainer[k]
-
-        return sorted_maintainer
+        return maintainer.get('project', 'OCPBUGS'), maintainer.get('component', prodsec_jira_component)
 
     def extract_kube_env_vars(self) -> Dict[str, str]:
         """

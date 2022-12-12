@@ -1285,15 +1285,11 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
             public_url = None
         s = s.replace("{upstream_public}", public_url or 'None')
 
-        if '{bz_' in s:
-            mi = image.get_maintainer_info()
-            desc = ''
-            for k, v in mi.items():
-                desc += f'[{k}={v}] '
-            s = s.replace('{bz_info}', desc)
-            s = s.replace('{bz_product}', mi.get('product', 'Unknown'))
-            s = s.replace('{bz_component}', mi.get('component', 'Unknown'))
-            s = s.replace('{bz_subcomponent}', mi.get('subcomponent', 'N/A'))
+        if '{jira_' in s:
+            jira_project, jira_component = image.get_jira_info()
+            s = s.replace('{jira_info}', 'jira[project={jira_project} component={jira_component}]')
+            s = s.replace('{jira_project}', jira_project)
+            s = s.replace('{jira_component}', jira_component)
 
         if '{image}' in s:
             s = s.replace("{image}", get_dfp().labels["name"])

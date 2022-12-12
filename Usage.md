@@ -25,6 +25,10 @@ group: openshift-4.0
 #Username for running rhpkg / brew / tito
 user: ahaile
 
+# URLs for internal systems
+hosts:
+  prodsec_git: ...
+
 #Global option overrides that can only be set from settings.yaml
 global_opts:
   # num of concurrent distgit pull/pushes
