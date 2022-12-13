@@ -1,30 +1,31 @@
-from typing import Dict, Optional, List, Tuple, Any, Union
-import urllib.parse
-import yaml
-from collections import OrderedDict
-import pathlib
-import io
 import datetime
-import time
-import sys
+import io
+import pathlib
 import re
+import sys
+import time
+import urllib.parse
+from collections import OrderedDict
 from enum import Enum
-
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 from xml.etree import ElementTree
-from typing import NamedTuple
+
 import dateutil.parser
-
+import requests
+import yaml
 from dockerfile_parse import DockerfileParser
+from tenacity import (retry, retry_if_exception_type, stop_after_attempt,
+                      wait_fixed)
+
 import doozerlib
-
-from doozerlib.pushd import Dir
-from doozerlib.distgit import ImageDistGitRepo, RPMDistGitRepo
 from doozerlib import exectools, logutil
+from doozerlib.assembly import assembly_basis_event, assembly_metadata_config
 from doozerlib.brew import BuildStates
-from doozerlib.util import isolate_el_version_in_brew_tag, isolate_git_commit_in_release
-
-from doozerlib.model import Model, Missing
-from doozerlib.assembly import assembly_metadata_config, assembly_basis_event
+from doozerlib.distgit import ImageDistGitRepo, RPMDistGitRepo
+from doozerlib.model import Missing, Model
+from doozerlib.pushd import Dir
+from doozerlib.util import (isolate_el_version_in_brew_tag,
+                            isolate_git_commit_in_release)
 
 
 class CgitAtomFeedEntry(NamedTuple):
@@ -311,14 +312,19 @@ class Metadata(object):
                 branch = self.branch()
             if not commit_hash and branch:
                 params["h"] = branch
-        if params:
-            url += "?" + urllib.parse.urlencode(params)
 
-        req = exectools.retry(
-            3, lambda: urllib.request.urlopen(url),
-            check_f=lambda req: req.code == 200)
+        def _make_request():
+            self.logger.info("Getting cgit atom feed %s ...", url)
+            resp = requests.get(url, params=params)
+            resp.raise_for_status()
+            return resp.text
 
-        content = req.read()
+        content = retry(
+            stop=stop_after_attempt(3),  # wait for 10 seconds * 3 = 30 seconds
+            wait=wait_fixed(10),  # wait for 10 seconds between retries
+            retry=retry_if_exception_type(),
+        )(_make_request)()
+
         et = ElementTree.fromstring(content)
 
         entry_list = list()
