@@ -1,8 +1,8 @@
 import asyncio
 import json
 from typing import Dict, List, Sequence, Set, Tuple
-from urllib import request
 
+import aiohttp
 import click
 
 from doozerlib import constants, exectools, logutil, util
@@ -93,9 +93,10 @@ async def get_nightlies(runtime: Runtime, matching: Tuple[str, ...], exclude_arc
 
     # make lists of nightly objects per arch
     try:
+        nightlies = await find_rc_nightlies(runtime, include_arches, allow_pending, allow_rejected, matching)
         nightlies_for_arch: Dict[str, List[Nightly]] = {
             arch: [Nightly(nightly_info=n) for n in nightlies]
-            for arch, nightlies in find_rc_nightlies(runtime, include_arches, allow_pending, allow_rejected, matching).items()
+            for arch, nightlies in nightlies.items()
         }
     except NoMatchingNightlyException as ex:
         util.red_print(ex)
@@ -114,7 +115,7 @@ async def get_nightlies(runtime: Runtime, matching: Tuple[str, ...], exclude_arc
     for nightly_set in generate_nightly_sets(nightlies_for_arch):
         # check for deeper equivalence
         await nightly_set.populate_nightly_content(runtime)
-        if nightly_set.deeper_equivalence():
+        if await nightly_set.deeper_equivalence():
             util.green_print(nightly_set.details() if details else nightly_set)
             remaining -= 1
             if not remaining:
@@ -166,7 +167,7 @@ class EmptyArchException(Exception):
     pass
 
 
-def find_rc_nightlies(runtime: Runtime, arches: Set[str], allow_pending: bool, allow_rejected: bool, matching: Sequence[str] = []) -> Dict[str, List[Dict]]:
+async def find_rc_nightlies(runtime: Runtime, arches: Set[str], allow_pending: bool, allow_rejected: bool, matching: Sequence[str] = []) -> Dict[str, List[Dict]]:
     """
     Retrieve current nightly dicts for each arch, in order RC gives them (most
     recent to oldest). Filter to Accepted unless allow_pending/rejected is true.
@@ -179,22 +180,15 @@ def find_rc_nightlies(runtime: Runtime, arches: Set[str], allow_pending: bool, a
       "downloadURL": "https://openshift-release-artifacts.apps.ci.l2s4.p1.openshiftapps.com/4.12.0-0.nightly-2022-07-15-132344"
     }
     """
-    matching = set(matching)
-    found_matching: Dict[str, bool] = {name: False for name in matching}
-    nightlies_for_arch: Dict[str, List[Dict]] = {}
-    allowed_phases = {"Accepted"}
-    if allow_pending:
-        allowed_phases.add("Ready")
-    if allow_rejected:
-        allowed_phases.add("Rejected")
 
-    tag_base: str = f"{runtime.group_config.vars.MAJOR}.{runtime.group_config.vars.MINOR}.0-0.nightly"
-    for arch in arches:
+    async def _find_nightlies(_arch: str):
         # retrieve the list of nightlies from the release-controller
-        rc_url: str = f"{rc_api_url(tag_base, arch)}/tags"
+        rc_url: str = f"{rc_api_url(tag_base, _arch)}/tags"
         logger.info(f"Reading nightlies from {rc_url}")
-        with request.urlopen(rc_url) as req:
-            data = json.loads(req.read().decode())
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(rc_url) as resp:
+                data = await resp.json()
 
         # filter them per parameters
         nightlies: List[Dict] = [
@@ -212,8 +206,20 @@ def find_rc_nightlies(runtime: Runtime, arches: Set[str], allow_pending: bool, a
 
         if not nightlies:
             # must be nightlies to succeed; user must adjust parameters
-            raise EmptyArchException(f"No nightlies for {tag_base} {arch} are in state {allowed_phases}")
-        nightlies_for_arch[arch] = nightlies
+            raise EmptyArchException(f"No nightlies for {tag_base} {_arch} are in state {allowed_phases}")
+        nightlies_for_arch[_arch] = nightlies
+
+    matching = set(matching)
+    found_matching: Dict[str, bool] = {name: False for name in matching}
+    nightlies_for_arch: Dict[str, List[Dict]] = {}
+    allowed_phases = {"Accepted"}
+    if allow_pending:
+        allowed_phases.add("Ready")
+    if allow_rejected:
+        allowed_phases.add("Rejected")
+
+    tag_base: str = f"{runtime.group_config.vars.MAJOR}.{runtime.group_config.vars.MINOR}.0-0.nightly"
+    await asyncio.gather(*(_find_nightlies(arch) for arch in arches))
 
     # make sure we found every match we expected
     unmatched: Set[str] = {name for name, found in found_matching.items() if not found}
@@ -325,16 +331,6 @@ class Nightly:
         # helpful for failing tests/errors; not intended for users
         return f"{self.name}: {self.commit_for_tag}"
 
-    def retrieve_image_info(self, pullspec: str) -> Model:
-        """pull/cache/return json info for a container pullspec"""
-        if pullspec not in image_info_cache:
-            image_json_str, _ = exectools.cmd_assert(
-                f"oc image info {pullspec} -o=json --filter-by-os=amd64",
-                retries=3
-            )
-            image_info_cache[pullspec] = Model(json.loads(image_json_str))
-        return image_info_cache[pullspec]
-
     @exectools.limit_concurrency(500)
     async def retrieve_image_info_async(self, pullspec: str) -> Model:
         """pull/cache/return json info for a container pullspec (enable concurrency)"""
@@ -356,15 +352,16 @@ class Nightly:
             ps4tag = {tag: self.pullspec_for_tag[tag] for tag in self.rhcos_tag_names}
             self.rhcos_inspector = RHCOSBuildInspector(runtime, ps4tag, arch)
 
-    def retrieve_nvr_for_tag(self, tag: str) -> str:
+    async def retrieve_nvr_for_tag(self, tag: str) -> str:
         """Retrieve group image NVR according to the image info at the tag pullspec"""
         if tag not in self.nvr_for_tag:
-            labels = self.retrieve_image_info(self.pullspec_for_tag[tag]).config.config.Labels
+            data = await self.retrieve_image_info_async(self.pullspec_for_tag[tag])
+            labels = data.config.config.Labels
             labels = tuple(labels[k] for k in ("com.redhat.component", "version", "release"))
             self.nvr_for_tag[tag] = labels if all(labels) else None
         return self.nvr_for_tag[tag]
 
-    def deeper_equivalence(self, other: 'Nightly') -> bool:
+    async def deeper_equivalence(self, other: 'Nightly') -> bool:
         """
         Do a deeper equivalence check that requires populate_nightly_content
         having been called beforehand. This checks that group images NVRs and
@@ -375,8 +372,7 @@ class Nightly:
             other_commit = other.commit_for_tag.get(tag)
             if not commit or not other_commit:
                 continue  # ignore missing or non-group entries
-            self_nvr = self.retrieve_nvr_for_tag(tag)
-            other_nvr = other.retrieve_nvr_for_tag(tag)
+            self_nvr, other_nvr = await asyncio.gather(*(self.retrieve_nvr_for_tag(tag), other.retrieve_nvr_for_tag(tag)))
             if self_nvr != other_nvr:
                 if self_nvr[0] != other_nvr[0]:
                     # give alt images (where components differ for the same tag) a pass.
@@ -468,14 +464,14 @@ class NightlySet:
             for arch, nightly in self.nightly_for_arch.items()
         ))
 
-    def deeper_equivalence(self) -> bool:
+    async def deeper_equivalence(self) -> bool:
         """Check that all Nightlys have deeper equivalency"""
         nightlies = list(self.nightly_for_arch.values())
         while len(nightlies) > 1:
             this = nightlies.pop()
             for other in nightlies:
                 logger.debug(f"comparing {this.name} and {other.name}")
-                if not this.deeper_equivalence(other):
+                if not await this.deeper_equivalence(other):
                     logger.debug(f"deeper equivalence failed for {self}")
                     return False
 
