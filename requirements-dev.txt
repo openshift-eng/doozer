@@ -1,4 +1,5 @@
 -rrequirements.txt
+asynctest
 autopep8
 coverage
 flake8

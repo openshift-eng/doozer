@@ -1,9 +1,8 @@
-import asyncio
 import logging
-import unittest
 import io
 from pathlib import Path
 
+import asynctest
 import mock
 
 from doozerlib import distgit, gitdata, rpmcfg
@@ -11,7 +10,7 @@ from doozerlib.exectools import RetryException
 from doozerlib.rpm_builder import RPMBuilder
 
 
-class TestRPMBuilder(unittest.TestCase):
+class TestRPMBuilder(asynctest.TestCase):
 
     def setUp(self) -> None:
         pass
@@ -64,7 +63,7 @@ class TestRPMBuilder(unittest.TestCase):
     @mock.patch("aiofiles.os.remove")
     @mock.patch("aiofiles.open")
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_assert_async")
-    def test_rebase(self, mocked_cmd_assert_async: mock.Mock, mocked_open: mock.Mock, mocked_os_remove: mock.Mock,
+    async def test_rebase(self, mocked_cmd_assert_async: mock.Mock, mocked_open: mock.Mock, mocked_os_remove: mock.Mock,
                     mocked_copy: mock.Mock, mocked_mkdir: mock.Mock):
         source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"
         distgit_sha = "4cd7f576ad005aadd3c25ea56c7986bc6a7e7340"
@@ -78,7 +77,7 @@ class TestRPMBuilder(unittest.TestCase):
         builder = RPMBuilder(runtime, scratch=False, dry_run=False)
         builder._populate_specfile_async = mock.AsyncMock(return_value=["fake spec content"])
 
-        actual = asyncio.run(builder.rebase(rpm, "1.2.3", "202104070000.test.p?"))
+        actual = await builder.rebase(rpm, "1.2.3", "202104070000.test.p?")
 
         self.assertEqual(actual, distgit_sha)
         self.assertEqual(rpm.release, "202104070000.test.p0.g" + source_sha[:7])
@@ -104,7 +103,7 @@ class TestRPMBuilder(unittest.TestCase):
     @mock.patch("aiofiles.os.remove")
     @mock.patch("aiofiles.open")
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_assert_async")
-    def test_rebase_with_assembly(self, mocked_cmd_assert_async: mock.Mock, mocked_open: mock.Mock, mocked_os_remove: mock.Mock,
+    async def test_rebase_with_assembly(self, mocked_cmd_assert_async: mock.Mock, mocked_open: mock.Mock, mocked_os_remove: mock.Mock,
                                   mocked_copy: mock.Mock, mocked_mkdir: mock.Mock):
         source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"
         distgit_sha = "4cd7f576ad005aadd3c25ea56c7986bc6a7e7340"
@@ -118,7 +117,7 @@ class TestRPMBuilder(unittest.TestCase):
         builder = RPMBuilder(runtime, scratch=False, dry_run=False)
         builder._populate_specfile_async = mock.AsyncMock(return_value=["fake spec content"])
 
-        actual = asyncio.run(builder.rebase(rpm, "1.2.3", "202104070000.test.p?"))
+        actual = await builder.rebase(rpm, "1.2.3", "202104070000.test.p?")
 
         self.assertEqual(actual, distgit_sha)
         self.assertEqual(rpm.release, "202104070000.test.p0.g" + source_sha[:7] + '.assembly.tester')
@@ -139,7 +138,7 @@ class TestRPMBuilder(unittest.TestCase):
         dg.push_async.assert_called_once()
 
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_gather_async")
-    def test_build_success(self, mocked_cmd_gather_async: mock.Mock):
+    async def test_build_success(self, mocked_cmd_gather_async: mock.Mock):
         source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"
         distgit_sha = "4cd7f576ad005aadd3c25ea56c7986bc6a7e7340"
         runtime = self._make_runtime()
@@ -163,7 +162,7 @@ class TestRPMBuilder(unittest.TestCase):
             10002: mock.MagicMock(result=[{"nvr": "foo-1.2.3-1.el7"}]),
         }[taskID]
 
-        actual = asyncio.run(builder.build(rpm, retries=3))
+        actual = await builder.build(rpm, retries=3)
         expected = ([10001, 10002], ["https://brewweb.example.com/brew/taskinfo?taskID=10001", "https://brewweb.example.com/brew/taskinfo?taskID=10002"], ["foo-1.2.3-1.el8", "foo-1.2.3-1.el7"])
         self.assertEqual(actual, expected)
         self.assertTrue(rpm.build_status)
@@ -177,7 +176,7 @@ class TestRPMBuilder(unittest.TestCase):
 
     @mock.patch("asyncio.sleep")
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_gather_async")
-    def test_build_failure(self, mocked_cmd_gather_async: mock.Mock, mocked_sleep: mock.Mock):
+    async def test_build_failure(self, mocked_cmd_gather_async: mock.Mock, mocked_sleep: mock.Mock):
         source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"
         distgit_sha = "4cd7f576ad005aadd3c25ea56c7986bc6a7e7340"
         runtime = self._make_runtime()
@@ -196,7 +195,7 @@ class TestRPMBuilder(unittest.TestCase):
         dg.resolve_specfile_async = mock.AsyncMock(return_value=(dg.dg_path / "foo.spec", ("foo", "1.2.3", "1"), source_sha))
 
         with self.assertRaises(RetryException) as cm:
-            asyncio.run(builder.build(rpm, retries=3))
+            await builder.build(rpm, retries=3)
 
         expected = ([10001, 10002], ["https://brewweb.example.com/brew/taskinfo?taskID=10001", "https://brewweb.example.com/brew/taskinfo?taskID=10002"])
         self.assertEqual(cm.exception.args[1], expected)
@@ -212,13 +211,13 @@ class TestRPMBuilder(unittest.TestCase):
         mocked_sleep.assert_called()
 
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_assert_async")
-    def test_golang_required(self, mocked_cmd_assert_async: mock.Mock):
+    async def test_golang_required(self, mocked_cmd_assert_async: mock.Mock):
         mocked_cmd_assert_async.return_value = ("""
 git
 python3-devel
         """, "")
         builder = RPMBuilder(mock.Mock(), scratch=False, dry_run=False)
-        actual = asyncio.run(builder._golang_required("./foo.spec"))
+        actual = await builder._golang_required("./foo.spec")
         self.assertFalse(actual)
 
         mocked_cmd_assert_async.return_value = ("""
@@ -228,11 +227,11 @@ golang-1.2.3
 systemd-units
         """, "")
         builder = RPMBuilder(mock.Mock(), scratch=False, dry_run=False)
-        actual = asyncio.run(builder._golang_required("./foo.spec"))
+        actual = await builder._golang_required("./foo.spec")
         self.assertTrue(actual)
 
     @mock.patch("aiofiles.open")
-    def test_populate_specfile_async(self, mocked_open: mock.Mock):
+    async def test_populate_specfile_async(self, mocked_open: mock.Mock):
         source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"
         distgit_sha = "4cd7f576ad005aadd3c25ea56c7986bc6a7e7340"
         runtime = self._make_runtime()
@@ -267,7 +266,7 @@ Some description
 %changelog
         """.splitlines()
 
-        specfile_content = asyncio.run(RPMBuilder._populate_specfile_async(rpm, "foo-1.2.3.tar.gz", "https://example.com/foo/archive/commit/shasum"))
+        specfile_content = await RPMBuilder._populate_specfile_async(rpm, "foo-1.2.3.tar.gz", "https://example.com/foo/archive/commit/shasum")
 
         self.assertIn("Version:        1.2.3\n", specfile_content)
         self.assertIn("Release:        202104070000.yuxzhu_test.p0%{?dist}\n", specfile_content)
@@ -279,7 +278,7 @@ Some description
         self.assertIn("AOS Automation Release Team <noreply@redhat.com>", specfile_content[17])
 
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_assert_async")
-    def test_build_target_async(self, mocked_cmd_assert_async: mock.Mock):
+    async def test_build_target_async(self, mocked_cmd_assert_async: mock.Mock):
         source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"
         distgit_sha = "4cd7f576ad005aadd3c25ea56c7986bc6a7e7340"
         runtime = self._make_runtime()
@@ -293,7 +292,7 @@ Task info: https://brewweb.example.com/brew/taskinfo?taskID=123456
         # call with scratch=False
         builder = RPMBuilder(mock.Mock(), scratch=False, dry_run=False)
         expected = (123456, "https://brewweb.example.com/brew/taskinfo?taskID=123456")
-        actual = asyncio.run(builder._build_target_async(rpm, "my-target"))
+        actual = await builder._build_target_async(rpm, "my-target")
 
         self.assertEqual(actual, expected)
         mocked_cmd_assert_async.assert_called_once_with(["rhpkg", "build", "--nowait", "--target", "my-target"], cwd=dg.dg_path)
@@ -301,18 +300,18 @@ Task info: https://brewweb.example.com/brew/taskinfo?taskID=123456
         # call with scratch=True
         builder = RPMBuilder(mock.Mock(), scratch=True, dry_run=False)
         mocked_cmd_assert_async.reset_mock()
-        actual = asyncio.run(builder._build_target_async(rpm, "my-target2"))
+        actual = await builder._build_target_async(rpm, "my-target2")
 
         self.assertEqual(actual, expected)
         mocked_cmd_assert_async.assert_called_once_with(["rhpkg", "build", "--nowait", "--target", "my-target2", "--skip-tag"], cwd=dg.dg_path)
 
     @mock.patch("doozerlib.rpm_builder.brew.watch_tasks")
-    def test_watch_tasks_async(self, mocked_watch_tasks: mock.Mock):
+    async def test_watch_tasks_async(self, mocked_watch_tasks: mock.Mock):
         task_ids = [10001, 10002]
         mocked_watch_tasks.return_value = {task: None for task in task_ids}
 
         builder = RPMBuilder(mock.Mock(), scratch=True, dry_run=False)
-        actual = asyncio.run(builder._watch_tasks_async(task_ids, mock.Mock()))
+        actual = await builder._watch_tasks_async(task_ids, mock.Mock())
 
         self.assertEqual(actual, {task: None for task in task_ids})
         mocked_watch_tasks.assert_called_once_with(mock.ANY, mock.ANY, task_ids, mock.ANY)

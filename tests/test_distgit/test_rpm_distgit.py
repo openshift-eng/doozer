@@ -1,5 +1,3 @@
-
-import asyncio
 import unittest
 from pathlib import Path
 
@@ -19,11 +17,11 @@ class TestRPMDistGit(TestDistgit):
     @patch("aiofiles.open")
     @patch("doozerlib.distgit.exectools.cmd_assert_async", return_value=("foo-1.2.3-1", ""))
     @patch("glob.glob", return_value=["/path/to/distgit/foo.spec"])
-    def test_resolve_specfile_async(self, mocked_glob: Mock, mocked_cmd_assert_async: Mock, mocked_open: Mock):
+    async def test_resolve_specfile_async(self, mocked_glob: Mock, mocked_cmd_assert_async: Mock, mocked_open: Mock):
         self.rpm_dg.distgit_dir = "/path/to/distgit"
         mocked_file = mocked_open.return_value.__aenter__.return_value
         mocked_file.__aiter__.return_value = iter(["hello", "%global commit abcdef012345", "world!"])
-        actual = asyncio.run(self.rpm_dg.resolve_specfile_async())
+        actual = await self.rpm_dg.resolve_specfile_async()
         expected = (Path("/path/to/distgit/foo.spec"), ["foo", "1.2.3", "1"], "abcdef012345")
         self.assertEqual(actual, expected)
         mocked_open.assert_called_once_with(Path("/path/to/distgit/foo.spec"), "r")
