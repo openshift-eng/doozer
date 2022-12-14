@@ -2,7 +2,7 @@ import logging
 import io
 
 import asynctest
-from mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from doozerlib import gitdata, rpmcfg
 from doozerlib.cli.rpms_build import _rpms_rebase_and_build

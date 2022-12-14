@@ -7,7 +7,7 @@ import os
 import logging
 import tempfile
 import shutil
-import mock
+from unittest import mock
 from flexmock import flexmock
 try:
     from importlib import reload

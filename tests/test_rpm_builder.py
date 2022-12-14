@@ -3,7 +3,7 @@ import io
 from pathlib import Path
 
 import asynctest
-import mock
+from unittest import mock
 
 from doozerlib import distgit, gitdata, rpmcfg
 from doozerlib.exectools import RetryException

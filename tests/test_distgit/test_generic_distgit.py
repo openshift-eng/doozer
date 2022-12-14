@@ -4,7 +4,7 @@ import os
 import unittest
 
 from flexmock import flexmock
-import mock
+from unittest import mock
 
 from doozerlib import distgit, model
 from doozerlib.assembly import AssemblyTypes

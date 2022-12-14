@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from mock import Mock, patch
+from unittest.mock import Mock, patch
 
 from doozerlib import distgit, model
 

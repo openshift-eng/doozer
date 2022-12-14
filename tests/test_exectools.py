@@ -8,7 +8,7 @@ import asyncio
 import unittest
 
 import asynctest
-import mock
+from unittest import mock
 
 try:
     from importlib import reload

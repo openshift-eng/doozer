@@ -3,7 +3,7 @@ from unittest import TestCase
 import re
 import datetime
 
-from mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from doozerlib.metadata import Metadata, CgitAtomFeedEntry, RebuildHintCode
 from doozerlib.brew import BuildStates

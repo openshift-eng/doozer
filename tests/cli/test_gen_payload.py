@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 from flexmock import flexmock
 
 import io
-from mock import AsyncMock
+from unittest.mock import AsyncMock
 import yaml
 import openshift as oc
 

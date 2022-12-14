@@ -1,7 +1,6 @@
 from unittest import TestCase
 
-from mock import MagicMock, Mock
-from mock.mock import patch
+from unittest.mock import MagicMock, Mock, patch
 
 from doozerlib.model import Model
 from doozerlib.plashet import PlashetBuilder
