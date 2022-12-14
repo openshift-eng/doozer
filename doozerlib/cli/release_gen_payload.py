@@ -639,20 +639,27 @@ class GenPayloadCli:
         """
 
         # When we are building a heterogeneous / multiarch payload, we need to
-        # keep track of images that are going into the each single-arch
+        # keep track of images that are going into each single-arch
         # imagestream. Maps [is_private] -> [tag_name] -> [arch] -> PayloadEntry
         multi_specs: Dict[bool, Dict[str, Dict[str, PayloadEntry]]] = {
             True: dict(),
             False: dict()
         }
 
+        # Ensure that all payload images have been mirrored before updating
+        # the imagestream. Otherwise, the imagestream will fail to import the
+        # image.
         tasks = []
         for arch, payload_entries in self.payload_entries_for_arch.items():
             tasks.append(self.mirror_payload_content(arch, payload_entries))
+        await asyncio.gather(*tasks)
+
+        # Update the imagestreams being monitored by the release controller.
+        tasks = []
+        for arch, payload_entries in self.payload_entries_for_arch.items():
             for private_mode in self.privacy_modes:
                 self.logger.info(f"Building payload files for architecture: {arch}; private: {private_mode}")
-                tasks.append(
-                    self.generate_specific_payload_imagestreams(arch, private_mode, payload_entries, multi_specs))
+                tasks.append(self.generate_specific_payload_imagestreams(arch, private_mode, payload_entries, multi_specs))
         await asyncio.gather(*tasks)
 
         if self.apply_multi_arch:
