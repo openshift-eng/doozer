@@ -64,7 +64,7 @@ class TestRPMBuilder(asynctest.TestCase):
     @mock.patch("aiofiles.open")
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_assert_async")
     async def test_rebase(self, mocked_cmd_assert_async: mock.Mock, mocked_open: mock.Mock, mocked_os_remove: mock.Mock,
-                    mocked_copy: mock.Mock, mocked_mkdir: mock.Mock):
+                          mocked_copy: mock.Mock, mocked_mkdir: mock.Mock):
         source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"
         distgit_sha = "4cd7f576ad005aadd3c25ea56c7986bc6a7e7340"
         runtime = self._make_runtime()
@@ -104,7 +104,7 @@ class TestRPMBuilder(asynctest.TestCase):
     @mock.patch("aiofiles.open")
     @mock.patch("doozerlib.rpm_builder.exectools.cmd_assert_async")
     async def test_rebase_with_assembly(self, mocked_cmd_assert_async: mock.Mock, mocked_open: mock.Mock, mocked_os_remove: mock.Mock,
-                                  mocked_copy: mock.Mock, mocked_mkdir: mock.Mock):
+                                        mocked_copy: mock.Mock, mocked_mkdir: mock.Mock):
         source_sha = "3f17b42b8aa7d294c0d2b6f946af5fe488f3a722"
         distgit_sha = "4cd7f576ad005aadd3c25ea56c7986bc6a7e7340"
         runtime = self._make_runtime(assembly='tester')
