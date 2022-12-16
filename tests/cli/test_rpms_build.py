@@ -1,16 +1,15 @@
-import asyncio
 import logging
 import io
-from unittest import TestCase
 
-from mock import AsyncMock, MagicMock, Mock, patch
+import asynctest
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from doozerlib import gitdata, rpmcfg
 from doozerlib.cli.rpms_build import _rpms_rebase_and_build
 from doozerlib.exectools import RetryException
 
 
-class TestRPMsBuildCli(TestCase):
+class TestRPMsBuildCli(asynctest.TestCase):
 
     def _make_runtime(self, assembly=None):
         runtime = MagicMock()
@@ -25,7 +24,7 @@ class TestRPMsBuildCli(TestCase):
         return runtime
 
     @patch("doozerlib.cli.rpms_build.RPMBuilder")
-    def test_rpms_build_success(self, MockedRPMBuilder: Mock):
+    async def test_rpms_build_success(self, MockedRPMBuilder: Mock):
         runtime = self._make_runtime()
         version = "v1.2.3"
         release = "202104070000.yuxzhu.test.p?"
@@ -69,12 +68,12 @@ class TestRPMsBuildCli(TestCase):
         builder = MockedRPMBuilder.return_value = AsyncMock()
         builder.build.return_value = ([10001, 10002], ["https://brewweb.example.com/brew/taskinfo?taskID=10001", "https://brewweb.example.com/brew/taskinfo?taskID=10002"], ["foo-1.2.3-1.el8", "foo-1.2.3-1.el7"])
 
-        result = asyncio.run(_rpms_rebase_and_build(runtime, version, release, embargoed, scratch, dry_run))
+        result = await _rpms_rebase_and_build(runtime, version, release, embargoed, scratch, dry_run)
 
         self.assertEqual(result, 0)
 
     @patch("doozerlib.cli.rpms_build.RPMBuilder")
-    def test_rpms_build_failure(self, MockedRPMBuilder: Mock):
+    async def test_rpms_build_failure(self, MockedRPMBuilder: Mock):
         runtime = self._make_runtime()
         version = "v1.2.3"
         release = "202104070000.yuxzhu.test.p?"
@@ -118,6 +117,6 @@ class TestRPMsBuildCli(TestCase):
         builder = MockedRPMBuilder.return_value = AsyncMock()
         builder.side_effect = RetryException("Retry error", ([10001, 10002], ["https://brewweb.example.com/brew/taskinfo?taskID=10001", "https://brewweb.example.com/brew/taskinfo?taskID=10002"]))
 
-        result = asyncio.run(_rpms_rebase_and_build(runtime, version, release, embargoed, scratch, dry_run))
+        result = await _rpms_rebase_and_build(runtime, version, release, embargoed, scratch, dry_run)
 
         self.assertEqual(result, 1)

@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import unittest
 
-import mock
+from unittest import mock
 import yaml.scanner
 
 from doozerlib.source_modifications import (AddModifier, RemoveModifier,

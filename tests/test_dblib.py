@@ -6,7 +6,6 @@ import datetime
 import pathlib
 import traceback
 import sys
-import mock
 
 
 class FakeMetaData(object):

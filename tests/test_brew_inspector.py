@@ -7,7 +7,7 @@ import json
 import logging
 
 import unittest
-from mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from doozerlib.image import BrewBuildImageInspector
 

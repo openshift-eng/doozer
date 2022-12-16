@@ -1,6 +1,7 @@
-import asyncio
 import unittest
 from unittest.mock import ANY, MagicMock, patch
+
+import asynctest
 
 from doozerlib import constants
 from doozerlib.distgit import ImageDistGitRepo
@@ -9,7 +10,7 @@ from doozerlib.image import ImageMetadata
 from doozerlib.osbs2_builder import OSBS2Builder
 
 
-class TestOSBS2Builder(unittest.TestCase):
+class TestOSBS2Builder(asynctest.TestCase):
 
     def _make_image_meta(self, runtime):
         data_obj = DataObj("foo", "/path/to/ocp-build-data/images/foo.yml", {
@@ -39,7 +40,7 @@ class TestOSBS2Builder(unittest.TestCase):
         actual = osbs2._construct_build_source_url(dg)
         self.assertEqual(actual, f"{constants.DISTGIT_GIT_URL}/containers/foo#deadbeef")
 
-    def test_start_build(self):
+    async def test_start_build(self):
         runtime = MagicMock()
         osbs2 = OSBS2Builder(runtime)
         meta = self._make_image_meta(runtime)
@@ -74,7 +75,7 @@ class TestOSBS2Builder(unittest.TestCase):
     @patch("doozerlib.exectools.cmd_gather", return_value=(0, "", ""))
     @patch("doozerlib.brew.watch_task", return_value=None)
     @patch("doozerlib.osbs2_builder.OSBS2Builder._start_build", return_value=(12345, f"{constants.BREWWEB_URL}/taskinfo?taskID=12345"))
-    def test_build(self, _start_build: MagicMock, watch_task: MagicMock, cmd_gather: MagicMock):
+    async def test_build(self, _start_build: MagicMock, watch_task: MagicMock, cmd_gather: MagicMock):
         koji_api = MagicMock(logged_in=False)
         koji_api.getTaskResult = MagicMock(return_value={"koji_builds": [42]})
         koji_api.getBuild = MagicMock(return_value={"id": 42, "nvr": "foo-v4.12.0-12345.p0.assembly.test"})
@@ -94,7 +95,7 @@ class TestOSBS2Builder(unittest.TestCase):
             "repo_list": [],
         }
 
-        task_id, task_url, nvr = asyncio.run(osbs2.build(meta, profile, retries=1))
+        task_id, task_url, nvr = await osbs2.build(meta, profile, retries=1)
         self.assertEqual((task_id, task_url, nvr), (12345, f"{constants.BREWWEB_URL}/taskinfo?taskID=12345", {'id': 42, 'nvr': 'foo-v4.12.0-12345.p0.assembly.test'}))
         koji_api.gssapi_login.assert_called_once_with()
         koji_api.getTaskResult.assert_called_once_with(12345)

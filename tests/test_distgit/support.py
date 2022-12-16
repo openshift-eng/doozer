@@ -1,9 +1,10 @@
+import asynctest
 from future import standard_library
 
 from doozerlib.assembly import AssemblyTypes
 
 standard_library.install_aliases()
-import unittest
+
 try:
     from importlib import reload
 except ImportError:
@@ -84,7 +85,7 @@ class MockScanner(object):
         self.files = []
 
 
-class TestDistgit(unittest.TestCase):
+class TestDistgit(asynctest.TestCase):
     """
     Test the methods and functions used to manage and update distgit repos
     """

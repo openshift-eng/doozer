@@ -8,7 +8,7 @@ from threading import Lock
 from unittest.mock import Mock, patch
 
 from flexmock import flexmock
-from mock import MagicMock
+from unittest.mock import MagicMock
 
 from doozerlib import distgit, model
 from doozerlib.assembly import AssemblyTypes
