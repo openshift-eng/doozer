@@ -130,6 +130,9 @@ def config_scan_source_changes(runtime: Runtime, ci_kubeconfig, as_yaml):
             base_image = image_meta.config["from"].member
             if base_image:
                 dependencies.add(base_image)
+            for builder in image_meta.config['from'].builder:
+                if builder.member:
+                    dependencies.add(builder.member)
             for dep_key in dependencies:
                 dep = runtime.image_map.get(dep_key)
                 if not dep:
