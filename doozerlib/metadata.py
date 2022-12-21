@@ -778,6 +778,11 @@ class Metadata(object):
         prodsec_mapping = self.runtime.get_openshift4_component_mapping()
         prodsec_jira_component = prodsec_mapping.get(self.get_component_name(), 'Unknown')
 
+        if self.distgit_key == 'openshift-enterprise-base':
+            # This is a special case image that is represented by upstream but
+            # no one release owns. ART should handle merges here.
+            prodsec_jira_component = 'Release'
+
         return maintainer.get('project', 'OCPBUGS'), maintainer.get('component', prodsec_jira_component)
 
     def extract_kube_env_vars(self) -> Dict[str, str]:

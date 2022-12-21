@@ -27,6 +27,8 @@ from typing import Optional, List, Dict, Tuple, Union
 import time
 import re
 
+from jira import JIRA, Issue
+
 from doozerlib import gitdata
 from . import logutil
 from . import assertion
@@ -728,6 +730,22 @@ class Runtime(object):
         debug_log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s (%(thread)d) %(message)s'))
         debug_log_handler.setLevel(logging.DEBUG)
         self.logger.addHandler(debug_log_handler)
+
+    def build_jira_client(self) -> JIRA:
+        """
+        :return: Returns a JIRA client setup for the server in bug.yaml
+        """
+        major, minor = self.get_major_minor_fields()
+        if major == 4 and minor < 6:
+            raise ValueError("ocp-build-data/bug.yml is not expected to be available for 4.X versions < 4.6")
+        bug_config = Model(self.gitdata.load_data(key='bug').data)
+        server = bug_config.jira_config.server or 'issues.redhat.com'
+
+        token_auth = os.environ.get("JIRA_TOKEN")
+        if not token_auth:
+            raise ValueError(f"Jira activity requires login credentials for {server}. Set a JIRA_TOKEN env var")
+        client = JIRA(server, token_auth=token_auth)
+        return client
 
     def build_retrying_koji_client(self):
         """
@@ -1589,9 +1607,19 @@ class Runtime(object):
         # adjust as needed (and just imagine rhel 9)!
         return {tag, tag.replace('-rhel-7', '-rhel-8')} if tag else set()
 
-    def get_minor_version(self):
-        # only applicable if appropriate vars are defined in group config
+    def get_minor_version(self) -> str:
+        """
+        Returns: "<MAJOR>.<MINOR>" if the vars are defined in the group config.
+        """
         return '.'.join(str(self.group_config.vars[v]) for v in ('MAJOR', 'MINOR'))
+
+    def get_major_minor_fields(self) -> Tuple[int, int]:
+        """
+        Returns: (int(MAJOR), int(MINOR)) if the vars are defined in the group config.
+        """
+        major = int(self.group_config.vars['MAJOR'])
+        minor = int(self.group_config.vars['MINOR'])
+        return major, minor
 
     def scan_for_upstream_changes(self) -> List[Tuple[Metadata, RebuildHint]]:
         """
