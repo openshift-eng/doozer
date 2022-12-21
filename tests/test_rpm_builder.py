@@ -239,12 +239,7 @@ systemd-units
         version = "1.2.3"
         release = "202104070000.yuxzhu_test.p0"
         rpm.set_nvr(version, release)
-        maintainer_info = {
-            "product": "My Product",
-            "component": "My Component",
-            "subcomponent": "My Subcomponent",
-        }
-        rpm.get_maintainer_info = mock.MagicMock(return_value=maintainer_info)
+        rpm.get_jira_info = mock.MagicMock(return_value=("My Product", "My Component"))
         mocked_file = mocked_open.return_value.__aenter__.return_value
         mocked_file.readlines.return_value = """
 %global os_git_vars OS_GIT_VERSION='' OS_GIT_COMMIT='' OS_GIT_MAJOR='' OS_GIT_MINOR='' OS_GIT_TREE_STATE=''
@@ -271,7 +266,7 @@ Some description
         self.assertIn("Version:        1.2.3\n", specfile_content)
         self.assertIn("Release:        202104070000.yuxzhu_test.p0%{?dist}\n", specfile_content)
         self.assertIn("Source0:        foo-1.2.3.tar.gz\n", specfile_content)
-        self.assertIn("%description\n[Maintainer] product: My Product, component: My Component, subcomponent: My Subcomponent\n", specfile_content)
+        self.assertIn("%description\n[Maintainer] project: My Product, component: My Component\n", specfile_content)
         self.assertIn("%setup -q -n foo-1.2.3\n", specfile_content)
         self.assertIn("%autosetup -S git -n foo-1.2.3 -p1\n", specfile_content)
         self.assertIn("Version:        1.2.3\n", specfile_content)

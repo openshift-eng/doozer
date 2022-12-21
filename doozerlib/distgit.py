@@ -1838,10 +1838,9 @@ class ImageDistGitRepo(DistGitRepo):
             if "com.redhat.delivery.appregistry" in dfp.labels:
                 dfp.labels["com.redhat.delivery.appregistry"] = "False"
 
-            # For each bit of maintainer information we have, create a new label in the image
-            maintainer = self.metadata.get_maintainer_info()
-            for k, v in maintainer.items():
-                dfp.labels[f'io.openshift.maintainer.{k}'] = v
+            jira_project, jira_component = self.metadata.get_jira_info()
+            dfp.labels['io.openshift.maintainer.project'] = jira_project
+            dfp.labels['io.openshift.maintainer.component'] = jira_component
 
             if 'from' in self.config:
                 self._rebase_from_directives(dfp)

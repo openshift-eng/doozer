@@ -18,6 +18,13 @@ def global_opt_default_string():
     return res
 
 
+def hosts_default_string():
+    res = '\n'
+    for k in ('prodsec_git',):
+        res += '  {}:\n'.format(k)
+    return res
+
+
 CLI_OPTS = {
     'data_path': {
         'env': 'DOOZER_DATA_PATH',
@@ -34,6 +41,10 @@ CLI_OPTS = {
     'user': {
         'env': 'DOOZER_USER',
         'help': 'Username for running rhpkg / brew'
+    },
+    'hosts': {
+        'help': 'Mappings of host aliases to their internal hostnames',
+        'default': hosts_default_string()
     },
     'global_opts': {
         'help': 'Global option overrides that can only be set from settings.yaml',
