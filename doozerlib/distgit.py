@@ -2452,29 +2452,6 @@ class ImageDistGitRepo(DistGitRepo):
         if self.config.owners is not Missing and isinstance(self.config.owners, list):
             owners = list(self.config.owners)
 
-        # If upstream has not identified the BZ component, have the pipeline send them a nag note.
-        maintainer = self.metadata.get_maintainer_info()
-        if owners and not maintainer.get('component', None):
-            week_number = date.today().isocalendar()[1]  # Determine current week number
-            oit_path = dg_path.joinpath('.oit')
-            util.mkdirs(oit_path)
-            notified_week_path: pathlib.Path = oit_path.joinpath('last_notified_week')
-            bz_notify = True
-            if notified_week_path.is_file():
-                last_notified_week = notified_week_path.read_text('utf-8')
-                if str(week_number) == last_notified_week.strip():
-                    bz_notify = False  # We've already nagged this week
-
-            # Populate or update the week number in distgit
-            notified_week_path.write_text(str(week_number), 'utf-8')
-
-            record_type = 'bz_maintainer_notify' if bz_notify else 'bz_maintainer_missing'
-            self.runtime.add_record(record_type,
-                                    distgit=self.metadata.qualified_name,
-                                    image=self.config.name,
-                                    owners=','.join(owners),
-                                    public_upstream_url=self.public_facing_source_url)
-
         dockerfile_notify = False
 
         # Create a sha for Dockerfile. We use this to determine if we've reconciled it before.
