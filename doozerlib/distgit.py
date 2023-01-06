@@ -2453,8 +2453,8 @@ class ImageDistGitRepo(DistGitRepo):
             owners = list(self.config.owners)
 
         # If upstream has not identified the BZ component, have the pipeline send them a nag note.
-        maintainer = self.metadata.get_maintainer_info()
-        if owners and not maintainer.get('component', None):
+        jira_project, jira_component = self.metadata.get_jira_info()
+        if jira_project == 'OCPBUGS' and jira_component == 'Unknown':
             week_number = date.today().isocalendar()[1]  # Determine current week number
             oit_path = dg_path.joinpath('.oit')
             util.mkdirs(oit_path)
