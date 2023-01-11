@@ -7,14 +7,18 @@ import hashlib
 import time
 import datetime
 import random
+from typing import Dict
 
 from github import Github, UnknownObjectException, GithubException
+
+from jira import JIRA, Issue
 
 from dockerfile_parse import DockerfileParser
 from doozerlib.model import Missing
 from doozerlib.pushd import Dir
 from doozerlib.cli import cli, pass_runtime
 from doozerlib import brew, state, exectools, model, constants
+from doozerlib.image import ImageMetadata
 from doozerlib.util import get_docker_config_json, convert_remote_git_to_ssh, \
     split_git_url, remove_prefix, green_print,\
     yellow_print, red_print, convert_remote_git_to_https, \
@@ -603,6 +607,82 @@ def images_upstreampulls(runtime):
     print(yaml.dump(retdata, default_flow_style=False, width=10000))
 
 
+def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
+    """
+    Ensures there is a Jira issue open for reconciliation PRs.
+    Args:
+        runtime: The doozer runtime
+        pr_links: a map of distgit_keys->pr_url to open reconciliation PRs
+        dry_run: If true, new desired jira issues would only be printed to the console.
+    """
+    major, minor = runtime.get_major_minor_fields()
+    if (major == 4 and minor < 12) or major < 4:
+        # Only enabled for 4.12 and beyond at the moment.
+        return
+
+    new_issues: Dict[str, Issue] = dict()
+    existing_issues: Dict[str, Issue] = dict()
+
+    release_version = f'{major}.{minor}'
+    jira_client: JIRA = runtime.build_jira_client()
+    for distgit_key, pr_url in pr_links.items():
+        image_meta: ImageMetadata = runtime.image_map[distgit_key]
+        project, component = image_meta.get_jira_info()
+        summary = f"Update {release_version} {image_meta.name} image to be consistent with ART"
+
+        query = f'project={project} AND summary ~ "{summary}" AND statusCategory in ("To Do", "In Progress")'
+        open_issues = jira_client.search_issues(query)
+
+        if open_issues:
+            print(f'A JIRA issue is already open for {pr_url}: {open_issues[0]}')
+            existing_issues[distgit_key] = open_issues[0]
+            continue
+
+        description = f'''
+Please review the following PR: {pr_url}
+
+The PR has been automatically opened by ART (#aos-art) team automation and indicates
+that the image(s) being used downstream for production builds are not consistent
+with the images referenced in this component's github repository.
+
+Differences in upstream and downstream builds impact the fidelity of your CI signal.
+
+If you disagree with the content of this PR, please contact @release-artists
+in #aos-art to discuss the discrepancy.
+
+Closing this issue without addressing the difference will cause the issue to
+be reopened automatically.
+'''
+        fields = {
+            'project': {'key': project},
+            'issuetype': {'name': 'Bug'},
+            'versions': [{'name': release_version}],  # Affects Version/s
+            'components': [{'name': component}],
+            'summary': summary,
+            'description': description
+        }
+
+        if not dry_run:
+            issue = jira_client.create_issue(
+                fields
+            )
+            new_issues[distgit_key] = issue
+            print(f'A JIRA issue has been opened for {pr_url}: {issue}')
+        else:
+            new_issues[distgit_key] = 'NEW!'
+            print(f'Would have created JIRA issue for {distgit_key} / {pr_url}:\n{fields}\n')
+
+    if new_issues:
+        print('Newly opened JIRA issues:')
+        for key, issue in new_issues.items():
+            print(f'{key}: {issue}')
+
+    if existing_issues:
+        print('Previously existing JIRA issues:')
+        for key, issue in existing_issues.items():
+            print(f'{key}: {issue}')
+
+
 @prs.command('open', short_help='Open PRs against upstream component repos that have a FROM that differs from ART metadata.')
 @click.option('--github-access-token', metavar='TOKEN', required=True, help='Github access token for user.')
 @click.option('--bug', metavar='BZ#', required=False, default=None, help='Title with Bug #: prefix')
@@ -626,7 +706,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
     master_major, master_minor = extract_version_fields(what_is_in_master(), at_least=2)
     if not ignore_ci_master and (major > master_major or minor > master_minor):
-        # ART building a release before is is in master. Too early to open PRs.
+        # ART building a release before it is in master. Too early to open PRs.
         runtime.logger.warning(f'Target {major}.{minor} has not been in master yet (it is tracking {master_major}.{master_minor}); skipping PRs')
         exit(0)
 
@@ -972,7 +1052,7 @@ open_prs: {open_prs}
 __TLDR__:
 Component owners, please ensure that this PR merges as it impacts the fidelity
 of your CI signal. Patch-manager / leads, this PR is a no-op from a product
-perspective -- feel free to manually apply any labels (e.g. bugzilla/valid-bug) to help the
+perspective -- feel free to manually apply any labels (e.g. jira/valid-bug) to help the
 PR merge as long as tests are passing. If the PR is labeled "needs-ok-to-test", this is
 to limit costs for re-testing these PRs while they wait for review. Issue /ok-to-test
 to remove this tag and help the PR to merge.
@@ -1134,6 +1214,7 @@ If you have any questions about this pull request, please reach out to `@release
     if pr_links:
         print('Currently open PRs:')
         print(yaml.safe_dump(pr_links))
+        reconcile_jira_issues(runtime, pr_links, moist_run)
 
     if skipping_dgks:
         print('Some PRs were skipped; Exiting with return code 25 to indicate this')
