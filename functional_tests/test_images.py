@@ -95,20 +95,6 @@ class TestImages(unittest.TestCase):
         git_commit = ref.peel(pygit2.Commit)  # type: pygit2.Commit
         self.assertIn("test rebase", git_commit.message)
 
-    def test_images_update_dockerfile(self):
-        _, out, _ = run_doozer([
-            "--group=openshift-3.11",
-            "--images=aos3-installation",
-            "images:update-dockerfile",
-            "--message=test update dockerfile"
-        ])
-        working_dir = get_working_dir()
-        repo_path = os.path.join(working_dir, "distgits", "containers", "aos3-installation")
-        repo = pygit2.Repository(repo_path)
-        ref = repo.references["HEAD"].resolve()  # type: pygit2.Reference
-        git_commit = ref.peel(pygit2.Commit)  # type: pygit2.Commit
-        self.assertIn("test update dockerfile", git_commit.message)
-
     def test_images_revert(self):
         _, out, _ = run_doozer([
             "--group=openshift-3.11",

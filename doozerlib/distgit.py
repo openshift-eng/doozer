@@ -183,7 +183,7 @@ class DistGitRepo(object):
                     if e.errno != errno.EEXIST:
                         raise
 
-                if fake_distgit and self.runtime.command in ['images:rebase', 'images:update-dockerfile']:
+                if fake_distgit and self.runtime.command == 'images:rebase':
                     cmd_list = ['mkdir', '-p', self.distgit_dir]
                     self.logger.info("Creating local build dir: {}".format(self.distgit_dir))
                     exectools.cmd_assert(cmd_list)

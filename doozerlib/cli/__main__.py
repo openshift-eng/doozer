@@ -230,110 +230,6 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
             print()
 
 
-@cli.command("images:update-dockerfile", short_help="Update a group's distgit Dockerfile from metadata.")
-@click.option("--version", metavar='VERSION', default=None, callback=validate_semver_major_minor_patch,
-              help="Version string to populate in Dockerfiles. \"auto\" gets version from atomic-openshift RPM")
-@click.option("--release", metavar='RELEASE', default=None,
-              help="Release label to populate in Dockerfiles (or + to bump).")
-@click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
-              default="unsigned",
-              help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
-@click.option("--force-yum-updates", is_flag=True, default=False,
-              help="Inject \"yum update -y\" in the final stage of an image build. This ensures the component image will be able to override RPMs it is inheriting from its parent image using RPMs in the rebuild plashet.")
-@option_commit_message
-@option_push
-@pass_runtime
-def images_update_dockerfile(runtime: Runtime, version: Optional[str], release: Optional[str], repo_type: str, force_yum_updates: bool, message: str, push: bool):
-    """
-    Updates the Dockerfile in each distgit repository with the latest metadata and
-    the version/release information specified. This does not update the Dockerfile
-    from any external source. For that, use images:rebase.
-
-    Version:
-    - If not specified, the current version is preserved.
-
-    Release:
-    - If not specified, the release label is removed.
-    - If '+', the current release will be bumped.
-    - Else, the literal value will be set in the Dockerfile.
-    """
-
-    if runtime.local:
-        yellow_print('images:update-dockerfile is not valid when using --local, use images:rebase instead')
-        sys.exit(1)
-
-    runtime.initialize(validate_content_sets=True, clone_distgits=True)
-
-    if runtime.group_config.public_upstreams and (release is None or (release != "+" and not release.endswith(".p?"))):
-        raise click.BadParameter("You must explicitly specify a `release` ending with `.p?` (or '+') when there is a public upstream mapping in ocp-build-data.")
-
-    # This is ok to run if automation is frozen as long as you are not pushing
-    if push:
-        runtime.assert_mutation_is_permitted()
-
-    cmd = runtime.command
-    runtime.state.pop('images:rebase', None)
-    runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
-    lstate = runtime.state[cmd]  # get local convenience copy
-
-    # If not pushing, do not clean up our work
-    runtime.remove_tmp_working_dir = push
-
-    # Get the version from the atomic-openshift package in the RPM repo
-    if version == "auto":
-        version = runtime.auto_version(repo_type)
-
-    if version and not runtime.valid_version(version):
-        raise ValueError(
-            "invalid version string: {}, expecting like v3.4 or v1.2.3".format(version)
-        )
-
-    metas = runtime.image_metas()
-    lstate['total'] = len(metas)
-
-    def dgr_update(image_meta):
-        try:
-            dgr = image_meta.distgit_repo()
-            _, prev_release, prev_private_fix = dgr.extract_version_release_private_fix()
-            dgr.private_fix = bool(prev_private_fix)  # preserve the .p? field when updating the release
-            (real_version, real_release) = dgr.update_distgit_dir(version, release, prev_release, force_yum_updates)
-            dgr.commit(message)
-            dgr.tag(real_version, real_release)
-            state.record_image_success(lstate, image_meta)
-            if push:
-                (meta, success) = dgr.push()
-                if success is not True:
-                    state.record_image_fail(lstate, meta, success)
-                dgr.wait_on_cgit_file()
-        except Exception as ex:
-            traceback.print_exc()
-            msg = str(ex)
-            state.record_image_fail(lstate, image_meta, msg, runtime.logger)
-            return False
-        return True
-
-    jobs = runtime.parallel_exec(
-        lambda image_meta, terminate_event: dgr_update(image_meta),
-        metas,
-    )
-    jobs.get()
-    state.record_image_finish(lstate)
-
-    failed = []
-    for img, status in lstate['images'].items():
-        if status is not True:  # anything other than true is fail
-            failed.append(img)
-
-    if lstate['status'] == state.STATE_FAIL:
-        raise DoozerFatalError('One or more required images failed. See state.yaml')
-    elif lstate['success'] == 0:
-        raise DoozerFatalError('No required images were specified, but all images failed.')
-
-    if failed:
-        msg = "The following non-critical images failed to update:\n{}".format('\n'.join(failed))
-        yellow_print(msg)
-
-
 @cli.command("images:covscan", short_help="Run a coverity scan for the specified images")
 @click.option("--result-archive", metavar="ARCHIVE_DIR", required=True,
               help="The covscan process computes diffs between different runs. Location where all runs can store data.")
@@ -531,7 +427,6 @@ def images_rebase(runtime: Runtime, version: Optional[str], release: Optional[st
         runtime.assert_mutation_is_permitted()
 
     cmd = runtime.command
-    runtime.state.pop('images:update-dockerfile', None)
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
     lstate = runtime.state[cmd]  # get local convenience copy
 
@@ -907,11 +802,9 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
     runtime.state[cmd] = dict(state.TEMPLATE_IMAGE)
     lstate = runtime.state[cmd]  # get local convenience copy
 
-    pre_steps = ['images:update-dockerfile', 'images:rebase']
     pre_step = None
-    for ps in pre_steps:
-        if ps in runtime.state:
-            pre_step = runtime.state[ps]
+    if 'images:rebase' in runtime.state:
+        pre_step = runtime.state['images:rebase']
 
     required = []
     failed = []
