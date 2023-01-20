@@ -739,7 +739,7 @@ class Runtime(object):
         if major == 4 and minor < 6:
             raise ValueError("ocp-build-data/bug.yml is not expected to be available for 4.X versions < 4.6")
         bug_config = Model(self.gitdata.load_data(key='bug').data)
-        server = bug_config.jira_config.server or 'issues.redhat.com'
+        server = bug_config.jira_config.server or 'https://issues.redhat.com'
 
         token_auth = os.environ.get("JIRA_TOKEN")
         if not token_auth:
