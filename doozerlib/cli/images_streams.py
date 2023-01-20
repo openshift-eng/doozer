@@ -616,8 +616,8 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
         dry_run: If true, new desired jira issues would only be printed to the console.
     """
     major, minor = runtime.get_major_minor_fields()
-    if (major == 4 and minor < 12) or major < 4:
-        # Only enabled for 4.12 and beyond at the moment.
+    if (major == 4 and minor < 13) or major < 4:
+        # Only enabled for 4.13 and beyond at the moment.
         return
 
     new_issues: Dict[str, Issue] = dict()
