@@ -7,7 +7,7 @@ import hashlib
 import time
 import datetime
 import random
-from typing import Dict
+from typing import Dict, Set
 
 from github import Github, UnknownObjectException, GithubException
 
@@ -625,10 +625,31 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
 
     release_version = f'{major}.{minor}'
     jira_client: JIRA = runtime.build_jira_client()
+
+    jira_projects = jira_client.projects()
+    jira_project_names = set([project.name for project in jira_projects])
+    jira_project_components: Dict[str, Set[str]] = dict()  # Maps project names to the components they expose
+
     for distgit_key, pr_url in pr_links.items():
         image_meta: ImageMetadata = runtime.image_map[distgit_key]
-        project, component = image_meta.get_jira_info()
+        potential_project, potential_component = image_meta.get_jira_info()
         summary = f"Update {release_version} {image_meta.name} image to be consistent with ART"
+
+        project = potential_project
+        if potential_project not in jira_project_names:
+            # If the project in the prodsec data does not exist in Jira, default to OCPBUGS
+            project = 'OCPBUGS'
+
+        if project in jira_project_components:
+            available_components = jira_project_components[project]
+        else:
+            available_components = set([component.name for component in jira_client.project_components(project)])
+            jira_project_components[project] = available_components
+
+        component = potential_component
+        if potential_component not in available_components:
+            # If the component in prodsec data does not exist in the Jira project, use Unknown.
+            component = 'Unknown'
 
         query = f'project={project} AND summary ~ "{summary}" AND statusCategory in ("To Do", "In Progress")'
         open_issues = jira_client.search_issues(query)
@@ -653,6 +674,31 @@ in #aos-art to discuss the discrepancy.
 Closing this issue without addressing the difference will cause the issue to
 be reopened automatically.
 '''
+        if potential_project != project or potential_component != component:
+            description += f'''
+
+Important: Product Security has recorded in their ps_modules.json data that bugs
+for this component should be opened against Jira project "{potential_project}" and
+component "{potential_component}". This project or component does not exist. Jira
+should either be updated to include this component or an email should be sent to
+prodsec-openshift@redhat.com to have them update their data. Until this is done,
+ART issues against this component will be opened against OCPBUGS/Unknown --
+creating unnecessary work and delay.
+
+Prodsec will need to know the product component name: {distgit_key} .
+'''
+        elif potential_project == 'Unknown':
+            description += f'''
+
+Important: Product Security maintains a mapping of OpenShift software components to
+Jira components in their ps_modules.json data for OpenShift. This component does not
+have a mapping in that data. Please email prodsec-openshift@redhat.com to ensure
+this component is registered. Until this is done, ART issues against
+this component will be opened against OCPBUGS/Unknown -- creating unnecessary work and delay.
+
+Prodsec will need to know the product component name: {distgit_key} .
+'''
+
         fields = {
             'project': {'key': project},
             'issuetype': {'name': 'Bug'},
