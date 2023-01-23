@@ -459,7 +459,7 @@ class Metadata(object):
                                              **list_builds_kwargs)
 
                 # Ensure the suffix ends the string OR at least terminated by a '.' .
-                # This latter check ensures that 'assembly.how' doesn't not match a build from
+                # This latter check ensures that 'assembly.how' doesn't match a build from
                 # "assembly.howdy'.
                 refined = [b for b in builds if b['nvr'].endswith(pattern_suffix) or f'{pattern_suffix}.' in b['nvr']]
 
@@ -502,7 +502,7 @@ class Metadata(object):
                     if not is_nvr:
                         return default_return()
                 else:
-                    # The image metadata (or, more likely, the currently assembly) has the image
+                    # The image metadata (or, more likely, the current assembly) has the image
                     # pinned. Return only the pinned NVR. When a child image is being rebased,
                     # it uses get_latest_build to find the parent NVR to use (if it is not
                     # included in the "-i" doozer argument). We need it to find the pinned NVR

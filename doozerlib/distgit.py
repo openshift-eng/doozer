@@ -15,7 +15,7 @@ import time
 import traceback
 from datetime import date, datetime
 from multiprocessing import Event, Lock
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Set
 
 import aiofiles
 import bashlex
@@ -28,7 +28,7 @@ from tenacity import (before_sleep_log, retry, retry_if_not_result,
 import doozerlib
 from doozerlib import assertion, constants, exectools, logutil, state, util
 from doozerlib.assembly import AssemblyTypes
-from doozerlib.brew import get_build_objects, watch_task
+from doozerlib.brew import get_build_objects, watch_task, BuildStates
 from doozerlib.dblib import Record
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.model import ListModel, Missing, Model
@@ -2068,6 +2068,33 @@ class ImageDistGitRepo(DistGitRepo):
             f.write(digest)
         self.logger.info("Saved config digest %s to .oit/config_digest", digest)
 
+    def _find_previous_versions(self, pattern_suffix='') -> Set[str]:
+        """
+        Returns: Searches brew for builds of this operator in order and processes them into a set of versions.
+        These version may or may not have shipped.
+        """
+        with self.runtime.pooled_koji_client_session() as koji_api:
+            component_name = self.metadata.get_component_name()
+            package_info = koji_api.getPackage(component_name)  # e.g. {'id': 66873, 'name': 'atomic-openshift-descheduler-container'}
+            if not package_info:
+                raise IOError(f'No brew package is defined for {component_name}')
+            package_id = package_info['id']  # we could just constrain package name using pattern glob, but providing package ID # should be a much more efficient DB query.
+            pattern_prefix = f'{component_name}-v{self.metadata.branch_major_minor()}.'
+            builds = koji_api.listBuilds(packageID=package_id,
+                                         state=BuildStates.COMPLETE.value,
+                                         pattern=f'{pattern_prefix}{pattern_suffix}*')
+            nvrs: Set[str] = set([build['nvr'] for build in builds])
+            # NVRS should now be a set including entries like 'cluster-nfd-operator-container-v4.10.0-202211280957.p0.ga42b581.assembly.stream'
+            # We need to convert these into versions like "4.11.0-202205250107"
+            versions: Set[str] = set()
+            for nvr in nvrs:
+                without_component = nvr[len(f'{component_name}-v'):]  # e.g. "4.10.0-202211280957.p0.ga42b581.assembly.stream"
+                version_components = without_component.split('.')[0:3]  # e.g. ['4', '10', '0-202211280957']
+                version = '.'.join(version_components)
+                versions.add(version)
+
+            return versions
+
     def _get_csv_file_and_refs(self, csv_config):
         gvars = self.runtime.group_config.vars
         bundle_dir = csv_config.get('bundle-dir', f'{gvars["MAJOR"]}.{gvars["MINOR"]}')
@@ -2210,6 +2237,51 @@ class ImageDistGitRepo(DistGitRepo):
                     sr_file.seek(0)
                     sr_file.truncate()
                     sr_file.write(sr_file_str)
+
+        previous_build_versions: List[str] = self._find_previous_versions()
+        if previous_build_versions:
+            # We need to inject "skips" versions for https://issues.redhat.com/browse/OCPBUGS-6066 .
+            # We have the versions, but it needs to be written into the CSV under spec.skips.
+            # First, find the "name" of this plugin that precedes the version. If everything
+            # is correctly replaced in the csv by art-config.yml, then metadata.name - spec.version
+            # should leave us with the name the operator uses.
+            csv_obj = yaml.safe_load(pathlib.Path(csv_file).read_text())
+            olm_name = csv_obj['metadata']['name']  # "nfd.4.11.0-202205301910"
+            olm_version = csv_obj['spec']['version']  # "4.11.0-202205301910"
+            olm_name_prefix = olm_name[:-1 * len(olm_version)]  # "nfd."
+
+            # Inject the skips..
+            # If we re-wrote this as YAML using the yaml package, it would be easy,
+            # but historically we haven't. There's probably a reason for this, so we'll just be
+            # injecting this using awkward text operations. The only real challenge is finding
+            # the indentation being used in the YAML so we can inject with consistent indentation.
+            # To find that indentation, search for "version: " stanza. There will be multiple,
+            # but the one with the least indentation will be the one under spec: .
+            csv_lines = pathlib.Path(csv_file).read_text().splitlines(keepends=False)
+            version_regex = re.compile(r'(\s+)"?version:.*')
+            indentation_step = None
+            version_line_index = -1
+            for line_index, line in enumerate(csv_lines):
+                match = version_regex.match(line)
+                if match:
+                    potential_indentation = match.group(1)
+                    if indentation_step is None:
+                        indentation_step = potential_indentation  # Isolate the indentation whitespace
+                        version_line_index = line_index
+                    elif len(potential_indentation) < len(indentation_step) and len(potential_indentation) > 0:
+                        indentation_step = potential_indentation
+                        version_line_index = line_index
+
+            if version_line_index < 0:
+                raise IOError(f'Unable to find version: stanza in CSV file: {self.name} / {csv_file}')
+
+            new_csv_lines = list(csv_lines)
+            new_csv_lines.insert(version_line_index + 1, f'{indentation_step}skips:')  # inject skips after "version: " line.
+            for old_version in previous_build_versions:
+                # Add a list of versions after 'skips'.
+                new_csv_lines.insert(version_line_index + 2, f'{indentation_step}- {olm_name_prefix}{old_version}')
+
+            pathlib.Path(csv_file).write_text('\n'.join(new_csv_lines))
 
     def _update_environment_variables(self, update_envs, filename='Dockerfile'):
         """
