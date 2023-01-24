@@ -2243,45 +2243,22 @@ class ImageDistGitRepo(DistGitRepo):
             # We need to inject "skips" versions for https://issues.redhat.com/browse/OCPBUGS-6066 .
             # We have the versions, but it needs to be written into the CSV under spec.skips.
             # First, find the "name" of this plugin that precedes the version. If everything
-            # is correctly replaced in the csv by art-config.yml, then metadata.name - spec.version
+            # is correctly replaced in the CSV by art-config.yml, then metadata.name - spec.version
             # should leave us with the name the operator uses.
             csv_obj = yaml.safe_load(pathlib.Path(csv_file).read_text())
             olm_name = csv_obj['metadata']['name']  # "nfd.4.11.0-202205301910"
             olm_version = csv_obj['spec']['version']  # "4.11.0-202205301910"
+
+            if not olm_name.endswith(olm_version):
+                raise IOError(f'Expected {self.name} CSV metadata.name field ("{olm_name}" after rebase) to be suffixed by spec.version ("{olm_version}" after rebase). art-config.yml / upstream CSV metadata may be incorrect.')
+
             olm_name_prefix = olm_name[:-1 * len(olm_version)]  # "nfd."
 
             # Inject the skips..
-            # If we re-wrote this as YAML using the yaml package, it would be easy,
-            # but historically we haven't. There's probably a reason for this, so we'll just be
-            # injecting this using awkward text operations. The only real challenge is finding
-            # the indentation being used in the YAML so we can inject with consistent indentation.
-            # To find that indentation, search for "version: " stanza. There will be multiple,
-            # but the one with the least indentation will be the one under spec: .
-            csv_lines = pathlib.Path(csv_file).read_text().splitlines(keepends=False)
-            version_regex = re.compile(r'(\s+)"?version:.*')
-            indentation_step = None
-            version_line_index = -1
-            for line_index, line in enumerate(csv_lines):
-                match = version_regex.match(line)
-                if match:
-                    potential_indentation = match.group(1)
-                    if indentation_step is None:
-                        indentation_step = potential_indentation  # Isolate the indentation whitespace
-                        version_line_index = line_index
-                    elif len(potential_indentation) < len(indentation_step) and len(potential_indentation) > 0:
-                        indentation_step = potential_indentation
-                        version_line_index = line_index
+            csv_obj['spec']['skips'] = [f'{olm_name_prefix}{old_version}' for old_version in previous_build_versions]
 
-            if version_line_index < 0:
-                raise IOError(f'Unable to find version: stanza in CSV file: {self.name} / {csv_file}')
-
-            new_csv_lines = list(csv_lines)
-            new_csv_lines.insert(version_line_index + 1, f'{indentation_step}skips:')  # inject skips after "version: " line.
-            for old_version in previous_build_versions:
-                # Add a list of versions after 'skips'.
-                new_csv_lines.insert(version_line_index + 2, f'{indentation_step}- {olm_name_prefix}{old_version}')
-
-            pathlib.Path(csv_file).write_text('\n'.join(new_csv_lines))
+            # Re-write the CSV content.
+            pathlib.Path(csv_file).write_text(yaml.dump(csv_obj))
 
     def _update_environment_variables(self, update_envs, filename='Dockerfile'):
         """
