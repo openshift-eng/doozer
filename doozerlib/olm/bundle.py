@@ -393,7 +393,7 @@ class OLMBundle(object):
             return image
 
         new_contents = re.sub(
-            r'{}\/([^:]+):([^\'"\s]+)'.format(self.operator_csv_config['registry']),
+            r'{}\/([^:]+):([^\'"\\\s]+)'.format(self.operator_csv_config['registry']),
             collect_replaced_image,
             contents,
             flags=re.MULTILINE
