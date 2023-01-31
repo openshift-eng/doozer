@@ -156,7 +156,7 @@ class Runtime(object):
         self.assembly = 'test'
         self._build_status_detector = None
         self.disable_gssapi = False
-        self._openshift4_component_mapping_cache: Dict[str, str] = None
+        self._build_data_product_cache: Model = None
 
         self.stream: List[str] = []  # Click option. A list of image stream overrides from the command line.
         self.stream_overrides: Dict[str, str] = {}  # Dict of stream name -> pullspec from command line.
@@ -849,23 +849,17 @@ class Runtime(object):
         """
         return list(self.arches)
 
-    def get_openshift4_component_mapping(self) -> Dict[str, str]:
+    def get_product_config(self) -> Model:
         """
-        Returns a mapping of component name -> Jira component in OCPBUGS for openshift-4 product.
-        e.g. "ose-vertical-pod-autoscaler-container" -> "Node / Cluster Autoscaler",
+        Returns a Model of the product.yml in ocp-build-data main branch.
         """
-        if self._openshift4_component_mapping_cache:
-            return self._openshift4_component_mapping_cache
-        # Product security maintains this mapping
-        if 'prodsec_git' not in self.hosts:
-            raise IOError('Update your settings.yaml to include hosts: { prodsec_git: ... }')
-        prodsec_git_host = self.hosts['prodsec_git']
-        url = f'https://{prodsec_git_host}/prodsec/product-definitions/-/raw/master/data/openshift/ps_modules.json'
+        if self._build_data_product_cache:
+            return self._build_data_product_cache
+        url = 'https://raw.githubusercontent.com/openshift/ocp-build-data/main/product.yml'
         req = urllib.request.Request(url)
-        req.add_header('Accept', 'application/json')
-        ps_modules = json.loads(exectools.urlopen_assert(req).read())
-        _openshift4_component_mapping_cache = ps_modules['ps_modules']['openshift-4']['components']['override']
-        return _openshift4_component_mapping_cache
+        req.add_header('Accept', 'application/yaml')
+        self._build_data_product_cache = Model(yaml.safe_load(exectools.urlopen_assert(req).read()))
+        return self._build_data_product_cache
 
     def filter_failed_image_trees(self, failed):
         for i in self.ordered_image_metas():

@@ -775,15 +775,28 @@ class Metadata(object):
         # Maintainer info can be defined in metadata, so try there first.
         maintainer = self.config.jira.copy() or dict()
 
-        prodsec_mapping = self.runtime.get_openshift4_component_mapping()
-        prodsec_jira_component = prodsec_mapping.get(self.get_component_name(), 'Unknown')
+        product_config = self.runtime.get_product_config()
+        issue_project = product_config.bug_mapping.default_issue_project
+
+        component_mapping = product_config.bug_mapping.components
+        component_entry = component_mapping[self.get_component_name()]
+        if component_entry.issue_project:
+            issue_project = component_entry.issue_project
+
+        jira_component = component_entry.issue_component
+
+        if not issue_project:
+            issue_project = 'OCPBUGS'
+
+        if not jira_component:
+            jira_component = 'Unknown'
 
         if self.distgit_key == 'openshift-enterprise-base':
             # This is a special case image that is represented by upstream but
             # no one release owns. ART should handle merges here.
-            prodsec_jira_component = 'Release'
+            jira_component = 'Release'
 
-        return maintainer.get('project', 'OCPBUGS'), maintainer.get('component', prodsec_jira_component)
+        return maintainer.get('project', issue_project), maintainer.get('component', jira_component)
 
     def extract_kube_env_vars(self) -> Dict[str, str]:
         """
