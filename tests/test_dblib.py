@@ -95,7 +95,7 @@ class DBLibTest(unittest.TestCase):
 
     def test_select_withoutenv(self):
         if not self.setup_failed:
-            self.assertEqual(len(self.db.select("select * from test", 10)), 0)
+            self.assertRaises(RuntimeError, self.db.select, "select * from test", 10)
 
     def test_record(self):
         if not self.setup_failed:
