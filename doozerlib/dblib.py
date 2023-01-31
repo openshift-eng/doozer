@@ -135,21 +135,25 @@ class DB(object):
 
         """
 
+        if not self.mysql_db_env_var_setup:
+            self.runtime.logger.error('No queries can be made without DB env vars setup!')
+            raise RuntimeError
+
         exeresult = []
-        if self.mysql_db_env_var_setup:
-            db_connection = mysql_connector.connect(host=self.host,
-                                                    user=self.db_user,
-                                                    password=self.pwd,
-                                                    database=self.db)
-            cursor = db_connection.cursor()
-            try:
-                cursor.execute("{} LIMIT {}".format(expr, limit))
-                exeresult = cursor.fetchall()
-                self.runtime.logger.info(exeresult)
-            except Exception as e:
-                self.runtime.logger.error("Error executing command in database. Exception is [{}].".format(e))
-            finally:
-                cursor.close()
+        db_connection = mysql_connector.connect(host=self.host,
+                                                user=self.db_user,
+                                                password=self.pwd,
+                                                database=self.db)
+        cursor = db_connection.cursor()
+        try:
+            cursor.execute("{} LIMIT {}".format(expr, limit))
+            exeresult = cursor.fetchall()
+            self.runtime.logger.info(exeresult)
+        except Exception as e:
+            self.runtime.logger.error("Error executing command in database. Exception is [{}].".format(e))
+        finally:
+            cursor.close()
+
         return exeresult
 
     def check_database_exists(self):
