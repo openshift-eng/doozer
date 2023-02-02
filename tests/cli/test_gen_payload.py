@@ -221,6 +221,8 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
         gpcli.should_receive("detect_rhcos_issues").with_args(rhcosEntry, None).once()
         gpcli.should_receive("detect_rhcos_inconsistent_rpms").once().with_args(
             {False: ["rbi"], True: []})
+        gpcli.should_receive("detect_rhcos_kernel_inconsistencies").once().with_args(
+            {False: ["rbi"], True: []})
 
         gpcli.detect_extend_payload_entry_issues(None)
         self.assertEqual(gpcli.assembly_issues, spamEntry.issues)
