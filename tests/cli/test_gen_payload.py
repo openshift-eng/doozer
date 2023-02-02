@@ -1,4 +1,5 @@
 import os
+import pathlib
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock, Mock, patch
 
@@ -633,19 +634,73 @@ manifests:
         istream_apiobj = Mock(oc.APIObject, model=oc.Model(dict(
             metadata=dict(),
             spec=dict(tags=[
-                dict(name="spam1"),
-                dict(name="spam2"),
-                dict(name="spam3"),
-                dict(name="spam4"),
-                dict(name="spam5"),
-                dict(name="spam6"),
+                dict(name="spam0", annotations={'release.openshift.io/phase': 'Accepted'}),
+                dict(name="spam1", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam2", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam3", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam4", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam5", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam6", annotations={'release.openshift.io/phase': 'Accepted'}),
+            ])
+        )))
+        gpcli.should_receive("ensure_imagestream_apiobj").once().and_return(istream_apiobj)
+
+        def contains(name: str):
+            for tag in istream_apiobj.model.spec.tags:
+                if tag.name == name:
+                    return True
+            return False
+
+        await gpcli.apply_multi_imagestream_update("final_pullspec", "is_name", "multi_release_name")
+        self.assertFalse(contains(name="spam1"), "old rejected should have been pruned")
+        self.assertTrue(contains(name="spam2"), "recent rejected not pruned")
+        self.assertTrue(contains(name="spam6"), "new accepted not pruned")
+        self.assertTrue(contains(name="spam0"), "older 2nd accepted not pruned")
+
+        new_tag_annotations = istream_apiobj.model.spec.tags[-1]['annotations']
+        self.assertEqual('false', new_tag_annotations['release.openshift.io/rewrite'])
+        self.assertEqual(os.getenv('BUILD_URL', ''), new_tag_annotations['release.openshift.io/build-url'])
+        self.assertIn('release.openshift.io/runtime-brew-event', new_tag_annotations)
+
+    @patch("doozerlib.cli.release_gen_payload.modify_and_replace_api_object")
+    async def test_apply_multi_imagestream_update_retain_accepted(self, mar_mock):
+        gpcli = flexmock(rgp_cli.GenPayloadCli(output_dir="/tmp", runtime=MagicMock(assembly_type=AssemblyTypes.STREAM)))
+
+        # make MAR method do basically what it would, without writing all the files
+        mar_mock.side_effect = lambda apiobj, func, *_: func(apiobj)
+
+        # test object to modify - really testing inline function
+        istream_apiobj = Mock(oc.APIObject, model=oc.Model(dict(
+            metadata=dict(),
+            spec=dict(tags=[
+                dict(name="spam-1", annotations={'release.openshift.io/phase': 'Accepted'}),
+                dict(name="spam0", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam1", annotations={'release.openshift.io/phase': 'Accepted'}),
+                dict(name="spam2", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam3", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam4", annotations={'release.openshift.io/phase': 'Accepted'}),
+                dict(name="spam5", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam6", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam7", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam8", annotations={'release.openshift.io/phase': 'Rejected'}),
+                dict(name="spam9", annotations={'release.openshift.io/phase': 'Rejected'}),
             ])
         )))
         gpcli.should_receive("ensure_imagestream_apiobj").once().and_return(istream_apiobj)
 
         await gpcli.apply_multi_imagestream_update("final_pullspec", "is_name", "multi_release_name")
-        self.assertNotIn(dict(name="spam1"), istream_apiobj.model.spec.tags, "should have been pruned")
-        self.assertIn(dict(name="spam2"), istream_apiobj.model.spec.tags, "not pruned")
+
+        def contains(name: str):
+            for tag in istream_apiobj.model.spec.tags:
+                if tag.name == name:
+                    return True
+            return False
+
+        self.assertFalse(contains(name="spam-1"), "oldest accepted release should have been pruned")
+        self.assertTrue(contains(name="spam1"), "accepted release should not have been pruned")
+        self.assertTrue(contains(name="spam4"), "2nd accepted release should not have been pruned")
+        self.assertFalse(contains(name="spam0"), "oldest rejected release should have been pruned")
+
         new_tag_annotations = istream_apiobj.model.spec.tags[-1]['annotations']
         self.assertEqual('false', new_tag_annotations['release.openshift.io/rewrite'])
         self.assertEqual(os.getenv('BUILD_URL', ''), new_tag_annotations['release.openshift.io/build-url'])
