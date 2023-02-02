@@ -61,6 +61,11 @@ class AssemblyIssueCode(Enum):
     # the same version installed.
     FAILED_CONSISTENCY_REQUIREMENT = 8
 
+    # A consistency requirement for different packages failed
+    # Currently this failure only occurs if kernel and kernel-rt rpms
+    # in x86_64 RHCOS have different versions
+    FAILED_CROSS_RPM_VERSIONS_REQUIREMENT = 9
+
 
 class AssemblyIssue:
     """
