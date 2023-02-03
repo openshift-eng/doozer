@@ -2690,6 +2690,53 @@ class RPMDistGitRepo(DistGitRepo):
         super(RPMDistGitRepo, self).__init__(metadata, autoclone)
         self.source = self.config.content.source
 
+    def update_build_db(self, success_flag, task_id=None, scratch=False):
+        if scratch:
+            return
+
+        with Dir(self.distgit_dir):
+            commit_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()[:8]
+            invoke_ts = str(int(round(time.time() * 1000)))
+            invoke_ts_iso = self.runtime.timestamp()
+
+            with self.runtime.db.record('build', metadata=self.metadata):
+                Record.set('build.time.unix', invoke_ts)
+                Record.set('build.time.iso', invoke_ts_iso)
+                Record.set('dg.commit', commit_sha)
+                Record.set('brew.task_state', 'success' if success_flag else 'failure')
+                Record.set('brew.task_id', task_id)
+                Record.set('incomplete', False)
+                if task_id is not None:
+                    try:
+                        with self.runtime.shared_koji_client_session() as kcs:
+                            task_result = kcs.getTaskResult(task_id, raise_fault=False)
+                            """
+                            success example result:
+                            { 'koji_builds': ['1182060'],    # build_id created by task
+                              'repositories': [
+                                 'registry-proxy.engineering.redhat.com/rh-osbs/openshift-ose-ose-metering-ansible-operator-metadata:latest',
+                                 ...
+                               ]
+                            }
+                            fail example result:
+                            { 'faultCode': 1018,
+                              'faultString': 'log entries',
+                            }
+                            """
+                            Record.set('brew.faultCode', task_result.get('faultCode', 0))
+                            build_ids = task_result.get('koji_builds', [])
+                            Record.set('brew.build_ids', ','.join(build_ids))  # comma delimited list if > 1
+                            for idx, build_id in enumerate(build_ids):
+                                build_info = Model(kcs.getBuild(int(build_id)))
+                                for build_datum in ['id', 'source', 'version', 'nvr', 'name', 'release',
+                                                    'package_id']:
+                                    Record.set(f'build.{idx}.{build_datum}', build_info.get(build_datum, ''))
+
+                    except:
+                        Record.set('incomplete', True)
+                        traceback.print_exc()
+                        self.logger.error(f'Unable to extract brew task information for {task_id}')
+
     async def resolve_specfile_async(self) -> Tuple[pathlib.Path, Tuple[str, str, str], str]:
         """ Returns the path, NVR, and commit hash of the spec file in distgit_dir
 
