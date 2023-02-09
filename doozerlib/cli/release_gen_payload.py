@@ -1169,9 +1169,7 @@ class GenPayloadCli:
         def add_multi_nightly_release(obj: oc.APIObject):
             obj_model = obj.model
             if obj_model.spec.tags is oc.Missing:
-                obj_model.spec["tags"] = []
-
-            release_tags: List = obj_model.spec["tags"]
+                obj_model.spec["tags"] = oc.ListModel([])
 
             if self.runtime.assembly_type is AssemblyTypes.STREAM:
                 # For normal 4.x-art-latest, we update the imagestream with individual component images
@@ -1182,16 +1180,37 @@ class GenPayloadCli:
                 # This means the release controller treats entries in these imagestreams the same way it
                 # treats it when ART tags into is/release; i.e. it treats it as an official release.
                 # With this comes the responsibility to prune nightlies ourselves.
-                while len(release_tags) > 5:  # keep at most 5 tags
-                    release_tags.pop(0)
-                    # [lmeyer] Q: doesn't this leave the tag in the status still? are they reliably removed?
+                # The goal is to keep the list short, but to ensure that at least two accepted nightlies
+                # remain in the list, if there are at least two to begin with. Having at least one
+                # accepted nightly in the list is necessary to trigger upgrade tests from an old accepted
+                # nightly to a new one.
+                def is_non_rejected(tag):
+                    # Returns true if the imagestream tag has not yet been rejected. This
+                    # includes Accepted and tags which may still be in progress.
+                    return tag.get('annotations', dict()).get('release.openshift.io/phase', 'Unknown') != 'Rejected'
+
+                release_tags: List = obj_model.spec["tags"]._primitive()
+                new_release_tags = release_tags[-5:]  # Preserve the most recent five
+
+                latest_accepted = list(filter(is_non_rejected, new_release_tags))
+                if len(latest_accepted) < 2:
+                    remaining_tags = release_tags[:-5]
+                    remaining_accepted = list(filter(is_non_rejected, remaining_tags))
+                    new_release_tags = remaining_accepted[-2:] + new_release_tags  # Keep the newest accepted of the payloads we were going to otherwise prune
+
+                obj_model.spec["tags"] = new_release_tags
+
+                # When spec tags are removed, their entry under the imagestream.status field should also
+                # be removed by the imagestream controller. The release controller will delete the
+                # mirror imagestream that was created for the payload.
+
             else:
                 # For non-stream 4.x-art-assembly-$name, old imagestreamtags should be removed.
-                release_tags.clear()
+                obj_model.spec["tags"].clear()
                 obj_model.metadata.annotations = pipeline_metadata_annotations
 
             # Now append a tag for our new nightly.
-            release_tags.append({
+            obj_model.spec["tags"].append({
                 "from": {
                     "kind": "DockerImage",
                     "name": final_multi_pullspec,
