@@ -677,26 +677,29 @@ be reopened automatically.
         if potential_project != project or potential_component != component:
             description += f'''
 
-Important: Product Security has recorded in their ps_modules.json data that bugs
-for this component should be opened against Jira project "{potential_project}" and
+Important: ART has recorded in their product data that bugs for
+this component should be opened against Jira project "{potential_project}" and
 component "{potential_component}". This project or component does not exist. Jira
-should either be updated to include this component or an email should be sent to
-prodsec-openshift@redhat.com to have them update their data. Until this is done,
-ART issues against this component will be opened against OCPBUGS/Unknown --
-creating unnecessary work and delay.
+should either be updated to include this component or @release-artists should be
+notified of the proper mapping in the #aos-art Slack channel.
 
-Prodsec will need to know the product component name: {distgit_key} .
+Component name: {image_meta.get_component_name()} .
+Jira mapping: https://github.com/openshift/ocp-build-data/blob/main/product.yml
 '''
         elif potential_project == 'Unknown':
             description += f'''
 
-Important: Product Security maintains a mapping of OpenShift software components to
-Jira components in their ps_modules.json data for OpenShift. This component does not
-have a mapping in that data. Please email prodsec-openshift@redhat.com to ensure
-this component is registered. Until this is done, ART issues against
-this component will be opened against OCPBUGS/Unknown -- creating unnecessary work and delay.
+Important: ART maintains a mapping of OpenShift software components to
+Jira components. This component does not currently have an entry defined
+within that data.
+Contact @release-artists in the #aos-art Slack channel to inform them of
+the Jira project and component to use for this image.
 
-Prodsec will need to know the product component name: {distgit_key} .
+Until this is done, ART issues against this component will be opened
+against OCPBUGS/Unknown -- creating unnecessary processing work and delay.
+
+Component name: {image_meta.get_component_name()} .
+Jira mapping: https://github.com/openshift/ocp-build-data/blob/main/product.yml
 '''
 
         fields = {

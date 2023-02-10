@@ -1097,10 +1097,9 @@ def images_print(runtime, short, show_non_release, show_base, output, label, pat
     {build} - Shorthand for {component}-{version}-{release} (e.g. container-engine-v3.6.173.0.25-1)
     {repository} - Shorthand for {image}:{version}-{release}
     {label} - The label you want to print from the Dockerfile (Empty string if n/a)
-    {bz_info} - All known BZ component information for the component
-    {bz_product} - The BZ product, if known
-    {bz_component} - The BZ component, if known
-    {bz_subcomponent} - The BZ subcomponent, if known
+    {jira_info} - All known BZ component information for the component
+    {jira_project} - The associated Jira project for bugs, if known
+    {jira_component} - The associated Jira project component, if known
     {upstream} - The upstream repository for the image
     {upstream_public} - The public upstream repository (if different) for the image
     {lf} - Line feed
