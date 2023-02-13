@@ -1074,9 +1074,14 @@ class Runtime(object):
             raise DoozerFatalError("Unable to find image metadata in group / included images: %s" % distgit_name)
         return self.image_map[distgit_name]
 
-    def late_resolve_image(self, distgit_name, add=False):
+    def late_resolve_image(self, distgit_name, add=False, required=True):
         """Resolve image and retrieve meta, optionally adding to image_map.
-        If image not found, error will be thrown"""
+        If image not found, error will be thrown
+        :param distgit_name: Distgit key
+        :param add: Add the image to image_map
+        :param required: If False, return None if the image is not enabled
+        :return: Image meta
+        """
 
         if distgit_name in self.image_map:
             return self.image_map[distgit_name]
@@ -1085,6 +1090,13 @@ class Runtime(object):
         data_obj = self.gitdata.load_data(path='images', key=distgit_name, replace_vars=replace_vars)
         if not data_obj:
             raise DoozerFatalError('Unable to resolve image metadata for {}'.format(distgit_name))
+
+        mode = data_obj.data.get("mode", "enabled")
+        if mode == "disabled" and not self.load_disabled or mode == "wip" and not self.load_wip:
+            if required:
+                raise DoozerFatalError('Attempted to load image {} but it has mode {}'.format(distgit_name, mode))
+            self.logger.warning("Image %s will not be loaded because it has mode %s", distgit_name, mode)
+            return None
 
         meta = ImageMetadata(self, data_obj, self.upstream_commitish_overrides.get(data_obj.key))
         if add:
