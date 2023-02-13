@@ -27,7 +27,9 @@ class ImageMetadata(Metadata):
         self.dependencies: Set[str] = set()
         dependents = self.config.get('dependents', [])
         for d in dependents:
-            dependent: ImageMetadata = self.runtime.late_resolve_image(d, add=True)
+            dependent = self.runtime.late_resolve_image(d, add=True, required=False)
+            if not dependent:
+                continue
             dependent.dependencies.add(self.distgit_key)
             self.children.append(dependent)
         if clone_source:
