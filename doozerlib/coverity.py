@@ -179,7 +179,7 @@ RUN if cat /etc/redhat-release | grep "release 8"; then echo '[covscan_local_{id
 """
                 vol_mount_arg += f' -v {lr}:/covscan_local_{idx}_rhel_8:z'
         else:
-            make_image_repo_files += 'RUN if cat /etc/redhat-release | grep "release 8"; then curl -k https://cov01.lab.eng.brq2.redhat.com/coverity/install/covscan/covscan-rhel-8.repo --output /etc/yum.repos.d/covscan.repo; fi\n'
+            make_image_repo_files += 'RUN if cat /etc/redhat-release | grep "release 8"; then curl -k https://copr.devel.redhat.com/coprs/kdudka/covscan/repo/epel-8/kdudka-covscan-epel-8.repo --output /etc/yum.repos.d/covscan.repo; fi\n'
 
         return make_image_repo_files, vol_mount_arg
 
