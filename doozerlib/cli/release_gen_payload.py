@@ -683,6 +683,8 @@ class GenPayloadCli:
             tasks.append(self.mirror_payload_content(arch, payload_entries))
         await asyncio.gather(*tasks)
 
+        await asyncio.sleep(60)
+
         # Update the imagestreams being monitored by the release controller.
         tasks = []
         for arch, payload_entries in self.payload_entries_for_arch.items():
