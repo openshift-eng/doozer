@@ -19,6 +19,12 @@ from doozerlib.exceptions import DoozerFatalError
 from doozerlib import rhcos
 
 
+async def no_sleep(arg):
+    pass
+
+rgp_cli.asyncio.sleep = no_sleep
+
+
 class TestGenPayloadCli(IsolatedAsyncioTestCase):
 
     def test_find_rhcos_payload_entries(self):
