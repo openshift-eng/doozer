@@ -957,7 +957,7 @@ class Runtime(object):
                 url = out_origin.strip()
                 origin_url = url
                 # Usually something like "git@github.com:openshift/origin.git"
-                # But we want an https hyperlink like http://github.com/openshift/origin
+                # But we want an https hyperlink like https://github.com/openshift/origin
                 if origin_url.startswith("git@"):
                     origin_url = origin_url[4:]  # remove git@
                     origin_url = origin_url.replace(":", "/", 1)  # replace first colon with /

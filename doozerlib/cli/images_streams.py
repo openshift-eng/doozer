@@ -383,7 +383,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
         if transform == transform_rhel_9_base_repos or config.transform == transform_rhel_9_golang:
             # The repos transform create a build config that will layer the base image with CI appropriate yum
             # repository definitions.
-            dfp.add_lines(f'RUN rm -rf /etc/yum.repos.d/*.repo && curl http://base-{major}-{minor}-rhel9.ocp.svc > /etc/yum.repos.d/ci-rpm-mirrors.repo')
+            dfp.add_lines(f'RUN rm -rf /etc/yum.repos.d/*.repo && curl https://base-{major}-{minor}-rhel9.ocp.svc > /etc/yum.repos.d/ci-rpm-mirrors.repo')
 
             # Allow the base repos to be used BEFORE art begins mirroring 4.x to openshift mirrors.
             # This allows us to establish this locations later -- only disrupting CI for those
@@ -394,7 +394,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
         if transform == transform_rhel_8_base_repos or config.transform == transform_rhel_8_golang:
             # The repos transform create a build config that will layer the base image with CI appropriate yum
             # repository definitions.
-            dfp.add_lines(f'RUN rm -rf /etc/yum.repos.d/*.repo && curl http://base-{major}-{minor}-rhel8.ocp.svc > /etc/yum.repos.d/ci-rpm-mirrors.repo')
+            dfp.add_lines(f'RUN rm -rf /etc/yum.repos.d/*.repo && curl https://base-{major}-{minor}-rhel8.ocp.svc > /etc/yum.repos.d/ci-rpm-mirrors.repo')
 
             # Allow the base repos to be used BEFORE art begins mirroring 4.x to openshift mirrors.
             # This allows us to establish this locations later -- only disrupting CI for those
@@ -405,7 +405,7 @@ def images_streams_gen_buildconfigs(runtime, streams, output, as_user, apply, li
         if transform == transform_rhel_7_base_repos or config.transform == transform_rhel_7_golang:
             # The repos transform create a build config that will layer the base image with CI appropriate yum
             # repository definitions.
-            dfp.add_lines(f'RUN rm -rf /etc/yum.repos.d/*.repo && curl http://base-{major}-{minor}.ocp.svc > /etc/yum.repos.d/ci-rpm-mirrors.repo')
+            dfp.add_lines(f'RUN rm -rf /etc/yum.repos.d/*.repo && curl https://base-{major}-{minor}.ocp.svc > /etc/yum.repos.d/ci-rpm-mirrors.repo')
             # Allow the base repos to be used BEFORE art begins mirroring 4.x to openshift mirrors.
             # This allows us to establish this locations later -- only disrupting CI for those
             # components that actually need reposync'd RPMs from the mirrors.

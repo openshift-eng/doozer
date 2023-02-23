@@ -185,7 +185,7 @@ def cmd_gather(cmd: Union[str, List], set_env: Optional[Dict[str, str]] = None, 
             out = b''
             err = b''
 
-            # Many thanks to http://eyalarubas.com/python-subproc-nonblock.html
+            # Many thanks to https://eyalarubas.com/python-subproc-nonblock.html
             # setup non-blocking read
             # set the O_NONBLOCK flag of proc.stdout file descriptor:
             flags = fcntl(proc.stdout, F_GETFL)  # get current proc.stdout flags

@@ -221,14 +221,14 @@ if cat /etc/redhat-release | grep "release 8"; then
     # available for tools like python to install.
     cat <<EOF > /etc/yum.repos.d/el8.repo
 [rhel-8-appstream-rpms-x86_64]
-baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/appstream/os/
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/appstream/os/
 enabled = 1
 name = rhel-8-appstream-rpms-x86_64
 gpgcheck = 0
 gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 [rhel-8-baseos-rpms-x86_64]
-baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/baseos/os/
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/baseos/os/
 enabled = 1
 name = rhel-8-baseos-rpms-x86_64
 gpgcheck = 0
@@ -243,21 +243,21 @@ else
     # can install python and other dependencies.
     cat <<EOF > /etc/yum.repos.d/el7.repo
 [rhel-server-rpms-x86_64]
-baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel/server/7/7Server/x86_64/os/
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel/server/7/7Server/x86_64/os/
 enabled = 1
 name = rhel-server-rpms-x86_64
 gpgcheck = 0
 gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 [rhel-server-optional-rpms-x86_64]
-baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel/server/7/7Server/x86_64/optional/os/
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel/server/7/7Server/x86_64/optional/os/
 enabled = 0
 name = rhel-server-optional-rpms-x86_64
 gpgcheck = 0
 gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 [rhel-server-extras-rpms-x86_64]
-baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel/server/7/7Server/x86_64/extras/os/
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel/server/7/7Server/x86_64/extras/os/
 enabled = 0
 name = rhel-server-extras-rpms-x86_64
 gpgcheck = 0

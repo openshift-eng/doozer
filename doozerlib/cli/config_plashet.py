@@ -24,7 +24,7 @@ from doozerlib.brew import get_builds_tags
 from doozerlib.util import (find_latest_builds, isolate_el_version_in_brew_tag,
                             mkdirs, strip_epoch, to_nvre)
 
-ERRATA_URL = "http://errata-xmlrpc.devel.redhat.com/errata/errata_service"
+ERRATA_URL = "https://errata-xmlrpc.devel.redhat.com/errata/errata_service"
 ERRATA_API_URL = "https://errata.engineering.redhat.com/api/v1/"
 
 logger: logging.Logger = None

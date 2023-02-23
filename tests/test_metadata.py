@@ -15,7 +15,7 @@ class TestMetadata(TestCase):
     def setUp(self) -> None:
         data_obj = MagicMock(key="foo", filename="foo.yml", data={"name": "foo"})
         runtime = MagicMock()
-        runtime.group_config.urls.cgit = "http://distgit.example.com/cgit"
+        runtime.group_config.urls.cgit = "https://distgit.example.com/cgit"
         runtime.group_config.scan_freshness.threshold_hours = 6
         runtime.logger = Mock()
 
@@ -46,10 +46,10 @@ class TestMetadata(TestCase):
     def test_cgit_url(self):
         data_obj = MagicMock(key="foo", filename="foo.yml", data={"name": "foo"})
         runtime = MagicMock()
-        runtime.group_config.urls.cgit = "http://distgit.example.com/cgit"
+        runtime.group_config.urls.cgit = "https://distgit.example.com/cgit"
         meta = Metadata("image", runtime, data_obj)
         url = meta.cgit_file_url("some_path/some_file.txt", "abcdefg", "some-branch")
-        self.assertEqual(url, "http://distgit.example.com/cgit/containers/foo/plain/some_path/some_file.txt?h=some-branch&id=abcdefg")
+        self.assertEqual(url, "https://distgit.example.com/cgit/containers/foo/plain/some_path/some_file.txt?h=some-branch&id=abcdefg")
 
     def build_record(self, creation_dt: datetime.datetime, assembly, name='foo-container',
                      version='4.7.0', p='p0', epoch=None, git_commit='4c0ed6d',

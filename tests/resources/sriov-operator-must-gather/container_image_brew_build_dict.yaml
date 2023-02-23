@@ -49,7 +49,7 @@ extra:
     - openshift/golang-builder:rhel_8_golang_1.16
     - openshift/ose-base:v4.9.0-202107222130.p0.git.8bbec8f.assembly.stream
     yum_repourls:
-    - http://pkgs.devel.redhat.com/cgit/containers/sriov-network-must-gather/plain/.oit/unsigned.repo?h=rhaos-4.9-rhel-8&id=e43afce9d3812403ae54e9166551791a9a4ea550
+    - https://pkgs.devel.redhat.com/cgit/containers/sriov-network-must-gather/plain/.oit/unsigned.repo?h=rhaos-4.9-rhel-8&id=e43afce9d3812403ae54e9166551791a9a4ea550
   osbs_build:
     engine: imagebuilder
     kind: container_build
@@ -95,7 +95,7 @@ extra:
       - openshift/golang-builder:rhel_8_golang_1.16
       - openshift/ose-base:v4.9.0-202107222130.p0.git.8bbec8f.assembly.stream
       yum_repourls:
-      - http://pkgs.devel.redhat.com/cgit/containers/sriov-network-must-gather/plain/.oit/unsigned.repo?h=rhaos-4.9-rhel-8&id=e43afce9d3812403ae54e9166551791a9a4ea550
+      - https://pkgs.devel.redhat.com/cgit/containers/sriov-network-must-gather/plain/.oit/unsigned.repo?h=rhaos-4.9-rhel-8&id=e43afce9d3812403ae54e9166551791a9a4ea550
 id: 1675520
 name: sriov-network-must-gather-container
 nvr: sriov-network-must-gather-container-v4.9.0-202107261525.p0.git.51a98df.assembly.stream

@@ -90,7 +90,7 @@ fi
 printf "${GREEN}Installing required yum/dnf repos...${NC}\n"
 
 show_cmd sudo dnf config-manager --add-repo https://gitlab.cee.redhat.com/platform-eng-core-services/internal-repos/raw/master/rhel/rhel-7.repo
-show_cmd sudo dnf config-manager --add-repo http://download.devel.redhat.com/rel-eng/RCMTOOLS/rcm-tools-rhel-7-server.repo
+show_cmd sudo dnf config-manager --add-repo https://download.devel.redhat.com/rel-eng/RCMTOOLS/rcm-tools-rhel-7-server.repo
 
 # only needed for RHEL?
 # show_cmd wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
@@ -98,7 +98,7 @@ show_cmd sudo dnf config-manager --add-repo http://download.devel.redhat.com/rel
 
 printf "${GREEN}Installing imagebuilder...${NC}\n"
 
-show_cmd wget -O imagebuilder.rpm "http://download.eng.bos.redhat.com/brewroot/vol/rhel-7/packages/imagebuilder/0.0.5/1.el7eng/${ARCH}/imagebuilder-0.0.5-1.el7eng.${ARCH}.rpm"
+show_cmd wget -O imagebuilder.rpm "https://download.eng.bos.redhat.com/brewroot/vol/rhel-7/packages/imagebuilder/0.0.5/1.el7eng/${ARCH}/imagebuilder-0.0.5-1.el7eng.${ARCH}.rpm"
 show_cmd sudo dnf install -y imagebuilder.rpm
 
 printf "${GREEN}Installing misc dependencies...${NC}\n"

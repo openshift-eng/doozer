@@ -320,19 +320,19 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
     Where covscan.repo is:
         [covscan]
         name=Copr repo for covscan
-        baseurl=http://coprbe.devel.redhat.com/repos/kdudka/covscan/epel-7-$basearch/
+        baseurl=https://coprbe.devel.redhat.com/repos/kdudka/covscan/epel-7-$basearch/
         skip_if_unavailable=True
         gpgcheck=0
-        gpgkey=http://coprbe.devel.redhat.com/repos/kdudka/covscan/pubkey.gpg
+        gpgkey=https://coprbe.devel.redhat.com/repos/kdudka/covscan/pubkey.gpg
         enabled=1
         enabled_metadata=1
 
         [covscan-testing]
         name=Copr repo for covscan-testing
-        baseurl=http://coprbe.devel.redhat.com/repos/kdudka/covscan-testing/epel-7-$basearch/
+        baseurl=https://coprbe.devel.redhat.com/repos/kdudka/covscan-testing/epel-7-$basearch/
         skip_if_unavailable=True
         gpgcheck=0
-        gpgkey=http://coprbe.devel.redhat.com/repos/kdudka/covscan-testing/pubkey.gpg
+        gpgkey=https://coprbe.devel.redhat.com/repos/kdudka/covscan-testing/pubkey.gpg
         enabled=0
         enabled_metadata=1
 

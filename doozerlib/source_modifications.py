@@ -31,7 +31,7 @@ class SourceModifierFactory(object):
         For example, create a source modifier for adding an out-of-tree file:
 
             factory = SourceModifierFactory()
-            modifier = factory.create(action='add', source='http://example.com/gating_yaml', dest='gating.yaml', overwrite=True)
+            modifier = factory.create(action='add', source='https://example.com/gating_yaml', dest='gating.yaml', overwrite=True)
             modifier.modify()
         """
         action = kwargs["action"]

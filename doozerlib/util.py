@@ -130,7 +130,7 @@ def convert_remote_git_to_https(source_url: str):
     :return: Normalized https git URL
     """
     url = source_url.strip().rstrip('/')
-    url = remove_prefixes(url, 'http://', 'https://', 'git://', 'git@', 'ssh://')
+    url = remove_prefixes(url, 'https://', 'https://', 'git://', 'git@', 'ssh://')
     url = remove_suffix(url, '.git')
     url = url.split('@', 1)[-1]  # Strip username@
 

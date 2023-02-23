@@ -7,7 +7,7 @@ ADD ./certs/RH-IT-Root-CA.crt /etc/pki/ca-trust/source/anchors/
 COPY . .
 RUN update-ca-trust && \
     yum-config-manager --add-repo=https://gitlab.cee.redhat.com/platform-eng-core-services/internal-repos/raw/master/rhel/rhel-7.repo && \
-    yum-config-manager --add-repo=http://download.devel.redhat.com/rel-eng/RCMTOOLS/rcm-tools-rhel-7-server.repo && \
+    yum-config-manager --add-repo=https://download.devel.redhat.com/rel-eng/RCMTOOLS/rcm-tools-rhel-7-server.repo && \
     yum-config-manager --enable rhel-7-server-optional-rpms && \
     yum-config-manager --enable rhel-7-server-rpms && \
     yum-config-manager --enable rhel-7-server-extras-rpms && \

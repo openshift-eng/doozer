@@ -54,7 +54,7 @@ Likely already on your system. If not:
 Enable the following repos on your system:
 
 - https://gitlab.cee.redhat.com/platform-eng-core-services/internal-repos/raw/master/rhel/rhel-7.repo
-- http://download.devel.redhat.com/rel-eng/RCMTOOLS/rcm-tools-rhel-7-server.repo
+- https://download.devel.redhat.com/rel-eng/RCMTOOLS/rcm-tools-rhel-7-server.repo
 
 Then install with:
 
@@ -101,8 +101,8 @@ Note: This is just one example and your mileage may vary depending on your syste
 
 - Add the following entry to your `/etc/docker/daemon.json`:
 
-    `"insecure-registries": ["http://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/"]`
+    `"insecure-registries": ["https://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/"]`
 
-- In `/etc/containers/registries.conf ` add `http://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888` to both `[registries.search:registries]` and `[registries.insecure:registries]`. We recommend adding it to the beginning of the list if possible so that docker does not pull public versions of an image.
+- In `/etc/containers/registries.conf ` add `https://brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888` to both `[registries.search:registries]` and `[registries.insecure:registries]`. We recommend adding it to the beginning of the list if possible so that docker does not pull public versions of an image.
 
 - Restart docker

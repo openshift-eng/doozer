@@ -47,7 +47,7 @@ class TestOSBS2Builder(asynctest.TestCase):
         dg = ImageDistGitRepo(meta, autoclone=False)
         dg.sha = "deadbeef"
         dg.branch = "rhaos-4.12-rhel-8"
-        dg.cgit_file_available = MagicMock(return_value=(True, "http://cgit.example.com/foo.repo"))
+        dg.cgit_file_available = MagicMock(return_value=(True, "https://cgit.example.com/foo.repo"))
         profile = {
             "signing_intent": "release",
             "repo_type": "signed",
@@ -65,7 +65,7 @@ class TestOSBS2Builder(asynctest.TestCase):
             opts={
                 'scratch': False,
                 'signing_intent': "release",
-                'yum_repourls': ["http://cgit.example.com/foo.repo"],
+                'yum_repourls': ["https://cgit.example.com/foo.repo"],
                 'git_branch': "rhaos-4.12-rhel-8",
             },
             channel="container-binary")

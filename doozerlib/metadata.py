@@ -296,9 +296,9 @@ class Metadata(object):
         feed provides timestamp and commit information without having to clone distgits.
 
         Example urls..
-        http://pkgs.devel.redhat.com/cgit/containers/cluster-etcd-operator/atom/?h=rhaos-4.8-rhel-8
+        https://pkgs.devel.redhat.com/cgit/containers/cluster-etcd-operator/atom/?h=rhaos-4.8-rhel-8
         or
-        http://pkgs.devel.redhat.com/cgit/containers/cluster-etcd-operator/atom/?id=35ecfa4436139442edc19585c1c81ebfaca18550
+        https://pkgs.devel.redhat.com/cgit/containers/cluster-etcd-operator/atom/?id=35ecfa4436139442edc19585c1c81ebfaca18550
         """
         cgit_url_base = self.runtime.group_config.urls.cgit
         if not cgit_url_base:
@@ -328,12 +328,12 @@ class Metadata(object):
         et = ElementTree.fromstring(content)
 
         entry_list = list()
-        for et_entry in et.findall('{http://www.w3.org/2005/Atom}entry'):
+        for et_entry in et.findall('{https://www.w3.org/2005/Atom}entry'):
             entry = CgitAtomFeedEntry(
-                title=et_entry.find('{http://www.w3.org/2005/Atom}title').text,
-                updated=dateutil.parser.parse(et_entry.find('{http://www.w3.org/2005/Atom}updated').text),
-                id=et_entry.find('{http://www.w3.org/2005/Atom}id').text,
-                content=et_entry.find('{http://www.w3.org/2005/Atom}content[@type="text"]').text
+                title=et_entry.find('{https://www.w3.org/2005/Atom}title').text,
+                updated=dateutil.parser.parse(et_entry.find('{https://www.w3.org/2005/Atom}updated').text),
+                id=et_entry.find('{https://www.w3.org/2005/Atom}id').text,
+                content=et_entry.find('{https://www.w3.org/2005/Atom}content[@type="text"]').text
             )
             entry_list.append(entry)
 
@@ -596,7 +596,7 @@ class Metadata(object):
         component_name = meta_name
 
         # For apbs, component name seems to have -apb appended.
-        # ex. http://dist-git.host.prod.eng.bos.redhat.com/cgit/apbs/openshift-enterprise-mediawiki/tree/Dockerfile?h=rhaos-3.7-rhel-7
+        # ex. https://dist-git.host.prod.eng.bos.redhat.com/cgit/apbs/openshift-enterprise-mediawiki/tree/Dockerfile?h=rhaos-3.7-rhel-7
         if namespace == "apbs":
             component_name = "%s-apb" % component_name
 

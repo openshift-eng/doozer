@@ -672,7 +672,7 @@ class TestGenericDistGit(TestDistgit):
     @mock.patch("requests.head")
     def test_cgit_file_available(self, mocked_head):
         meta = MockMetadata(MockRuntime(self.logger))
-        cgit_url = "http://distgit.example.com/cgit/containers/foo/plain/some_path/some_file.txt?h=some-branch&id=abcdefg"
+        cgit_url = "https://distgit.example.com/cgit/containers/foo/plain/some_path/some_file.txt?h=some-branch&id=abcdefg"
         meta.cgit_file_url = lambda *args, **kwargs: cgit_url
         dg = distgit.ImageDistGitRepo(meta, autoclone=False)
         dg.sha = "abcdefg"

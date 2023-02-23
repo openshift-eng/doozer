@@ -36,7 +36,7 @@ class AddModifierTestCase(unittest.TestCase):
 
     def test_act_success(self):
         params = {
-            "source": "http://example.com/gating_yaml",
+            "source": "https://example.com/gating_yaml",
             "path": os.path.join(self.temp_dir, "gating.yaml"),
             "overwriting": True,
         }
@@ -54,7 +54,7 @@ class AddModifierTestCase(unittest.TestCase):
 
     def test_act_failed_with_file_exists(self):
         params = {
-            "source": "http://example.com/gating_yaml",
+            "source": "https://example.com/gating_yaml",
             "path": os.path.join(self.temp_dir, "gating.yaml"),
             "overwriting": False,
         }
@@ -73,7 +73,7 @@ class AddModifierTestCase(unittest.TestCase):
 
     def test_act_failed_with_invalid_yaml(self):
         params = {
-            "source": "http://example.com/gating_yaml",
+            "source": "https://example.com/gating_yaml",
             "path": os.path.join(self.temp_dir, "gating.yaml"),
             "overwriting": True,
             "validate": "yaml"

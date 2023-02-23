@@ -120,7 +120,7 @@ class Repo(object):
             [rhel-7-server-ansible-2.4-rpms]
             gpgcheck = 0
             enabled = 0
-            baseurl = http://pulp.dist.pr.../x86_64/ansible/2.4/os/
+            baseurl = https://pulp.dist.pr.../x86_64/ansible/2.4/os/
             name = rhel-7-server-ansible-2.4-rpms
         """
         if not repotype:
@@ -180,7 +180,7 @@ class Repo(object):
 # base empty repo section for disabling repos in Dockerfiles
 EMPTY_REPO = """
 [{0}]
-baseurl = http://download.lab.bos.redhat.com/rcm-guest/puddles/RHAOS/AtomicOpenShift_Empty/
+baseurl = https://download.lab.bos.redhat.com/rcm-guest/puddles/RHAOS/AtomicOpenShift_Empty/
 enabled = 1
 gpgcheck = 0
 name = {0}
