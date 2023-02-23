@@ -15,5 +15,6 @@ mysql-connector-python >= 8.0.21
 python-dateutil >= 2.8.1
 openshift-client >= 1.0.12
 setuptools-scm
+setuptools>=65.5.1 # not directly required, pinned by Snyk to avoid a vulnerability
 aiohttp
 jira==3.4.1
