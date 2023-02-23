@@ -10,4 +10,3 @@ pytest
 tox
 typing
 typing-extensions
-setuptools>=49.6.0
