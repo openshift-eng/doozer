@@ -10,7 +10,7 @@ import yaml
 
 from doozerlib import util
 from doozerlib.assembly import AssemblyTypes
-from doozerlib.cli import cli, pass_runtime
+from doozerlib.cli import cli, pass_runtime, click_coroutine
 from doozerlib import exectools
 from doozerlib.model import Model
 from doozerlib import brew
@@ -58,31 +58,30 @@ def releases_gen_assembly(ctx, name):
 @click.option('--output-file', '-o', required=False,
               help='Specify a file path to write the generated assembly definition to')
 @pass_runtime
+@click_coroutine
 @click.pass_context
-def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...], standards: Tuple[str, ...],
-                               custom: bool, in_flight: Optional[str], previous_list: Tuple[str, ...],
-                               auto_previous: bool, graph_url: Optional[str], graph_content_stable: Optional[str],
-                               graph_content_candidate: Optional[str], suggestions_url: Optional[str],
-                               output_file: Optional[str]):
+async def gen_assembly_from_releases(ctx, runtime: Runtime, nightlies: Tuple[str, ...], standards: Tuple[str, ...],
+                                     custom: bool, in_flight: Optional[str], previous_list: Tuple[str, ...],
+                                     auto_previous: bool, graph_url: Optional[str], graph_content_stable: Optional[str],
+                                     graph_content_candidate: Optional[str], suggestions_url: Optional[str],
+                                     output_file: Optional[str]):
 
     runtime.initialize(mode='both', clone_distgits=False, clone_source=False, prevent_cloning=True)
 
-    assembly_def = asyncio.get_event_loop().run_until_complete(
-        GenAssemblyCli(
-            runtime=runtime,
-            gen_assembly_name=ctx.obj['ASSEMBLY_NAME'],
-            nightlies=nightlies,
-            standards=standards,
-            custom=custom,
-            in_flight=in_flight,
-            previous_list=previous_list,
-            auto_previous=auto_previous,
-            graph_url=graph_url,
-            graph_content_stable=graph_content_stable,
-            graph_content_candidate=graph_content_candidate,
-            suggestions_url=suggestions_url,
-        ).run()
-    )
+    assembly_def = await GenAssemblyCli(
+        runtime=runtime,
+        gen_assembly_name=ctx.obj['ASSEMBLY_NAME'],
+        nightlies=nightlies,
+        standards=standards,
+        custom=custom,
+        in_flight=in_flight,
+        previous_list=previous_list,
+        auto_previous=auto_previous,
+        graph_url=graph_url,
+        graph_content_stable=graph_content_stable,
+        graph_content_candidate=graph_content_candidate,
+        suggestions_url=suggestions_url,
+    ).run()
 
     print(yaml.dump(assembly_def))
     if output_file:
