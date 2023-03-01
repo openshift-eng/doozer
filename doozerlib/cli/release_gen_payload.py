@@ -18,7 +18,7 @@ from doozerlib.rpm_utils import parse_nvr
 
 from doozerlib.brew import KojiWrapperMetaReturn
 from doozerlib.rhcos import RHCOSBuildInspector, RhcosMissingContainerException
-from doozerlib.cli import cli, pass_runtime
+from doozerlib.cli import cli, pass_runtime, click_coroutine
 from doozerlib.image import ImageMetadata, BrewBuildImageInspector, ArchiveImageInspector
 from doozerlib.assembly_inspector import AssemblyInspector
 from doozerlib.runtime import Runtime
@@ -57,11 +57,12 @@ from doozerlib.util import find_manifest_list_sha
               help="Also create a release payload for multi-arch/heterogeneous clusters.")
 @click.option("--moist-run", default=False, is_flag=True,
               help="Mirror and determine tags but do not actually update imagestreams.")
+@click_coroutine
 @pass_runtime
-def release_gen_payload(runtime: Runtime, is_name: str, is_namespace: str, organization: str,
-                        repository: str, release_repository: str, output_dir: str, exclude_arch: Tuple[str, ...],
-                        skip_gc_tagging: bool, emergency_ignore_issues: bool,
-                        apply: bool, apply_multi_arch: bool, moist_run: bool):
+async def release_gen_payload(runtime: Runtime, is_name: str, is_namespace: str, organization: str,
+                              repository: str, release_repository: str, output_dir: str, exclude_arch: Tuple[str, ...],
+                              skip_gc_tagging: bool, emergency_ignore_issues: bool,
+                              apply: bool, apply_multi_arch: bool, moist_run: bool):
     """
 Computes a set of imagestream tags which can be assembled into an OpenShift release for this
 assembly. The tags may not be valid unless --apply or --moist-run triggers mirroring.
@@ -107,7 +108,7 @@ read and propagate/expose this annotation in its display of the release image.
     """
 
     runtime.initialize(mode="both", clone_distgits=False, clone_source=False, prevent_cloning=True)
-    pipeline = GenPayloadCli(
+    await GenPayloadCli(
         runtime,
         is_name or assembly_imagestream_base_name(runtime),
         is_namespace or default_imagestream_namespace_base_name(),
@@ -116,9 +117,7 @@ read and propagate/expose this annotation in its display of the release image.
         exclude_arch,
         skip_gc_tagging, emergency_ignore_issues,
         apply, apply_multi_arch, moist_run
-    )
-
-    asyncio.get_event_loop().run_until_complete(pipeline.run())
+    ).run()
 
 
 def default_imagestream_base_name(version: str) -> str:
