@@ -3,6 +3,9 @@ import click
 import yaml
 from doozerlib.cli import cli
 from doozerlib.comment_on_pr import CommentOnPr
+from doozerlib.logutil import getLogger
+
+logger = getLogger(__name__)
 
 
 @cli.command("comment-on-pr:from-job",
@@ -20,7 +23,7 @@ def comment_from_job(job: str):
     """
     job_name, job_id = job.split("/")
     if job_name != "ocp4":
-        print("Can only process OCP4 jobs for now")
+        logger.error("Can only process OCP4 jobs for now")
         sys.exit(1)
 
     result = CommentOnPr(job_id=job_id).run()
