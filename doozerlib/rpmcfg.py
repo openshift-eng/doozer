@@ -233,6 +233,13 @@ class RPMMetadata(Metadata):
     def candidate_brew_tags(self):
         return self.targets.copy()
 
+    def hotfix_brew_tags(self):
+        hotfix_tags = []
+        for target in self.targets:
+            base_tag = target[:-len("-candidate")] if target.endswith("-candidate") else target
+            hotfix_tags.append(f"{base_tag}-hotfix")
+        return hotfix_tags
+
     def _default_brew_target(self):
         """ Returns derived brew target name from the distgit branch name
         """
