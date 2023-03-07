@@ -1,5 +1,5 @@
 
-import json
+import json, koji
 from typing import Dict, List, Tuple, Optional
 
 from doozerlib.rpm_utils import parse_nvr
@@ -354,7 +354,13 @@ class RHCOSBuildInspector:
         aggregate: Dict[str, Dict] = dict()
         with self.runtime.pooled_koji_client_session() as koji_api:
             for nvra in self.get_rpm_nvras():
-                rpm_def = koji_api.getRPM(nvra, strict=True)
+                try:
+                    rpm_def = koji_api.getRPM(nvra, strict=True)
+                except koji.GenericError as e:
+                    if self.runtime.group_config.rhcos.allow_missing_brew_rpms:
+                        continue  # if conigured, just skip RPMs brew doesn't know about
+                    raise Exception(f"Failed to find RPM {nvra} in brew: {e}")
+
                 package_build = koji_api.getBuild(rpm_def['build_id'], brew.KojiWrapperOpts(caching=True), strict=True)
                 package_name = package_build['package_name']
                 aggregate[package_name] = package_build
