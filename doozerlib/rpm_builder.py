@@ -256,10 +256,11 @@ class RPMBuilder:
                     nvrs = [task.result[0]["nvr"] for task in multicall_tasks]
                     if self._runtime.hotfix:
                         # Tag rpms so they don't get garbage collected.
-                        self._runtime.logger.info(f'Tagging build(s) {nvrs} with {rpm.hotfix_brew_tag()} to prevent garbage collection')
+                        hotfix_tags = rpm.hotfix_brew_tags()
+                        self._runtime.logger.info(f'Tagging build(s) {nvrs} info {hotfix_tags} to prevent garbage collection')
                         with koji_api.multicall(strict=True) as m:
-                            for nvr in nvrs:
-                                m.tagBuild(rpm.hotfix_brew_tag(), nvr)
+                            for nvr, hotfix_tag in zip(nvrs, hotfix_tags):
+                                m.tagBuild(hotfix_tag, nvr)
 
                 logger.info("Successfully built rpm: %s", rpm.rpm_name)
                 rpm.build_status = True

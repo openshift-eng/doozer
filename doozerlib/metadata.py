@@ -268,6 +268,12 @@ class Metadata(object):
     def candidate_brew_tags(self):
         return [self.candidate_brew_tag()]
 
+    def hotfix_brew_tags(self):
+        """ Returns "hotfix" Brew tags for this component.
+        "Hotfix" tags are used to prevent garbage collection.
+        """
+        return [self.hotfix_brew_tag()]
+
     def get_arches(self):
         """
         :return: Returns the list of architecture this image/rpm should build for. This is an intersection
