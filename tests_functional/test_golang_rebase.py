@@ -49,8 +49,8 @@ class TestGoLangRebase(DoozerRunnerTestCase):
 
         # Assert commit information
         self.assertEqual(dfp.labels['io.openshift.build.commit.id'], target_ocp_build_data_commitish)
-        self.assertEqual(dfp.labels['io.openshift.build.source-location'], "https://github.com/openshift/ocp-build-data")
-        self.assertEqual(dfp.labels['io.openshift.build.commit.url'], f"https://github.com/openshift/ocp-build-data/commit/{target_ocp_build_data_commitish}")
+        self.assertEqual(dfp.labels['io.openshift.build.source-location'], "https://github.com/openshift-eng/ocp-build-data")
+        self.assertEqual(dfp.labels['io.openshift.build.commit.url'], f"https://github.com/openshift-eng/ocp-build-data/commit/{target_ocp_build_data_commitish}")
 
         # Ensure that meta.content.set_build_variables == false  worked. Each of the following variables is
         # injected by doozer unless the set_build_variables is false. This is required for the golang builder

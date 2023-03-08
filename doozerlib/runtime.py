@@ -855,7 +855,7 @@ class Runtime(object):
         """
         if self._build_data_product_cache:
             return self._build_data_product_cache
-        url = 'https://raw.githubusercontent.com/openshift/ocp-build-data/main/product.yml'
+        url = 'https://raw.githubusercontent.com/openshift-eng/ocp-build-data/main/product.yml'
         req = urllib.request.Request(url)
         req.add_header('Accept', 'application/yaml')
         self._build_data_product_cache = Model(yaml.safe_load(exectools.urlopen_assert(req).read()))

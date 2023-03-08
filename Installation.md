@@ -31,7 +31,7 @@ You will need to make sure that you can clone from GitHub without a password. If
 
 With the above completed you can just run the install script via:
 
-`bash <(curl https://raw.githubusercontent.com/openshift/doozer/master/install.sh)`
+`bash <(curl https://raw.githubusercontent.com/openshift-eng/doozer/master/install.sh)`
 
 You **must** run the script as the kerberos user you will be using.
 

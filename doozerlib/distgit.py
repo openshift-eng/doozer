@@ -45,7 +45,7 @@ OIT_BEGIN = '##OIT_BEGIN'
 OIT_END = '##OIT_END'
 
 CONTAINER_YAML_HEADER = """
-# This file is managed by doozer: https://github.com/openshift/doozer
+# This file is managed by doozer: https://github.com/openshift-eng/doozer
 # operated by the OpenShift Automated Release Tooling team (#aos-art on CoreOS Slack).
 
 # Any manual changes will be overwritten by doozer on the next build.
@@ -2047,7 +2047,7 @@ class ImageDistGitRepo(DistGitRepo):
             # and we must change the user to be root.
             # However for the final stage, injecting "USER 0" without changing the original base image user
             # may cause unexpected behavior if the container makes assumption about the user at runtime.
-            # Per https://github.com/openshift/doozer/pull/428#issuecomment-861795424,
+            # Per https://github.com/openshift-eng/doozer/pull/428#issuecomment-861795424,
             # introduce a new metadata `final_stage_user` for images so we can switch the user back later.
             if final_stage_user:
                 output.write(f"# {yum_update_line_flag}\nUSER 0\n")
