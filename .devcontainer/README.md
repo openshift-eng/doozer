@@ -29,7 +29,7 @@ accessible to the same user inside the container.
 
     USER=yours
     # location of doozer checkout
-    DOOZER="$HOME/openshift-eng/doozer"
+    DOOZER="$HOME/openshift/doozer"
     CONTAINER="$DOOZER/.devcontainer"
 
     # make a copy of your kerberos credentials to mount in (if you mount in the original,
