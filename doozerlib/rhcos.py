@@ -358,6 +358,7 @@ class RHCOSBuildInspector:
                     rpm_def = koji_api.getRPM(nvra, strict=True)
                 except koji.GenericError as e:
                     if self.runtime.group_config.rhcos.allow_missing_brew_rpms and "No such rpm" in str(e):
+                        self.logger.warning("Failed to find RPM %s in Brew", nvra, exc_info=True)
                         continue  # if conigured, just skip RPMs brew doesn't know about
                     raise Exception(f"Failed to find RPM {nvra} in brew: {e}")
 
