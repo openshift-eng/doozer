@@ -16,8 +16,8 @@ import urllib
 import pathlib
 
 from future import standard_library
-from doozerlib import Runtime, Dir, cli as cli_package
-from doozerlib import state
+from doozerlib import Runtime, state, cli as cli_package
+from doozerlib.pushd import Dir
 from doozerlib.model import Missing
 from doozerlib.brew import get_watch_task_info_copy
 from doozerlib import metadata
