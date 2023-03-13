@@ -1185,18 +1185,17 @@ class GenPayloadCli:
                 # remain in the list, if there are at least two to begin with. Having at least one
                 # accepted nightly in the list is necessary to trigger upgrade tests from an old accepted
                 # nightly to a new one.
-                def is_non_rejected(tag):
-                    # Returns true if the imagestream tag has not yet been rejected. This
-                    # includes Accepted and tags which may still be in progress.
-                    return tag.get('annotations', dict()).get('release.openshift.io/phase', 'Unknown') != 'Rejected'
+                def is_accepted(tag):
+                    # Returns true if the imagestream tag has been accepted.
+                    return tag.get('annotations', dict()).get('release.openshift.io/phase', 'Unknown') == 'Accepted'
 
                 release_tags: List = obj_model.spec["tags"]._primitive()
                 new_release_tags = release_tags[-5:]  # Preserve the most recent five
 
-                latest_accepted = list(filter(is_non_rejected, new_release_tags))
+                latest_accepted = list(filter(is_accepted, new_release_tags))
                 if len(latest_accepted) < 2:
                     remaining_tags = release_tags[:-5]
-                    remaining_accepted = list(filter(is_non_rejected, remaining_tags))
+                    remaining_accepted = list(filter(is_accepted, remaining_tags))
                     new_release_tags = remaining_accepted[-2:] + new_release_tags  # Keep the newest accepted of the payloads we were going to otherwise prune
 
                 obj_model.spec["tags"] = new_release_tags
