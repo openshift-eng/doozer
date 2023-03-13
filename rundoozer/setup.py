@@ -16,7 +16,7 @@ setup(
     author_email="aos-team-art@redhat.com",
     version=_get_version(),
     description="CLI tool for managing and automating Red Hat software releases",
-    url="https://github.com/openshift/doozer",
+    url="https://github.com/openshift-eng/doozer",
     license="Red Hat Internal",
     packages=[],
     include_package_data=True,

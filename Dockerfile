@@ -35,8 +35,8 @@ LABEL io.k8s.display-name="Doozer Client" \
       io.k8s.description="Doozer is a client for managing and building groups of containers" \
       description="Doozer is a client for managing and building groups of containers" \
       io.openshift.tags="openshift" \
-      authoritative-source-url="https://github.com/openshift/doozer" \
-      url="https://github.com/openshift/doozer" \
+      authoritative-source-url="https://github.com/openshift-eng/doozer" \
+      url="https://github.com/openshift-eng/doozer" \
       name="doozer"
 
 # version information is set at build time

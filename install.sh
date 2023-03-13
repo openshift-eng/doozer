@@ -31,7 +31,7 @@ Before continuing, please be sure that you have
 kerberos authentication setup and have the internal
 Red Hat CA certificates installed. Follow the
 instructions here:
-https://github.com/openshift/doozer/blob/master/Installation.md
+https://github.com/openshift-eng/doozer/blob/master/Installation.md
 
 NOTE: Some commands will be run with sudo.
 Please enter sudo password when prompted.
@@ -145,7 +145,7 @@ printf "${GREEN}Starting install of doozer...${NC}\n"
 
 
 python -c "$(curl -fsSL https://raw.githubusercontent.com/junaruga/rpm-py-installer/master/install.py)"
-pip install ${USER_OPT} -r <(curl https://raw.githubusercontent.com/openshift/doozer/master/requirements.txt)
+pip install ${USER_OPT} -r <(curl https://raw.githubusercontent.com/openshift-eng/doozer/master/requirements.txt)
 
 show_cmd pip install ${USER_OPT} rh-doozer
 
@@ -160,4 +160,4 @@ show_cmd sudo docker pull brew-pulp-docker01.web.prod.ext.phx2.redhat.com:8888/r
 
 printf "${GREEN} Complete! \o/ - You may now use doozer.\n"
 printf "However, you may need to logout and back in for docker to work.\n"
-printf "https://github.com/openshift/doozer/blob/master/Usage.md \n${NC}"
+printf "https://github.com/openshift-eng/doozer/blob/master/Usage.md \n${NC}"

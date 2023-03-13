@@ -17,7 +17,7 @@ For new releases, Jenkins is already setup and deployment to PyPi is easy:
 
 - Bump the version in `./doozerlib/VERSION`
 - Push the change to `master`
-- Create a new GitHub release: https://github.com/openshift/doozer/releases/new
+- Create a new GitHub release: https://github.com/openshift-eng/doozer/releases/new
 
 That's it. Jenkins will do the rest automatically.
 
@@ -38,9 +38,9 @@ respectively, therefore those two files are released under [LGPL v3][].
 
 Checkout the [Usage doc](Usage.md)
 
-[Apache License 2.0]: https://github.com/openshift/doozer/blob/master/LICENSE
-[doozerlib/dotconfig.py]: https://github.com/openshift/doozer/blob/master/doozerlib/dotconfig.py
-[doozerlib/gitdata.py]: https://github.com/openshift/doozer/blob/master/doozerlib/gitdata.py
+[Apache License 2.0]: https://github.com/openshift-eng/doozer/blob/master/LICENSE
+[doozerlib/dotconfig.py]: https://github.com/openshift-eng/doozer/blob/master/doozerlib/dotconfig.py
+[doozerlib/gitdata.py]: https://github.com/openshift-eng/doozer/blob/master/doozerlib/gitdata.py
 [dotconfig]: https://github.com/adammhaile/dotconfig
 [gitdata]: https://github.com/adammhaile/gitdata
 [LGPL v3]: https://www.gnu.org/licenses/lgpl-3.0.en.html

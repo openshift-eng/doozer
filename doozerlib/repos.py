@@ -188,7 +188,7 @@ name = {0}
 
 # Base header for all content_sets.yml output
 CONTENT_SETS = """
-# This file is managed by the doozer build tool: https://github.com/openshift/doozer,
+# This file is managed by the doozer build tool: https://github.com/openshift-eng/doozer,
 # by the OpenShift Automated Release Team (#aos-art on CoreOS Slack).
 # Any manual changes will be overwritten by doozer on the next build.
 #
@@ -354,7 +354,7 @@ class Repos(object):
 
     def validate_content_sets(self):
         # Determine repos that have no content sets defined at all; we will give these a pass if nothing tries to use them.
-        # This is one reason to accept it if no content_set is defined at all: https://github.com/openshift/ocp-build-data/pull/594
+        # This is one reason to accept it if no content_set is defined at all: https://github.com/openshift-eng/ocp-build-data/pull/594
         content_set_defined = {}
         for name, repo in self._repos.items():
             content_set_defined[name] = False

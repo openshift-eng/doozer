@@ -684,7 +684,7 @@ should either be updated to include this component or @release-artists should be
 notified of the proper mapping in the #aos-art Slack channel.
 
 Component name: {image_meta.get_component_name()} .
-Jira mapping: https://github.com/openshift/ocp-build-data/blob/main/product.yml
+Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.yml
 '''
         elif potential_project == 'Unknown':
             description += f'''
@@ -699,7 +699,7 @@ Until this is done, ART issues against this component will be opened
 against OCPBUGS/Unknown -- creating unnecessary processing work and delay.
 
 Component name: {image_meta.get_component_name()} .
-Jira mapping: https://github.com/openshift/ocp-build-data/blob/main/product.yml
+Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.yml
 '''
 
         fields = {

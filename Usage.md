@@ -17,7 +17,7 @@ For local doozer edit `~/.config/doozer/settings.yaml`
 working_dir: <path_to_dir>
 
 #Git URL or File Path to build data
-data_path: https://github.com/openshift/ocp-build-data.git
+data_path: https://github.com/openshift-eng/ocp-build-data.git
 
 #Sub-group directory or branch to pull build data
 group: openshift-4.0
@@ -47,7 +47,7 @@ Finally, `global_opts` is used to set some internal options and can only be conf
 
 # Image Configuration
 
-First, please note that you will need to have your image configured in a `doozer` compatible config repo, like [ocp-build-data](https://github.com/openshift/ocp-build-data/) as shown in the `doozer` config above. If your image is already built as part of the OCP release then it already exists in that repo and you are good to go.
+First, please note that you will need to have your image configured in a `doozer` compatible config repo, like [ocp-build-data](https://github.com/openshift-eng/ocp-build-data/) as shown in the `doozer` config above. If your image is already built as part of the OCP release then it already exists in that repo and you are good to go.
 
 If your image is not already part of the OCP build, we recommend forking `ocp-build-data` and adding it for the sake of testing. Just remember to update `settings.yaml` to point to your version.
 
@@ -56,11 +56,11 @@ If you have questions about the layout and format of `ocp-build-data` please rea
 
 # Running a Local Build
 
-For local builds you will need to make sure that you have `imagebuilder` installed and that you can access a properly-configured `docker`. Please follow the instructions on the [Doozer Setup doc](https://github.com/openshift/doozer/blob/master/README.md#local-image-builds).
+For local builds you will need to make sure that you have `imagebuilder` installed and that you can access a properly-configured `docker`. Please follow the instructions on the [Doozer Setup doc](https://github.com/openshift-eng/doozer/blob/master/README.md#local-image-builds).
 
 Once all the above is ready, you can build your image!
 
-*Please note that yes, you need to refer to your image to `doozer` with the **dist-git** name which is different than the common name for the image. In the near future ART will likely update `doozer` to take either name, but for the time being this is a historical usage quirk that's held over. So, for example, if you were to build `openshift/ose-ansible` you would need to specify `aos3-installation` which is defined by the yaml config [with the same name](https://github.com/openshift/ocp-build-data/blob/openshift-4.0/images/aos3-installation.yml) on `ocp-build-data`. All image config files in `ocp-build-data` have names that match their dist-git repo name, without exception.*
+*Please note that yes, you need to refer to your image to `doozer` with the **dist-git** name which is different than the common name for the image. In the near future ART will likely update `doozer` to take either name, but for the time being this is a historical usage quirk that's held over. So, for example, if you were to build `openshift/ose-ansible` you would need to specify `aos3-installation` which is defined by the yaml config [with the same name](https://github.com/openshift-eng/ocp-build-data/blob/openshift-4.0/images/aos3-installation.yml) on `ocp-build-data`. All image config files in `ocp-build-data` have names that match their dist-git repo name, without exception.*
 
 It requires 2 steps.
 
