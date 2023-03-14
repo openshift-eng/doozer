@@ -12,6 +12,7 @@ from typing import Dict, Set
 from github import Github, UnknownObjectException, GithubException
 
 from jira import JIRA, Issue
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 from dockerfile_parse import DockerfileParser
 from doozerlib.model import Missing
@@ -652,7 +653,12 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
             component = 'Unknown'
 
         query = f'project={project} AND summary ~ "{summary}" AND statusCategory in ("To Do", "In Progress")'
-        open_issues = jira_client.search_issues(query)
+
+        @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
+        def search_issues(query):
+            return jira_client.search_issues(query)
+
+        open_issues = search_issues(query)
 
         if open_issues:
             print(f'A JIRA issue is already open for {pr_url}: {open_issues[0]}')
