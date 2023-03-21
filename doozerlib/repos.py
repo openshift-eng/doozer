@@ -161,14 +161,14 @@ class Repo(object):
             result += line
 
         # Usually, gpgcheck will not be specified, in build metadata, but don't override if it is there
-        if self._data.conf.get('gpgcheck', None) is None:
+        if self._data.conf.get('gpgcheck', None) is None and self._data.conf.get('extra_options', {}).get('gpgcheck', None) is None:
             # If we are building a signed repo file, and overall gpgcheck is desired
             if repotype == 'signed' and self.gpgcheck:
                 result += 'gpgcheck = 1\n'
             else:
                 result += 'gpgcheck = 0\n'
 
-        if self._data.conf.get('gpgkey', None) is None:
+        if self._data.conf.get('gpgkey', None) is None and self._data.conf.get('extra_options', {}).get('gpgkey', None) is None:
             # This key will bed used only if gpgcheck=1
             result += 'gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release\n'
 
