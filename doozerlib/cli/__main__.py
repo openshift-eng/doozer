@@ -1637,6 +1637,73 @@ def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_
     print(','.join(results))
 
 
+@cli.command('config:rhcos-srpms')
+@click.option("--version", metavar="RHCOS_VER", help="RHCOS version for which to collection SRPMS (e.g. 413.92.202303212039-0).", required=True)
+@click.option("-o", "--output", metavar="DIR", help="Output directory to sync to", required=True)
+@click.option("-c", "--cachedir", metavar="DIR", help="Cache directory for yum", required=True)
+@click.option("-a", "--arch",
+              metavar='ARCH',
+              help="Arch for which the repo should be generated",
+              default='x86_64', required=False)
+@pass_runtime
+def config_rhcos_src(runtime, version, output, cachedir, arch):
+    runtime.initialize(clone_distgits=False)
+
+    from doozerlib.rhcos import RHCOSBuildInspector
+
+    runtime.logger.info(f'Pulling RHCOS package information for {version} and arch={arch}')
+    inspector = RHCOSBuildInspector(runtime, pullspec_for_tag={}, brew_arch=arch, build_id=version)
+    package_build_objects = inspector.get_package_build_objects()
+    cachedir_path = pathlib.Path(cachedir)
+
+    repos = runtime.repos
+    yum_conf = """
+[main]
+cachedir={}/$basearch/$releasever
+reposdir={}
+keepcache=0
+debuglevel=2
+logfile={}/yum.log
+exactarch=1
+obsoletes=1
+gpgcheck=1
+plugins=1
+installonly_limit=3
+""".format(str(cachedir_path.absolute()), str(cachedir_path.absolute()), runtime.working_dir)
+
+    repos_content = repos.repo_file('unsigned', enabled_repos=[], arch=arch)
+    content = "{}\n\n{}".format(yum_conf, repos_content)
+
+    output_path = pathlib.Path(output)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    cachedir_path.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # If corrupted, reposync metadata can interfere with subsequent runs.
+        # Ensure we have a clean space for each invocation.
+        metadata_dir = tempfile.mkdtemp(prefix='reposync-metadata.', dir=cachedir)
+        yc_file = tempfile.NamedTemporaryFile()
+        yc_file.write(content.encode('utf-8'))
+
+        # must flush so it can be read
+        yc_file.flush()
+
+        first_run_args = '--refresh'  # refresh repo data on first run
+        for package_name, build_obj in package_build_objects.items():
+            package = build_obj['nvr']
+            cmd = f'repotrack  --destdir={str(output_path)} {first_run_args} -c {yc_file.name} --enablerepo "rhel-9*" --source --arch {arch} {package_name}'
+            first_run_args = ''
+
+            rc, out, err = exectools.cmd_gather(cmd, realtime=True)
+            if rc != 0:
+                runtime.logger.warning('Failed to sync package {}:\nout={}\nerr={}'.format(package, out, err))
+
+    finally:
+        yc_file.close()
+        shutil.rmtree(metadata_dir, ignore_errors=True)
+
+
 @cli.command("beta:reposync", short_help="Sync yum repos listed in group.yaml to local directory.")
 @click.option("-o", "--output", metavar="DIR", help="Output directory to sync to", required=True)
 @click.option("-c", "--cachedir", metavar="DIR", help="Cache directory for yum", required=True)
