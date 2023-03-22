@@ -14,7 +14,7 @@ jobs:
         with:
           command: test
       - name: Test for any known security issues using Static Code Analysis.
-        uses: snyk/actions/python@master
+        uses: snyk/actions/python-3.8@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
