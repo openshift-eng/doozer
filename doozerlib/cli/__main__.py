@@ -7,6 +7,7 @@ import yaml
 import sys
 import subprocess
 import urllib.request, urllib.parse, urllib.error
+from typing import Dict
 import tempfile
 import traceback
 import koji
@@ -39,6 +40,7 @@ from doozerlib.cli.inspect_stream import inspect_stream
 from doozerlib import coverity
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib import exectools
+from doozerlib.rhcos import RHCOSBuildInspector
 from doozerlib.util import green_print, red_print, yellow_print, color_print, dict_get
 from doozerlib.util import analyze_debug_timing, get_cincinnati_channels, extract_version_fields, go_arch_for_brew_arch
 from doozerlib.util import get_release_calc_previous
@@ -1640,68 +1642,53 @@ def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_
 @cli.command('config:rhcos-srpms')
 @click.option("--version", metavar="RHCOS_VER", help="RHCOS version for which to collection SRPMS (e.g. 413.92.202303212039-0).", required=True)
 @click.option("-o", "--output", metavar="DIR", help="Output directory to sync to", required=True)
-@click.option("-c", "--cachedir", metavar="DIR", help="Cache directory for yum", required=True)
+@click.option("--brew-root", metavar="DIR", default='/mnt/redhat/brewroot', help="Brewroot directory from which to source RPMs.", required=True)
 @click.option("-a", "--arch",
               metavar='ARCH',
-              help="Arch for which the repo should be generated",
-              default='x86_64', required=False)
+              help="Arch for which the repo should be generated (if not specified, use all runtime arches).",
+              default=None, required=False)
 @pass_runtime
-def config_rhcos_src(runtime, version, output, cachedir, arch):
+def config_rhcos_src(runtime, version, output, brew_root, arch):
     runtime.initialize(clone_distgits=False)
 
-    from doozerlib.rhcos import RHCOSBuildInspector
+    package_build_objects: Dict[str, Dict] = dict()
+    if arch:
+        arches = [arch]
+    else:
+        arches = runtime.arches
 
-    runtime.logger.info(f'Pulling RHCOS package information for {version} and arch={arch}')
-    inspector = RHCOSBuildInspector(runtime, pullspec_for_tag={}, brew_arch=arch, build_id=version)
-    package_build_objects = inspector.get_package_build_objects()
-    cachedir_path = pathlib.Path(cachedir)
+    for arch_entry in arches:
+        runtime.logger.info(f'Pulling RHCOS package information for {version} and arch={arch_entry}')
+        inspector = RHCOSBuildInspector(runtime, pullspec_for_tag={}, brew_arch=arch_entry, build_id=version)
+        package_build_objects.update(inspector.get_package_build_objects())
 
-    repos = runtime.repos
-    yum_conf = """
-[main]
-cachedir={}/$basearch/$releasever
-reposdir={}
-keepcache=0
-debuglevel=2
-logfile={}/yum.log
-exactarch=1
-obsoletes=1
-gpgcheck=1
-plugins=1
-installonly_limit=3
-""".format(str(cachedir_path.absolute()), str(cachedir_path.absolute()), runtime.working_dir)
+    brew_root_path = pathlib.Path(brew_root)
+    brew_packages_path = brew_root_path.joinpath('packages')
 
-    repos_content = repos.repo_file('unsigned', enabled_repos=[], arch=arch)
-    content = "{}\n\n{}".format(yum_conf, repos_content)
+    if not brew_packages_path.is_dir():
+        print(f'Brewroot packages must be a directory: {str(brew_packages_path)}')
+        exit(1)
 
     output_path = pathlib.Path(output)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    cachedir_path.mkdir(parents=True, exist_ok=True)
+    for package_name, build_obj in package_build_objects.items():
+        package_nvr = build_obj['nvr']
 
-    try:
-        # If corrupted, reposync metadata can interfere with subsequent runs.
-        # Ensure we have a clean space for each invocation.
-        metadata_dir = tempfile.mkdtemp(prefix='reposync-metadata.', dir=cachedir)
-        yc_file = tempfile.NamedTemporaryFile()
-        yc_file.write(content.encode('utf-8'))
+        src_dir_path = brew_packages_path.joinpath(package_name, build_obj['version'], build_obj['release'], 'src')
+        out_base_dir_path = output_path.joinpath(package_name, build_obj['version'], build_obj['release'])
+        out_base_dir_path.mkdir(parents=True, exist_ok=True)
+        out_src_dir = out_base_dir_path.joinpath('src')
+        if out_src_dir.exists():
+            if out_src_dir.is_symlink():
+                print(f'Output directory already contains a symlink for {package_nvr}. Skipping.')
+                continue
+            else:
+                print(f'File already exists; cannot replace with brewroot content: {str(out_src_dir)}')
+                exit(1)
 
-        # must flush so it can be read
-        yc_file.flush()
-
-        first_run_args = '--refresh'  # refresh repo data on first run
-        for package_name, build_obj in package_build_objects.items():
-            package = build_obj['nvr']
-            cmd = f'repotrack  --destdir={str(output_path)} {first_run_args} -c {yc_file.name} --enablerepo "rhel-9*" --source --arch {arch} {package_name}'
-            first_run_args = ''
-
-            rc, out, err = exectools.cmd_gather(cmd, realtime=True)
-            if rc != 0:
-                runtime.logger.warning('Failed to sync package {}:\nout={}\nerr={}'.format(package, out, err))
-
-    finally:
-        yc_file.close()
-        shutil.rmtree(metadata_dir, ignore_errors=True)
+        out_src_dir.symlink_to(str(src_dir_path.absolute()))
+        runtime.logger.info(f'Populated {str(out_src_dir)}')
 
 
 @cli.command("beta:reposync", short_help="Sync yum repos listed in group.yaml to local directory.")
