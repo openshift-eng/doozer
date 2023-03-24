@@ -247,7 +247,8 @@ class Repos(object):
         :param repo_type: Whether to prefer signed or unsigned repos.
         :param enabled_repos: A list of group.yml repo names which should be enabled. If a repo is enabled==1
             in group.yml, that setting takes precedence over this list. If not enabled==1 in group.yml and not
-            found in this list, the repo will be returned as enabled==0.
+            found in this list, the repo will be returned as enabled==0. If '*' is included in the list,
+            all repos will be enabled.
         :param empty_repos: A list of repo names to return defined as no-op yum repos.
         :param arch: The architecture for which this repository should be generated. If None, all architectures
             will be included in the returned str.
@@ -257,7 +258,7 @@ class Repos(object):
         for r in self._repos.values():
 
             enabled = r.enabled  # If enabled in group.yml, it will always be enabled.
-            if enabled_repos and r.name in enabled_repos:
+            if enabled_repos and (r.name in enabled_repos or '*' in enabled_repos):
                 enabled = True
 
             if arch:  # Generating a single arch?
