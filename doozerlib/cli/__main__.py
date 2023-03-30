@@ -1660,7 +1660,7 @@ def release_calc_previous(version, arch, graph_url, graph_content_stable, graph_
               help="Arch for which the repo should be generated (if not specified, use all runtime arches).",
               default=None, required=False)
 @pass_runtime
-def config_rhcos_src(runtime, version, output, brew_root, arch):
+def config_rhcos_src(runtime: Runtime, version, output, brew_root, arch):
     runtime.initialize(clone_distgits=False)
 
     package_build_objects: Dict[str, Dict] = dict()

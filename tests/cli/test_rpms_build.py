@@ -1,7 +1,6 @@
-import logging
 import io
-
-import asynctest
+import logging
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from doozerlib import gitdata, rpmcfg
@@ -9,7 +8,7 @@ from doozerlib.cli.rpms_build import _rpms_rebase_and_build
 from doozerlib.exectools import RetryException
 
 
-class TestRPMsBuildCli(asynctest.TestCase):
+class TestRPMsBuildCli(IsolatedAsyncioTestCase):
 
     def _make_runtime(self, assembly=None):
         runtime = MagicMock()

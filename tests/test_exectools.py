@@ -7,8 +7,7 @@ Test functions related to controlled command execution
 import asyncio
 import unittest
 
-import asynctest
-from unittest import mock
+from unittest import IsolatedAsyncioTestCase, mock
 
 try:
     from importlib import reload
@@ -22,7 +21,7 @@ import tempfile
 from doozerlib import exectools, assertion
 
 
-class RetryTestCase(asynctest.TestCase):
+class RetryTestCase(IsolatedAsyncioTestCase):
     """
     Test the exectools.retry() method
     """
@@ -128,7 +127,7 @@ class TestCmdExec(unittest.TestCase):
         self.assertEqual(len(lines), 12)
 
 
-class TestGather(asynctest.TestCase):
+class TestGather(IsolatedAsyncioTestCase):
     """
     """
 

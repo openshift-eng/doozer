@@ -19,6 +19,7 @@ class MockRuntime(object):
     def __init__(self, logger):
         self.logger = logger
         self.group_config = Model({})
+        self.pooled_koji_client_session = MagicMock()
 
 
 def _urlopen_json_cm(mock_urlopen, content, rc=200):
@@ -36,15 +37,8 @@ class TestRhcos(unittest.TestCase):
         self.logger = MagicMock(spec=logging.Logger)
 
         runtime = MockRuntime(self.logger)
-        koji_mock = Mock()
-        koji_mock.__enter__ = Mock()
-        koji_mock.__enter__.return_value = koji_mock
-        koji_mock.__exit__ = Mock()
-
-        runtime.pooled_koji_client_session = Mock()
-        runtime.pooled_koji_client_session.return_value = koji_mock
         self.runtime = runtime
-        self.koji_mock = koji_mock
+        self.koji_mock = runtime.pooled_koji_client_session.return_value.__enter__.return_value
         self.respath = Path(os.path.dirname(__file__), 'resources')
 
     def tearDown(self):
@@ -148,8 +142,9 @@ class TestRhcos(unittest.TestCase):
         def canned_getBuild(build_id, *_, **__):
             return pkg_build_dicts[build_id]
 
-        self.koji_mock.getRPM.side_effect = canned_getRPM
-        self.koji_mock.getBuild.side_effect = canned_getBuild
+        koji_multicall = self.koji_mock.multicall.return_value.__enter__.return_value
+        koji_multicall.getRPM.side_effect = lambda n, *_, **__: Mock(result=canned_getRPM(n))
+        koji_multicall.getBuild.side_effect = lambda b, *_, **__: Mock(result=canned_getBuild(b))
 
         self.assertIn("util-linux-2.32.1-24.el8.s390x", rhcos_build.get_rpm_nvras())
         self.assertIn("util-linux-2.32.1-24.el8", rhcos_build.get_rpm_nvrs())

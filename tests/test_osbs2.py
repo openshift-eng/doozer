@@ -1,8 +1,6 @@
 import unittest
 from unittest.mock import ANY, MagicMock, patch
 
-import asynctest
-
 from doozerlib import constants
 from doozerlib.distgit import ImageDistGitRepo
 from doozerlib.gitdata import DataObj
@@ -10,7 +8,7 @@ from doozerlib.image import ImageMetadata
 from doozerlib.osbs2_builder import OSBS2Builder
 
 
-class TestOSBS2Builder(asynctest.TestCase):
+class TestOSBS2Builder(unittest.IsolatedAsyncioTestCase):
 
     def _make_image_meta(self, runtime):
         data_obj = DataObj("foo", "/path/to/ocp-build-data/images/foo.yml", {

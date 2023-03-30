@@ -7,6 +7,7 @@ from doozerlib.rpm_utils import parse_nvr
 from tenacity import retry, stop_after_attempt, wait_fixed
 from urllib import request
 from urllib.error import URLError
+from doozerlib.runtime import Runtime
 from doozerlib.util import brew_suffix_for_arch, isolate_el_version_in_release
 from doozerlib import exectools
 from doozerlib.model import ListModel, Model
@@ -231,7 +232,7 @@ class RHCOSBuildFinder:
 
 class RHCOSBuildInspector:
 
-    def __init__(self, runtime, pullspec_for_tag: Dict[str, str], brew_arch: str, build_id: Optional[str] = None):
+    def __init__(self, runtime: Runtime, pullspec_for_tag: Dict[str, str], brew_arch: str, build_id: Optional[str] = None):
         self.runtime = runtime
         self.brew_arch = brew_arch
         self.pullspec_for_tag = pullspec_for_tag
@@ -352,20 +353,33 @@ class RHCOSBuildInspector:
         """
 
         aggregate: Dict[str, Dict] = dict()
+        rpms = self.get_rpm_nvras()
         with self.runtime.pooled_koji_client_session() as koji_api:
-            for nvra in self.get_rpm_nvras():
+            self.runtime.logger.info("Getting %s rpm(s) from Brew...", len(rpms))
+            tasks = []
+            with koji_api.multicall(strict=False) as m:  # strict=False means don't raise the first error it encounters
+                for nvra in rpms:
+                    tasks.append(m.getRPM(nvra, brew.KojiWrapperOpts(caching=True), strict=True))
+            rpm_defs = []
+            for task in tasks:
                 try:
-                    rpm_def = koji_api.getRPM(nvra, strict=True)
+                    rpm_defs.append(task.result)
                 except koji.GenericError as e:
+                    nvra = task.args[0]
                     if self.runtime.group_config.rhcos.allow_missing_brew_rpms and "No such rpm" in str(e):
                         self.runtime.logger.warning("Failed to find RPM %s in Brew", nvra, exc_info=True)
                         continue  # if conigured, just skip RPMs brew doesn't know about
                     raise Exception(f"Failed to find RPM {nvra} in brew: {e}")
 
-                package_build = koji_api.getBuild(rpm_def['build_id'], brew.KojiWrapperOpts(caching=True), strict=True)
+            self.runtime.logger.info("Getting build infos for %s rpm(s)...", len(rpm_defs))
+            tasks = []
+            with koji_api.multicall(strict=True) as m:
+                for rpm_def in rpm_defs:
+                    tasks.append(m.getBuild(rpm_def['build_id'], brew.KojiWrapperOpts(caching=True), strict=True))
+            for task in tasks:
+                package_build = task.result
                 package_name = package_build['package_name']
                 aggregate[package_name] = package_build
-
         return aggregate
 
     def get_primary_container_conf(self):
