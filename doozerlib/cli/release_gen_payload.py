@@ -365,6 +365,9 @@ class GenPayloadCli:
         # check that images for this assembly/group are consistent with the assembly definition.
         self.detect_inconsistent_images(assembly_inspector)
 
+        # check that images for this assembly/group have installed rpms that are not allowed to assemble.
+        self.detect_installed_rpms_issues(assembly_inspector)
+
         # update issues found for payload images and check RPM consistency
         self.detect_extend_payload_entry_issues(assembly_inspector)
 
@@ -498,6 +501,15 @@ class GenPayloadCli:
         for _, bbii in assembly_inspector.get_group_release_images().items():
             if bbii:
                 self.assembly_issues.extend(assembly_inspector.check_group_image_consistency(bbii))
+
+    def detect_installed_rpms_issues(self, assembly_inspector: AssemblyInspector):
+        """
+        Create issues for image builds with installed rpms
+        """
+        self.logger.debug("Detecting issues with installed rpms...")
+        for dg_key, bbii in assembly_inspector.get_group_release_images().items():
+            if bbii:
+                self.assembly_issues.extend(assembly_inspector.check_installed_rpms_in_image(dg_key, bbii))
 
     def full_component_repo(self) -> str:
         """

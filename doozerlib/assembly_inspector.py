@@ -1,9 +1,10 @@
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 
 from koji import ClientSession
+from doozerlib.model import Model
 from doozerlib.rpm_utils import parse_nvr
 
-from doozerlib import util, Runtime
+from doozerlib import brew, util, Runtime
 from doozerlib.image import BrewBuildImageInspector
 from doozerlib.rpmcfg import RPMMetadata
 from doozerlib.assembly import assembly_rhcos_config, AssemblyTypes, assembly_permits, AssemblyIssue, \
@@ -45,6 +46,21 @@ class AssemblyInspector:
             else:
                 self._release_image_inspectors[image_meta.distgit_key] = None
 
+        # Preprocess rpm_deliveries group config
+        # This is mainly to support weekly kernel delivery
+        self._rpm_deliveries: Dict[str, Model] = {}  # Dict[package_name] => per package rpm_delivery config
+        if self.runtime.group_config.rpm_deliveries:
+            for entry in self.runtime.group_config.rpm_deliveries:
+                packages = entry.packages
+                if not packages:
+                    raise ValueError("`packages` in `group_config.rpm_deliveries` can't be empty")
+                if not entry.ship_ok_tag:
+                    raise ValueError("`ship_ok_tag` in `group_config.rpm_deliveries` can't be empty")
+                if not entry.stop_ship_tag:
+                    raise ValueError("`stop_ship_tag` in `group_config.rpm_deliveries` can't be empty")
+                for package in packages:
+                    self._rpm_deliveries[package] = entry
+
     def get_type(self) -> AssemblyTypes:
         return self.assembly_type
 
@@ -63,12 +79,55 @@ class AssemblyInspector:
                     return True
         return False
 
+    def _check_installed_packages_for_rpm_delivery(self, component: str, component_description: str, rpm_packages: Dict[str, Dict[str, Any]]):
+        """
+        If rpm_deliveries is configured, this checks installed packages in a component
+        follow the stop-ship/ship-ok tagging requirement.
+        See https://issues.redhat.com/browse/ART-6100 for more information.
+
+        :param component: Component name, like `rhcos` or image distgit key
+        :param component_description: Component description, used to include more details for the component in the AssemblyIssue message
+        :param rpm_packages: A dict; key is rpm package name, value is brew build dict
+        """
+        self.runtime.logger.info("Checking installed rpms in %s", component_description)
+        issues: List[AssemblyIssue] = []
+        for package_name, rpm_build in rpm_packages.items():
+            if package_name in self._rpm_deliveries:
+                rpm_delivery_config = self._rpm_deliveries[package_name]
+                self.runtime.logger.info("Getting tags for rpm build %s...", rpm_build['nvr'])
+                tag_names = {tag["name"] for tag in self.brew_session.listTags(brew.KojiWrapperOpts(caching=True), build=rpm_build["id"])}
+                # If the rpm is tagged into the stop-ship tag, it is never permissible
+                if rpm_delivery_config.stop_ship_tag and rpm_delivery_config.stop_ship_tag in tag_names:
+                    issues.append(AssemblyIssue(f'{component_description} has {rpm_build["nvr"]}, which has been tagged into the stop-ship tag: {rpm_delivery_config.stop_ship_tag}', component=component, code=AssemblyIssueCode.IMPERMISSIBLE))
+                    continue
+                # For GA releases, the rpm must have an explicit "ship-ok" tag
+                if self.assembly_type is AssemblyTypes.STANDARD and rpm_delivery_config.ship_ok_tag and rpm_delivery_config.ship_ok_tag not in tag_names:
+                    issues.append(AssemblyIssue(f'{component_description} has {rpm_build["nvr"]}, which is missing the ship-ok tag: {rpm_delivery_config.ship_ok_tag}', component=component, code=AssemblyIssueCode.IMPERMISSIBLE))
+                # For pre-GA releases, MISSING_SHIP_OK_TAG issue will be reported if the rpm doesn't have a "ship-ok" tag
+                if self.assembly_type is AssemblyTypes.CANDIDATE and rpm_delivery_config.ship_ok_tag and rpm_delivery_config.ship_ok_tag not in tag_names:
+                    issues.append(AssemblyIssue(f'{component_description} has {rpm_build["nvr"]}, which is missing the ship-ok tag: {rpm_delivery_config.ship_ok_tag}', component=component, code=AssemblyIssueCode.MISSING_SHIP_OK_TAG))
+        return issues
+
+    def check_installed_rpms_in_image(self, dg_key: str, build_inspector: BrewBuildImageInspector):
+        """ Analyzes an image build to check if installed packages are allowed to assemble.
+        """
+        issues: List[AssemblyIssue] = []
+        self.runtime.logger.info("Getting rpms in image build %s...", build_inspector.get_nvr())
+        installed_packages = build_inspector.get_all_installed_package_build_dicts()
+        # If rpm_deliveries is configured, check if the image build has rpms respecting the stop-ship/ship-ok tag
+        issues.extend(self._check_installed_packages_for_rpm_delivery(dg_key, f'Image build {build_inspector.get_nvr()}', installed_packages))
+        return issues
+
     def check_rhcos_issues(self, rhcos_build: RHCOSBuildInspector) -> List[AssemblyIssue]:
         """
         Analyzes an RHCOS build to check whether the installed packages are consistent with:
         1. package NVRs defined at the group dependency level
         2. package NVRs defined at the rhcos dependency level
         3. package NVRs of any RPMs built in this assembly/group
+
+        If rpm_deliveries is defined in group config, this will also check
+        whether the installed packages meet the tagging requirements like "stop-ship" and "ship-ok".
+
         :param rhcos_build: The RHCOS build to analyze.
         :return: Returns a (potentially empty) list of inconsistencies in the build.
         """
@@ -77,6 +136,14 @@ class AssemblyInspector:
         issues: List[AssemblyIssue] = []
         required_packages: Dict[str, str] = dict()  # Dict[package_name] -> nvr  # Dependency specified in 'rhcos' in assembly definition
         desired_packages: Dict[str, str] = dict()  # Dict[package_name] -> nvr  # Dependency specified at group level
+        installed_packages: Dict[str, Dict[str, Any]] = dict()  # Dict[package_name] -> build dict  # rpms installed in the rhcos image
+
+        self.runtime.logger.info("Getting rpms in RHCOS build %s...", rhcos_build.build_id)
+        installed_packages = rhcos_build.get_package_build_objects()
+
+        # If rpm_deliveries is configured, check if the RHCOS build has rpms with the stop-ship/ship-ok tag
+        issues.extend(self._check_installed_packages_for_rpm_delivery('rhcos', f'RHCOS build {rhcos_build.build_id} ({rhcos_build.brew_arch})', installed_packages))
+
         el_tag = f'el{rhcos_build.get_rhel_base_version()}'
         for package_entry in (self.runtime.get_group_config().dependencies or []):
             if el_tag in package_entry:
@@ -91,7 +158,6 @@ class AssemblyInspector:
                 required_packages[package_name] = nvr
                 desired_packages[package_name] = nvr  # Override if something else was at the group level
 
-        installed_packages = rhcos_build.get_package_build_objects()
         for package_name, desired_nvr in desired_packages.items():
 
             if package_name in required_packages and package_name not in installed_packages:

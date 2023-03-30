@@ -66,6 +66,11 @@ class AssemblyIssueCode(Enum):
     # in x86_64 RHCOS have different versions
     FAILED_CROSS_RPM_VERSIONS_REQUIREMENT = 9
 
+    # An rpm defined in rpm_deliveries group config is missing the ship-ok Brew tag.
+    # Note this issue code only occurs in pre-GA releases (ECs or RCs).
+    # For GA releases, IMPERMISSIBLE code will be reported.
+    MISSING_SHIP_OK_TAG = 10
+
 
 class AssemblyIssue:
     """

@@ -1,4 +1,4 @@
-import asynctest
+from unittest import IsolatedAsyncioTestCase
 from future import standard_library
 
 from doozerlib.assembly import AssemblyTypes
@@ -85,7 +85,7 @@ class MockScanner(object):
         self.files = []
 
 
-class TestDistgit(asynctest.TestCase):
+class TestDistgit(IsolatedAsyncioTestCase):
     """
     Test the methods and functions used to manage and update distgit repos
     """

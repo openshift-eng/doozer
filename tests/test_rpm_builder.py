@@ -2,15 +2,14 @@ import logging
 import io
 from pathlib import Path
 
-import asynctest
-from unittest import mock
+from unittest import IsolatedAsyncioTestCase, mock
 
 from doozerlib import distgit, gitdata, rpmcfg
 from doozerlib.exectools import RetryException
 from doozerlib.rpm_builder import RPMBuilder
 
 
-class TestRPMBuilder(asynctest.TestCase):
+class TestRPMBuilder(IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         pass
