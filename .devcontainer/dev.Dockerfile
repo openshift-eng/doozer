@@ -1,4 +1,4 @@
-FROM registry.fedoraproject.org/fedora:36
+FROM registry.fedoraproject.org/fedora:37
 LABEL name="doozer-dev" \
   description="Doozer development container image" \
   maintainer="OpenShift Automated Release Tooling (ART) Team <aos-team-art@redhat.com>"
@@ -55,13 +55,12 @@ RUN groupadd --gid "$USER_GID" "$USERNAME" \
 # Configure Kerberos
 COPY .devcontainer/krb5-redhat.conf /etc/krb5.conf.d/
 
-# Preinstall dependencies
-COPY ./* /workspaces/doozer/
-RUN chown "$USERNAME" -R /workspaces/doozer \
- && cd /workspaces/doozer \
- && sudo -u "$USERNAME" pip3 install --user -r ./requirements.txt -r requirements-dev.txt \
- && sudo -u "$USERNAME" pip3 install --user -e ./ \
- && GOBIN=/usr/bin/ go install github.com/mikefarah/yq/v4@latest
-
-USER "$USER_UID"
+# Preinstall dependencies and doozer
 WORKDIR /workspaces/doozer
+COPY . .
+RUN chown "$USERNAME" -R /workspaces/doozer \
+  && sudo -u "$USERNAME" pip3 install --user -U "pip>=22.3" "setuptools>=64" \
+  && sudo -u "$USERNAME" pip3 install --user -r ./requirements.txt -r requirements-dev.txt
+RUN sudo -u "$USERNAME" pip3 install --user -e ./ \
+  && GOBIN=/usr/bin/ go install github.com/mikefarah/yq/v4@latest
+USER "$USER_UID"
