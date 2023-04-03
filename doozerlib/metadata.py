@@ -21,7 +21,7 @@ import doozerlib
 from doozerlib import exectools, logutil
 from doozerlib.assembly import assembly_basis_event, assembly_metadata_config
 from doozerlib.brew import BuildStates
-from doozerlib.distgit import ImageDistGitRepo, RPMDistGitRepo
+from doozerlib.distgit import DistGitRepo, ImageDistGitRepo, RPMDistGitRepo
 from doozerlib.model import Missing, Model
 from doozerlib.pushd import Dir
 from doozerlib.util import (isolate_el_version_in_brew_tag,
@@ -224,7 +224,7 @@ class Metadata(object):
             return f'ssh://{self.runtime.user}@{pkgs_host}/{self.qualified_name}'
         return f'ssh://{pkgs_host}/{self.qualified_name}'
 
-    def distgit_repo(self, autoclone=True) -> RPMDistGitRepo:
+    def distgit_repo(self, autoclone=True) -> DistGitRepo:
         if self._distgit_repo is None:
             self._distgit_repo = DISTGIT_TYPES[self.meta_type](self, autoclone=autoclone)
         return self._distgit_repo

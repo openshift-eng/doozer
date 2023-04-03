@@ -20,34 +20,38 @@ COVSCAN_WAIVED_FILENAME = 'waived.flag'
 class CoverityContext(object):
 
     def __init__(self, image, dg_commit_hash: str, result_archive: str, repo_type: str = 'unsigned',
-                 local_repo_rhel_7: List[str] = [], local_repo_rhel_8: List[str] = [], force_analysis: bool = False,
-                 ignore_waived: bool = False, https_proxy: str = ''):
+                 local_repo_rhel_7: List[str] = [], local_repo_rhel_8: List[str] = [],
+                 local_repo_rhel_9: List[str] = [], force_analysis: bool = False,
+                 ignore_waived: bool = False, https_proxy: str = '', podman_sudo: bool = False,
+                 podman_tmpdir: Optional[str] = None):
         self.image = image  # ImageMetadata
         self.dg_commit_hash = dg_commit_hash
         self.result_archive_path = pathlib.Path(result_archive)
-        self.tmp_path = self.result_archive_path.joinpath('tmp')
-        self.tmp_path.mkdir(exist_ok=True, parents=True)
         self.dg_archive_path = self.result_archive_path.joinpath(image.distgit_key)
         self.dg_archive_path.mkdir(parents=True, exist_ok=True)  # /<archive-dir>/<dg-key>
         self.archive_commit_results_path = self.dg_archive_path.joinpath(dg_commit_hash)  # /<archive-dir>/<dg-key>/<hash>
         self.repo_type = repo_type
         self.local_repo_rhel_7 = local_repo_rhel_7
         self.local_repo_rhel_8 = local_repo_rhel_8
+        self.local_repo_rhel_9 = local_repo_rhel_9
         self.logger = image.logger
         self.runtime = image.runtime
         self.force_analysis = force_analysis
         self.ignore_waived = ignore_waived
         self.https_proxy = https_proxy
+        self.podman_sudo = podman_sudo
+        self.podman_cmd = 'sudo podman' if self.podman_sudo else 'podman'
 
         # Podman is going to create a significant amount of container image data
         # Make sure there is plenty of space. Override TMPDIR, because podman
         # uses this environment variable.
-        self.podman_tmpdir = self.tmp_path.joinpath('podman')
-        self.podman_tmpdir.mkdir(exist_ok=True)
-        self.podman_cmd = 'sudo podman '
-        self.podman_env = {
-            'TMPDIR': str(self.podman_tmpdir)
-        }
+        self.podman_env = {}
+        if podman_tmpdir:
+            podman_tmpdir_path = pathlib.Path(podman_tmpdir)
+            podman_tmpdir_path.mkdir(exist_ok=True)
+            self.podman_env = {
+                'TMPDIR': str(podman_tmpdir_path.absolute())
+            }
 
         # Runtime coverity scanning output directory; each stage will have an entry beneath this.
         self.cov_root_path: pathlib.Path = image.distgit_repo().dg_path.joinpath('cov')
@@ -180,7 +184,24 @@ RUN if cat /etc/redhat-release | grep "release 8"; then echo '[covscan_local_{id
                 vol_mount_arg += f' -v {lr}:/covscan_local_{idx}_rhel_8:z'
         else:
             make_image_repo_files += 'RUN if cat /etc/redhat-release | grep "release 8"; then curl -k https://copr.devel.redhat.com/coprs/kdudka/covscan/repo/epel-8/kdudka-covscan-epel-8.repo --output /etc/yum.repos.d/covscan.repo; fi\n'
+            make_image_repo_files += 'RUN if cat /etc/redhat-release | grep "release 8"; then curl -k https://copr.devel.redhat.com/coprs/kdudka/covscan-testing/repo/epel-8/kdudka-covscan-testing-epel-8.repo --output /etc/yum.repos.d/covscan-testing.repo; fi\n'
 
+        if self.local_repo_rhel_9:
+            for idx, lr in enumerate(self.local_repo_rhel_9):
+                make_image_repo_files += f"""
+# Create a repo able to pull from the local filesystem and prioritize it for speed.
+RUN if cat /etc/redhat-release | grep "release 9"; then echo '[covscan_local_{idx}]' > /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo 'baseurl=file:///covscan_local_{idx}_rhel_9' >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo skip_if_unavailable=True >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo gpgcheck=0 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo enabled=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo enabled_metadata=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo && \
+    echo priority=1 >> /etc/yum.repos.d/covscan_local_{idx}.repo; fi
+"""
+                vol_mount_arg += f' -v {lr}:/covscan_local_{idx}_rhel_9:z'
+        else:
+            make_image_repo_files += 'RUN if cat /etc/redhat-release | grep "release 9"; then curl -k https://copr.devel.redhat.com/coprs/kdudka/covscan/repo/epel-9/kdudka-covscan-epel-9.repo --output /etc/yum.repos.d/covscan.repo; fi\n'
+            make_image_repo_files += 'RUN if cat /etc/redhat-release | grep "release 9"; then curl -k https://copr.devel.redhat.com/coprs/kdudka/covscan-testing/repo/epel-9/kdudka-covscan-testing-epel-9.repo --output /etc/yum.repos.d/covscan-testing.repo; fi\n'
         return make_image_repo_files, vol_mount_arg
 
     def build_args(self) -> str:
@@ -213,31 +234,65 @@ def _covscan_prepare_parent(cc: CoverityContext, parent_image_name, parent_tag) 
             f.write('''
 #!/bin/sh
 set -o xtrace
+if cat /etc/redhat-release | grep "release 9"; then
+    # For an el9 layer, make sure baseos & appstream are
+    # available for tools like python to install.
+    cat <<EOF > /etc/yum.repos.d/el9.repo
+[rhel-9-appstream-rpms-x86_64]
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel9/9/x86_64/appstream/os/
+enabled = 1
+name = rhel-9-appstream-rpms-x86_64
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
-if cat /etc/redhat-release | grep "release 8"; then
+[rhel-9-baseos-rpms-x86_64]
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel9/9/x86_64/baseos/os/
+enabled = 1
+name = rhel-9-baseos-rpms-x86_64
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+EOF
+
+    # Enable epel for csmock
+    yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+
+    # Install Python 3.9
+    yum -y install python3
+
+elif cat /etc/redhat-release | grep "release 8"; then
     cp /tmp/oit.repo /etc/yum.repos.d/oit.repo
 
     # For an el8 layer, make sure baseos & appstream are
     # available for tools like python to install.
     cat <<EOF > /etc/yum.repos.d/el8.repo
 [rhel-8-appstream-rpms-x86_64]
-baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/appstream/os/
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/appstream/os/
 enabled = 1
 name = rhel-8-appstream-rpms-x86_64
 gpgcheck = 0
 gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 [rhel-8-baseos-rpms-x86_64]
-baseurl = http://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/baseos/os/
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/baseos/os/
 enabled = 1
 name = rhel-8-baseos-rpms-x86_64
 gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
+[rhel-8-codeready-builder-rpms-x86_64]
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/rhel8/8/x86_64/codeready-builder/os/
+enabled = 1
+name = rhel-8-codeready-builder-rpms-x86_64
+gpgcheck = 1
 gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 EOF
 
     # Enable epel for csmock
     curl https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm --output epel8.rpm
     yum -y install epel8.rpm
+
+    # Install Python 3.6
+    yum -y install python36
 else
     # For rhel-7, just enable the basic rhel repos so that we
     # can install python and other dependencies.
@@ -267,6 +322,9 @@ EOF
     # Enable epel for csmock
     curl https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm --output epel7.rpm
     yum -y install epel7.rpm
+
+    # Install Python 3.6
+    yum -y install rh-python36
 fi
 ''')
 
@@ -277,13 +335,18 @@ fi
 
             df_parent_out.write(f'''
 FROM {parent_image_url}
-LABEL DOOZER_COVSCAN_GROUP_PARENT={cc.runtime.group_config.name}
+LABEL DOOZER_COVSCAN_PARENT={cc.runtime.group_config.name}
 USER 0
 
 # Set https proxy
 ARG HTTPS_PROXY
 RUN if [[ ! -z ${{HTTPS_PROXY}} ]]; then echo "Using proxy: $HTTPS_PROXY"; fi
 ENV https_proxy ${{HTTPS_PROXY}}
+
+# Certs necessary to install from internal repos
+RUN curl -k https://certs.corp.redhat.com/certs/2022-IT-Root-CA.pem --output /etc/pki/ca-trust/source/anchors/2022-IT-Root-CA.pem
+RUN curl -k https://certs.corp.redhat.com/certs/2015-IT-Root-CA.pem --output /etc/pki/ca-trust/source/anchors/2015-IT-Root-CA.pem
+RUN update-ca-trust && update-ca-trust enable
 
 # Add typical build repos to the image, but don't add to /etc/yum.repos.d
 # until we know whether we are on el7 or el8. As of 4.8, repos are only
@@ -296,14 +359,6 @@ ADD .oit/{cc.repo_type}.repo /tmp/oit.repo
 # Act on oit.repo and enable rhel repos
 ADD {rhel_repo_gen_sh} .
 RUN chmod +x {rhel_repo_gen_sh} && ./{rhel_repo_gen_sh}
-
-RUN yum install -y python36
-
-# Certs necessary to install from covscan repos
-RUN curl -k https://password.corp.redhat.com/RH-IT-Root-CA.crt --output /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt
-RUN curl -k https://engineering.redhat.com/Eng-CA.crt --output /etc/pki/ca-trust/source/anchors/Eng-CA.crt
-RUN update-ca-trust
-RUN update-ca-trust enable
 
 RUN yum install -y cov-sa csmock csmock-plugin-coverity csdiff
 ''')
@@ -425,7 +480,8 @@ RUN /{analysis_script_name} 2>&1
 
                     # Before running cov-analyze, make sure that all_js doesn't exist (i.e. we haven't already run it
                     # in this workspace AND summary.txt exist (i.e. at least one item in this stage emitted results).
-                    df_out.write(f'''
+                    if cc.podman_sudo:  # no need to chown if running as a rootless container
+                        df_out.write(f'''
 # Dockerfile steps run as root; chang permissions back to doozer user before leaving stage
 RUN chown -R {os.getuid()}:{os.getgid()} {container_stage_cov_dir}
 ''')
