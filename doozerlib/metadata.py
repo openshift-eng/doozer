@@ -8,7 +8,7 @@ import urllib.parse
 from collections import OrderedDict
 from enum import Enum
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
-from xml.etree import ElementTree
+from defusedxml import ElementTree
 
 import dateutil.parser
 import requests

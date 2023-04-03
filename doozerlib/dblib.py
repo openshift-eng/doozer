@@ -52,7 +52,7 @@ def try_connecting(func):
                         db.connection = mysql_connector.connect(
                             host=os.getenv(constants.DB_HOST, constants.default_db_params[constants.DB_HOST]),
                             user=os.getenv(constants.DB_USER),
-                            password=os.getenv(constants.DB_PWD),
+                            password=os.getenv(constants.DB_PWD_NAME),
                             database=os.getenv(constants.DB_NAME, constants.default_db_params[constants.DB_NAME]))
                         break
                     except Exception as e:
@@ -105,7 +105,7 @@ class DB(object):
         and returns True.
         """
 
-        if not (constants.DB_USER in os.environ and constants.DB_PWD in os.environ):
+        if not (constants.DB_USER in os.environ and constants.DB_PWD_NAME in os.environ):
             self.runtime.logger.info("Environment variables required for db operation missing. Doozer will be running"
                                      "in no DB use mode.")
             return False
@@ -116,7 +116,7 @@ class DB(object):
         self.host = os.getenv(constants.DB_HOST, constants.default_db_params[constants.DB_HOST])
         self.port = os.getenv(constants.DB_PORT, constants.default_db_params[constants.DB_PORT])
         self.db = os.getenv(constants.DB_NAME, constants.default_db_params[constants.DB_NAME])
-        self.pwd = os.getenv(constants.DB_PWD)
+        self.pwd = os.getenv(constants.DB_PWD_NAME)
         self.db_user = os.getenv(constants.DB_USER)
 
         self.runtime.logger.info("Found all environment variables required for db setup.")
