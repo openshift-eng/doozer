@@ -2,6 +2,7 @@ aiofiles
 bashlex
 click >= 8.1.3
 dockerfile-parse >= 0.0.13
+defusedxml
 future
 koji
 PyGitHub >= 1.46
