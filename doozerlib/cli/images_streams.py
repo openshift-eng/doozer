@@ -896,12 +896,19 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
         public_source_repo = g.get_repo(f'{org}/{repo_name}')
 
+        fork_repo = None
         try:
             fork_repo_name = f'{github_user.login}/{repo_name}'
             fork_repo = g.get_repo(fork_repo_name)
         except UnknownObjectException:
-            # Repo doesn't exist; fork it
-            fork_repo = github_user.create_fork(public_source_repo)
+            if not fork_repo:
+                for repo in github_user.get_repos():
+                    if repo.fork and repo.parent.full_name == public_source_repo.full_name:
+                        fork_repo = repo
+                        break
+            if not fork_repo:
+                # Repo doesn't exist; fork it
+                fork_repo = github_user.create_fork(public_source_repo)
 
         fork_branch_name = f'art-consistency-{runtime.group_config.name}-{dgk}'
         fork_branch_head = f'{github_user.login}:{fork_branch_name}'
