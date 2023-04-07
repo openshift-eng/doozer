@@ -7,7 +7,7 @@ import yaml
 import sys
 import subprocess
 import urllib.request, urllib.parse, urllib.error
-from typing import Dict
+from typing import Dict, cast
 import tempfile
 import traceback
 import koji
@@ -18,6 +18,7 @@ import pathlib
 
 from future import standard_library
 from doozerlib import Runtime, state, cli as cli_package
+from doozerlib.distgit import ImageDistGitRepo
 from doozerlib.pushd import Dir
 from doozerlib.model import Missing
 from doozerlib.brew import get_watch_task_info_copy
@@ -239,6 +240,8 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
               help="Absolute path of yum repo to make available for rhel-7 scanner images")
 @click.option("--local-repo-rhel-8", metavar="REPO_DIR", default=[], multiple=True,
               help="Absolute path of yum repo to make available for rhel-8 scanner images")
+@click.option("--local-repo-rhel-9", metavar="REPO_DIR", default=[], multiple=True,
+              help="Absolute path of yum repo to make available for rhel-9 scanner images")
 @click.option("--repo-type", metavar="REPO_TYPE", envvar="OIT_IMAGES_REPO_TYPE",
               default="unsigned",
               help="Repo group type to use for version autodetection scan (e.g. signed, unsigned).")
@@ -249,9 +252,12 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
 @click.option('--ignore-waived', default=False, is_flag=True,
               help='Ignore any previously detected waived results (all=diff)')
 @click.option('--https-proxy', default='', help='HTTPS proxy to be used during image builds')
+@click.option('--podman-sudo', is_flag=True, help="Run podman with sudo")
+@click.option("--podman-tmpdir", help='Set the temporary storage location of downloaded container images for podman')
 @pass_runtime
-def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8, repo_type,
-                   preserve_builder_images, force_analysis, ignore_waived, https_proxy):
+def images_covscan(runtime: Runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8, local_repo_rhel_9, repo_type,
+                   preserve_builder_images, force_analysis, ignore_waived, https_proxy,
+                   podman_sudo: bool, podman_tmpdir: Optional[str]):
     """
     Runs a coverity scan against the specified images.
 
@@ -345,6 +351,7 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
     result_archive = absolutize(result_archive)
     local_repo_rhel_7 = [absolutize(repo) for repo in local_repo_rhel_7]
     local_repo_rhel_8 = [absolutize(repo) for repo in local_repo_rhel_8]
+    local_repo_rhel_9 = [absolutize(repo) for repo in local_repo_rhel_9]
 
     runtime.initialize()
 
@@ -352,12 +359,13 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
         """
         Deletes images with a particular label value
         """
-        rc, image_list, stderr = exectools.cmd_gather(f'sudo podman images -q --filter label={key}={value}', strip=True)
+        podman_cmd = "sudo podman" if podman_sudo else "podman"
+        rc, image_list, stderr = exectools.cmd_gather(f'{podman_cmd} images -q --filter label={key}={value}', strip=True)
         if not image_list:
             runtime.logger.info(f'No images found with {key}={value} label exist: {stderr}')
             return
         targets = " ".join(image_list.split())
-        rc, _, _ = exectools.cmd_gather(f'sudo podman rmi {targets}')
+        rc, _, _ = exectools.cmd_gather(f'{podman_cmd} rmi {targets}')
         if rc != 0:
             runtime.logger.warning(f'Unable to remove all images with {key}={value}')
 
@@ -370,13 +378,17 @@ def images_covscan(runtime, result_archive, local_repo_rhel_7, local_repo_rhel_8
     successes = []
     failures = []
     for image in runtime.image_metas():
-        with Dir(image.distgit_repo().distgit_dir):
-            image.distgit_repo().pull_sources()
-            dg_commit_hash, _ = exectools.cmd_assert('git rev-parse HEAD', strip=True)
+        dg = cast(ImageDistGitRepo, image.distgit_repo())
+        with Dir(dg.distgit_dir):
+            dg.pull_sources()
+            dg_commit_hash = dg.sha
+            if not dg_commit_hash:
+                raise ValueError(f"Distgit commit hash for {dg.name} is unknown.")
             cc = coverity.CoverityContext(image, dg_commit_hash, result_archive, repo_type=repo_type,
                                           local_repo_rhel_7=local_repo_rhel_7, local_repo_rhel_8=local_repo_rhel_8,
+                                          local_repo_rhel_9=local_repo_rhel_9,
                                           force_analysis=force_analysis, ignore_waived=ignore_waived,
-                                          https_proxy=https_proxy)
+                                          https_proxy=https_proxy, podman_sudo=podman_sudo, podman_tmpdir=podman_tmpdir)
 
             if image.covscan(cc):
                 successes.append(image.distgit_key)
