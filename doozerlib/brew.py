@@ -65,7 +65,7 @@ def get_watch_task_info_copy():
 
 
 def watch_task(session, log_f, task_id, terminate_event):
-    end = time.time() + 4 * 60 * 60
+    end = time.time() + 6 * 60 * 60
     watcher = koji_cli.lib.TaskWatcher(
         task_id,
         session,
