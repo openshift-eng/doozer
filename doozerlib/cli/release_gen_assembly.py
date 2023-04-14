@@ -497,7 +497,6 @@ class GenAssemblyCli:
 
         return advisories, release_jira
 
-
     def _generate_assembly_definition(self) -> dict:
         image_member_overrides, rpm_member_overrides = self._get_member_overrides()
 
