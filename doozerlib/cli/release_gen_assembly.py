@@ -494,18 +494,17 @@ class GenAssemblyCli:
                 # if this assembly is rc.X, then check if there is a previously defined rc.X-1
                 # pick advisories and release ticket from there
                 match = re.match(r"rc\.(\d+)", self.gen_assembly_name)
-                if match:
-                    current_v = int(match.group(0))
-                    if current_v != 0:
-                        previous_assembly_name = f"rc.{current_v - 1}"
-                        releases_config = self.runtime.get_releases_config()
-                        if previous_assembly in releases_config.releases and releases_config.releases[previous_assembly].assembly.type == AssemblyTypes.CANDIDATE:
-                            previous_group = releases_config.releases[previous_assembly].assembly.group
-                            group_info["advisories"] = previous_group.advisories
-                            group_info["release_jira"] = previous_group.release_jira
-                            self.logger.info(f"Reusing advisories and release ticket from previous candidate assembly {previous_assembly}")
-                        else:
-                            self.logger.info("No matching previous candidate assembly found")
+                current_v = int(match.group(1))
+                if current_v != 0:
+                    previous_assembly = f"rc.{current_v - 1}"
+                    releases_config = self.runtime.get_releases_config()
+                    if previous_assembly in releases_config.releases:
+                        previous_group = releases_config.releases[previous_assembly].assembly.group
+                        group_info["advisories"] = previous_group.advisories
+                        group_info["release_jira"] = previous_group.release_jira
+                        self.logger.info(f"Reusing advisories and release ticket from previous candidate assembly {previous_assembly}, {previous_group.advisories}, {previous_group.release_jira}")
+                    else:
+                        self.logger.info("No matching previous candidate assembly found")
 
         if self.final_previous_list:
             group_info['upgrades'] = ','.join(map(str, self.final_previous_list))
