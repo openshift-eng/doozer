@@ -511,9 +511,7 @@ class GenAssemblyCli:
             }
 
         if self.assembly_type not in [AssemblyTypes.CUSTOM, AssemblyTypes.PREVIEW]:
-            advisories, release_jira = self._get_advisories_release_jira()
-            group_info['advisories'] = advisories
-            group_info["release_jira"] = release_jira
+            group_info['advisories'], group_info["release_jira"] = self._get_advisories_release_jira()
 
         if self.final_previous_list:
             group_info['upgrades'] = ','.join(map(str, self.final_previous_list))
