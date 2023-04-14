@@ -139,7 +139,7 @@ class GenAssemblyCli:
         # Infer assembly type
         if self.custom:
             self.assembly_type = AssemblyTypes.CUSTOM
-        elif re.search(r'^rc\.[0-9]+$', self.gen_assembly_name):
+        elif re.search(r'^[fr]c\.[0-9]+$', self.gen_assembly_name):
             self.assembly_type = AssemblyTypes.CANDIDATE
         elif re.search(r'^ec\.[0-9]+$', self.gen_assembly_name):
             self.assembly_type = AssemblyTypes.PREVIEW
@@ -453,7 +453,7 @@ class GenAssemblyCli:
         if self.previous_list:
             final_previous_list |= set(map(VersionInfo.parse, self.previous_list))
         elif self.auto_previous:
-            # gen_assembly_name should be in the form of `ec.0`, `rc.1`, or `4.10.1`
+            # gen_assembly_name should be in the form of `ec.0`, `fc.0`, `rc.1`, or `4.10.1`
             if self.assembly_type == AssemblyTypes.CANDIDATE or self.assembly_type == AssemblyTypes.PREVIEW:
                 major_minor = self.runtime.get_minor_version()  # x.y
                 version = f"{major_minor}.0-{self.gen_assembly_name}"
@@ -466,6 +466,37 @@ class GenAssemblyCli:
                     self.graph_content_candidate, self.suggestions_url)
                 final_previous_list |= set(map(VersionInfo.parse, previous_list))
         self.final_previous_list = sorted(final_previous_list)
+
+    def _get_advisories_release_jira(self) -> Tuple[Dict[str, str], str]:
+        # Add placeholder advisory numbers and JIRA key.
+        # Those values will be replaced with real values by pyartcd when preparing a release.
+        advisories = {
+            'image': -1,
+            'rpm': -1,
+            'extras': -1,
+            'metadata': -1,
+        }
+        release_jira = "ART-0"
+
+        if self.assembly_type == AssemblyTypes.CANDIDATE:
+            # if this assembly is rc.X, then check if there is a previously defined rc.X-1
+            # pick advisories and release ticket from there
+            split = re.split(r'(\d+)', self.gen_assembly_name)
+            # ['rc.', '2', '']
+            current_v = int(split[1])
+            if current_v != 0:
+                previous_assembly = f"{split[0]}{current_v - 1}"
+                releases_config = self.runtime.get_releases_config()
+                if previous_assembly in releases_config.releases:
+                    previous_group = releases_config.releases[previous_assembly].assembly.group
+                    advisories = previous_group.advisories
+                    release_jira = previous_group.release_jira
+                    self.logger.info(f"Reusing advisories and release ticket from previous candidate assembly {previous_assembly}, {previous_group.advisories}, {previous_group.release_jira}")
+                else:
+                    self.logger.info("No matching previous candidate assembly found")
+
+        return advisories, release_jira
+
 
     def _generate_assembly_definition(self) -> dict:
         image_member_overrides, rpm_member_overrides = self._get_member_overrides()
@@ -480,31 +511,9 @@ class GenAssemblyCli:
             }
 
         if self.assembly_type not in [AssemblyTypes.CUSTOM, AssemblyTypes.PREVIEW]:
-            # Add placeholder advisory numbers and JIRA key.
-            # Those values will be replaced with real values by pyartcd when preparing a release.
-            group_info['advisories'] = {
-                'image': -1,
-                'rpm': -1,
-                'extras': -1,
-                'metadata': -1,
-            }
-            group_info["release_jira"] = "ART-0"
-
-            if self.assembly_type == AssemblyTypes.CANDIDATE:
-                # if this assembly is rc.X, then check if there is a previously defined rc.X-1
-                # pick advisories and release ticket from there
-                match = re.match(r"rc\.(\d+)", self.gen_assembly_name)
-                current_v = int(match.group(1))
-                if current_v != 0:
-                    previous_assembly = f"rc.{current_v - 1}"
-                    releases_config = self.runtime.get_releases_config()
-                    if previous_assembly in releases_config.releases:
-                        previous_group = releases_config.releases[previous_assembly].assembly.group
-                        group_info["advisories"] = previous_group.advisories
-                        group_info["release_jira"] = previous_group.release_jira
-                        self.logger.info(f"Reusing advisories and release ticket from previous candidate assembly {previous_assembly}, {previous_group.advisories}, {previous_group.release_jira}")
-                    else:
-                        self.logger.info("No matching previous candidate assembly found")
+            advisories, release_jira = self._get_advisories_release_jira()
+            group_info['advisories'] = advisories
+            group_info["release_jira"] = release_jira
 
         if self.final_previous_list:
             group_info['upgrades'] = ','.join(map(str, self.final_previous_list))
