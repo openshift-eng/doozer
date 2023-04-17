@@ -467,7 +467,7 @@ class GenAssemblyCli:
                 final_previous_list |= set(map(VersionInfo.parse, previous_list))
         self.final_previous_list = sorted(final_previous_list)
 
-    def _get_advisories_release_jira(self) -> Tuple[Dict[str, str], str]:
+    def _get_advisories_release_jira(self) -> Tuple[Dict[str, int], str]:
         # Add placeholder advisory numbers and JIRA key.
         # Those values will be replaced with real values by pyartcd when preparing a release.
         advisories = {
