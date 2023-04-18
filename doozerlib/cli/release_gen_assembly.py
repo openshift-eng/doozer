@@ -467,6 +467,36 @@ class GenAssemblyCli:
                 final_previous_list |= set(map(VersionInfo.parse, previous_list))
         self.final_previous_list = sorted(final_previous_list)
 
+    def _get_advisories_release_jira(self) -> Tuple[Dict[str, int], str]:
+        # Add placeholder advisory numbers and JIRA key.
+        # Those values will be replaced with real values by pyartcd when preparing a release.
+        advisories = {
+            'image': -1,
+            'rpm': -1,
+            'extras': -1,
+            'metadata': -1,
+        }
+        release_jira = "ART-0"
+
+        if self.assembly_type == AssemblyTypes.CANDIDATE:
+            # if this assembly is rc.X, then check if there is a previously defined rc.X-1
+            # pick advisories and release ticket from there
+            split = re.split(r'(\d+)', self.gen_assembly_name)
+            # ['rc.', '2', '']
+            current_v = int(split[1])
+            if current_v != 0:
+                previous_assembly = f"{split[0]}{current_v - 1}"
+                releases_config = self.runtime.get_releases_config()
+                if previous_assembly in releases_config.releases:
+                    previous_group = releases_config.releases[previous_assembly].assembly.group
+                    advisories = previous_group.advisories
+                    release_jira = previous_group.release_jira
+                    self.logger.info(f"Reusing advisories and release ticket from previous candidate assembly {previous_assembly}, {previous_group.advisories}, {previous_group.release_jira}")
+                else:
+                    self.logger.info("No matching previous candidate assembly found")
+
+        return advisories, release_jira
+
     def _generate_assembly_definition(self) -> dict:
         image_member_overrides, rpm_member_overrides = self._get_member_overrides()
 
@@ -480,15 +510,7 @@ class GenAssemblyCli:
             }
 
         if self.assembly_type not in [AssemblyTypes.CUSTOM, AssemblyTypes.PREVIEW]:
-            # Add placeholder advisory numbers and JIRA key.
-            # Those values will be replaced with real values by pyartcd when preparing a release.
-            group_info['advisories'] = {
-                'image': -1,
-                'rpm': -1,
-                'extras': -1,
-                'metadata': -1,
-            }
-            group_info["release_jira"] = "ART-0"
+            group_info['advisories'], group_info["release_jira"] = self._get_advisories_release_jira()
 
         if self.final_previous_list:
             group_info['upgrades'] = ','.join(map(str, self.final_previous_list))

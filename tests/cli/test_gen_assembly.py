@@ -5,6 +5,7 @@ from flexmock import flexmock
 
 from doozerlib.assembly import AssemblyTypes
 from doozerlib.cli.release_gen_assembly import GenAssemblyCli
+from doozerlib.model import Model
 
 
 class TestGenPayloadCli(TestCase):
@@ -268,3 +269,28 @@ class TestGenPayloadCli(TestCase):
         )
         with self.assertRaises(ValueError):
             gacli._get_release_pullspecs()
+
+    def test_get_advisories_release_jira_default(self):
+        runtime = MagicMock()
+        gacli = GenAssemblyCli(runtime=runtime, gen_assembly_name='4.11.2')
+        advisories, release_jira = gacli._get_advisories_release_jira()
+        self.assertEqual(advisories, {
+            'image': -1,
+            'rpm': -1,
+            'extras': -1,
+            'metadata': -1,
+        })
+        self.assertEqual(release_jira, "ART-0")
+
+    def test_get_advisories_release_jira_candidate_reuse(self):
+        runtime = MagicMock()
+        advisories = {'image': 123, 'rpm': 456, 'extras': 789, 'metadata': 654}
+        release_jira = "ART-123"
+        runtime.get_releases_config.return_value = Model({'releases': {'rc.0': {'assembly': {'group': {
+            'advisories': advisories,
+            'release_jira': release_jira
+        }}}}})
+        gacli = GenAssemblyCli(runtime=runtime, gen_assembly_name='rc.1')
+        actual = gacli._get_advisories_release_jira()
+        self.assertEqual(advisories, actual[0])
+        self.assertEqual(release_jira, actual[1])
