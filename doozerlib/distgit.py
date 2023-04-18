@@ -1658,9 +1658,10 @@ class ImageDistGitRepo(DistGitRepo):
                 # A GITLAB token env var was not provided: display a warning and fallback to default
                 self.logger.error(f'Fallback to default ART config: {e}')
                 return False
-        elif self.runtime.group_config.canonical_builders_from_upstream == 'on':
+        elif self.runtime.group_config.canonical_builders_from_upstream in ['on', True]:
+            # yaml parser converts bare 'on' to True, same for 'off' and False
             return True
-        elif self.runtime.group_config.canonical_builders_from_upstream == 'off':
+        elif self.runtime.group_config.canonical_builders_from_upstream in ['off', False]:
             return False
         else:
             # Invalid value
