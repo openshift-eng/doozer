@@ -38,6 +38,8 @@ from doozerlib.release_schedule import ReleaseSchedule
 from doozerlib.rpm_utils import parse_nvr
 from doozerlib.source_modifications import SourceModifierFactory
 from doozerlib.util import convert_remote_git_to_https, yellow_print
+from doozerlib.comment_on_pr import CommentOnPr
+from string import Template
 
 # doozer used to be part of OIT
 OIT_COMMENT_PREFIX = '#oit##'
@@ -937,7 +939,7 @@ class ImageDistGitRepo(DistGitRepo):
 
     def build_container(
             self, profile, push_to_defaults, additional_registries, terminate_event,
-            scratch=False, retries=3, realtime=False, dry_run=False, registry_config_dir=None, filter_by_os=None):
+            scratch=False, retries=3, realtime=False, dry_run=False, registry_config_dir=None, filter_by_os=None, comment_on_pr=False):
         """
         This method is designed to be thread-safe. Multiple builds should take place in brew
         at the same time. After a build, images are pushed serially to all mirrors.
@@ -1046,6 +1048,26 @@ class ImageDistGitRepo(DistGitRepo):
                             record["nvrs"] = build_info["nvr"]
                         if not dry_run:
                             self.update_build_db(True, task_id=task_id, scratch=scratch)
+                            if comment_on_pr:
+                                try:
+                                    comment_on_pr_obj = CommentOnPr(distgit_dir=self.distgit_dir,
+                                                                    token=os.getenv(constants.GITHUB_TOKEN))
+                                    comment_on_pr_obj.set_repo_details()
+                                    comment_on_pr_obj.set_github_client()
+                                    comment_on_pr_obj.set_pr_from_commit()
+                                    # Message to be posted to the comment
+                                    message = Template("**[ART PR BUILD NOTIFIER]** _(beta)_\n\n"
+                                                       "This PR has been included in build "
+                                                       "[$nvr](https://brewweb.engineering.redhat.com/brew/buildinfo"
+                                                       "?buildID=$build_id)"
+                                                       "for distgit *$distgit_name*. \n All builds following this will "
+                                                       "include this PR.")
+                                    comment_on_pr_obj.post_comment(message.substitute(nvr=build_info["nvr"],
+                                                                                      build_id=build_info["id"],
+                                                                                      distgit_name=self.metadata.name))
+                                except Exception as e:
+                                    self.logger.error(f"Error commenting on PR for build task id {task_id} for distgit"
+                                                      f"{self.metadata.name}: {e}")
                             if not scratch:
                                 push_version = build_info["version"]
                                 push_release = build_info["release"]
