@@ -489,7 +489,7 @@ class GenAssemblyCli:
                 releases_config = self.runtime.get_releases_config()
                 if previous_assembly in releases_config.releases:
                     previous_group = releases_config.releases[previous_assembly].assembly.group
-                    advisories = previous_group.advisories
+                    advisories = previous_group.advisories.primitive()
                     release_jira = previous_group.release_jira
                     self.logger.info(f"Reusing advisories and release ticket from previous candidate assembly {previous_assembly}, {previous_group.advisories}, {previous_group.release_jira}")
                 else:
