@@ -19,3 +19,4 @@ setuptools-scm
 setuptools>=65.5.1 # not directly required, pinned by Snyk to avoid a vulnerability
 aiohttp
 jira==3.4.1
+ghapi
