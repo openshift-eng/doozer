@@ -806,6 +806,10 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
     3. You will probably want to use --scratch since it is unlikely you want your
         custom build tagged.
     """
+    if runtime.assembly != 'stream' and comment_on_pr:
+        runtime.logger.warning("Commenting on PRs is only supported for stream assembly")
+        comment_on_pr = False
+
     # Initialize all distgit directories before trying to build. This is to
     # ensure all build locks are acquired before the builds start and for
     # clarity in the logs.

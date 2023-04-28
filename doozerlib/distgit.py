@@ -1056,10 +1056,10 @@ class ImageDistGitRepo(DistGitRepo):
                                     comment_on_pr_obj.set_github_client()
                                     comment_on_pr_obj.set_pr_from_commit()
                                     # Message to be posted to the comment
-                                    message = Template("**[ART PR BUILD NOTIFIER]** _(beta)_\n\n"
+                                    message = Template("**[ART PR BUILD NOTIFIER]**\n\n"
                                                        "This PR has been included in build "
                                                        "[$nvr](https://brewweb.engineering.redhat.com/brew/buildinfo"
-                                                       "?buildID=$build_id)"
+                                                       "?buildID=$build_id) "
                                                        "for distgit *$distgit_name*. \n All builds following this will "
                                                        "include this PR.")
                                     comment_on_pr_obj.post_comment(message.substitute(nvr=build_info["nvr"],
