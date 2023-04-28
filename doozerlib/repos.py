@@ -1,4 +1,9 @@
-from .model import Model, ModelException, Missing
+import tempfile
+import threading
+from typing import Dict, List, cast
+
+from doozerlib import exectools, rpm_utils
+from .model import Model, Missing
 import yaml
 import requests
 import json
@@ -13,6 +18,9 @@ ARCH_X86_64 = "x86_64"
 class Repo(object):
     """Represents a single yum repository and provides sane ways to
     access each property based on the arch or repo type."""
+
+    _list_rpms_cache = {}  # used to cache list_rpms calls. (repo_name, arch) => List[nvr]
+    _list_rpms_cache_lock = threading.Lock()
 
     def __init__(self, name, data, valid_arches, gpgcheck=True):
         self.name = name
@@ -176,6 +184,51 @@ class Repo(object):
 
         return result
 
+    async def list_rpms(self, arch: str):
+        """ List all available rpms in this rpm repository
+        """
+        if arch not in self._valid_arches:
+            raise ValueError('{} is not a valid arch!')
+
+        # Attempt to get the cached result before actually querying the repo
+        cache_key = (self.name, arch)
+        with Repo._list_rpms_cache_lock:
+            cached_result = Repo._list_rpms_cache.get(cache_key)
+            if cached_result is not None:  # cache hit
+                return cached_result
+
+        # Cache miss. Will actually query the repo.
+        # Note this code path is not protected inside the lock.
+        # Putting repoquery inside the lock will prevent from multiple queries over different repos.
+        # Currently there is a possibility to run multiple queries over the same repo, but it should be acceptable.
+        result = []
+        # Use a custom section name for repoquery to avoid conflict with system repos
+        section_name = f"doozer-{self.name}-{arch}"
+        # Create a temporary .repo file for `rpmquery` command
+        with tempfile.NamedTemporaryFile(prefix=f"doozer-repo-{self.name}-{arch}") as fp:
+            fp.write(self.conf_section("unsigned", arch, enabled=True, section_name=section_name).encode())
+            fp.flush()
+            # Please be aware that RHEL8+'s `repoquery` is actually `dnf repoquery`,
+            # which has different flags or behaves differently comparing with the original `repoquery`.
+            cmd = ["repoquery", "--config", fp.name, "--repoid", section_name, "--all"]
+            out, _ = await exectools.cmd_assert_async(cmd)
+            out = cast(str, out)
+            for line in out.splitlines():
+                nevra = line.strip()
+                if not nevra:  # skip empty line
+                    continue
+                # example nevra: zziplib-0:0.13.62-12.el7.x86_64
+                nevr, arch = nevra.rsplit(".", 1)  # nevr: zziplib-0:0.13.62-12.el7, arch: x86_64
+                rpm_info = rpm_utils.parse_nvr(nevr)
+                rpm_info["arch"] = arch
+                rpm_info["nvr"] = f"{rpm_info['name']}-{rpm_info['version']}-{rpm_info['release']}"
+                result.append(rpm_info)
+
+        # Cache the result
+        with Repo._list_rpms_cache_lock:
+            Repo._list_rpms_cache[cache_key] = result
+        return result
+
 
 # base empty repo section for disabling repos in Dockerfiles
 EMPTY_REPO = """
@@ -213,9 +266,9 @@ class Repos(object):
     Represents the entire collection of repos and provides
     automatic content_set and repo conf file generation.
     """
-    def __init__(self, repos, arches, gpgcheck=True):
+    def __init__(self, repos: Dict[str, Dict], arches: List[str], gpgcheck=True):
         self._arches = arches
-        self._repos = {}
+        self._repos: Dict[str, Repo] = {}
         repotypes = []
         names = []
         for name, repo in repos.items():
@@ -225,7 +278,7 @@ class Repos(object):
         self.names = tuple(names)
         self.repotypes = list(set(repotypes))  # leave only unique values
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: str) -> Repo:
         """Allows getting a Repo() object simply by name via repos[repo_name]"""
         if item not in self._repos:
             raise ValueError('{} is not a valid repo name!'.format(item))

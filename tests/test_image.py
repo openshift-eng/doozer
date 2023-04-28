@@ -7,8 +7,10 @@ import os
 import logging
 import tempfile
 import shutil
-from unittest import mock
+from unittest import IsolatedAsyncioTestCase, mock
 from flexmock import flexmock
+
+from doozerlib.repos import Repos
 try:
     from importlib import reload
 except ImportError:
@@ -161,6 +163,44 @@ class TestImageMetadata(unittest.TestCase):
         rt = mock.MagicMock()
         imeta = image.ImageMetadata(rt, data_obj)
         self.assertEqual(imeta.get_brew_image_name_short(), 'openshift-test')
+
+
+class TestArchiveImageInspector(IsolatedAsyncioTestCase):
+    @mock.patch("doozerlib.repos.Repo.list_rpms")
+    @mock.patch("doozerlib.image.ArchiveImageInspector.get_installed_rpm_dicts")
+    @mock.patch("doozerlib.image.ArchiveImageInspector.image_arch")
+    @mock.patch("doozerlib.image.ArchiveImageInspector.get_image_meta")
+    @mock.patch("doozerlib.image.ArchiveImageInspector.get_brew_build_id")
+    async def test_find_non_latest_rpms(self, get_brew_build_id: mock.Mock, get_image_meta: mock.Mock,
+                                        image_arch: mock.Mock, get_installed_rpm_dicts: mock.Mock,
+                                        list_rpms: mock.AsyncMock):
+        runtime = mock.MagicMock(repos=Repos({
+            "rhel-8-baseos-rpms": {"conf": {"baseurl": {"x86_64": "fake_url"}}, "content_set": {"default": "fake"}},
+            "rhel-8-appstream-rpms": {"conf": {"baseurl": {"x86_64": "fake_url"}}, "content_set": {"default": "fake"}},
+            "rhel-8-rt-rpms": {"conf": {"baseurl": {"x86_64": "fake_url"}}, "content_set": {"default": "fake"}},
+        }, ["x86_64", "s390x", "ppc64le", "aarch64"]))
+        archive = mock.MagicMock()
+        brew_build_inspector = mock.MagicMock(autospec=image.BrewBuildImageInspector)
+        get_brew_build_id.return_value = 12345
+        brew_build_inspector.get_brew_build_id.return_value = 12345
+        get_image_meta.return_value = mock.MagicMock(autospec=image.ImageMetadata, config={
+            "enabled_repos": ["rhel-8-baseos-rpms", "rhel-8-appstream-rpms"]
+        })
+        image_arch.return_value = "x86_64"
+        list_rpms.return_value = [
+            {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
+            {'name': 'bar', 'version': '1.1.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'bar-1.1.0-1.el9'},
+        ]
+        get_installed_rpm_dicts.return_value = [
+            {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
+            {'name': 'bar', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'bar-1.0.0-1.el9'},
+        ]
+        inspector = image.ArchiveImageInspector(runtime, archive, brew_build_inspector)
+        actual = await inspector.find_non_latest_rpms()
+        get_image_meta.assert_called_once_with()
+        get_installed_rpm_dicts.assert_called_once_with()
+        list_rpms.assert_awaited()
+        self.assertEqual(actual, [('bar-1.0.0-1.el9', 'bar-1.1.0-1.el9', 'rhel-8-appstream-rpms')])
 
 
 if __name__ == "__main__":
