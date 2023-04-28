@@ -95,8 +95,10 @@ class TestDistgit(IsolatedAsyncioTestCase):
         Define and provide mock logging for test/response
         """
         self.stream = io.StringIO()
-        logging.basicConfig(level=logging.DEBUG, stream=self.stream)
+        self.handler = logging.StreamHandler(self.stream)
         self.logger = logging.getLogger()
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.addHandler(self.handler)
         self.logs_dir = tempfile.mkdtemp()
         self.md = MockMetadata(MockRuntime(self.logger))
 
