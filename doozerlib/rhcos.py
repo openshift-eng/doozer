@@ -170,17 +170,23 @@ class RHCOSBuildFinder:
             return None
 
         multi_url = self.runtime.group_config.urls.rhcos_release_base["multi"]
-        build_id = None
+        arches_building = []
         if multi_url:
-            # Make sure all rhcos arch builds are complete
             arches_building = self.runtime.group_config.arches
-            for b in data["builds"]:
-                if len(b["arches"]) == len(arches_building):
-                    build_id = b["id"]
-                    break
-        else:
-            build_id = data["builds"][0]["id"]
-        return build_id
+        for b in data["builds"]:
+            # Make sure all rhcos arch builds are complete
+            if multi_url and len(b["arches"]) != len(arches_building):
+                continue
+            if not self.meta_has_required_attributes(self.rhcos_build_meta(b["id"])):
+                continue
+            return b["id"]
+
+    def meta_has_required_attributes(self, meta):
+        required_keys = [payload_tag.build_metadata_key for payload_tag in self.runtime.group_config.rhcos.payload_tags]
+        for metadata_key in required_keys:
+            if metadata_key not in meta:
+                return False
+        return True
 
     @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
     def rhcos_build_meta(self, build_id: str, meta_type: str = "meta") -> Dict:
@@ -191,7 +197,7 @@ class RHCOSBuildFinder:
         :return: Returns a Dict containing the parsed requested metadata. See the RHCOS release browser for examples: https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/
 
         Example 'meta.json':
-         https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/storage/releases/rhcos-4.1/410.81.20200520.0/meta.json
+        https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/storage/prod/streams/4.14-9.2/builds/414.92.202305050010-0/x86_64/meta.json
          {
              "buildid": "410.81.20200520.0",
              ...
@@ -209,10 +215,7 @@ class RHCOSBuildFinder:
         """
         See public API rhcos_build_meta for details.
         """
-        url = f"{self.rhcos_release_url()}/{build_id}/"
-        # before 4.3 the arch was not included in the path
-        vtuple = tuple(int(f) for f in self.version.split("."))
-        url += f"{meta_type}.json" if vtuple < (4, 3) else f"{self.brew_arch}/{meta_type}.json"
+        url = f"{self.rhcos_release_url()}/{build_id}/{self.brew_arch}/{meta_type}.json"
         with request.urlopen(url) as req:
             return json.loads(req.read().decode())
 

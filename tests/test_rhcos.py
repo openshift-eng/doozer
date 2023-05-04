@@ -62,7 +62,9 @@ class TestRhcos(unittest.TestCase):
         self.assertIn("4.9-s390x", rhcos.RHCOSBuildFinder(self.runtime, "4.9", "s390x").rhcos_release_url())
 
     @patch('urllib.request.urlopen')
-    def test_build_id(self, mock_urlopen):
+    @patch("doozerlib.rhcos.RHCOSBuildFinder.meta_has_required_attributes")
+    def test_build_id(self, meta_has_required_attributes, mock_urlopen):
+        meta_has_required_attributes.return_value = True
         builds = [{'id': 'id-1'}, {'id': 'id-2'}]
         _urlopen_json_cm(mock_urlopen, dict(builds=builds))
         self.assertEqual('id-1', rhcos.RHCOSBuildFinder(self.runtime, "4.4")._latest_rhcos_build_id())
@@ -70,7 +72,7 @@ class TestRhcos(unittest.TestCase):
 
         _urlopen_json_cm(mock_urlopen, dict(builds=[]))
         self.assertIsNone(rhcos.RHCOSBuildFinder(self.runtime, "4.2", "ppc64le")._latest_rhcos_build_id())
-        self.assertIn('/rhcos-4.2-ppc64le/', mock_urlopen.call_args_list[1][0][0])
+        self.assertIn('/rhcos-4.2-ppc64le/', mock_urlopen.call_args_list[2][0][0])
 
     @patch('urllib.request.urlopen')
     def test_build_id_multi(self, mock_urlopen):
@@ -79,6 +81,25 @@ class TestRhcos(unittest.TestCase):
         self.runtime.group_config.urls = Model(dict(rhcos_release_base=dict(multi='some_url')))
         self.runtime.group_config.arches = ['arch1', 'arch2', 'arch3']
         self.assertEqual('id-2', rhcos.RHCOSBuildFinder(self.runtime, "4.4")._latest_rhcos_build_id())
+
+    @patch('urllib.request.urlopen')
+    @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
+    def test_build_id_build_release_job_completes(self, rhcos_build_meta, mock_urlopen):  # XXX: Change name
+        # If not all required attributes exist, which can happen if the rhcos release job did not succesfully complete, take the previous
+        self.runtime.group_config.rhcos = Model(dict(payload_tags=[dict(name="spam", build_metadata_key="spam"), dict(name="eggs", primary=True, build_metadata_key="eggs")]))
+
+        def mock_rhcos_build_meta(build_id):
+            if build_id == 'id-1':
+                return {'spam': 'sha:123'}
+            if build_id == 'id-2':
+                return {'spam': 'sha:345', 'eggs': 'sha:789'}
+
+        rhcos_build_meta.side_effect = mock_rhcos_build_meta
+        builds = [{'id': 'id-1', 'arches': ['arch1']}, {'id': 'id-2', 'arches': ['arch1']}]
+        _urlopen_json_cm(mock_urlopen, dict(builds=builds))
+        self.runtime.group_config.urls = Model(dict(rhcos_release_base=dict(multi='some_url')))
+        self.runtime.group_config.arches = ['arch1']
+        self.assertEqual('id-2', rhcos.RHCOSBuildFinder(self.runtime, "4.14")._latest_rhcos_build_id())
 
     @patch('urllib.request.urlopen')
     def test_build_find_failure(self, mock_urlopen):
