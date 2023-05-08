@@ -10,7 +10,7 @@ venv:
 	# source venv/bin/activate
 
 lint:
-	./venv/bin/python -m flake8
+	./venv/bin/python -m flake8 doozerlib/ tests/
 
 test: lint
 	./venv/bin/python -m pytest --verbose --color=yes tests/
