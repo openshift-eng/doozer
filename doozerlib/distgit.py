@@ -535,7 +535,7 @@ class ImageDistGitRepo(DistGitRepo):
                 pkg_managers = self.config.content.source.pkg_managers.primitive()
             elif self.config.content.source.pkg_managers in [Missing, None]:
                 # Auto-detect package managers
-                pkg_managers = self._detect_package_manangers()
+                pkg_managers = self._detect_package_managers()
             else:
                 raise ValueError(f"Invalid content.source.pkg_managers config for image {self.name}: {self.config.content.source.pkg_managers}")
             # Configure Cachito flags
@@ -644,7 +644,7 @@ class ImageDistGitRepo(DistGitRepo):
         config.update(config_overrides)
         return config
 
-    def _detect_package_manangers(self):
+    def _detect_package_managers(self):
         """ Detect and return package managers used by the source
         :return: a list of package managers
         """
@@ -1036,59 +1036,46 @@ class ImageDistGitRepo(DistGitRepo):
                     # or we would overwrite the image tag when pushing to the registry.
                     # `targets` is defined as an array just because we want to keep consistency with RPM build.
                     raise DoozerFatalError("Building images against multiple targets is not currently supported.")
-                target = self.metadata.targets[0]
 
-                if self.image_build_method == "osbs2":  # use OSBS 2
-                    osbs2 = OSBS2Builder(self.runtime, scratch=scratch, dry_run=dry_run)
-                    try:
-                        task_id, task_url, build_info = asyncio.run(osbs2.build(self.metadata, profile, retries=retries))
-                        record["task_id"] = task_id
-                        record["task_url"] = task_url
-                        if build_info:
-                            record["nvrs"] = build_info["nvr"]
-                        if not dry_run:
-                            self.update_build_db(True, task_id=task_id, scratch=scratch)
-                            if comment_on_pr:
-                                try:
-                                    comment_on_pr_obj = CommentOnPr(distgit_dir=self.distgit_dir,
-                                                                    token=os.getenv(constants.GITHUB_TOKEN))
-                                    comment_on_pr_obj.set_repo_details()
-                                    comment_on_pr_obj.set_github_client()
-                                    comment_on_pr_obj.set_pr_from_commit()
-                                    # Message to be posted to the comment
-                                    message = Template("**[ART PR BUILD NOTIFIER]**\n\n"
-                                                       "This PR has been included in build "
-                                                       "[$nvr](https://brewweb.engineering.redhat.com/brew/buildinfo"
-                                                       "?buildID=$build_id) "
-                                                       "for distgit *$distgit_name*. \n All builds following this will "
-                                                       "include this PR.")
-                                    comment_on_pr_obj.post_comment(message.substitute(nvr=build_info["nvr"],
-                                                                                      build_id=build_info["id"],
-                                                                                      distgit_name=self.metadata.name))
-                                except Exception as e:
-                                    self.logger.error(f"Error commenting on PR for build task id {task_id} for distgit"
-                                                      f"{self.metadata.name}: {e}")
-                            if not scratch:
-                                push_version = build_info["version"]
-                                push_release = build_info["release"]
-                    except OSBS2BuildError as build_err:
-                        record["task_id"], record["task_url"] = build_err.task_id, build_err.task_url
-                        if not dry_run:
-                            self.update_build_db(False, task_id=build_err.task_id, scratch=scratch)
-                        raise
-                else:  # use OSBS 1
-                    exectools.retry(
-                        retries=retries, wait_f=wait,
-                        task_f=lambda: self._build_container(
-                            target_image, target, profile["signing_intent"], profile["repo_type"], profile["repo_list"], terminate_event,
-                            scratch, record, dry_run=dry_run))
-                    # Just in case someone else is building an image, go ahead and find what was just
-                    # built so that push_image will have a fixed point of reference and not detect any
-                    # subsequent builds.
-                    if not dry_run and not scratch:
-                        nvr_dict = parse_nvr(record["nvrs"].split(",")[0])
-                        push_version = nvr_dict["version"]
-                        push_release = nvr_dict["release"]
+                if self.image_build_method != "osbs2":
+                    raise DoozerFatalError(f"Do not understand image build method {self.image_build_method}. Only osbs2 exists")
+                osbs2 = OSBS2Builder(self.runtime, scratch=scratch, dry_run=dry_run)
+                try:
+                    task_id, task_url, build_info = asyncio.run(osbs2.build(self.metadata, profile, retries=retries))
+                    record["task_id"] = task_id
+                    record["task_url"] = task_url
+                    if build_info:
+                        record["nvrs"] = build_info["nvr"]
+                    if not dry_run:
+                        self.update_build_db(True, task_id=task_id, scratch=scratch)
+                        if comment_on_pr:
+                            try:
+                                comment_on_pr_obj = CommentOnPr(distgit_dir=self.distgit_dir,
+                                                                token=os.getenv(constants.GITHUB_TOKEN))
+                                comment_on_pr_obj.set_repo_details()
+                                comment_on_pr_obj.set_github_client()
+                                comment_on_pr_obj.set_pr_from_commit()
+                                # Message to be posted to the comment
+                                message = Template("**[ART PR BUILD NOTIFIER]**\n\n"
+                                                   "This PR has been included in build "
+                                                   "[$nvr](https://brewweb.engineering.redhat.com/brew/buildinfo"
+                                                   "?buildID=$build_id) "
+                                                   "for distgit *$distgit_name*. \n All builds following this will "
+                                                   "include this PR.")
+                                comment_on_pr_obj.post_comment(message.substitute(nvr=build_info["nvr"],
+                                                                                  build_id=build_info["id"],
+                                                                                  distgit_name=self.metadata.name))
+                            except Exception as e:
+                                self.logger.error(f"Error commenting on PR for build task id {task_id} for distgit"
+                                                  f"{self.metadata.name}: {e}")
+                        if not scratch:
+                            push_version = build_info["version"]
+                            push_release = build_info["release"]
+                except OSBS2BuildError as build_err:
+                    record["task_id"], record["task_url"] = build_err.task_id, build_err.task_url
+                    if not dry_run:
+                        self.update_build_db(False, task_id=build_err.task_id, scratch=scratch)
+                    raise
             record["message"] = "Success"
             record["status"] = 0
             self.build_status = True
@@ -1258,186 +1245,11 @@ class ImageDistGitRepo(DistGitRepo):
                         traceback.print_exc()
                         self.logger.error(f'Unable to extract brew task information for {task_id}')
 
-    def _build_container(self, target_image, target, signing_intent, repo_type, repo_list, terminate_event,
-                         scratch, record, dry_run=False):
-        """
-        The part of `build_container` which actually starts the build,
-        separated for clarity. Brew build version.
-        """
-        self.logger.info("Building image: %s" % target_image)
-        cmd_list = ["rhpkg"]
-        if self.runtime.rhpkg_config_lst:
-            cmd_list.extend(self.runtime.rhpkg_config_lst)
-
-        cmd_list.append("--path=%s" % self.distgit_dir)
-
-        if self.runtime.user is not None:
-            cmd_list.append("--user=%s" % self.runtime.user)
-
-        cmd_list += (
-            "container-build",
-            "--nowait",  # Run the build with --nowait so that we can immediately get information about the brew task
-        )
-
-        if target:
-            cmd_list.append("--target")
-            cmd_list.append(target)
-
-        # Determine if ODCS is enabled by looking at container.yaml.
-        odcs_enabled = False
-        osbs_image_config_path = os.path.join(self.distgit_dir, "container.yaml")
-        if os.path.isfile(osbs_image_config_path):
-            with open(osbs_image_config_path, "r") as f:
-                image_config = yaml.safe_load(f)
-            odcs_enabled = "compose" in image_config
-
-        if odcs_enabled:
-            self.logger.info("About to build image in ODCS mode with signing intent {}.".format(signing_intent))
-            cmd_list.append('--signing-intent')
-            cmd_list.append(signing_intent)
-        else:
-            if repo_type and not repo_list:  # If --repo was not specified on the command line
-                repo_file = f".oit/{repo_type}.repo"
-                if not dry_run:
-                    existence, repo_url = self.cgit_file_available(repo_file)
-                else:
-                    self.logger.warning("[DRY RUN] Would have checked if cgit repo file is present.")
-                    existence, repo_url = True, f"https://cgit.example.com/{repo_file}"
-                if not existence:
-                    raise FileNotFoundError(f"Repo file {repo_file} is not available on cgit; cgit cache may not be reflecting distgit in a timely manner.")
-                repo_list = [repo_url]
-
-            if repo_list:
-                # rhpkg supports --repo-url [URL [URL ...]]
-                cmd_list.append("--repo-url")
-                cmd_list.extend(repo_list)
-
-        if scratch:
-            cmd_list.append("--scratch")
-
-        if dry_run:
-            # `rhpkg --dry-run container-build` doesn't really work. Print the command instread.
-            self.logger.warning("[Dry Run] Would have run command " + " ".join(cmd_list))
-            self.logger.info("[Dry Run] Successfully built image: {}".format(target_image))
-            return True
-
-        try:
-
-            # Run the build with --nowait so that we can immediately get information about the brew task
-            rc, out, err = exectools.cmd_gather(cmd_list)
-
-            if rc != 0:
-                # Probably no point in continuing.. can't contact brew?
-                self.logger.info("Unable to create brew task: out={}  ; err={}".format(out, err))
-                self.update_build_db(False, scratch=scratch)
-                return False
-
-            # Otherwise, we should have a brew task we can monitor listed in the stdout.
-            out_lines = out.splitlines()
-
-            # Look for a line like: "Created task: 13949050" . Extract the identifier.
-            task_id = next((created_line.split(":")[1]).strip() for created_line in out_lines if
-                           created_line.startswith("Created task:"))
-
-            record["task_id"] = task_id
-
-            # Look for a line like: "Task info: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=13948942"
-            task_url = next((info_line.split(":", 1)[1]).strip() for info_line in out_lines if
-                            info_line.startswith("Task info:"))
-
-            self.logger.info("Build running: {}".format(task_url))
-
-            record["task_url"] = task_url
-
-            # Now that we have the basics about the task, wait for it to complete
-            error = watch_task(self.runtime.build_retrying_koji_client(), self.logger.info, task_id, terminate_event)
-
-            # Looking for something like the following to conclude the image has already been built:
-            # BuildError: Build for openshift-enterprise-base-v3.7.0-0.117.0.0 already exists, id 588961
-            # Note it is possible that a Brew task fails with a build record left (https://issues.redhat.com/browse/ART-1723).
-            # Didn't find a variable in the context to get the Brew NVR or ID. Extracting the build ID from the error message.
-            # Hope the error message format will not change.
-            match = None
-            if error:
-                match = re.search(r"already exists, id (\d+)", error)
-            if match:
-                with self.runtime.shared_koji_client_session() as kcs:
-                    builds = get_build_objects([int(match[1])], kcs)
-                if builds and builds[0] and builds[0].get('state') == 1:  # State 1 means complete.
-                    self.logger.info("Image already built against this dist-git commit (or version-release tag): {}".format(target_image))
-                    error = None
-
-            # Gather brew-logs
-            logs_rc, _, logs_err = exectools.cmd_gather(["brew", "download-logs", "-d", self._logs_dir(), task_id])
-
-            if logs_rc != 0:
-                self.logger.info("Error downloading build logs from brew for task %s: %s" % (task_id, logs_err))
-            else:
-                self._extract_container_build_logs(task_id)
-                if error is None:
-                    # even if the build completed without error, check the logs for problems
-                    error = self._detect_permanent_build_failures(self.runtime.group_config.image_build_log_scanner)
-
-            if error is not None:
-                # An error occurred. We don't have a viable build.
-                self.update_build_db(False, task_id=task_id, scratch=scratch)
-                self.logger.info("Error building image: {}, {}".format(task_url, error))
-                return False
-
-            with self.runtime.shared_koji_client_session() as koji_api:
-                if not koji_api.logged_in:
-                    koji_api.gssapi_login()
-                # Unlike rpm build, koji_api.listBuilds(taskID=...) doesn't support image build. For now, let's use a different approach.
-                taskResult = koji_api.getTaskResult(task_id)
-                build_id = int(taskResult["koji_builds"][0])
-                build_info = koji_api.getBuild(build_id)
-                record["nvrs"] = build_info["nvr"]
-                if self.runtime.hotfix:
-                    # Tag the image so they don't get garbage collected.
-                    self.runtime.logger.info(f'Tagging {self.metadata.get_component_name()} build {build_info["nvr"]} with {self.metadata.hotfix_brew_tag()} to prevent garbage collection')
-                    koji_api.tagBuild(self.metadata.hotfix_brew_tag(), build_info["nvr"])
-
-            self.update_build_db(True, task_id=task_id, scratch=scratch)
-            self.logger.info("Successfully built image: {} ; {}".format(target_image, task_url))
-            return True
-        finally:
-            try:
-                with Dir(self.distgit_dir):
-                    exectools.cmd_assert(['git', 'push', '--tags', '--force'], retries=3)
-            except:
-                self.logger.error('Unable to push tags to distgit!')
-
     def _logs_dir(self, task_id=None):
         segments = [self.runtime.brew_logs_dir, self.metadata.distgit_key]
         if task_id is not None:
             segments.append("noarch-" + task_id)
         return os.path.join(*segments)
-
-    def _extract_container_build_logs(self, task_id):
-        """
-        Look through build logs and extract the part that's just the actual docker or imagebuilder build
-        so that devs do not have to wade through the full atomic_reactor logs.
-        If found in a log, the extracted text is written to the same filename with prefix "container-build-"
-
-        :param task_id: string with the build task so we can find the downloaded logs
-        """
-        logs_dir = self._logs_dir(task_id)
-        try:
-            for filename in os.listdir(logs_dir):
-                rc, output, _ = exectools.cmd_gather([
-                    "sed", "-nEe",
-                    # look in logs for either of the build plugins to start,
-                    # and look for the plugin runner to declare the plugin done to end.
-                    # strip off all the noise at the front of log lines.
-                    "/plugins.(imagebuilder|docker_api)/,/atomic_reactor.plugin / { s/^.*?- (DEBUG|INFO) - //; p }",
-                    os.path.join(logs_dir, filename)
-                ])
-                if rc == 0 and output:
-                    extracted = os.path.join(logs_dir, "container-build-" + filename)
-                    with io.open(extracted, "w", encoding="utf-8") as extracted_file:
-                        extracted_file.write(output)
-        except OSError as e:
-            self.logger.warning("Exception while trying to extract build logs in {}: {}".format(logs_dir, e))
 
     def _add_missing_pkgs(self, pkg_name):
         """
