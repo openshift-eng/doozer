@@ -545,7 +545,7 @@ COPY --from=builder /some/path/a /some/path/b
         dg.logger = logging.getLogger()
 
         with self.assertRaises(FileNotFoundError):
-            dg._detect_package_manangers()
+            dg._detect_package_managers()
 
     @patch("pathlib.Path.is_dir", autospec=True)
     @patch("pathlib.Path.is_file", autospec=True)
@@ -567,7 +567,7 @@ COPY --from=builder /some/path/a /some/path/b
         is_dir.return_value = True
         is_file.side_effect = lambda f: f.name in ["go.mod", "package-lock.json"]
 
-        actual = dg._detect_package_manangers()
+        actual = dg._detect_package_managers()
         self.assertEqual(set(actual), {"gomod", "npm"})
 
     @patch("pathlib.Path.is_dir", autospec=True, return_value=True)
@@ -592,7 +592,7 @@ COPY --from=builder /some/path/a /some/path/b
         dg.dg_path = Path(dg.distgit_dir)
         dg.actual_source_url = "git@example.com:openshift-priv/foo.git"
         dg.source_full_sha = "deadbeef"
-        dg._detect_package_manangers = MagicMock(return_value=["gomod"])
+        dg._detect_package_managers = MagicMock(return_value=["gomod"])
 
         actual = dg._generate_osbs_image_config("v4.10.0")
         self.assertEqual(actual["remote_sources"][0]["remote_source"]["repo"], "https://example.com/openshift-priv/foo")
