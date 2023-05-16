@@ -1165,6 +1165,10 @@ class ImageDistGitRepo(DistGitRepo):
         if scratch:
             return
 
+        if not self.runtime.db:
+            self.logger.error('Database connection is not initialized, skipping writing record.')
+            return
+
         with Dir(self.distgit_dir):
             commit_sha = exectools.cmd_assert('git rev-parse HEAD')[0].strip()[:8]
             invoke_ts = str(int(round(time.time() * 1000)))
