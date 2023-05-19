@@ -65,7 +65,7 @@ class TestBrewBuildImageInspector(unittest.TestCase):
         self.assertEqual(len(bbii.get_all_archive_dicts()), 5)
         self.assertEqual(len(bbii.get_image_archive_dicts()), 4)  # filters out non-image archive types
 
-        def canned_listRPMs(imageID, *_, **__):
+        def canned_listRPMs(_, imageID, *__, **___):
             return image_archives_list_rpms[imageID]
 
         def canned_getBuild(build_id, *_, **__):

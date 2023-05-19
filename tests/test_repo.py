@@ -1,18 +1,9 @@
 #!/usr/bin/env python
 """
-Test the ImageMetadata class
+Test the Repo class
 """
 import unittest
-import os
-import logging
-import tempfile
-import shutil
-from flexmock import flexmock
-try:
-    from importlib import reload
-except ImportError:
-    pass
-from doozerlib import image, exectools
+from unittest.mock import ANY, Mock, patch
 from doozerlib.repos import Repo
 
 EXPECTED_BASIC_REPO = """[rhaos-4.4-rhel-8-build]
@@ -50,7 +41,7 @@ class MockRuntime(object):
         self.logger = logger
 
 
-class TestRepos(unittest.TestCase):
+class TestRepo(unittest.IsolatedAsyncioTestCase):
     repo_config = {
         'conf': {
             'enabled': 1,
@@ -191,3 +182,43 @@ class TestRepos(unittest.TestCase):
 
         # Implicitly assert that this does _not_ raise an exception
         Repo('no-config-set-arches', self.no_config_set_arches_repo, self.arches)
+
+    @patch("doozerlib.exectools.cmd_assert_async", autospec=True)
+    @patch("tempfile.NamedTemporaryFile", autospec=True)
+    async def test_list_rpms_without_cache(self, NamedTemporaryFile: Mock, cmd_assert_async: Mock):
+        fp = NamedTemporaryFile.return_value.__enter__.return_value
+        cmd_assert_async.return_value = ("""
+foo-1.0.0-1.el9.x86_64
+bar-1.0.0-1.el9.x86_64
+""", "")
+        fp.name = "/path/to/repofile.repo"
+        Repo._list_rpms_cache = {}  # flush cache
+        actual = await self.repo.list_rpms("x86_64")
+        fp.write.assert_called_once_with(ANY)
+        fp.flush.assert_called_once_with()
+        cmd_assert_async.assert_awaited_once_with(['repoquery', '--config', '/path/to/repofile.repo', '--repoid', ANY, '--all'])
+        expected = [
+            {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
+            {'name': 'bar', 'version': '1.0.0', 'release': '1.el9', 'epoch': '', 'arch': 'x86_64', 'nvr': 'bar-1.0.0-1.el9'},
+        ]
+        self.assertListEqual(actual, expected)
+
+    @patch("doozerlib.exectools.cmd_assert_async", autospec=True)
+    @patch("tempfile.NamedTemporaryFile", autospec=True)
+    async def test_list_rpms_from_cache(self, NamedTemporaryFile: Mock, cmd_assert_async: Mock):
+        # populate cache
+        cache_key = (self.repo.name, "x86_64")
+        Repo._list_rpms_cache = {
+            cache_key: [
+                {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
+                {'name': 'bar', 'version': '1.0.0', 'release': '1.el9', 'epoch': '', 'arch': 'x86_64', 'nvr': 'bar-1.0.0-1.el9'},
+            ]
+        }
+        NamedTemporaryFile.return_value.__enter__.assert_not_called()
+        actual = await self.repo.list_rpms("x86_64")
+        cmd_assert_async.assert_not_called()
+        expected = [
+            {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
+            {'name': 'bar', 'version': '1.0.0', 'release': '1.el9', 'epoch': '', 'arch': 'x86_64', 'nvr': 'bar-1.0.0-1.el9'},
+        ]
+        self.assertListEqual(actual, expected)

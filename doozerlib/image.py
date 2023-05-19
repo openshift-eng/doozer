@@ -1,23 +1,24 @@
 
+import asyncio
 import hashlib
 import json
 import random
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Awaitable, Dict, List, Optional, Set, Tuple, Union
 
-from doozerlib.rpm_utils import parse_nvr, compare_nvr
-
+import doozerlib
 from doozerlib import brew, coverity, exectools
 from doozerlib.distgit import pull_image
 from doozerlib.metadata import Metadata, RebuildHint, RebuildHintCode
 from doozerlib.model import Missing, Model
 from doozerlib.pushd import Dir
+from doozerlib.rpm_utils import compare_nvr, parse_nvr
 from doozerlib.util import (brew_arch_for_go_arch, go_arch_for_brew_arch,
                             isolate_el_version_in_release)
 
 
 class ImageMetadata(Metadata):
 
-    def __init__(self, runtime, data_obj: Dict, commitish: Optional[str] = None, clone_source: Optional[bool] = False, prevent_cloning: Optional[bool] = False):
+    def __init__(self, runtime: "doozerlib.Runtime", data_obj: Dict, commitish: Optional[str] = None, clone_source: Optional[bool] = False, prevent_cloning: Optional[bool] = False):
         super(ImageMetadata, self).__init__('image', runtime, data_obj, commitish, prevent_cloning=prevent_cloning)
         self.image_name = self.config.name
         self.required = self.config.get('required', False)
@@ -598,7 +599,7 @@ class ArchiveImageInspector:
     Represents and returns information about an archive image associated with a brew build.
     """
 
-    def __init__(self, runtime, archive: Dict, brew_build_inspector: 'BrewBuildImageInspector' = None):
+    def __init__(self, runtime: "doozerlib.Runtime", archive: Dict, brew_build_inspector: 'BrewBuildImageInspector' = None):
         """
         :param runtime: The brew build inspector associated with the build that created this archive.
         :param archive: The raw archive dict from brew.
@@ -672,6 +673,61 @@ class ArchiveImageInspector:
         """
         return self.get_brew_build_inspector().get_image_meta()
 
+    async def find_non_latest_rpms(self) -> List[Tuple[str, str, str]]:
+        """
+        If the packages installed in this image archive overlap packages in the configured YUM repositories,
+        return NVRs of the latest avaiable rpms that are not also installed in this archive.
+        This indicates that the image has not picked up the latest from configured repos.
+
+        Note that this is completely normal for non-STREAM assemblies. In fact, it is
+        normal for any assembly other than the assembly used for nightlies. In the age of
+        a thorough config:scan-sources, if this method returns anything, scan-sources is
+        likely broken.
+
+        :return: Returns a list of (installed_rpm, latest_rpm, repo_name)
+        """
+        # Get available rpms in configured repos
+        group_repos = self.runtime.repos
+        meta = self.get_image_meta()
+        assert meta is not None
+        arch = self.image_arch()
+        enabled_repos = sorted({r.name for r in group_repos.values() if r.enabled} | set(meta.config.get("enabled_repos", [])))
+        if not enabled_repos:
+            self.runtime.logger.warning("Skipping non-latest rpms check for image %s because it doesn't have enabled_repos configured.", meta.distgit_key)
+            return []
+        tasks = []
+        for repo_name in enabled_repos:
+            repo = group_repos[repo_name]
+            if arch in repo.arches:
+                tasks.append(repo.list_rpms(arch))
+        # Find the newest rpms for each rpm name among those configured repos
+        candidate_rpms = {}
+        candidate_rpm_repos = {}
+        for repo, rpms in zip(enabled_repos, await asyncio.gather(*tasks)):
+            for rpm in rpms:
+                name = rpm["name"]
+                if name not in candidate_rpms or compare_nvr(rpm, candidate_rpms[name]) > 0:
+                    candidate_rpms[name] = rpm
+                    candidate_rpm_repos[name] = repo
+
+        # Compare installed rpms to candidate rpms found from configured repos
+        archive_rpms = {rpm['name']: rpm for rpm in self.get_installed_rpm_dicts()}
+        results: List[Tuple[str, str, str]] = []
+        for name, archive_rpm in archive_rpms.items():
+            candidate_rpm = candidate_rpms.get(name)
+            if not candidate_rpm:
+                continue
+            # Well, in theory epoch=None (missing epoch) is less than epoch='0'.
+            # However, yum converts epoch=None to epoch='0' internally when comparing EVRs.
+            # We have to follow yum's tradition.
+            if archive_rpm.get('epoch') is None:
+                archive_rpm['epoch'] = '0'
+            # For each RPM installed in the image, we want it to match what is in the configured repos
+            # UNLESS the installed NVR is newer than what is in the configured repos.
+            if compare_nvr(archive_rpm, candidate_rpm) < 0:
+                results.append((archive_rpm['nvr'], candidate_rpm['nvr'], candidate_rpm_repos[name]))
+        return results
+
     def get_installed_rpm_dicts(self) -> List[Dict]:
         """
         :return: Returns listRPMs for this archive
@@ -682,7 +738,7 @@ class ArchiveImageInspector:
         cn = 'get_installed_rpms'
         if cn not in self._cache:
             with self.runtime.pooled_koji_client_session() as koji_api:
-                rpm_entries = koji_api.listRPMs(imageID=self.get_archive_id())
+                rpm_entries = koji_api.listRPMs(brew.KojiWrapperOpts(caching=True), imageID=self.get_archive_id())
                 self._cache[cn] = rpm_entries
         return self._cache[cn]
 
@@ -734,7 +790,7 @@ class BrewBuildImageInspector:
     Provides an API for common queries we perform against brew built images.
     """
 
-    def __init__(self, runtime, pullspec_or_build_id_or_nvr: Union[str, int]):
+    def __init__(self, runtime: "doozerlib.Runtime", pullspec_or_build_id_or_nvr: Union[str, int]):
         """
         :param runtime: The koji client session to use.
         :param pullspec_or_build_id_or_nvr: A pullspec to the brew image (it is fine if this is a manifest list OR a single archive image), a brew build id, or an NVR.
@@ -1001,46 +1057,26 @@ class BrewBuildImageInspector:
         """
         return [t['name'] for t in self.list_brew_tags()]
 
-    def find_non_latest_rpms(self) -> List[Tuple[str, str]]:
+    async def find_non_latest_rpms(self) -> Dict[str, List[Tuple[str, str, str]]]:
         """
-        If the packages installed in this image overlap packages in the candidate tag,
-        return NVRs of the latest candidate builds that are not also installed in this image.
-        This indicates that the image has not picked up the latest from candidate.
+        If the packages installed in this image build overlap packages in the configured YUM repositories,
+        return NVRs of the latest avaiable rpms that are not also installed in this image.
+        This indicates that the image has not picked up the latest from configured repos.
 
         Note that this is completely normal for non-STREAM assemblies. In fact, it is
         normal for any assembly other than the assembly used for nightlies. In the age of
         a thorough config:scan-sources, if this method returns anything, scan-sources is
         likely broken.
 
-        :return: Returns a list of NVRs from the "latest" state of the specified candidate tag
-        if same the package installed into this archive is not the same NVR.
+        :return: Returns a dict. Keys are arch names; values are lists of (installed_rpm, latest_rpm, repo) tuples
         """
-
-        candidate_brew_tag = self.get_image_meta().candidate_brew_tag()
-
-        # N.B. the "rpms" installed in an image archive are individual RPMs, not brew rpm package builds.
-        # we compare against the individual RPMs from latest candidate rpm package builds.
-        with self.runtime.shared_build_status_detector() as bs_detector:
-            candidate_rpms = {
-                # the RPMs are collected by name mainly to de-duplicate (same RPM, multiple arches)
-                rpm['name']: rpm for rpm in
-                bs_detector.find_unshipped_candidate_rpms(candidate_brew_tag, self.runtime.brew_event)
-            }
-
-        old_nvrs: List[Tuple[str, str]] = []
-        archive_rpms = {rpm['name']: rpm for rpm in self.get_all_installed_rpm_dicts()}
-        # we expect only a few unshipped candidates most of the the time, so we'll just search for those.
-        for name, rpm in candidate_rpms.items():
-            archive_rpm = archive_rpms.get(name)
-            if archive_rpm:
-                archive_nvr = parse_nvr(archive_rpm['nvr'])
-                candidate_nvr = parse_nvr(rpm['nvr'])
-                # If there is an RPM installed in the image, we want it to match what is in our tag UNLESS
-                # the installed NVR is newer than what is in our tag. This is usually an indication
-                # that some unshipped non-ART (e.g. RHEL) RPM in our tag has been tagged but the
-                # image is configured to install the image from RHEL or other repos. This is fine if
-                # build RPM repos are configured appropriately for the image.
-                if compare_nvr(archive_nvr, candidate_nvr) < 0:
-                    old_nvrs.append((archive_rpm['nvr'], rpm['nvr']))
-
-        return old_nvrs
+        meta = self.get_image_meta()
+        assert meta is not None
+        arches = meta.get_arches()
+        tasks: List[Awaitable[List[Tuple[str, str, str]]]] = []
+        for arch in arches:
+            iar = self.get_image_archive_inspector(arch)
+            assert iar is not None
+            tasks.append(iar.find_non_latest_rpms())
+        result = dict(zip(arches, await asyncio.gather(*tasks)))
+        return result

@@ -7,11 +7,12 @@ import unittest
 import os
 import yaml
 from pathlib import Path
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import AsyncMock, patch, MagicMock, Mock
 from urllib.error import URLError
 
 from doozerlib import rhcos
-from doozerlib.model import Model
+from doozerlib.model import ListModel, Model
+from doozerlib.repos import Repos
 
 
 class MockRuntime(object):
@@ -31,7 +32,7 @@ def _urlopen_json_cm(mock_urlopen, content, rc=200):
     mock_urlopen.return_value = cm
 
 
-class TestRhcos(unittest.TestCase):
+class TestRhcos(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.logger = MagicMock(spec=logging.Logger)
@@ -208,6 +209,63 @@ class TestRhcos(unittest.TestCase):
         container_conf = dict(name='spam', build_metadata_key='eggs')
         with self.assertRaises(rhcos.RhcosMissingContainerException):
             rhcos_build.get_container_pullspec(Model(container_conf))
+
+    @patch('doozerlib.exectools.cmd_assert')
+    @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
+    async def test_find_non_latest_rpms_with_missing_enabled_repos(self, rhcos_build_meta_mock, cmd_assert_mock):
+        # mock out the things RHCOSBuildInspector calls in __init__
+        rhcos_meta = {"buildid": "412.86.bogus"}
+        rhcos_commitmeta = {}
+        rhcos_build_meta_mock.side_effect = [rhcos_meta, rhcos_commitmeta]
+        cmd_assert_mock.return_value = ('{"config": {"config": {"Labels": {"version": "412.86.bogus"}}}}', None)
+        pullspecs = {'machine-os-content': 'spam@eggs'}
+        self.runtime.group_config.rhcos = Model({})
+        rhcos_build = rhcos.RHCOSBuildInspector(self.runtime, pullspecs, 's390x')
+        with self.assertRaises(ValueError):
+            await rhcos_build.find_non_latest_rpms()
+
+    @patch('doozerlib.rhcos.RHCOSBuildInspector.get_os_metadata_rpm_list')
+    @patch("doozerlib.repos.Repo.list_rpms")
+    @patch('doozerlib.exectools.cmd_assert')
+    @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
+    async def test_find_non_latest_rpms(self, rhcos_build_meta_mock: Mock, cmd_assert_mock: Mock,
+                                        list_rpms: AsyncMock, get_os_metadata_rpm_list: Mock):
+        # mock out the things RHCOSBuildInspector calls in __init__
+        rhcos_meta = {"buildid": "412.86.bogus"}
+        rhcos_commitmeta = {}
+        rhcos_build_meta_mock.side_effect = [rhcos_meta, rhcos_commitmeta]
+        cmd_assert_mock.return_value = ('{"config": {"config": {"Labels": {"version": "412.86.bogus"}}}}', None)
+        pullspecs = {'machine-os-content': 'spam@eggs'}
+        self.runtime.group_config.rhcos = Model({
+            "enabled_repos": ["rhel-8-baseos-rpms", "rhel-8-appstream-rpms"]
+        })
+        repos = Repos(
+            {
+                "rhel-8-baseos-rpms": {"conf": {"baseurl": {"x86_64": "fake_url"}}, "content_set": {"default": "fake"}},
+                "rhel-8-appstream-rpms": {"conf": {"baseurl": {"x86_64": "fake_url"}}, "content_set": {"default": "fake"}},
+                "rhel-8-rt-rpms": {"conf": {"baseurl": {"x86_64": "fake_url"}}, "content_set": {"default": "fake"}},
+            },
+            ["x86_64", "s390x", "ppc64le", "aarch64"]
+        )
+        runtime = MagicMock(
+            repos=repos,
+            group_config=Model({
+                "rhcos": {"enabled_repos": ["rhel-8-baseos-rpms", "rhel-8-appstream-rpms"]}
+            })
+        )
+        list_rpms.return_value = [
+            {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
+            {'name': 'bar', 'version': '1.1.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'bar-1.1.0-1.el9'},
+        ]
+        get_os_metadata_rpm_list.return_value = [
+            ['foo', '0', '1.0.0', '1.el9', 'x86_64'],
+            ['bar', '0', '1.0.0', '1.el9', 'x86_64'],
+        ]
+        rhcos_build = rhcos.RHCOSBuildInspector(runtime, pullspecs, 'x86_64')
+        actual = await rhcos_build.find_non_latest_rpms()
+        list_rpms.assert_awaited()
+        get_os_metadata_rpm_list.assert_called_once_with()
+        self.assertEqual(actual, [('bar-1.0.0-1.el9', 'bar-1.1.0-1.el9', 'rhel-8-baseos-rpms')])
 
 
 if __name__ == "__main__":

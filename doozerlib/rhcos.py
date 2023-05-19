@@ -1,8 +1,9 @@
 
+import asyncio
 import json, koji
 from typing import Dict, List, Tuple, Optional
 
-from doozerlib.rpm_utils import parse_nvr
+from doozerlib.rpm_utils import compare_nvr, parse_nvr
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 from urllib import request
@@ -439,11 +440,11 @@ class RHCOSBuildInspector:
 
         raise IOError(f'Unable to determine RHEL version base for rhcos {self.build_id}')
 
-    def find_non_latest_rpms(self) -> List[Tuple[str, str]]:
+    async def find_non_latest_rpms(self) -> List[Tuple[str, str, str]]:
         """
-        If the packages installed in this image overlap packages in the candidate tag,
+        If the packages installed in this image overlap packages in the build repo,
         return NVRs of the latest candidate builds that are not also installed in this image.
-        This indicates that the image has not picked up the latest from candidate.
+        This indicates that the image has not picked up the latest from build repo.
 
         Note that this is completely normal for non-STREAM assemblies. In fact, it is
         normal for any assembly other than the assembly used for nightlies.
@@ -452,33 +453,47 @@ class RHCOSBuildInspector:
         Thus, it is natural for them to lag behind when RPMs change. The should catch
         up with the next RHCOS build.
 
-        :return: Returns a list of Tuple[INSTALLED_NVRs, NEWEST_NVR] where
-        newest is from the "latest" state of the specified candidate tag
-        if same the package installed into this archive is not the same NVR.
+        :return: Returns a list of (installed_rpm, latest_rpm, repo_name)
         """
+        # Find the newest builds in build repos
+        enabled_repos = self.runtime.group_config.rhcos.enabled_repos
+        if not enabled_repos:
+            raise ValueError("RHCOS build repos need to be defined in group config rhcos.enabled_repos.")
+        enabled_repos = enabled_repos.primitive()
+        group_repos = self.runtime.repos
+        tasks = []
+        for repo_name in enabled_repos:
+            repo = group_repos[repo_name]
+            if self.brew_arch in repo.arches:
+                tasks.append(repo.list_rpms(self.brew_arch))
+        # Find the newest rpms for each rpm name among those configured repos
+        candidate_rpms = {}
+        candidate_rpm_repos = {}
+        for repo, rpms in zip(enabled_repos, await asyncio.gather(*tasks)):
+            for rpm in rpms:
+                name = rpm["name"]
+                if name not in candidate_rpms or compare_nvr(rpm, candidate_rpms[name]) > 0:
+                    candidate_rpms[name] = rpm
+                    candidate_rpm_repos[name] = repo
 
-        # Find the default candidate tag appropriate for the RHEL version used by this RHCOS build.
-        candidate_brew_tag = self.runtime.get_default_candidate_brew_tag(el_target=self.get_rhel_base_version())
-
-        # N.B. the "rpms" installed in an image archive are individual RPMs, not brew rpm package builds.
-        # we compare against the individual RPMs from latest candidate rpm package builds.
-        with self.runtime.shared_build_status_detector() as bs_detector:
-            candidate_rpms: Dict[str, Dict] = {
-                # the RPMs are collected by name mainly to de-duplicate (same RPM, multiple arches)
-                rpm['name']: rpm for rpm in
-                bs_detector.find_unshipped_candidate_rpms(candidate_brew_tag, self.runtime.brew_event)
-            }
-
-        old_nvrs: List[Tuple[str, str]] = []
-        # Translate the package builds into a list of individual RPMs. Build dict[rpm_name] -> nvr for every NVR installed
-        # in this RHCOS build.
-        installed_nvr_map: Dict[str, str] = {parse_nvr(installed_nvr)['name']: installed_nvr for installed_nvr in self.get_rpm_nvrs()}
-        # we expect only a few unshipped candidates most of the the time, so we'll just search for those.
-        for name, rpm in candidate_rpms.items():
-            rpm_nvr = rpm['nvr']
-            if name in installed_nvr_map:
-                installed_nvr = installed_nvr_map[name]
-                if rpm_nvr != installed_nvr:
-                    old_nvrs.append((installed_nvr, rpm_nvr))
-
-        return old_nvrs
+        # Compare installed rpms to candidate rpms found from configured repos
+        archive_rpms = {
+            name: {
+                "name": name,
+                "epoch": epoch,
+                "version": version,
+                "release": release,
+                "arch": arch,
+                "nvr": f"{name}-{version}-{release}"
+            } for name, epoch, version, release, arch in self.get_os_metadata_rpm_list()
+        }
+        results: List[Tuple[str, str, str]] = []
+        for name, archive_rpm in archive_rpms.items():
+            candidate_rpm = candidate_rpms.get(name)
+            if not candidate_rpm:
+                continue
+            # For each RPM installed in the image, we want it to match what is in the configured repos
+            # UNLESS the installed NVR is newer than what is in the configured repos.
+            if compare_nvr(archive_rpm, candidate_rpm) < 0:
+                results.append((archive_rpm['nvr'], candidate_rpm['nvr'], candidate_rpm_repos[name]))
+        return results

@@ -126,7 +126,7 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
             detect_non_latest_rpms=None,
             detect_inconsistent_images=None,
             detect_installed_rpms_issues=None,
-            detect_extend_payload_entry_issues=None,
+            detect_extend_payload_entry_issues=AsyncMock(),
             summarize_issue_permits=(True, {}),
         )
         cnc_mock.return_value = ["spam"]
@@ -183,17 +183,18 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
         build_ids = gpcli.collect_assembly_build_ids(ai)
         self.assertEqual(build_ids, {45, 46})
 
-    def test_detect_non_latest_rpms(self):
+    async def test_detect_non_latest_rpms(self):
         gpcli = rgp_cli.GenPayloadCli()
-        bbii = flexmock(Mock(BrewBuildImageInspector), find_non_latest_rpms=[("installed", "newest")])
+        bbii = AsyncMock(BrewBuildImageInspector)
+        bbii.find_non_latest_rpms.return_value = {"x86_64": [("installed", "newest", "repo_name")], "s390x": []}
         ai = flexmock(Mock(AssemblyInspector), get_group_release_images=dict(spam=bbii))
-        gpcli.detect_non_latest_rpms(ai)
+        await gpcli.detect_non_latest_rpms(ai)
         self.assertEqual(gpcli.assembly_issues[0].code, AssemblyIssueCode.OUTDATED_RPMS_IN_STREAM_BUILD)
 
-        previous_issues = list(gpcli.assembly_issues)
-        bbii.find_non_latest_rpms = lambda: []
-        gpcli.detect_non_latest_rpms(ai)
-        self.assertEqual(gpcli.assembly_issues, previous_issues)
+        gpcli.assembly_issues = []
+        bbii.find_non_latest_rpms.return_value = {"x86_64": [], "s390x": []}
+        await gpcli.detect_non_latest_rpms(ai)
+        self.assertEqual(gpcli.assembly_issues, [])
 
     def test_detect_inconsistent_images(self):
         gpcli = rgp_cli.GenPayloadCli()
@@ -215,7 +216,7 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
         self.assertEqual(e4a, dict(ppc64le="entries"))
         self.assertEqual(gpcli.assembly_issues, ["issues"])
 
-    def test_detect_extend_payload_entry_issues(self):
+    async def test_detect_extend_payload_entry_issues(self):
         runtime = MagicMock(group_config=Model())
         gpcli = flexmock(rgp_cli.GenPayloadCli(runtime))
         spamEntry = rgp_cli.PayloadEntry(
@@ -226,37 +227,37 @@ class TestGenPayloadCli(IsolatedAsyncioTestCase):
         gpcli.payload_entries_for_arch = dict(ppc64le={"spam": spamEntry, "machine-os-content": rhcosEntry})
         gpcli.assembly_issues = [Mock(component="spam")]  # should associate with spamEntry
 
-        gpcli.should_receive("detect_rhcos_issues").with_args(rhcosEntry, None).once()
+        gpcli.should_receive("detect_rhcos_issues").with_args(rhcosEntry, None).once().and_return(AsyncMock(return_value=[])())
         gpcli.should_receive("detect_rhcos_inconsistent_rpms").once().with_args(
             {False: ["rbi"], True: []})
         gpcli.should_receive("detect_rhcos_kernel_inconsistencies").once().with_args(
             {False: ["rbi"], True: []})
 
-        gpcli.detect_extend_payload_entry_issues(None)
+        await gpcli.detect_extend_payload_entry_issues(None)
         self.assertEqual(gpcli.assembly_issues, spamEntry.issues)
 
         bogusEntry = rgp_cli.PayloadEntry(dest_pullspec="dummy", issues=[])
         gpcli.payload_entries_for_arch = dict(ppc64le=dict(bogus=bogusEntry))
         with self.assertRaises(DoozerFatalError):
-            gpcli.detect_extend_payload_entry_issues(None)
+            await gpcli.detect_extend_payload_entry_issues(None)
 
-    def test_detect_rhcos_issues(self):
+    async def test_detect_rhcos_issues(self):
         gpcli = rgp_cli.GenPayloadCli(runtime=MagicMock(assembly_type=AssemblyTypes.STREAM))
         rhcos_issue = Mock(AssemblyIssue, component='rhcos')
         ai = flexmock(Mock(AssemblyInspector), check_rhcos_issues=[rhcos_issue])
         rhcos_build = flexmock(
-            Mock(rhcos.RHCOSBuildInspector),
-            find_non_latest_rpms=[("installed", "newest")])
+            Mock(rhcos.RHCOSBuildInspector, brew_arch="x86_64"),
+            find_non_latest_rpms=AsyncMock(return_value=[("installed", "newest", "repo_name")]))
         rhcos_entry = rgp_cli.PayloadEntry(
             rhcos_build=rhcos_build, dest_pullspec="dummy", issues=[])
 
-        gpcli.detect_rhcos_issues(rhcos_entry, ai)
+        await gpcli.detect_rhcos_issues(rhcos_entry, ai)
         self.assertEqual(gpcli.assembly_issues[0], rhcos_entry.issues[0])
         self.assertEqual(gpcli.assembly_issues[1].code, AssemblyIssueCode.OUTDATED_RPMS_IN_STREAM_BUILD)
 
         # make the if statement false
         gpcli = rgp_cli.GenPayloadCli(runtime=MagicMock(assembly="standard"))
-        gpcli.detect_rhcos_issues(rhcos_entry, ai)
+        await gpcli.detect_rhcos_issues(rhcos_entry, ai)
         self.assertEqual(gpcli.assembly_issues, [rhcos_issue])
 
     @patch("doozerlib.cli.release_gen_payload.PayloadGenerator.find_rhcos_build_rpm_inconsistencies")
