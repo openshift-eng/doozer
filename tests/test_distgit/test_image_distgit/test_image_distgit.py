@@ -91,7 +91,7 @@ class TestImageDistGit(TestDistgit):
                             logger="_irrelevant_")
 
         repo = distgit.ImageDistGitRepo(metadata, autoclone=False)
-        self.assertEqual("imagebuilder", repo.image_build_method)
+        self.assertEqual("osbs2", repo.image_build_method)
 
         metadata = flexmock(runtime=self.mock_runtime(group_config=flexmock(default_image_build_method="osbs2")),
                             config=flexmock(distgit=flexmock(branch=distgit.Missing),
