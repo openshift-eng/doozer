@@ -12,7 +12,6 @@ import tempfile
 import traceback
 import koji
 import io
-import semver
 import urllib
 import pathlib
 
@@ -37,6 +36,7 @@ from doozerlib.cli.rpms_build import rpms_build
 from doozerlib.cli.config_plashet import config_plashet
 from doozerlib.cli.release_calc_upgrade_tests import release_calc_upgrade_tests
 from doozerlib.cli.inspect_stream import inspect_stream
+from doozerlib.cli.config_tag_rpms import config_tag_rpms
 
 from doozerlib import coverity
 from doozerlib.exceptions import DoozerFatalError

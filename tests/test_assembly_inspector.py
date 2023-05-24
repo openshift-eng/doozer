@@ -16,7 +16,8 @@ class TestAssemblyInspector(IsolatedAsyncioTestCase):
                     "packages": ["kernel", "kernel-rt"],
                     "integration_tag": "my-integration-tag",
                     "ship_ok_tag": "my-ship-ok-tag",
-                    "stop_ship_tag": "my-stop-ship-tag"
+                    "stop_ship_tag": "my-stop-ship-tag",
+                    "target_tag": "my-target-tag",
                 }
             ]
         }))
@@ -64,7 +65,8 @@ class TestAssemblyInspector(IsolatedAsyncioTestCase):
                     "packages": ["kernel", "kernel-rt"],
                     "integration_tag": "my-integration-tag",
                     "ship_ok_tag": "my-ship-ok-tag",
-                    "stop_ship_tag": "my-stop-ship-tag"
+                    "stop_ship_tag": "my-stop-ship-tag",
+                    "target_tag": "my-target-tag",
                 }
             ]
         }))

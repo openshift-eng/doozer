@@ -15,7 +15,7 @@ import os
 import threading
 import platform
 import sys
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, TypeVar, Union
 import urllib
 import errno
 
