@@ -1543,6 +1543,7 @@ class ImageDistGitRepo(DistGitRepo):
 
             # It does. Use this to rebase FROM directive
             digest = json.loads(out)['digest']
+
             mapped_image = f'{labels["name"]}@{digest}'
             # if upstream equivalent does not match ART's config, add a warning to the Dockerfile
             if mapped_image != stream.image:
@@ -1810,7 +1811,7 @@ class ImageDistGitRepo(DistGitRepo):
             else:
                 release_suffix = ''
 
-            # Environment variables that will be injected into the Dockerfile.
+            # Environment variables that will be always be injected into the Dockerfile.
             env_vars = {  # Set A
                 'OS_GIT_MAJOR': major_version,
                 'OS_GIT_MINOR': minor_version,
@@ -1820,7 +1821,13 @@ class ImageDistGitRepo(DistGitRepo):
                 'SOURCE_GIT_TREE_STATE': 'clean',
                 'BUILD_VERSION': version,
                 'BUILD_RELEASE': release if release else '',
+                '__doozer_group': self.runtime.group,
+                '__doozer_key': self.metadata.distgit_key,
             }
+
+            if self.config.envs:
+                # Allow environment variables to be specified in the ART image metadata
+                env_vars.update(self.config.envs.primitive())
 
             df_fileobj = self._update_yum_update_commands(force_yum_updates, io.StringIO(df_content))
             with dg_path.joinpath('Dockerfile').open('w', encoding="utf-8") as df:
@@ -2186,6 +2193,11 @@ class ImageDistGitRepo(DistGitRepo):
                 OS_GIT_VERSION=f'{update_envs["OS_GIT_VERSION"]}-{self.source_full_sha[0:7]}',
                 OS_GIT_COMMIT=f'{self.source_full_sha[0:7]}'
             ))
+
+            # TODO: move this into operator-lifecycle-manager metadata.envs in all branches
+            if self.metadata.distgit_key == 'operator-lifecycle-manager':
+                self.env_vars_from_source['GO_COMPLIANCE_EXCLUDE'] = 'build.*operator-lifecycle-manager/util/cpb'
+
             merge_env_line = f"ENV {env_merge_line_flag} " + get_env_set_list(self.env_vars_from_source)
 
         # Open again!
