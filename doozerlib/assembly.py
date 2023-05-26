@@ -210,17 +210,7 @@ def assembly_streams_config(releases_config: Model, assembly: typing.Optional[st
     :param assembly: The name of the assembly
     :param streams_config: The streams config to merge into a new streams config (original Model will not be altered)
     """
-    if not assembly or not isinstance(releases_config, Model):
-        return streams_config
-
-    _check_recursion(releases_config, assembly)
-    target_assembly = releases_config.releases[assembly].assembly
-
-    if target_assembly.basis.assembly:  # Does this assembly inherit from another?
-        # Recursively apply ancestor assemblies
-        streams_config = assembly_streams_config(releases_config, target_assembly.basis.assembly, streams_config)
-
-    target_assembly_streams = target_assembly.group
+    target_assembly_streams = _assembly_config_struct(releases_config, assembly, 'streams', {})
     if not target_assembly_streams:
         return streams_config
 
