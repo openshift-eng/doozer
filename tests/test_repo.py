@@ -196,7 +196,8 @@ bar-1.0.0-1.el9.x86_64
         actual = await self.repo.list_rpms("x86_64")
         fp.write.assert_called_once_with(ANY)
         fp.flush.assert_called_once_with()
-        cmd_assert_async.assert_awaited_once_with(['repoquery', '--config', '/path/to/repofile.repo', '--repoid', ANY, '--all'])
+        cmd_assert_async.assert_awaited_once_with(['repoquery', '--config', '/path/to/repofile.repo', '--repoid', ANY,
+                                                   '--all', '--archlist', ANY], set_env=ANY)
         expected = [
             {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
             {'name': 'bar', 'version': '1.0.0', 'release': '1.el9', 'epoch': '', 'arch': 'x86_64', 'nvr': 'bar-1.0.0-1.el9'},

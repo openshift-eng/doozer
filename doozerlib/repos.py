@@ -1,13 +1,17 @@
+import asyncio
+import json
+import os
 import tempfile
-import threading
+import time
+from pathlib import Path
 from typing import Dict, List, cast
 
-from doozerlib import exectools, rpm_utils
-from .model import Model, Missing
-import yaml
 import requests
-import json
-import time
+import yaml
+
+from doozerlib import exectools, rpm_utils
+
+from .model import Missing, Model
 
 DEFAULT_REPOTYPES = ['unsigned', 'signed']
 
@@ -20,7 +24,7 @@ class Repo(object):
     access each property based on the arch or repo type."""
 
     _list_rpms_cache = {}  # used to cache list_rpms calls. (repo_name, arch) => List[nvr]
-    _list_rpms_cache_lock = threading.Lock()
+    _list_rpms_cache_lock = asyncio.Lock()
 
     def __init__(self, name, data, valid_arches, gpgcheck=True):
         self.name = name
@@ -105,7 +109,7 @@ class Repo(object):
         """Return content set name for given arch with sane fallbacks and error handling."""
 
         if arch not in self._valid_arches:
-            raise ValueError('{} is not a valid arch!')
+            raise ValueError(f'{arch} is not a valid arch!')
         if arch in self._invalid_cs_arches:
             return None
         if self._data.content_set[arch] is Missing:
@@ -184,15 +188,29 @@ class Repo(object):
 
         return result
 
+    # Map arch to compatible arches
+    # (https://github.com/rpm-software-management/yum/blob/4ed25525ee4781907bd204018c27f44948ed83fe/rpmUtils/arch.py#L21)
+    ARCH_LISTS = {
+        "x86_64": ["x86_64", "athlon", "i686", "i586", "i486", "i386", "noarch"],
+        "s390x": ["s390x", "s390", "noarch"],
+        "ppc64le": ["ppc64le", "noarch"],
+        "aarch64": ["aarch64", "noarch"],
+        "noarch": ["noarch"],
+    }
+
     async def list_rpms(self, arch: str):
         """ List all available rpms in this rpm repository
         """
         if arch not in self._valid_arches:
-            raise ValueError('{} is not a valid arch!')
+            raise ValueError(f'{arch} is not a valid arch!')
+
+        arch_list = self.ARCH_LISTS.get(arch)
+        if not arch_list:
+            raise ValueError(f'Arch {arch} is not supported')
 
         # Attempt to get the cached result before actually querying the repo
         cache_key = (self.name, arch)
-        with Repo._list_rpms_cache_lock:
+        async with Repo._list_rpms_cache_lock:
             cached_result = Repo._list_rpms_cache.get(cache_key)
             if cached_result is not None:  # cache hit
                 return cached_result
@@ -205,13 +223,21 @@ class Repo(object):
         # Use a custom section name for repoquery to avoid conflict with system repos
         section_name = f"doozer-{self.name}-{arch}"
         # Create a temporary .repo file for `rpmquery` command
-        with tempfile.NamedTemporaryFile(prefix=f"doozer-repo-{self.name}-{arch}") as fp:
+        with tempfile.TemporaryDirectory(prefix="doozer-") as tmp_dir, \
+             tempfile.NamedTemporaryFile(prefix=f"doozer-repo-{self.name}-{arch}-", dir=tmp_dir) as fp:
             fp.write(self.conf_section("unsigned", arch, enabled=True, section_name=section_name).encode())
             fp.flush()
             # Please be aware that RHEL8+'s `repoquery` is actually `dnf repoquery`,
             # which has different flags or behaves differently comparing with the original `repoquery`.
-            cmd = ["repoquery", "--config", fp.name, "--repoid", section_name, "--all"]
-            out, _ = await exectools.cmd_assert_async(cmd)
+            cmd = ["repoquery", "--config", fp.name, "--repoid", section_name, "--all", "--archlist", ",".join(arch_list + ["src"])]
+            # It keeps a user specific cache
+            # https://unix.stackexchange.com/questions/92257/yum-user-temp-files-var-tmp-yum-fills-up-with-repo-data
+            # override the location using TMPDIR
+            yum_tmp_dir = Path(tmp_dir, "yum-cache")
+            yum_tmp_dir.mkdir(parents=True, exist_ok=True)
+            env = os.environ.copy()
+            env['TMPDIR'] = str(yum_tmp_dir.absolute())
+            out, _ = await exectools.cmd_assert_async(cmd, set_env=env)
             out = cast(str, out)
             for line in out.splitlines():
                 nevra = line.strip()
@@ -225,7 +251,7 @@ class Repo(object):
                 result.append(rpm_info)
 
         # Cache the result
-        with Repo._list_rpms_cache_lock:
+        async with Repo._list_rpms_cache_lock:
             Repo._list_rpms_cache[cache_key] = result
         return result
 
