@@ -201,22 +201,25 @@ class TagRPMsCli:
 @click_coroutine
 async def config_tag_rpms(runtime: Runtime, dry_run: bool, as_json: bool):
     """
-    This command scans RPMs (usually kernel and kernel-rt) in the integration Brew tag defined in group config,
-    then tag acceptable builds into the target Brew tag.
-    "acceptable" here means the build is not tagged into stop_ship_tag or historically tagged into the target tag.
+    This command scans RPMs (usually kernel and kernel-rt) in the integration Brew tag defined in
+    group config, then tags acceptable builds into the target Brew tag. "acceptable" here means the
+    build is not tagged into stop_ship_tag or historically tagged into the target tag.
 
-    e.g. With the following config, Doozer will try to find latest acceptable builds of kernel and kernel-rt
-    from Brew tag early-kernel-integration-8.6, then tag them into Brew tag rhaos-4.11-rhel-8-candidate.
+    e.g. With the following config:
+
+        \b
+        rpm_deliveries:
+            - packages:
+                - kernel
+                - kernel-rt
+              integration_tag: early-kernel-integration-8.6
+              stop_ship_tag: early-kernel-stop-ship
+              ship_ok_tag: early-kernel-ship-ok
+              target_tag: rhaos-4.11-rhel-8-candidate
+
+    Doozer will try to find latest acceptable builds of kernel and kernel-rt from Brew tag
+    early-kernel-integration-8.6, then tag them into Brew tag rhaos-4.11-rhel-8-candidate.
     Additionally, all builds in tag early-kernel-stop-ship will be untagged from rhaos-4.11-rhel-8-candidate.
-
-    rpm_deliveries:
-        - packages:
-            - kernel
-            - kernel-rt
-        integration_tag: early-kernel-integration-8.6
-        stop_ship_tag: early-kernel-stop-ship
-        ship_ok_tag: early-kernel-ship-ok
-        target_tag: rhaos-4.11-rhel-8-candidate
     """
     runtime.initialize(config_only=True)
     await TagRPMsCli(runtime=runtime, dry_run=dry_run, as_json=as_json).run()
