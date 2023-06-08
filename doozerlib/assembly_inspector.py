@@ -100,12 +100,20 @@ class AssemblyInspector:
                 if rpm_delivery_config.stop_ship_tag and rpm_delivery_config.stop_ship_tag in tag_names:
                     issues.append(AssemblyIssue(f'{component_description} has {rpm_build["nvr"]}, which has been tagged into the stop-ship tag: {rpm_delivery_config.stop_ship_tag}', component=component, code=AssemblyIssueCode.IMPERMISSIBLE))
                     continue
-                # For GA releases, the rpm must have an explicit "ship-ok" tag
-                if self.assembly_type is AssemblyTypes.STANDARD and rpm_delivery_config.ship_ok_tag and rpm_delivery_config.ship_ok_tag not in tag_names:
-                    issues.append(AssemblyIssue(f'{component_description} has {rpm_build["nvr"]}, which is missing the ship-ok tag: {rpm_delivery_config.ship_ok_tag}', component=component, code=AssemblyIssueCode.IMPERMISSIBLE))
-                # For pre-GA releases, MISSING_SHIP_OK_TAG issue will be reported if the rpm doesn't have a "ship-ok" tag
-                if self.assembly_type is AssemblyTypes.CANDIDATE and rpm_delivery_config.ship_ok_tag and rpm_delivery_config.ship_ok_tag not in tag_names:
-                    issues.append(AssemblyIssue(f'{component_description} has {rpm_build["nvr"]}, which is missing the ship-ok tag: {rpm_delivery_config.ship_ok_tag}', component=component, code=AssemblyIssueCode.MISSING_SHIP_OK_TAG))
+                # Check if the rpm has an explicit "ship-ok" tag
+                if rpm_delivery_config.ship_ok_tag and rpm_delivery_config.ship_ok_tag not in tag_names:
+                    # If the rpm is not tagged into the integration tag, it might be obtained from a released repo
+                    if rpm_delivery_config.integration_tag and rpm_delivery_config.integration_tag not in tag_names:
+                        release_tag = next(filter(lambda tag: tag.endswith("-released"), tag_names), None)
+                        if release_tag:
+                            self.runtime.logger.warning(f"Permit {rpm_build['nvr']} because it was already released through {release_tag}.")
+                            continue
+                    # For GA releases, the rpm must have an explicit "ship-ok" tag
+                    if self.assembly_type is AssemblyTypes.STANDARD:
+                        issues.append(AssemblyIssue(f'{component_description} has {rpm_build["nvr"]}, which is missing the ship-ok tag: {rpm_delivery_config.ship_ok_tag}', component=component, code=AssemblyIssueCode.IMPERMISSIBLE))
+                    # For pre-GA releases, MISSING_SHIP_OK_TAG issue will be reported if the rpm doesn't have a "ship-ok" tag
+                    if self.assembly_type is AssemblyTypes.CANDIDATE:
+                        issues.append(AssemblyIssue(f'{component_description} has {rpm_build["nvr"]}, which is missing the ship-ok tag: {rpm_delivery_config.ship_ok_tag}', component=component, code=AssemblyIssueCode.MISSING_SHIP_OK_TAG))
         return issues
 
     def check_installed_rpms_in_image(self, dg_key: str, build_inspector: BrewBuildImageInspector):
