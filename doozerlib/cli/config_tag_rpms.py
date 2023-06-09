@@ -94,7 +94,7 @@ class TagRPMsCli:
         if not rpm_deliveries:
             logger.warning("rpm_deliveries is not defined for this group.")
             if self.as_json:
-                print(report)
+                print(json.dumps(report))
             return
         # Scan for builds
         logger.info("Logging into Brew...")
