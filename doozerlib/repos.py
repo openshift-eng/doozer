@@ -436,6 +436,7 @@ class Repos(object):
         # Determine repos that have no content sets defined at all; we will give these a pass if nothing tries to use them.
         # This is one reason to accept it if no content_set is defined at all: https://github.com/openshift-eng/ocp-build-data/pull/594
         content_set_defined = {}
+        return  # 2023-06-09 workaround until RHELDST-18595 is fulfilled
         for name, repo in self._repos.items():
             content_set_defined[name] = False
             for arch in self._arches + ['default']:
