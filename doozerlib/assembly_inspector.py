@@ -2,6 +2,7 @@ from typing import Any, List, Dict, Optional
 
 from koji import ClientSession
 from doozerlib.model import Model
+from doozerlib.rpm_delivery import RPMDeliveries, RPMDelivery
 from doozerlib.rpm_utils import parse_nvr
 
 from doozerlib import brew, util, Runtime
@@ -48,17 +49,15 @@ class AssemblyInspector:
 
         # Preprocess rpm_deliveries group config
         # This is mainly to support weekly kernel delivery
-        self._rpm_deliveries: Dict[str, Model] = {}  # Dict[package_name] => per package rpm_delivery config
+        self._rpm_deliveries: Dict[str, RPMDelivery] = {}  # Dict[package_name] => per package RpmDelivery config
         if self.runtime.group_config.rpm_deliveries:
-            for entry in self.runtime.group_config.rpm_deliveries:
+            # parse and validate rpm_deliveries config
+            rpm_deliveries = RPMDeliveries.parse_obj(self.runtime.group_config.rpm_deliveries.primitive())
+            for entry in rpm_deliveries:
                 packages = entry.packages
-                if not packages:
-                    raise ValueError("`packages` in `group_config.rpm_deliveries` can't be empty")
-                if not entry.ship_ok_tag:
-                    raise ValueError("`ship_ok_tag` in `group_config.rpm_deliveries` can't be empty")
-                if not entry.stop_ship_tag:
-                    raise ValueError("`stop_ship_tag` in `group_config.rpm_deliveries` can't be empty")
                 for package in packages:
+                    if package in self._rpm_deliveries:
+                        raise ValueError(f"Duplicate package {package} defined in rpm_deliveries config")
                     self._rpm_deliveries[package] = entry
 
     def get_type(self) -> AssemblyTypes:
