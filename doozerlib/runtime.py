@@ -549,7 +549,11 @@ class Runtime(object):
             self.freeze_automation = self.group_config.freeze_automation or FREEZE_AUTOMATION_NO
 
             if validate_content_sets:
-                self.repos.validate_content_sets()
+                # as of 2023-06-09 authentication is required to validate content sets with rhsm-pulp
+                if not os.environ.get("RHSM_PULP_KEY") or not os.environ.get("RHSM_PULP_CERT"):
+                    self.logger.warn("Missing RHSM_PULP auth, will skip validating content sets")
+                else:
+                    self.repos.validate_content_sets()
 
             if self.group_config.name != self.group:
                 raise IOError(
