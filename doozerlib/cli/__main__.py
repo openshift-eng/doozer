@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+import base64
 
 import click
 import os
 import shutil
+
 import yaml
 import sys
 import subprocess
@@ -16,6 +18,8 @@ import urllib
 import pathlib
 
 from future import standard_library
+from ghapi.core import GhApi
+
 from doozerlib import Runtime, state, cli as cli_package
 from doozerlib.distgit import ImageDistGitRepo
 from doozerlib.pushd import Dir
@@ -1516,6 +1520,132 @@ def config_read_group(runtime, key, as_len, as_yaml, permit_missing_group, defau
             f.write(value)
 
     print(str(value))
+
+
+def get_releases(group) -> dict:
+    """
+    Uses GitHub API to fecth releases.yaml from openshift-eng/ocp-build-data for a given group
+
+    Parses the file and returns it as a dictionary
+    """
+
+    if not os.environ.get('GITHUB_TOKEN', None):
+        raise DoozerFatalError('A GITHUB_TOKEN environment variable must be defined!')
+    github_token = os.environ['GITHUB_TOKEN']
+
+    api = GhApi(owner='openshift-eng', repo='ocp-build-data', token=github_token)
+    files = api.list_files(branch=group)
+    releases_yaml = files.get('releases.yml')
+    blob = api.git.get_blob(file_sha=releases_yaml['sha'])
+    return yaml.safe_load(base64.b64decode(blob['content']))
+
+
+@cli.command("config:read-releases", short_help="Output aspects of releases.yml")
+@click.option("--length", "as_len", default=False, is_flag=True, help='Print number of assemblies defined for group')
+@click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Print results in a yaml block')
+@click.option("--out-file", help="Output contents to a file instead of stdout", default=None)
+@pass_runtime
+def config_read_releases(runtime, as_len, as_yaml, out_file):
+    """
+    Read data from releases.yaml for given group and key.
+    If key is not specified, the entire release data structure will be output.
+
+    Usage:
+
+    $ doozer --group=openshift-4.14 config:read-releases
+
+    $ doozer --group=openshift-4.14 config:read-releases --yaml
+
+    $ doozer --group=openshift-4.13 config:read-releases --length
+
+    $ doozer --group=openshift-4.13 config:read-releases --yaml --out-file /tmp/out.yaml
+    """
+
+    content = get_releases(runtime.group)
+
+    if as_len:
+        output = len(content['releases'])
+    elif as_yaml:
+        output = yaml.safe_dump(content)
+    else:
+        output = content
+
+    if out_file:
+        # just in case
+        out_file = os.path.expanduser(out_file)
+        try:
+            with io.open(out_file, 'w', encoding="utf-8") as f:
+                f.write(str(output))
+        except PermissionError:
+            click.echo(f'Permission denied: could not write to {out_file}')
+            sys.exit(1)
+
+    else:
+        click.echo(output)
+
+
+@cli.command("config:read-assemblies", short_help="Output aspects of assemblies defined in releases.yml")
+@click.option("--assembly", help="Group assembly to analyze", required=True)
+@click.option("--default", help="Value to print if key cannot be found", default=None)
+@click.option("--length", "as_len", default=False, is_flag=True, help='Print length of dict/list specified by key')
+@click.option("--yaml", "as_yaml", default=False, is_flag=True, help='Format output as YAML')
+@click.option("--out-file", help="Output contents to a file instead of stdout", default=None)
+@click.argument("key", nargs=1, metavar="KEY", type=click.STRING, default=None, required=False)
+@pass_runtime
+def config_read_assemblies(runtime, assembly, default, as_len, as_yaml, out_file, key):
+    """
+    Read data from releases.yaml for given group, assembly and key.
+    An assembly must be specified. To get a global representation of release.yaml,
+    use doozer config:read-releases instead
+
+    Usage:
+
+    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1
+
+    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1 --yaml
+
+    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1 --yaml --out-file /tmp/out.yaml
+
+    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1 --yaml assembly.issues.exclude --length
+
+    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1 --yaml assembly.promotion_permits
+
+    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.2 --yaml assembly.promotion_permits --default []
+    """
+
+    runtime.initialize(**CONFIG_RUNTIME_OPTS)
+    releases = get_releases(runtime.group)['releases']
+    assembly_data = releases[assembly]
+
+    if key is not None:
+        assembly_data = dict_get(assembly_data, key, None)
+        if assembly_data is None:
+            if default is not None:
+                click.echo(default)
+                sys.exit(0)
+            raise DoozerFatalError('No default specified and unable to find key: {}'.format(key))
+
+    if as_len:
+        output = len(assembly_data)
+
+    elif as_yaml:
+        output = yaml.safe_dump(assembly_data)
+
+    else:
+        output = assembly_data
+
+    if out_file:
+        # just in case
+        out_file = os.path.expanduser(out_file)
+        try:
+            with io.open(out_file, 'w', encoding="utf-8") as f:
+                f.write(str(output))
+        except PermissionError:
+            click.echo(f'Permission denied: could not write to {out_file}')
+            sys.exit(1)
+
+    else:
+        click.echo(output)
 
 
 @cli.command("config:update-mode", short_help="Update config(s) mode. enabled|disabled|wip")
