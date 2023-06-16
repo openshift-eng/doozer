@@ -1514,8 +1514,6 @@ def config_read_group(runtime, key, as_len, as_yaml, permit_missing_group, defau
         value = yaml.safe_dump(value, indent=2, default_flow_style=False)
 
     if out_file:
-        # just in case
-        out_file = os.path.expanduser(out_file)
         with io.open(out_file, 'w', encoding="utf-8") as f:
             f.write(value)
 
@@ -1571,8 +1569,6 @@ def config_read_releases(runtime, as_len, as_yaml, out_file):
         output = content
 
     if out_file:
-        # just in case
-        out_file = os.path.expanduser(out_file)
         try:
             with io.open(out_file, 'w', encoding="utf-8") as f:
                 f.write(str(output))
@@ -1635,8 +1631,6 @@ def config_read_assemblies(runtime, assembly, default, as_len, as_yaml, out_file
         output = assembly_data
 
     if out_file:
-        # just in case
-        out_file = os.path.expanduser(out_file)
         try:
             with io.open(out_file, 'w', encoding="utf-8") as f:
                 f.write(str(output))
