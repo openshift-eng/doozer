@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pathlib
 import re
 import shutil
 import time
@@ -94,7 +95,8 @@ class RPMBuilder:
         tarball_name = f"{rpm.config.name}-{rpm.version}-{rpm.release}.tar.gz"
         logger.info("Creating rpm spec file...")
         source_commit_url = '{}/commit/{}'.format(rpm.public_upstream_url, rpm.pre_init_sha)
-        specfile = await self._populate_specfile_async(rpm, tarball_name, source_commit_url)
+        go_compliance_shim = self._runtime.group_config.compliance.rpm_shim.enabled  # Missing is Falsey
+        specfile = await self._populate_specfile_async(rpm, tarball_name, source_commit_url, go_compliance_shim=go_compliance_shim)
         dg_specfile_path = dg.dg_path / Path(rpm.specfile).name
         async with aiofiles.open(dg_specfile_path, "w") as f:
             await f.writelines(specfile)
@@ -295,7 +297,7 @@ class RPMBuilder:
 
     @staticmethod
     async def _populate_specfile_async(
-        rpm: RPMMetadata, source_filename: str, source_commit_url: str
+        rpm: RPMMetadata, source_filename: str, source_commit_url: str, go_compliance_shim=False
     ) -> List[str]:
         """Populates spec file
         :param source_filename: Path to the template spec file
@@ -355,7 +357,26 @@ class RPMBuilder:
                 lines[i] = f"%autosetup -S git -n {rpm.config.name}-{rpm.version} -p1\n"
             elif line.startswith("%changelog"):
                 lines[i] = f"{lines[i].strip()}\n{changelog_title}\n- Update to source commit {source_commit_url}\n"
-
+            elif line.startswith("%build"):
+                if go_compliance_shim:
+                    rpm_builder_go_wrapper_sh = pathlib.Path(pathlib.Path(__file__).parent, 'rpm_builder_go_wrapper.sh').read_text()
+                    lines[i] = f'''{line}
+export REAL_GO_PATH=$(which go || true)
+if [[ -n "$REAL_GO_PATH" ]]; then
+    GOSHIM_DIR=/tmp/goshim
+    mkdir -p $GOSHIM_DIR
+    ln -s $REAL_GO_PATH $GOSHIM_DIR/go.real
+    export PATH=$GOSHIM_DIR:$PATH
+    # Use single quotes 'EOF' to avoid variable expansion.
+    cat > $GOSHIM_DIR/go << 'EOF'
+    {rpm_builder_go_wrapper_sh}
+    EOF
+    chmod +x $GOSHIM_DIR/go
+fi
+\n'''
+                else:
+                    # If we are not enforcing compliance, do nothing to the line.
+                    pass
             elif rpm_spec_tags:  # If there are keys left to replace
                 for k in list(rpm_spec_tags.keys()):
                     v = rpm_spec_tags[k]
