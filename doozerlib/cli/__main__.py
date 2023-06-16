@@ -1584,7 +1584,7 @@ def config_read_releases(runtime, as_len, as_yaml, out_file):
         click.echo(output)
 
 
-@cli.command("config:read-assemblies", short_help="Output aspects of assemblies defined in releases.yml")
+@cli.command("config:read-assembly", short_help="Output aspects of a specific assembly defined in releases.yml")
 @click.option("--assembly", help="Group assembly to analyze", required=True)
 @click.option("--default", help="Value to print if key cannot be found", default=None)
 @click.option("--length", "as_len", default=False, is_flag=True, help='Print length of dict/list specified by key')
@@ -1600,17 +1600,17 @@ def config_read_assemblies(runtime, assembly, default, as_len, as_yaml, out_file
 
     Usage:
 
-    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1
+    $ doozer --group=openshift-4.13 config:read-assembly --assembly 4.13.1
 
-    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1 --yaml
+    $ doozer --group=openshift-4.13 config:read-assembly --assembly 4.13.1 --yaml
 
-    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1 --yaml --out-file /tmp/out.yaml
+    $ doozer --group=openshift-4.13 config:read-assembly --assembly 4.13.1 --yaml --out-file /tmp/out.yaml
 
-    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1 --yaml assembly.issues.exclude --length
+    $ doozer --group=openshift-4.13 config:read-assembly --assembly 4.13.1 --yaml assembly.issues.exclude --length
 
-    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.1 --yaml assembly.promotion_permits
+    $ doozer --group=openshift-4.13 config:read-assembly --assembly 4.13.1 --yaml assembly.promotion_permits
 
-    $ doozer --group=openshift-4.13 config:read-assemblies --assembly 4.13.2 --yaml assembly.promotion_permits --default []
+    $ doozer --group=openshift-4.13 config:read-assembly --assembly 4.13.2 --yaml assembly.promotion_permits --default []
     """
 
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
