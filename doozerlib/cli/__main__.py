@@ -1520,7 +1520,7 @@ def config_read_group(runtime, key, as_len, as_yaml, permit_missing_group, defau
     print(str(value))
 
 
-def get_releases(group) -> dict:
+def get_releases(runtime) -> dict:
     """
     Uses GitHub API to fecth releases.yaml from openshift-eng/ocp-build-data for a given group
 
@@ -1531,8 +1531,9 @@ def get_releases(group) -> dict:
         raise DoozerFatalError('A GITHUB_TOKEN environment variable must be defined!')
     github_token = os.environ['GITHUB_TOKEN']
 
-    api = GhApi(owner='openshift-eng', repo='ocp-build-data', token=github_token)
-    files = api.list_files(branch=group)
+    owner = runtime.data_path.split('/')[-2]
+    api = GhApi(owner=owner, repo='ocp-build-data', token=github_token)
+    files = api.list_files(branch=runtime.group_commitish)
     releases_yaml = files.get('releases.yml')
     blob = api.git.get_blob(file_sha=releases_yaml['sha'])
     return yaml.safe_load(base64.b64decode(blob['content']))
@@ -1559,7 +1560,8 @@ def config_read_releases(runtime, as_len, as_yaml, out_file):
     $ doozer --group=openshift-4.13 config:read-releases --yaml --out-file /tmp/out.yaml
     """
 
-    content = get_releases(runtime.group)
+    runtime.initialize(**CONFIG_RUNTIME_OPTS)
+    content = get_releases(runtime)
 
     if as_len:
         output = len(content['releases'])
@@ -1610,7 +1612,7 @@ def config_read_assemblies(runtime, assembly, default, as_len, as_yaml, out_file
     """
 
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
-    releases = get_releases(runtime.group)['releases']
+    releases = get_releases(runtime)['releases']
     assembly_data = releases[assembly]
 
     if key is not None:
