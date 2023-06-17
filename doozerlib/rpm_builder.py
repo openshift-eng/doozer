@@ -368,9 +368,9 @@ if [[ -n "$REAL_GO_PATH" ]]; then
     ln -s $REAL_GO_PATH $GOSHIM_DIR/go.real
     export PATH=$GOSHIM_DIR:$PATH
     # Use single quotes 'EOF' to avoid variable expansion.
-    cat > $GOSHIM_DIR/go << 'EOF'
-    {rpm_builder_go_wrapper_sh}
-    EOF
+cat > $GOSHIM_DIR/go << 'EOF'
+{rpm_builder_go_wrapper_sh}
+EOF
     chmod +x $GOSHIM_DIR/go
 fi
 \n'''
