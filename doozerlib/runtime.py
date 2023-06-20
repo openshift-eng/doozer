@@ -331,7 +331,7 @@ class Runtime(object):
     def initialize(self, mode='images', clone_distgits=True,
                    validate_content_sets=False,
                    no_group=False, clone_source=None, disabled=None,
-                   prevent_cloning: bool = False, config_only: bool = False):
+                   prevent_cloning: bool = False, config_only: bool = False, group_only: bool = False):
 
         if self.initialized:
             return
@@ -412,6 +412,9 @@ class Runtime(object):
             self.group, self.group_commitish = self.group.split('@', 1)
         else:
             self.group_commitish = self.group
+
+        if group_only:
+            return
 
         # For each "--stream alias image" on the command line, register its existence with
         # the runtime.

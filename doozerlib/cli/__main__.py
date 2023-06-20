@@ -1387,7 +1387,8 @@ CONFIG_RUNTIME_OPTS = {
     'clone_source': False,    # no need, just doing config
     'disabled': True,         # show all, including disabled/wip
     'prevent_cloning': True,  # raise exception is somehow we try to clone
-    'config_only': True       # only initialize config and nothing else
+    'config_only': True,      # only initialize config and nothing else
+    'group_only': False       # only initialize group, logging and nothing else
 }
 
 
@@ -1560,6 +1561,7 @@ def config_read_releases(runtime, as_len, as_yaml, out_file):
     $ doozer --group=openshift-4.13 config:read-releases --yaml --out-file /tmp/out.yaml
     """
 
+    CONFIG_RUNTIME_OPTS['group_only'] = True
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     content = get_releases(runtime)
 
@@ -1611,6 +1613,7 @@ def config_read_assemblies(runtime, assembly, default, as_len, as_yaml, out_file
     $ doozer --group=openshift-4.13 config:read-assembly --assembly 4.13.2 --yaml assembly.promotion_permits --default []
     """
 
+    CONFIG_RUNTIME_OPTS['group_only'] = True
     runtime.initialize(**CONFIG_RUNTIME_OPTS)
     releases = get_releases(runtime)['releases']
     assembly_data = releases[assembly]
