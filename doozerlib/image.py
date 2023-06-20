@@ -298,19 +298,17 @@ class ImageMetadata(Metadata):
         dgk = self.distgit_key
         runtime = self.runtime
 
-        builds_contained_in_archives = {}  # build_id => result of koji.getBuild(build_id)
+        arch_rpms = {}  # arch => list of rpm dicts to check for updates in configured repos
         with runtime.pooled_koji_client_session() as koji_api:
-
             image_build = self.get_latest_build(default='')
             if not image_build:
                 # Seems this have never been built. Mark it as needing change.
                 return self, RebuildHint(RebuildHintCode.NO_LATEST_BUILD, 'Image has never been built before')
 
-            self.logger.debug(f'Image {dgk} latest is {image_build}')
-
             image_nvr = image_build['nvr']
-            image_build_event_id = image_build['creation_event_id']  # the brew event that created this build
+            self.logger.debug(f'Image {dgk} latest is {image_nvr}')
 
+            image_build_event_id = image_build['creation_event_id']  # the brew event that created this build
             self.logger.info(f'Running a change assessment on {image_nvr} built at event {image_build_event_id}')
 
             # Very rarely, an image might need to pull a package that is not actually installed in the
@@ -384,15 +382,11 @@ class ImageMetadata(Metadata):
                 self.logger.info(f'Image will be rebuilt due to buildroot change since {image_nvr} (last build event={image_build_event_id}). Build root change: [{build_root_change}]')
                 return self, RebuildHint(RebuildHintCode.BUILD_ROOT_CHANGING, f'Buildroot tag changes since {image_nvr} was built')
 
-            archives = koji_api.listArchives(image_build['build_id'])
+            self.logger.info("Getting RPMs contained in %s", image_nvr)
+            bbii = BrewBuildImageInspector(self.runtime, image_build)
 
-            # Compare to the arches in runtime
-            build_arches = set()
-            for a in archives:
-                # When running with cachito, not all archives returned are images. Filter out non-images.
-                if a['btype'] == 'image':
-                    build_arches.add(a['extra']['image']['arch'])
-
+            arch_archives = bbii.get_arch_archives()
+            build_arches = set(arch_archives.keys())
             target_arches = set(self.get_arches())
             if target_arches != build_arches:
                 # The latest brew build does not exactly match the required arches as specified in group.yml
@@ -408,11 +402,11 @@ class ImageMetadata(Metadata):
                 if latest_rpm_build:
                     group_rpm_builds_nvrs[rpm_meta.get_package_name()] = latest_rpm_build['nvr']
 
-            for archive in archives:
+            for arch, archive_inspector in arch_archives.items():
+                arch_rpms[arch] = []
                 # Example results of listing RPMs in an given imageID:
                 # https://gist.github.com/jupierce/a8798858104dcf6dfa4bd1d6dd99d2d8
-                archive_id = archive['id']
-                rpm_entries = koji_api.listRPMs(imageID=archive_id)
+                rpm_entries = archive_inspector.get_installed_rpm_dicts()
                 for rpm_entry in rpm_entries:
                     build_id = rpm_entry['build_id']
                     build = koji_api.getBuild(build_id, brew.KojiWrapperOpts(caching=True))
@@ -426,31 +420,21 @@ class ImageMetadata(Metadata):
                         # is not about to change. Ignore the installed package.
                         self.logger.debug(f'Found latest assembly specific build ({latest_assembly_build_nvr}) for group package {package_name} is already installed in {dgk} archive; no tagging change search will occur')
                         continue
+                    # Add this rpm_entry to arch_rpms in order to chech whether it is latest in repos
+                    arch_rpms[arch].append(rpm_entry)
 
-                    # Several RPMs may belong to the same package, and each archive must use the same
-                    # build of a package, so all we need to collect is the set of build_ids for the packages
-                    # across all of the archives.
-                    builds_contained_in_archives[build_id] = build
-
-        self.logger.info(f'Checking whether any of the installed builds {len(builds_contained_in_archives)} has been tagged by a relevant tag since this image\'s build brew event {image_build_event_id}')
-
-        installed_builds = list(builds_contained_in_archives.values())
-        # Shuffle the builds before starting the threads. The reason is that multiple images are going to be performing
-        # these queries simultaneously. Those images have similar packages (typically rooting in a rhel base image).
-        # The KojiWrapper caching mechanism will allow two simultaneous calls to a Koji API to hit the actual
-        # server since no result has yet been returned. Shuffling the installed package list spreads the threads
-        # out among the packages to reduce re-work by the server.
-        random.shuffle(installed_builds)
-        changes_res = runtime.parallel_exec(
-            f=lambda installed_package_build, terminate_event: is_image_older_than_package_build_tagging(self, image_build_event_id, installed_package_build, newest_image_event_ts, oldest_image_event_ts),
-            args=installed_builds,
-            n_threads=10
-        )
-
-        for rebuild_hint in changes_res.get():
-            if rebuild_hint.rebuild:
-                return self, rebuild_hint
-
+        self.logger.info(f'Checking whether any of the installed rpms {len(arch_rpms)} is outdated')
+        loop = asyncio.new_event_loop()
+        non_latest_rpms = loop.run_until_complete(bbii.find_non_latest_rpms(arch_rpms))
+        rebuild_hints = [
+            f"Outdated RPM {installed_rpm} installed in {image_nvr} ({arch}) when {latest_rpm} was available in repo {repo}"
+            for arch, non_latest in non_latest_rpms.items() for installed_rpm, latest_rpm, repo in non_latest
+        ]
+        if rebuild_hints:
+            return self, RebuildHint(
+                RebuildHintCode.PACKAGE_CHANGE,
+                "; ".join(rebuild_hints)
+            )
         return self, RebuildHint(RebuildHintCode.BUILD_IS_UP_TO_DATE, 'No change detected')
 
     def covscan(self, cc: coverity.CoverityContext) -> bool:
@@ -496,102 +480,6 @@ class ImageMetadata(Metadata):
         """ Returns derived brew target name from the distgit branch name
         """
         return f"{self.branch()}-containers-candidate"
-
-
-def is_image_older_than_package_build_tagging(image_meta, image_build_event_id, package_build, newest_image_event_ts, oldest_image_event_ts) -> RebuildHint:
-    """
-    Determines if a given rpm is part of a package that has been tagged in a relevant tag AFTER image_build_event_id
-    :param image_meta: The image meta object for the image.
-    :param image_build_event_id: The build event for the image.
-    :param package_build: The package build to assess.
-    :param newest_image_event_ts: The build timestamp of the most recently built image in this group.
-    :param oldest_image_event_ts: The build timestamp of the oldest build in this group from getLatestBuild of each component.
-    :return: A rebuild hint with information on whether a rebuild should be performed and why
-    """
-
-    # If you are considering changing this code, you are going to have to contend with
-    # complex scenarios like: what if we pulled in this RPM by tagging it, intentionally
-    # backlevel, from another product, and we want to keep like that? Or, what if we tagged
-    # in a non-released version of another product to get a fix pre-release of that package,
-    # but subsequently want to inherit later versions the original product ships.
-    # This blunt approach isn't trying to be perfect, but it will rarely do an unnecessary
-    # rebuild and handles those complex scenarios by erring on the side of doing the rebuild.
-
-    runtime = image_meta.runtime
-
-    with runtime.pooled_koji_client_session() as koji_api:
-        package_build_id = package_build['build_id']
-        package_name = package_build['package_name']
-
-        # At the time this NEWEST image in the group was built, what were the active tags by which our image may have
-        # pulled in the build in question.
-        # We could make this simple by looking for  beforeEvent=image_build_event_id , but this would require
-        # a new, relatively large koji api for each image. By using  newest_image_event_ts,
-        # we have a single, cached call which can be used for all subsequent analysis of this package.
-        possible_active_tag_events = koji_api.queryHistory(brew.KojiWrapperOpts(caching=True),
-                                                           table='tag_listing', build=package_build_id,
-                                                           active=True, before=newest_image_event_ts)['tag_listing']
-
-        # Now filter down the list to just the tags which might have contributed to our image build.
-        contemporary_active_tag_names = set()
-        for event in possible_active_tag_events:
-            tag_name = event['tag.name']
-            # There are some tags that are guaranteed not to be the way our image found the package.
-            # Exclude them from the list of relevant tags.
-            if tag_name == 'trashcan' or '-private' in tag_name or 'deleted' in tag_name:
-                continue
-            if tag_name.endswith(('-released', '-set', '-pending', '-backup')):
-                # Ignore errata tags (e.g. RHBA-2020:2309-released, RHBA-2020:3027-pending) and tags like rhel-8.0.0-z-batch-0.3-set
-                continue
-            if tag_name.endswith(('-candidate', '-build')):
-                # Eliminate candidate tags (we will add this image's -candidate tag back in below)
-                continue
-            # Finally, see if the event happened after THIS image was created
-            if event['create_event'] < image_build_event_id:
-                contemporary_active_tag_names.add(tag_name)
-
-        image_meta.logger.info(f'Checking for tagging changes for {package_name} which old build may have received through: {contemporary_active_tag_names}')
-
-        # Given an RPM X with a history of tags {x}, we know we received & installed
-        # the RPM through one of the tags in {x}. What happens if a new RPM Y had a set of tags {y} that
-        # is fully disjoint from {x}. In short, it came in through a completely independent vector, but we
-        # would still find it through that vector if a build was triggered.
-        # This could happen if:
-        # 1. group.yml repos are changed and Y would be pulled from a new source
-        # 2. The new Y is available through a different repo than we found it in last time.
-        # To mitigate #1, we should force build after changing group.yml repos.
-        # For #2, the only way this would typically happen would be if we were pulling from an official
-        # repo for rpm X and then Y was tagged into our candidate tag as an override. To account for
-        # this, always check for changes in our tags.
-        contemporary_active_tag_names.add(image_meta.branch())
-        contemporary_active_tag_names.add(image_meta.candidate_brew_tag())
-
-        # Now let's look for tags that were applied to this package AFTER the oldest image in the group.
-        # We could make this simple by looking for  afterEvent=image_build_event_id , but this would require
-        # a new, relatively large koji api for each image. By looking all the way back to  eldest_image_event_ts,
-        # we have a single, cached call which can be used for all subsequent analysis of this package.
-        active_tag_events = koji_api.queryHistory(brew.KojiWrapperOpts(caching=True),
-                                                  table='tag_listing', package=package_name,
-                                                  active=True, after=oldest_image_event_ts)['tag_listing']
-
-        subsequent_active_tag_names = set()
-        for event in active_tag_events:
-            # See if the event happened after THIS image was created
-            if event['create_event'] > image_build_event_id:
-                subsequent_active_tag_names.add(event['tag.name'])
-
-        image_meta.logger.info(f'Checking for tagging changes for {package_name} where tags have been modified since build: {subsequent_active_tag_names}')
-
-        # Here's the magic, hopefully. If the tags when the image was built and subsequent tag names intersect,
-        # we know that a tag that may have delivered a build into our image, has subsequently been updated to point to
-        # a different build of that package. This means, if we build again, we MIGHT pull in that newly
-        # tagged package.
-        intersection_set = subsequent_active_tag_names.intersection(contemporary_active_tag_names)
-
-        if intersection_set:
-            return RebuildHint(RebuildHintCode.PACKAGE_CHANGE, f'Package {package_name} has been retagged by potentially relevant tags since image build: {intersection_set}')
-
-    return RebuildHint(RebuildHintCode.BUILD_IS_UP_TO_DATE, 'No package change detected')
 
 
 class ArchiveImageInspector:
@@ -673,7 +561,7 @@ class ArchiveImageInspector:
         """
         return self.get_brew_build_inspector().get_image_meta()
 
-    async def find_non_latest_rpms(self) -> List[Tuple[str, str, str]]:
+    async def find_non_latest_rpms(self, rpms_to_check: Optional[List[Dict]] = None) -> List[Tuple[str, str, str]]:
         """
         If the packages installed in this image archive overlap packages in the configured YUM repositories,
         return NVRs of the latest avaiable rpms that are not also installed in this archive.
@@ -684,6 +572,7 @@ class ArchiveImageInspector:
         a thorough config:scan-sources, if this method returns anything, scan-sources is
         likely broken.
 
+        :param rpms_to_check: If set, narrow the rpms to check
         :return: Returns a list of (installed_rpm, latest_rpm, repo_name)
         """
         # Get available rpms in configured repos
@@ -711,7 +600,9 @@ class ArchiveImageInspector:
                     candidate_rpm_repos[name] = repo
 
         # Compare installed rpms to candidate rpms found from configured repos
-        archive_rpms = {rpm['name']: rpm for rpm in self.get_installed_rpm_dicts()}
+        if rpms_to_check is None:
+            rpms_to_check = self.get_installed_rpm_dicts()
+        archive_rpms = {rpm['name']: rpm for rpm in rpms_to_check}
         results: List[Tuple[str, str, str]] = []
         for name, archive_rpm in archive_rpms.items():
             candidate_rpm = candidate_rpms.get(name)
@@ -790,10 +681,10 @@ class BrewBuildImageInspector:
     Provides an API for common queries we perform against brew built images.
     """
 
-    def __init__(self, runtime: "doozerlib.Runtime", pullspec_or_build_id_or_nvr: Union[str, int]):
+    def __init__(self, runtime: "doozerlib.Runtime", build: Union[str, int, Dict]):
         """
         :param runtime: The koji client session to use.
-        :param pullspec_or_build_id_or_nvr: A pullspec to the brew image (it is fine if this is a manifest list OR a single archive image), a brew build id, or an NVR.
+        :param build: A pullspec to the brew image (it is fine if this is a manifest list OR a single archive image), a brew build id, an NVR, or a brew build dict.
         """
         self.runtime = runtime
 
@@ -803,13 +694,17 @@ class BrewBuildImageInspector:
 
             self._cache = dict()
 
-            if '/' not in str(pullspec_or_build_id_or_nvr):
+            if isinstance(build, Dict):
+                # Treat as a brew build dict
+                self._brew_build_obj = build
+                self._nvr = self._brew_build_obj['nvr']
+            elif '/' not in str(build):
                 # Treat the parameter as an NVR or build_id.
-                self._brew_build_obj = koji_api.getBuild(pullspec_or_build_id_or_nvr, strict=True)
+                self._brew_build_obj = koji_api.getBuild(build, strict=True)
                 self._nvr = self._brew_build_obj['nvr']
             else:
                 # Treat as a full pullspec
-                self._build_pullspec = pullspec_or_build_id_or_nvr  # This will be reset to the official brew pullspec, but use it for now
+                self._build_pullspec = build  # This will be reset to the official brew pullspec, but use it for now
                 image_info = self.get_image_info()  # We need to find the brew build, so extract image info
                 image_labels = image_info['config']['config']['Labels']
                 self._nvr = image_labels['com.redhat.component'] + '-' + image_labels['version'] + '-' + image_labels['release']
@@ -1057,7 +952,7 @@ class BrewBuildImageInspector:
         """
         return [t['name'] for t in self.list_brew_tags()]
 
-    async def find_non_latest_rpms(self) -> Dict[str, List[Tuple[str, str, str]]]:
+    async def find_non_latest_rpms(self, arch_rpms_to_check: Optional[Dict[str, List[Dict]]] = None) -> Dict[str, List[Tuple[str, str, str]]]:
         """
         If the packages installed in this image build overlap packages in the configured YUM repositories,
         return NVRs of the latest avaiable rpms that are not also installed in this image.
@@ -1068,6 +963,7 @@ class BrewBuildImageInspector:
         a thorough config:scan-sources, if this method returns anything, scan-sources is
         likely broken.
 
+        :param arch_rpms_to_check: If set, narrow the rpms to check. This should be a dict with keys are arches and values are lists of rpm dicts
         :return: Returns a dict. Keys are arch names; values are lists of (installed_rpm, latest_rpm, repo) tuples
         """
         meta = self.get_image_meta()
@@ -1077,6 +973,6 @@ class BrewBuildImageInspector:
         for arch in arches:
             iar = self.get_image_archive_inspector(arch)
             assert iar is not None
-            tasks.append(iar.find_non_latest_rpms())
+            tasks.append(iar.find_non_latest_rpms(arch_rpms_to_check[arch] if arch_rpms_to_check else None))
         result = dict(zip(arches, await asyncio.gather(*tasks)))
         return result
