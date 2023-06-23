@@ -3,7 +3,7 @@ import asyncio
 import json, koji
 from typing import Dict, List, Tuple, Optional
 
-from doozerlib.rpm_utils import compare_nvr, parse_nvr
+from doozerlib.rpm_utils import compare_nvr
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 from urllib import request
@@ -12,7 +12,7 @@ from doozerlib.runtime import Runtime
 from doozerlib.util import brew_suffix_for_arch, isolate_el_version_in_release
 from doozerlib import exectools
 from doozerlib.model import ListModel, Model
-from doozerlib import brew
+from doozerlib import brew, logutil
 
 RHCOS_BASE_URL = "https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/storage/releases"
 # Historically the only RHCOS container was 'machine-os-content'; see
@@ -23,6 +23,8 @@ default_primary_container = dict(
     name="machine-os-content",
     build_metadata_key="oscontainer",
     primary=True)
+
+logger = logutil.getLogger(__name__)
 
 
 class RhcosMissingContainerException(Exception):
@@ -176,11 +178,21 @@ class RHCOSBuildFinder:
             arches_building = self.runtime.group_config.arches
         for b in data["builds"]:
             # Make sure all rhcos arch builds are complete
-            if multi_url and len(b["arches"]) != len(arches_building):
-                continue
-            if not self.meta_has_required_attributes(self.rhcos_build_meta(b["id"])):
+            if multi_url and not self.is_multi_build_complete(b, arches_building):
                 continue
             return b["id"]
+
+    def is_multi_build_complete(self, build_dict, arches_building):
+        if len(build_dict["arches"]) != len(arches_building):
+            missing_arches = set(arches_building) - set(build_dict["arches"])
+            logger.info(f"Skipping {build_dict['id']} - missing these arch builds - {missing_arches}")
+            return False
+        for arch in arches_building:
+            if not self.meta_has_required_attributes(self.rhcos_build_meta(build_dict["id"], arch=arch)):
+                logger.warning(f"Skipping {build_dict['id']} - {arch} meta.json isn't complete - forget to run "
+                               "rhcos release job?")
+                return False
+        return True
 
     def meta_has_required_attributes(self, meta):
         required_keys = [payload_tag.build_metadata_key for payload_tag in self.runtime.group_config.rhcos.payload_tags]
@@ -190,10 +202,11 @@ class RHCOSBuildFinder:
         return True
 
     @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
-    def rhcos_build_meta(self, build_id: str, meta_type: str = "meta") -> Dict:
+    def rhcos_build_meta(self, build_id: str, arch: str = None, meta_type: str = "meta") -> Dict:
         """
         Queries the RHCOS release browser to return metadata about the specified RHCOS build.
         :param build_id: The RHCOS build_id to check (e.g. 410.81.20200520.0)
+        :param arch: The arch to check - overrides the default self.brew_arch (e.g. ppc64le)
         :param meta_type: The data to retrieve. "commitmeta" (aka OS Metadata - ostree content) or "meta" (aka Build Metadata / Build record).
         :return: Returns a Dict containing the parsed requested metadata. See the RHCOS release browser for examples: https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/
 
@@ -210,13 +223,15 @@ class RHCOSBuildFinder:
          }
         """
         # this is hard to test with retries, so wrap testable method
-        return self._rhcos_build_meta(build_id, meta_type)
+        return self._rhcos_build_meta(build_id, arch, meta_type)
 
-    def _rhcos_build_meta(self, build_id: str, meta_type: str = "meta") -> Dict:
+    def _rhcos_build_meta(self, build_id: str, arch: str = None, meta_type: str = "meta") -> Dict:
         """
         See public API rhcos_build_meta for details.
         """
-        url = f"{self.rhcos_release_url()}/{build_id}/{self.brew_arch}/{meta_type}.json"
+        if not arch:
+            arch = self.brew_arch
+        url = f"{self.rhcos_release_url()}/{build_id}/{arch}/{meta_type}.json"
         with request.urlopen(url) as req:
             return json.loads(req.read().decode())
 
