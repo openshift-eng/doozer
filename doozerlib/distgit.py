@@ -370,9 +370,19 @@ class DistGitRepo(object):
                     timeout = str(self.runtime.global_opts['rhpkg_push_timeout'])
                     exectools.cmd_assert("timeout {} rhpkg push".format(timeout), retries=3)
                     # rhpkg will create but not push tags :(
-                    # Not asserting this exec since this is non-fatal if a tag already exists,
-                    # and tags in dist-git can't be --force overwritten
-                    exectools.cmd_gather(['timeout', '60', 'git', 'push', '--tags'])
+                    # Many builds require a tag associated with a commit to be a semver
+                    # and they will only fail at runtime when parsing that tag
+                    # if it is not a valid semver. This means we must have a valid
+                    # tag for the commit. Since 4.6+ uses assemblies and we always have
+                    # unique tags with timestamps, we assert the push for 4.x
+                    major, _ = self.runtime.get_major_minor_fields()
+                    if major >= 4:
+                        exectools.cmd_assert("timeout {} git push --tags".format(timeout), retries=3)
+                    else:
+                        # Not asserting this exec since this is non-fatal if a tag already exists,
+                        # and tags in dist-git can't be --force overwritten. Timeouts at
+                        # 60 seconds have been observed.
+                        exectools.cmd_gather(['timeout', '300', 'git', 'push', '--tags'])
             except IOError as e:
                 return (self.metadata, repr(e))
             return (self.metadata, True)
