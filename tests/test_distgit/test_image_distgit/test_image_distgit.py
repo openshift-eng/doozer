@@ -174,17 +174,15 @@ class TestImageDistGit(TestDistgit):
         # preventing tests from interacting with the real filesystem
         flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
 
-        (flexmock(distgit.exectools)
-             .should_receive("cmd_assert")
-             .with_args("timeout 999 rhpkg push", retries=3)
-             .ordered()
-         )
-
-        (flexmock(distgit.exectools)
-            .should_receive("cmd_assert")
-            .with_args("timeout 999 git push --tags", retries=3)
+        flexmock(distgit.exectools)\
+            .should_receive("cmd_assert")\
+            .with_args("timeout 999 rhpkg push", retries=3)\
             .ordered()
-         )
+
+        flexmock(distgit.exectools)\
+            .should_receive("cmd_assert")\
+            .with_args("timeout 999 git push --tags", retries=3)\
+            .ordered()
 
         metadata = flexmock(runtime=self.mock_runtime(global_opts={"rhpkg_push_timeout": 999},
                                                       get_named_semaphore=lambda *_, **__: Lock()),
