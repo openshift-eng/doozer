@@ -46,6 +46,7 @@ class TestImageDistGit(TestDistgit):
             command="some-command",
             add_record=lambda *_, **__: None,
             assembly_type=AssemblyTypes.STANDARD,
+            get_major_minor_fields=lambda *_, **__: (4, 14)
         )
 
     def test_clone_invokes_read_master_data(self):
@@ -174,16 +175,16 @@ class TestImageDistGit(TestDistgit):
         flexmock(distgit).should_receive("Dir").and_return(flexmock(__exit__=None))
 
         (flexmock(distgit.exectools)
-            .should_receive("cmd_assert")
-            .with_args("timeout 999 rhpkg push", retries=3)
-            .once()
-            .ordered())
+             .should_receive("cmd_assert")
+             .with_args("timeout 999 rhpkg push", retries=3)
+             .ordered()
+         )
 
         (flexmock(distgit.exectools)
-            .should_receive("cmd_gather")
-            .with_args(["timeout", "60", "git", "push", "--tags"])
-            .once()
-            .ordered())
+            .should_receive("cmd_assert")
+            .with_args("timeout 999 git push --tags", retries=3)
+            .ordered()
+         )
 
         metadata = flexmock(runtime=self.mock_runtime(global_opts={"rhpkg_push_timeout": 999},
                                                       get_named_semaphore=lambda *_, **__: Lock()),
