@@ -403,7 +403,7 @@ def split_el_suffix_in_release(release: str) -> Tuple[str, Optional[str]]:
     is None if there .el### is not detected.
     """
 
-    el_suffix_match = re.match(r'(.*)\.(el\d+)(?:[._].*|$)', release)
+    el_suffix_match = re.match(r'(.*)\.(el\d+)(?:.*|$)', release)
     if el_suffix_match:
         prefix = el_suffix_match.group(1)
         el_suffix = el_suffix_match.group(2)
