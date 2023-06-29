@@ -22,7 +22,7 @@ from doozerlib.plashet import PlashetBuilder
 from doozerlib.runtime import Runtime
 from doozerlib.brew import get_builds_tags
 from doozerlib.util import (find_latest_builds, isolate_el_version_in_brew_tag,
-                            mkdirs, strip_epoch, to_nvre)
+                            mkdirs, strip_epoch, to_nvre, isolate_el_version_in_release)
 
 ERRATA_URL = "http://errata-xmlrpc.devel.redhat.com/errata/errata_service"
 ERRATA_API_URL = "https://errata.engineering.redhat.com/api/v1/"
@@ -253,7 +253,7 @@ def get_brewroot_arch_base_path(config, nvre, signed):
     package_release = parsed_nvr["release"]
 
     unsigned_arch_base_path = '{brew_packages}/{package_name}/{package_version}/{package_release}'.format(
-        brew_packages=config.packages_path,
+        brew_packages=config.packages_path.format(el_version=isolate_el_version_in_release(package_release)),
         package_name=package_name,
         package_version=package_version,
         package_release=package_release,
@@ -421,10 +421,12 @@ def config_plashet(ctx, base_dir, brew_root, name, signing_key_id, **kwargs):
     """
 
     brew_root_path = os.path.abspath(brew_root)
-    packages_path = os.path.join(brew_root_path, 'packages')
-    if not os.path.isdir(packages_path):
-        print('{} does not exist; unable to start'.format(packages_path))
+    if not os.path.isdir(brew_root_path):
+        print(f'{brew_root_path} does not exist; unable to start')
         exit(1)
+
+    el_volume_path = os.path.join(brew_root_path, 'vol/rhel-{el_version}')
+    packages_path = os.path.join(el_volume_path, 'packages')
 
     base_dir_path = os.path.abspath(base_dir)
     mkdirs(base_dir_path)
