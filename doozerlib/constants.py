@@ -24,3 +24,6 @@ default_db_params = {
     DB_HOST: "localhost",
     DB_PORT: "3306"
 }
+
+# TODO: once brew outage is resolved, change to 6 hours again (currently set to 100)
+BREW_BUILD_TIMEOUT = 100 * 60 * 60  # how long we wait before canceling a task

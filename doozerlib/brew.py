@@ -18,7 +18,7 @@ import koji
 import koji_cli.lib
 import requests
 
-from doozerlib import exectools
+from doozerlib import exectools, constants
 
 from . import logutil
 from .model import Missing
@@ -65,7 +65,7 @@ def get_watch_task_info_copy():
 
 
 def watch_task(session, log_f, task_id, terminate_event):
-    end = time.time() + 6 * 60 * 60
+    end = time.time() + constants.BREW_BUILD_TIMEOUT
     watcher = koji_cli.lib.TaskWatcher(
         task_id,
         session,
