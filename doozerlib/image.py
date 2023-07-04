@@ -441,8 +441,9 @@ class ImageMetadata(Metadata):
         # server since no result has yet been returned. Shuffling the installed package list spreads the threads
         # out among the packages to reduce re-work by the server.
         random.shuffle(installed_builds)
-        changes_res = runtime.parallel_exec(
-            f=lambda installed_package_build, terminate_event: is_image_older_than_package_build_tagging(self, image_build_event_id, installed_package_build, newest_image_event_ts, oldest_image_event_ts),
+        changes_res = exectools.parallel_exec(
+            f=lambda installed_package_build, terminate_event: is_image_older_than_package_build_tagging(
+                self, image_build_event_id, installed_package_build, newest_image_event_ts, oldest_image_event_ts),
             args=installed_builds,
             n_threads=10
         )

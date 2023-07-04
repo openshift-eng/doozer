@@ -17,18 +17,6 @@ def stub_runtime():
 
 
 class RuntimeTestCase(unittest.TestCase):
-    def test_parallel_exec(self):
-        ret = runtime.Runtime._parallel_exec(lambda x: x * 2, range(5), n_threads=20)
-        self.assertEqual(ret, [0, 2, 4, 6, 8])
-
-    def test_parallel_exec2(self):
-        items = [1, 2, 3]
-        results = stub_runtime().parallel_exec(
-            lambda k, v: k,
-            items, n_threads=4)
-        results = results.get()
-        self.assertEqual(results, items)
-
     def test_get_remote_branch_ref(self):
         rt = stub_runtime()
         flexmock(exectools).should_receive("cmd_assert").once().and_return("spam", "")

@@ -1,23 +1,16 @@
-from multiprocessing.pool import MapResult
 from future import standard_library
 standard_library.install_aliases()
-from future.utils import as_native_str
-from multiprocessing.dummy import Pool as ThreadPool
 from contextlib import contextmanager
 from collections import namedtuple
 
 import os
-import sys
 import tempfile
-import threading
 import shutil
 import atexit
 import datetime
-import json
 import yaml
 import click
 import logging
-import functools
 import traceback
 import urllib.parse
 import signal
@@ -27,7 +20,7 @@ from typing import Optional, List, Dict, Tuple, Union
 import time
 import re
 
-from jira import JIRA, Issue
+from jira import JIRA
 
 from doozerlib import gitdata
 from . import logutil
@@ -79,41 +72,6 @@ def remove_tmp_working_dir(runtime):
         shutil.rmtree(runtime.working_dir)
     else:
         click.echo("Temporary working directory preserved by operation: %s" % runtime.working_dir)
-
-
-class WrapException(Exception):
-    """ https://bugs.python.org/issue13831 """
-    def __init__(self):
-        super(WrapException, self).__init__()
-        exc_type, exc_value, exc_tb = sys.exc_info()
-        self.exception = exc_value
-        self.formatted = "".join(
-            traceback.format_exception(exc_type, exc_value, exc_tb))
-
-    @as_native_str()
-    def __str__(self):
-        return "{}\nOriginal traceback:\n{}".format(Exception.__str__(self), self.formatted)
-
-
-def wrap_exception(func):
-    """ Decorate a function, wrap exception if it occurs. """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception:
-            raise WrapException()
-    return wrapper
-
-
-def _unpack_tuple_args(func):
-    """ Decorate a function for unpacking the tuple argument `args`
-        This is used to workaround Python 3 lambda not unpacking tuple arguments (PEP-3113)
-    """
-    @functools.wraps(func)
-    def wrapper(args):
-        return func(*args)
-    return wrapper
 
 
 # A named tuple for caching the result of Runtime._resolve_source.
@@ -1532,63 +1490,24 @@ class Runtime(object):
         """
         return re.match(r"^v\d+((\.\d+)+)?$", version) is not None
 
-    @classmethod
-    def _parallel_exec(cls, f, args, n_threads, timeout=None):
-        pool = ThreadPool(n_threads)
-        ret = pool.map_async(wrap_exception(f), args)
-        pool.close()
-        if timeout is None:
-            # If a timeout is not specified, the KeyboardInterrupt exception won't be delivered.
-            # Use polling as a workaround. See https://stackoverflow.com/questions/1408356/keyboard-interrupts-with-pythons-multiprocessing-pool.
-            while not ret.ready():
-                ret.wait(60)
-        return ret.get(timeout)
-
     def clone_distgits(self, n_threads=None):
         with util.timer(self.logger.info, 'Full runtime clone'):
             if n_threads is None:
                 n_threads = self.global_opts['distgit_threads']
-            return self._parallel_exec(
+            return exectools.parallel_exec(
                 lambda m: m.distgit_repo(),
                 self.all_metas(),
-                n_threads=n_threads)
+                n_threads=n_threads).get()
 
     def push_distgits(self, n_threads=None):
         self.assert_mutation_is_permitted()
 
         if n_threads is None:
             n_threads = self.global_opts['distgit_threads']
-        return self._parallel_exec(
+        return exectools.parallel_exec(
             lambda m: m.distgit_repo().push(),
             self.all_metas(),
-            n_threads=n_threads)
-
-    def parallel_exec(self, f, args, n_threads=None) -> MapResult:
-        """
-        :param f: A function to invoke for all arguments
-        :param args: A list of argument tuples. Each tuple will be used to invoke the function once.
-        :param n_threads: preferred number of threads to use during the work
-        :return:
-        """
-        n_threads = n_threads if n_threads is not None else max(len(args), 1)
-        terminate_event = threading.Event()
-        pool = ThreadPool(n_threads)
-        # Python 3 doesn't allow to unpack tuple argument in a lambdas or functions (PEP-3113).
-        # `_unpack_tuple_args` is a workaround that unpacks the tuple as arguments for the function passed to `ThreadPool.map_async`.
-        # `starmap_async` can be used in the future when we don't keep compatibility with Python 2.
-        ret = pool.map_async(
-            wrap_exception(_unpack_tuple_args(f)),
-            [(a, terminate_event) for a in args])
-        pool.close()
-        try:
-            # `wait` without a timeout disables signal handling
-            while not ret.ready():
-                ret.wait(60)
-        except KeyboardInterrupt:
-            self.logger.warning('SIGINT received, signaling threads to terminate...')
-            terminate_event.set()
-        pool.join()
-        return ret
+            n_threads=n_threads).get()
 
     def get_el_targeted_default_branch(self, el_target: Optional[Union[str, int]] = None):
         if not self.branch:
@@ -1641,7 +1560,7 @@ class Runtime(object):
         :return: Returns a list of tuples. Each tuple contains an rpm or image metadata
         and a change tuple (changed: bool, message: str).
         """
-        return self.parallel_exec(
+        return exectools.parallel_exec(
             lambda meta, _: (meta, meta.needs_rebuild()),
             self.image_metas() + self.rpm_metas(),
             n_threads=20,

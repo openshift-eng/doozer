@@ -45,7 +45,8 @@ class TestDetectEmbargoCli(TestCase):
             find_embargoed_builds.assert_called_once_with(builds_to_detect, candidate_tags)
         self.assertEqual(actual, expected)
 
-    def test_detect_embargoes_in_pullspecs(self):
+    @patch("doozerlib.exectools.parallel_exec")
+    def test_detect_embargoes_in_pullspecs(self, parallel_exec):
         pullspecs = ["example.com/repo:foo", "example.com/repo:bar"]
         builds = [
             {"id": 1, "nvr": "foo-1.2.3-1.p0"},
@@ -54,13 +55,14 @@ class TestDetectEmbargoCli(TestCase):
         nvrs = [("foo", "1.2.3", "1.p0"), ("bar", "1.2.3", "1.p1")]
         expected = ([pullspecs[1]], [builds[1]])
         fake_runtime = MagicMock()
-        fake_runtime.parallel_exec.return_value.get.return_value = nvrs
+        parallel_exec.return_value.get.return_value = nvrs
         with patch("doozerlib.cli.detect_embargo.detect_embargoes_in_nvrs", return_value=[builds[1]]) as detect_embargoes_in_nvrs:
             actual = detect_embargo.detect_embargoes_in_pullspecs(fake_runtime, pullspecs)
             detect_embargoes_in_nvrs.assert_called_once_with(fake_runtime, [f"{n}-{v}-{r}" for n, v, r in nvrs])
         self.assertEqual(actual, expected)
 
-    def test_detect_embargoes_in_releases(self):
+    @patch("doozerlib.exectools.parallel_exec")
+    def test_detect_embargoes_in_releases(self, parallel_exec):
         releases = ["a", "b"]
         release_pullspecs = {
             "a": ["example.com/repo:dead", "example.com/repo:beef"],
@@ -72,7 +74,7 @@ class TestDetectEmbargoCli(TestCase):
         ]
         expected = ([releases[1]], [release_pullspecs["b"][1]], [builds[1]])
         fake_runtime = MagicMock()
-        fake_runtime.parallel_exec.return_value.get.return_value = [release_pullspecs[k] for k in releases]
+        parallel_exec.return_value.get.return_value = [release_pullspecs[k] for k in releases]
         with patch("doozerlib.cli.detect_embargo.detect_embargoes_in_pullspecs") as detect_embargoes_in_pullspecs:
             detect_embargoes_in_pullspecs.side_effect = lambda _, pullspecs: (["example.com/repo:bar"], [builds[1]]) if "example.com/repo:bar" in pullspecs else ([], [])
             actual = detect_embargo.detect_embargoes_in_releases(fake_runtime, releases)

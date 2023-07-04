@@ -169,7 +169,7 @@ def config_scan_source_changes(runtime: Runtime, ci_kubeconfig, as_yaml):
                 add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Unable to retrieve config_digest'))
 
     runtime.logger.debug(f'Will be assessing tagging changes between newest_image_event_ts:{newest_image_event_ts} and oldest_image_event_ts:{oldest_image_event_ts}')
-    change_results = runtime.parallel_exec(
+    change_results = exectools.parallel_exec(
         f=lambda image_meta, terminate_event: image_meta.does_image_need_change(changing_rpm_packages, image_meta.build_root_tag(), newest_image_event_ts, oldest_image_event_ts),
         args=runtime.image_metas(),
         n_threads=20

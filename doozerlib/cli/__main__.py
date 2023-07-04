@@ -504,7 +504,7 @@ def images_rebase(runtime: Runtime, version: Optional[str], release: Optional[st
             return False
         return True
 
-    jobs = runtime.parallel_exec(
+    jobs = exectools.parallel_exec(
         lambda image_meta, terminate_event: dgr_rebase(image_meta, terminate_event),
         metas,
     )
@@ -888,7 +888,7 @@ def images_build_image(runtime, repo_type, repo, push_to_defaults, push_to, scra
         active_profile["signing_intent"] = "release" if repo_type == "signed" else repo_type
     if repo:
         active_profile["repo_list"] = list(repo)
-    results = runtime.parallel_exec(
+    results = exectools.parallel_exec(
         lambda dgr, terminate_event: dgr.build_container(
             active_profile, push_to_defaults, additional_registries=push_to, retries=build_retries,
             terminate_event=terminate_event, scratch=scratch, realtime=(threads == 1),
@@ -1008,7 +1008,7 @@ def images_push(runtime, tag, version_release, to_defaults, late_only, to, filte
         failed = []
         # Push early images
 
-        results = runtime.parallel_exec(
+        results = exectools.parallel_exec(
             lambda img, terminate_event:
                 img.distgit_repo().push_image(tag, to_defaults, additional_registries,
                                               version_release_tuple=version_release_tuple, dry_run=dry_run, registry_config_dir=runtime.registry_config_dir, filter_by_os=filter_by_os),
@@ -2159,11 +2159,11 @@ def rebase_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...], dry_run:
     if not operator_nvrs:
         # If this verb is run without operator NVRs, query Brew for all operator builds selected by the assembly
         operator_metas = [meta for meta in runtime.ordered_image_metas() if meta.enabled and meta.config['update-csv'] is not Missing]
-        results = runtime.parallel_exec(lambda meta, _: meta.get_latest_build(), operator_metas)
+        results = exectools.parallel_exec(lambda meta, _: meta.get_latest_build(), operator_metas)
         operator_builds = results.get()
     else:
         operator_builds = list(operator_nvrs)
-    runtime.parallel_exec(lambda operator, _: OLMBundle(runtime, dry_run).rebase(operator), operator_builds).get()
+    exectools.parallel_exec(lambda operator, _: OLMBundle(runtime, dry_run).rebase(operator), operator_builds).get()
 
 
 @cli.command('olm-bundle:build', short_help='Build bundle containers of given operators')
@@ -2210,7 +2210,7 @@ def build_olm_bundle(runtime: Runtime, operator_names: Tuple[str, ...], dry_run:
             runtime.add_record("build_olm_bundle", **record)
             return record
 
-    results = runtime.parallel_exec(lambda operator, _: _build_bundle(operator), operator_names).get()
+    results = exectools.parallel_exec(lambda operator, _: _build_bundle(operator), operator_names).get()
 
     for record in results:
         if record['status'] == 0:
@@ -2254,7 +2254,7 @@ def rebase_and_build_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...]
     if not operator_nvrs:
         # If this verb is run without operator NVRs, query Brew for all operator builds
         operator_metas = [meta for meta in runtime.ordered_image_metas() if meta.enabled and meta.config['update-csv'] is not Missing]
-        results = runtime.parallel_exec(lambda meta, _: meta.get_latest_build(), operator_metas)
+        results = exectools.parallel_exec(lambda meta, _: meta.get_latest_build(), operator_metas)
         operator_builds = results.get()
     else:
         operator_builds = list(operator_nvrs)
@@ -2299,7 +2299,7 @@ def rebase_and_build_olm_bundle(runtime: Runtime, operator_nvrs: Tuple[str, ...]
             runtime.add_record("build_olm_bundle", **record)
             return record
 
-    results = runtime.parallel_exec(lambda operator, _: rebase_and_build(operator), operator_builds).get()
+    results = exectools.parallel_exec(lambda operator, _: rebase_and_build(operator), operator_builds).get()
 
     for record in results:
         if record['status'] == 0:

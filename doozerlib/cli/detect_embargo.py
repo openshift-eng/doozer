@@ -178,8 +178,8 @@ def detect_embargoes_in_pullspecs(runtime: Runtime, pullspecs: List[str]):
     :return: list of Brew build dicts that have embargoed fixes
     """
     runtime.logger.info(f"Fetching manifests for {len(pullspecs)} pullspecs...")
-    jobs = runtime.parallel_exec(lambda pullspec, _: get_nvr_by_pullspec(pullspec), pullspecs,
-                                 min(len(pullspecs), multiprocessing.cpu_count() * 4, 32))
+    jobs = exectools.parallel_exec(lambda pullspec, _: get_nvr_by_pullspec(pullspec), pullspecs,
+                                   min(len(pullspecs), multiprocessing.cpu_count() * 4, 32))
     nvrs = jobs.get()
     suspect_nvrs = []
     suspect_pullspecs = []
@@ -205,7 +205,7 @@ def detect_embargoes_in_releases(runtime: Runtime, pullspecs: List[str]):
     """
     runtime.logger.info(f"Fetching component pullspecs from {len(pullspecs)} release payloads...")
     ignore_rhcos_tags = rhcos.get_container_names(runtime)
-    jobs = runtime.parallel_exec(
+    jobs = exectools.parallel_exec(
         lambda pullspec, _: get_image_pullspecs_from_release_payload(pullspec, ignore_rhcos_tags),
         pullspecs,
         min(len(pullspecs), multiprocessing.cpu_count() * 4, 32)
