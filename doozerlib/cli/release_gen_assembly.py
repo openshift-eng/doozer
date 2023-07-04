@@ -476,6 +476,12 @@ class GenAssemblyCli:
             'extras': -1,
             'metadata': -1,
         }
+
+        # For OCP >= 4.12, also microshift advisory placeholder must be created
+        major, minor = self.runtime.get_major_minor_fields()
+        if major > 4 or minor >= 12:  # exclude 3.11, include any 5.y and 4.12+
+            advisories['microshift'] = -1
+
         release_jira = "ART-0"
 
         if self.assembly_type == AssemblyTypes.CANDIDATE:
