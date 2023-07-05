@@ -272,6 +272,7 @@ class TestGenPayloadCli(TestCase):
 
     def test_get_advisories_release_jira_default(self):
         runtime = MagicMock()
+        runtime.get_major_minor_fields.return_value = (4, 11)
         gacli = GenAssemblyCli(runtime=runtime, gen_assembly_name='4.11.2')
         advisories, release_jira = gacli._get_advisories_release_jira()
         self.assertEqual(advisories, {
@@ -282,6 +283,17 @@ class TestGenPayloadCli(TestCase):
         })
         self.assertEqual(release_jira, "ART-0")
 
+        runtime.get_major_minor_fields.return_value = (4, 12)
+        gacli = GenAssemblyCli(runtime=runtime, gen_assembly_name='4.12.2')
+        advisories, release_jira = gacli._get_advisories_release_jira()
+        self.assertEqual(advisories, {
+            'image': -1,
+            'rpm': -1,
+            'extras': -1,
+            'metadata': -1,
+            'microshift': -1,
+        })
+
     def test_get_advisories_release_jira_candidate_reuse(self):
         runtime = MagicMock()
         advisories = {'image': 123, 'rpm': 456, 'extras': 789, 'metadata': 654}
@@ -290,6 +302,7 @@ class TestGenPayloadCli(TestCase):
             'advisories': advisories,
             'release_jira': release_jira
         }}}}})
+        runtime.get_major_minor_fields.return_value = (4, 12)
         gacli = GenAssemblyCli(runtime=runtime, gen_assembly_name='rc.1')
         actual = gacli._get_advisories_release_jira()
         self.assertEqual(advisories, actual[0])
