@@ -229,6 +229,14 @@ class TestGather(IsolatedAsyncioTestCase):
             self.assertEqual(out, "fake_stdout")
             self.assertEqual(err, "fake_stderr")
 
+    def test_parallel_exec(self):
+        items = [1, 2, 3]
+        results = exectools.parallel_exec(
+            lambda k, v: k,
+            items, n_threads=4)
+        results = results.get()
+        self.assertEqual(results, items)
+
 
 if __name__ == "__main__":
 

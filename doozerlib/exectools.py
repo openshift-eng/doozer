@@ -15,6 +15,7 @@ import os
 import threading
 import platform
 import sys
+from multiprocessing.pool import ThreadPool, MapResult
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 import urllib
 import errno
@@ -25,7 +26,8 @@ from os import O_NONBLOCK, read
 from . import logutil
 from . import pushd
 from . import assertion
-from .util import red_print, green_print, yellow_print, timer
+from .exceptions import WrapException
+from .util import green_print, yellow_print, timer
 
 SUCCESS = 0
 
@@ -422,3 +424,53 @@ def limit_concurrency(limit=5):
         return wrapper
 
     return executor
+
+
+def parallel_exec(f, args, n_threads=None) -> MapResult:
+    """
+    :param f: A function to invoke for all arguments
+    :param args: A list of argument tuples. Each tuple will be used to invoke the function once.
+    :param n_threads: preferred number of threads to use during the work
+    :return:
+    """
+
+    n_threads = n_threads if n_threads is not None else max(len(args), 1)
+    terminate_event = threading.Event()
+    pool = ThreadPool(n_threads)
+    # Python 3 doesn't allow to unpack tuple argument in a lambdas or functions (PEP-3113).
+    # `_unpack_tuple_args` is a workaround that unpacks the tuple as arguments for the function passed to `ThreadPool.map_async`.
+    # `starmap_async` can be used in the future when we don't keep compatibility with Python 2.
+    ret = pool.map_async(
+        wrap_exception(_unpack_tuple_args(f)),
+        [(a, terminate_event) for a in args])
+    pool.close()
+    try:
+        # `wait` without a timeout disables signal handling
+        while not ret.ready():
+            ret.wait(60)
+    except KeyboardInterrupt:
+        logger.warning('SIGINT received, signaling threads to terminate...')
+        terminate_event.set()
+    pool.join()
+    return ret
+
+
+def wrap_exception(func):
+    """ Decorate a function, wrap exception if it occurs. """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            raise WrapException()
+    return wrapper
+
+
+def _unpack_tuple_args(func):
+    """ Decorate a function for unpacking the tuple argument `args`
+        This is used to workaround Python 3 lambda not unpacking tuple arguments (PEP-3113)
+    """
+    @functools.wraps(func)
+    def wrapper(args):
+        return func(*args)
+    return wrapper
