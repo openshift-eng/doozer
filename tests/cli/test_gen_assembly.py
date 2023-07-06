@@ -294,6 +294,27 @@ class TestGenPayloadCli(TestCase):
             'microshift': -1,
         })
 
+        runtime.get_major_minor_fields.return_value = (3, 11)
+        gacli = GenAssemblyCli(runtime=runtime, gen_assembly_name='3.11.2')
+        advisories, release_jira = gacli._get_advisories_release_jira()
+        self.assertEqual(advisories, {
+            'image': -1,
+            'rpm': -1,
+            'extras': -1,
+            'metadata': -1,
+        })
+
+        runtime.get_major_minor_fields.return_value = (5, 1)
+        gacli = GenAssemblyCli(runtime=runtime, gen_assembly_name='5.1.12')
+        advisories, release_jira = gacli._get_advisories_release_jira()
+        self.assertEqual(advisories, {
+            'image': -1,
+            'rpm': -1,
+            'extras': -1,
+            'metadata': -1,
+            'microshift': -1,
+        })
+
     def test_get_advisories_release_jira_candidate_reuse(self):
         runtime = MagicMock()
         advisories = {'image': 123, 'rpm': 456, 'extras': 789, 'metadata': 654}
