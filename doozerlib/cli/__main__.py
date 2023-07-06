@@ -37,6 +37,7 @@ from doozerlib.cli.images_streams import images_streams, images_streams_mirror, 
 from doozerlib.cli.release_gen_assembly import releases_gen_assembly, gen_assembly_from_releases
 from doozerlib.cli.scan_sources import config_scan_source_changes
 from doozerlib.cli.rpms_build import rpms_build
+from doozerlib.cli.rpms_read_config import config_read_rpms
 from doozerlib.cli.config_plashet import config_plashet
 from doozerlib.cli.release_calc_upgrade_tests import release_calc_upgrade_tests
 from doozerlib.cli.inspect_stream import inspect_stream
