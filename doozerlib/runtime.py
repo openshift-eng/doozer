@@ -1495,7 +1495,7 @@ class Runtime(object):
             if n_threads is None:
                 n_threads = self.global_opts['distgit_threads']
             return exectools.parallel_exec(
-                lambda m: m.distgit_repo(),
+                lambda m, _: m.distgit_repo(),
                 self.all_metas(),
                 n_threads=n_threads).get()
 
@@ -1505,7 +1505,7 @@ class Runtime(object):
         if n_threads is None:
             n_threads = self.global_opts['distgit_threads']
         return exectools.parallel_exec(
-            lambda m: m.distgit_repo().push(),
+            lambda m, _: m.distgit_repo().push(),
             self.all_metas(),
             n_threads=n_threads).get()
 
