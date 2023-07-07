@@ -608,7 +608,7 @@ def images_upstreampulls(runtime):
     print(yaml.dump(retdata, default_flow_style=False, width=10000))
 
 
-def align_issue_with_pr(github_client: Github, pr_url: str, issue: str):
+def connect_issue_with_pr(github_client: Github, pr_url: str, issue: str):
     """
     Aligns an existing Jira issue with a PR. Put the issue number in the title of the github pr.
     Args:
@@ -622,6 +622,9 @@ def align_issue_with_pr(github_client: Github, pr_url: str, issue: str):
     if issue in pr.title:  # the issue already in pr title
         return
     elif "OCPBUGS" in pr.title:  # another issue is in pr title, add comment
+        for comment in pr.get_issue_comments():
+            if issue in comment.body:
+                return  # an exist comment already have the issue
         pr.create_issue_comment(f"A JIRA issue [{issue}](https://issues.redhat.com/browse/{issue}) is also related to this pr when another OCPBUGS was in title.")
     else:  # update pr title
         pr.edit(title=f"{issue}: {pr.title}")
@@ -683,7 +686,7 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
         if open_issues:
             print(f'A JIRA issue is already open for {pr_url}: {open_issues[0]}')
             existing_issues[distgit_key] = open_issues[0]
-            align_issue_with_pr(github_client, pr_url, open_issues[0])
+            connect_issue_with_pr(github_client, pr_url, open_issues[0])
             continue
 
         description = f'''
@@ -744,7 +747,7 @@ Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.
             )
             new_issues[distgit_key] = issue
             print(f'A JIRA issue has been opened for {pr_url}: {issue}')
-            align_issue_with_pr(github_client, pr_url, issue)
+            connect_issue_with_pr(github_client, pr_url, issue)
         else:
             new_issues[distgit_key] = 'NEW!'
             print(f'Would have created JIRA issue for {distgit_key} / {pr_url}:\n{fields}\n')
