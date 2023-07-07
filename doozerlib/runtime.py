@@ -1586,3 +1586,9 @@ class Runtime(object):
         self.gitdata = gitdata.GitData(data_path=self.data_path, clone_dir=self.working_dir,
                                        commitish=self.group_commitish, reclone=self.upcycle, logger=self.logger)
         self.data_dir = self.gitdata.data_dir
+
+    def get_rpm_config(self) -> dict:
+        config = {}
+        for key, val in self.rpm_map.items():
+            config[key] = val.raw_config
+        return config
