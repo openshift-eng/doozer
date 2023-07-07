@@ -399,7 +399,7 @@ def isolate_pflag_in_release(release: str) -> Optional[str]:
 def split_el_suffix_in_release(release: str) -> Tuple[str, Optional[str]]:
     """
     Given a release field, this will method will split out any
-    .el### suffix and return (prefix, el_suffix) where el_suffix
+    .el### or +el### suffix and return (prefix, el_suffix) where el_suffix
     is None if there .el### is not detected.
     """
 
