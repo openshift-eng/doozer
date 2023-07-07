@@ -612,19 +612,17 @@ def align_issue_with_pr(github_client: Github, pr_url: str, issue: str):
     """
     Aligns an existing Jira issue with a PR. Put the issue number in the title of the github pr.
     Args:
-        runtime: The doozer runtime
+        github_client: A github client object for reuse
         pr_url: The URL of the PR to align with
         issue: JIRA issue key
     """
     pr_info = pr_url.split('/')
-    github_client = Github(os.getenv(constants.GITHUB_TOKEN))
     source_repo = github_client.get_repo(f'{pr_info[-4]}/{pr_info[-3]}')
     pr = source_repo.get_pull(int(pr_info[-1]))
     if issue in pr.title:  # the issue already in pr title
         return
     elif "OCPBUGS" in pr.title:  # another issue is in pr title, add comment
-        issue = "OCPBUGS"
-        pr.create_issue_comment(f"A JIRA issue {issue} is related to this pr.")
+        pr.create_issue_comment(f"A JIRA issue [{issue}](https://issues.redhat.com/browse/{issue}) is also related to this pr when another OCPBUGS was in title.")
     else:  # update pr title
         pr.edit(title=f"{issue}: {pr.title}")
 
