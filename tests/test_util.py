@@ -1,6 +1,6 @@
 import unittest
 
-from doozerlib import util
+from doozerlib import util, rpm_utils
 from doozerlib.model import Model
 
 
@@ -18,11 +18,20 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.art12398.el10'), 'art12398')
 
     def test_isolate_el_version_in_release(self):
-        self.assertEqual(util.isolate_el_version_in_release('1.2.3-y.p.p1.assembly.4.9.99.el7'), 7)
-        self.assertEqual(util.isolate_el_version_in_release('1.2.3-y.p.p1.assembly.4.9.el7'), 7)
-        self.assertEqual(util.isolate_el_version_in_release('1.2.3-y.p.p1.assembly.art12398.el199'), 199)
-        self.assertEqual(util.isolate_el_version_in_release('1.2.3-y.p.p1.assembly.art12398'), None)
-        self.assertEqual(util.isolate_el_version_in_release('1.2.3-y.p.p1.assembly.4.7.e.8'), None)
+        test_cases = [
+            ('container-selinux-2.167.0-1.module+el8.5.0+12397+bf23b712:2', 8),
+            ('ansible-runner-http-1.0.0-2.el8ar', 8),
+            ('1.2.3-y.p.p1.assembly.4.9.99.el7', 7),
+            ('1.2.3-y.p.p1.assembly.4.9.el7', 7),
+            ('1.2.3-y.p.p1.assembly.art12398.el199', 199),
+            ('1.2.3-y.p.p1.assembly.art12398', None),
+            ('1.2.3-y.p.p1.assembly.4.7.e.8', None)
+        ]
+
+        for t in test_cases:
+            actual = util.isolate_el_version_in_release(t[0])
+            expected = t[1]
+            self.assertEqual(actual, expected)
 
     def test_isolate_nightly_name_components(self):
         self.assertEqual(util.isolate_nightly_name_components('4.1.0-0.nightly-2019-11-08-213727'), ('4.1', 'x86_64', False))
