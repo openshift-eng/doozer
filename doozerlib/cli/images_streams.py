@@ -616,7 +616,7 @@ def connect_issue_with_pr(github_client: Github, pr_url: str, issue: str):
         pr_url: The URL of the PR to align with
         issue: JIRA issue key
     """
-    pr_info = pr_url.split('/')
+    pr_info = pr_url.split('/')  # e.g. ['https:', '', 'github.com', 'openshift', 'origin', 'pull', '12']
     source_repo = github_client.get_repo(f'{pr_info[-4]}/{pr_info[-3]}')
     pr = source_repo.get_pull(int(pr_info[-1]))
     if issue in pr.title:  # the issue already in pr title
@@ -686,7 +686,7 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
         if open_issues:
             print(f'A JIRA issue is already open for {pr_url}: {open_issues[0]}')
             existing_issues[distgit_key] = open_issues[0]
-            connect_issue_with_pr(github_client, pr_url, open_issues[0])
+            connect_issue_with_pr(github_client, pr_url, open_issues[0].id)
             continue
 
         description = f'''
@@ -747,7 +747,7 @@ Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.
             )
             new_issues[distgit_key] = issue
             print(f'A JIRA issue has been opened for {pr_url}: {issue}')
-            connect_issue_with_pr(github_client, pr_url, issue)
+            connect_issue_with_pr(github_client, pr_url, issue.id)
         else:
             new_issues[distgit_key] = 'NEW!'
             print(f'Would have created JIRA issue for {distgit_key} / {pr_url}:\n{fields}\n')
