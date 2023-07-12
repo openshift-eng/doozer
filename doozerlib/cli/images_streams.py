@@ -622,7 +622,7 @@ def connect_issue_with_pr(pr: PullRequest.PullRequest, issue: str):
         for comment in pr.get_issue_comments():
             if issue in comment.body:
                 return  # an exist comment already have the issue
-        matches = re.findall(r'OCPBUGS-[0-9]+', pr.title)  
+        matches = re.findall(r'OCPBUGS-[0-9]+', pr.title)
         pr.create_issue_comment(f"ART wants to connect issue [{issue}](https://issues.redhat.com/browse/{issue}) to this PR, \
                                 but found it is currently hooked up to {matches}. Please consult with #aos-art if it is not clear what there is to do.")
     else:  # update pr title
@@ -1289,7 +1289,7 @@ If you have any questions about this pull request, please reach out to `@release
 
     if pr_links:
         print('Currently open PRs:')
-        print(yaml.safe_dump({key:pr_links[key].html_url for key in pr_links}))
+        print(yaml.safe_dump({key: pr_links[key].html_url for key in pr_links}))
         reconcile_jira_issues(runtime, pr_links, moist_run)
 
     if skipping_dgks:
