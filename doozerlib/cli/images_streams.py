@@ -7,9 +7,10 @@ import hashlib
 import time
 import datetime
 import random
+import re
 from typing import Dict, Set
 
-from github import Github, UnknownObjectException, GithubException
+from github import Github, UnknownObjectException, GithubException, PullRequest
 
 from jira import JIRA, Issue
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -608,29 +609,27 @@ def images_upstreampulls(runtime):
     print(yaml.dump(retdata, default_flow_style=False, width=10000))
 
 
-def connect_issue_with_pr(github_client: Github, pr_url: str, issue: str):
+def connect_issue_with_pr(pr: PullRequest.PullRequest, issue: str):
     """
     Aligns an existing Jira issue with a PR. Put the issue number in the title of the github pr.
     Args:
-        github_client: A github client object for reuse
-        pr_url: The URL of the PR to align with
+        pr: The PR to align with
         issue: JIRA issue key
     """
-    pr_info = pr_url.split('/')  # e.g. ['https:', '', 'github.com', 'openshift', 'origin', 'pull', '12']
-    source_repo = github_client.get_repo(f'{pr_info[-4]}/{pr_info[-3]}')
-    pr = source_repo.get_pull(int(pr_info[-1]))
     if issue in pr.title:  # the issue already in pr title
         return
     elif "OCPBUGS" in pr.title:  # another issue is in pr title, add comment
         for comment in pr.get_issue_comments():
             if issue in comment.body:
                 return  # an exist comment already have the issue
-        pr.create_issue_comment(f"A JIRA issue [{issue}](https://issues.redhat.com/browse/{issue}) is also related to this pr when another OCPBUGS was in title.")
+        matches = re.findall(r'OCPBUGS-[0-9]+', pr.title)  
+        pr.create_issue_comment(f"ART wants to connect issue [{issue}](https://issues.redhat.com/browse/{issue}) to this PR, \
+                                but found it is currently hooked up to {matches}. Please consult with #aos-art if it is not clear what there is to do.")
     else:  # update pr title
         pr.edit(title=f"{issue}: {pr.title}")
 
 
-def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
+def reconcile_jira_issues(runtime, pr_links: Dict[str, PullRequest.PullRequest], dry_run: bool):
     """
     Ensures there is a Jira issue open for reconciliation PRs.
     Args:
@@ -653,7 +652,7 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
     jira_project_names = set([project.name for project in jira_projects])
     jira_project_components: Dict[str, Set[str]] = dict()  # Maps project names to the components they expose
 
-    for distgit_key, pr_url in pr_links.items():
+    for distgit_key, pr in pr_links.items():
         image_meta: ImageMetadata = runtime.image_map[distgit_key]
         potential_project, potential_component = image_meta.get_jira_info()
         summary = f"Update {release_version} {image_meta.name} image to be consistent with ART"
@@ -681,16 +680,15 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
             return jira_client.search_issues(query)
 
         open_issues = search_issues(query)
-        github_client = Github(os.getenv(constants.GITHUB_TOKEN))
 
         if open_issues:
-            print(f'A JIRA issue is already open for {pr_url}: {open_issues[0]}')
+            print(f'A JIRA issue is already open for {pr.html_url}: {open_issues[0]}')
             existing_issues[distgit_key] = open_issues[0]
-            connect_issue_with_pr(github_client, pr_url, open_issues[0].id)
+            connect_issue_with_pr(pr, open_issues[0].id)
             continue
 
         description = f'''
-Please review the following PR: {pr_url}
+Please review the following PR: {pr.html_url}
 
 The PR has been automatically opened by ART (#aos-art) team automation and indicates
 that the image(s) being used downstream for production builds are not consistent
@@ -746,11 +744,11 @@ Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.
                 fields
             )
             new_issues[distgit_key] = issue
-            print(f'A JIRA issue has been opened for {pr_url}: {issue}')
-            connect_issue_with_pr(github_client, pr_url, issue.id)
+            print(f'A JIRA issue has been opened for {pr.html_url}: {issue}')
+            connect_issue_with_pr(pr, issue.id)
         else:
             new_issues[distgit_key] = 'NEW!'
-            print(f'Would have created JIRA issue for {distgit_key} / {pr_url}:\n{fields}\n')
+            print(f'Would have created JIRA issue for {distgit_key} / {pr.html_url}:\n{fields}\n')
 
     if new_issues:
         print('Newly opened JIRA issues:')
@@ -1214,7 +1212,7 @@ If you have any questions about this pull request, please reach out to `@release
                     yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
                 pr_url = existing_pr.html_url
-                pr_links[dgk] = pr_url
+                pr_links[dgk] = existing_pr
 
                 # The pr_body may change and the base branch may change (i.e. at branch cut,
                 # a version 4.6 in master starts being tracked in release-4.6 and master tracks
@@ -1262,8 +1260,6 @@ If you have any questions about this pull request, please reach out to `@release
                         # In one execution to date, get_pulls did not find the open PR and the code repeatedly hit this
                         # branch -- attempting to recreate the PR. Everything seems right, but the github api is not
                         # returning it. So catch the error and try to move on.
-                        pr_url = f'UnknownPR-{fork_branch_head}'
-                        pr_links[dgk] = pr_url
                         yellow_print('Issue attempting to find it, but a PR is already open requesting desired reconciliation with ART')
                         continue
                     raise
@@ -1280,7 +1276,7 @@ If you have any questions about this pull request, please reach out to `@release
                     yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
                 pr_msg = f'A new PR has been opened: {new_pr.html_url}'
-                pr_links[dgk] = new_pr.html_url
+                pr_links[dgk] = new_pr
                 new_pr_links[dgk] = new_pr.html_url
                 logger.info(pr_msg)
                 yellow_print(pr_msg)
@@ -1293,7 +1289,7 @@ If you have any questions about this pull request, please reach out to `@release
 
     if pr_links:
         print('Currently open PRs:')
-        print(yaml.safe_dump(pr_links))
+        print(yaml.safe_dump({key:pr_links[key].html_url for key in pr_links}))
         reconcile_jira_issues(runtime, pr_links, moist_run)
 
     if skipping_dgks:
