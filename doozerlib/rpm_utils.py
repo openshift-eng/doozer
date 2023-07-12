@@ -69,6 +69,23 @@ def parse_nvr(nvre: str):
     return result
 
 
+def to_nevr(d: Dict):
+    """ Converts an NEVR dict to N-E:V-R string
+    """
+    n = d["name"]
+    e = d.get("epoch") or 0
+    v = d["version"]
+    r = d["release"]
+    return f"{n}-{e}:{v}-{r}"
+
+
+def to_nevra(d: Dict):
+    """ Converts an NEVRA dict to N-E:V-R.A string
+    """
+    arch = d["arch"]
+    return to_nevr(d) + f".{arch}"
+
+
 def compare_nvr(nvr_dict1: NVR, nvr_dict2: NVR, ignore_epoch: bool = False):
     """Compare two N-V-R dictionaries.
 

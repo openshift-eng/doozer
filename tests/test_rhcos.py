@@ -1,17 +1,16 @@
-#!/usr/bin/env python3
-
-
-import logging
 import json
-import unittest
+import logging
 import os
-import yaml
+import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from urllib.error import URLError
 
+import yaml
+
 from doozerlib import rhcos
-from doozerlib.model import ListModel, Model
+from doozerlib.model import Model
+from doozerlib.repodata import Repodata, Rpm
 from doozerlib.repos import Repos
 
 
@@ -232,11 +231,11 @@ class TestRhcos(unittest.IsolatedAsyncioTestCase):
             await rhcos_build.find_non_latest_rpms()
 
     @patch('doozerlib.rhcos.RHCOSBuildInspector.get_os_metadata_rpm_list')
-    @patch("doozerlib.repos.Repo.list_rpms")
+    @patch("doozerlib.repos.Repo.get_repodata_threadsafe")
     @patch('doozerlib.exectools.cmd_assert')
     @patch('doozerlib.rhcos.RHCOSBuildFinder.rhcos_build_meta')
     async def test_find_non_latest_rpms(self, rhcos_build_meta_mock: Mock, cmd_assert_mock: Mock,
-                                        list_rpms: AsyncMock, get_os_metadata_rpm_list: Mock):
+                                        get_repodata_threadsafe: AsyncMock, get_os_metadata_rpm_list: Mock):
         # mock out the things RHCOSBuildInspector calls in __init__
         rhcos_meta = {"buildid": "412.86.bogus"}
         rhcos_commitmeta = {}
@@ -260,20 +259,19 @@ class TestRhcos(unittest.IsolatedAsyncioTestCase):
                 "rhcos": {"enabled_repos": ["rhel-8-baseos-rpms", "rhel-8-appstream-rpms"]}
             })
         )
-        list_rpms.return_value = [
-            {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
-            {'name': 'bar', 'version': '1.1.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'bar-1.1.0-1.el9'},
-        ]
+        get_repodata_threadsafe.return_value = Repodata(
+            name='rhel-8-appstream-rpms',
+            primary_rpms=[
+                Rpm.from_dict({'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'}),
+                Rpm.from_dict({'name': 'bar', 'version': '1.1.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'bar-1.1.0-1.el9'}),
+            ]
+        )
         get_os_metadata_rpm_list.return_value = [
             ['foo', '0', '1.0.0', '1.el9', 'x86_64'],
             ['bar', '0', '1.0.0', '1.el9', 'x86_64'],
         ]
         rhcos_build = rhcos.RHCOSBuildInspector(runtime, pullspecs, 'x86_64')
         actual = await rhcos_build.find_non_latest_rpms()
-        list_rpms.assert_awaited()
+        get_repodata_threadsafe.assert_awaited()
         get_os_metadata_rpm_list.assert_called_once_with()
-        self.assertEqual(actual, [('bar-1.0.0-1.el9', 'bar-1.1.0-1.el9', 'rhel-8-baseos-rpms')])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(actual, [('bar-0:1.0.0-1.el9.x86_64', 'bar-0:1.1.0-1.el9.x86_64', 'rhel-8-appstream-rpms')])

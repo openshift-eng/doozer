@@ -1,18 +1,18 @@
 
 import asyncio
-import json, koji
-from typing import Dict, List, Tuple, Optional
-
-from doozerlib.rpm_utils import compare_nvr
-
-from tenacity import retry, stop_after_attempt, wait_fixed
+import json
+from typing import Dict, List, Optional, Tuple
 from urllib import request
 from urllib.error import URLError
+
+import koji
+from tenacity import retry, stop_after_attempt, wait_fixed
+
+from doozerlib import brew, exectools, logutil
+from doozerlib.model import ListModel, Model
+from doozerlib.repodata import OutdatedRPMFinder, Repodata
 from doozerlib.runtime import Runtime
 from doozerlib.util import brew_suffix_for_arch, isolate_el_version_in_release
-from doozerlib import exectools
-from doozerlib.model import ListModel, Model
-from doozerlib import brew, logutil
 
 RHCOS_BASE_URL = "https://releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com/storage/releases"
 # Historically the only RHCOS container was 'machine-os-content'; see
@@ -470,30 +470,19 @@ class RHCOSBuildInspector:
 
         :return: Returns a list of (installed_rpm, latest_rpm, repo_name)
         """
-        # Find the newest builds in build repos
+        # Get enabled repos for the image
         enabled_repos = self.runtime.group_config.rhcos.enabled_repos
         if not enabled_repos:
             raise ValueError("RHCOS build repos need to be defined in group config rhcos.enabled_repos.")
         enabled_repos = enabled_repos.primitive()
         group_repos = self.runtime.repos
-        tasks = []
-        for repo_name in enabled_repos:
-            repo = group_repos[repo_name]
-            if self.brew_arch in repo.arches:
-                tasks.append(repo.list_rpms(self.brew_arch))
-        # Find the newest rpms for each rpm name among those configured repos
-        candidate_rpms = {}
-        candidate_rpm_repos = {}
-        for repo, rpms in zip(enabled_repos, await asyncio.gather(*tasks)):
-            for rpm in rpms:
-                name = rpm["name"]
-                if name not in candidate_rpms or compare_nvr(rpm, candidate_rpms[name]) > 0:
-                    candidate_rpms[name] = rpm
-                    candidate_rpm_repos[name] = repo
+        arch = self.brew_arch
+        logger.info("Fetching repodatas for enabled repos %s", ", ".join(f"{repo_name}-{arch}" for repo_name in enabled_repos))
+        repodatas: List[Repodata] = await asyncio.gather(*[group_repos[repo_name].get_repodata_threadsafe(arch) for repo_name in enabled_repos])
 
-        # Compare installed rpms to candidate rpms found from configured repos
-        archive_rpms = {
-            name: {
+        # Get all installed rpms
+        rpms_to_check = [
+            {
                 "name": name,
                 "epoch": epoch,
                 "version": version,
@@ -501,14 +490,8 @@ class RHCOSBuildInspector:
                 "arch": arch,
                 "nvr": f"{name}-{version}-{release}"
             } for name, epoch, version, release, arch in self.get_os_metadata_rpm_list()
-        }
-        results: List[Tuple[str, str, str]] = []
-        for name, archive_rpm in archive_rpms.items():
-            candidate_rpm = candidate_rpms.get(name)
-            if not candidate_rpm:
-                continue
-            # For each RPM installed in the image, we want it to match what is in the configured repos
-            # UNLESS the installed NVR is newer than what is in the configured repos.
-            if compare_nvr(archive_rpm, candidate_rpm) < 0:
-                results.append((archive_rpm['nvr'], candidate_rpm['nvr'], candidate_rpm_repos[name]))
+        ]
+
+        logger.info("Determining outdated rpms...")
+        results = await OutdatedRPMFinder().find_non_latest_rpms(rpms_to_check, repodatas, logger=logger)
         return results
