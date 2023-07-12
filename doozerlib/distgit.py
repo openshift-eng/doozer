@@ -2204,10 +2204,6 @@ class ImageDistGitRepo(DistGitRepo):
                 OS_GIT_COMMIT=f'{self.source_full_sha[0:7]}'
             ))
 
-            # TODO: move this into operator-lifecycle-manager metadata.envs in all branches
-            if self.metadata.distgit_key == 'operator-lifecycle-manager':
-                self.env_vars_from_source['GO_COMPLIANCE_EXCLUDE'] = 'build.*operator-lifecycle-manager/util/cpb'
-
             merge_env_line = f"ENV {env_merge_line_flag} " + get_env_set_list(self.env_vars_from_source)
 
         # Open again!
