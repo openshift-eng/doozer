@@ -164,8 +164,9 @@ class OLMBundle(object):
             if not self.operator_dict:
                 raise IOError(f"Build {self.operator_nvr} doesn't exist in Brew.")
 
+        # source_url looks like "https://pkgs.devel.redhat.com/git/containers/foo#deadbeef"
         source_url = urlparse(self.operator_dict['source'])
-        self.operator_repo_name = source_url.path.strip('/')
+        self.operator_repo_name = f"containers/{source_url.path.rstrip('/').rsplit('/')[-1]}"  # /git/containers/ose-cluster-kube-descheduler-operator => containers/ose-cluster-kube-descheduler-operator
         self.operator_build_commit = source_url.fragment
 
     def clone_operator(self):
