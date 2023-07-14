@@ -162,10 +162,10 @@ def config_scan_source_changes(runtime: Runtime, ci_kubeconfig, as_yaml):
                 prev_digest = image_meta.fetch_cgit_file('.oit/config_digest', commit_hash=source_commit).decode('utf-8')
                 current_digest = image_meta.calculate_config_digest(runtime.group_config, runtime.streams)
                 if current_digest.strip() != prev_digest.strip():
-                    runtime.logger.info('%s config_digest %s is differing from %s', dgk, prev_digest, current_digest)
+                    runtime.logger.info('%s config_digest %s is differing from %s', image_meta.distgit_key, prev_digest, current_digest)
                     add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Metadata configuration change'))
             except exectools.RetryException:
-                runtime.logger.info('%s config_digest cannot be retrieved; request a build', dgk)
+                runtime.logger.info('%s config_digest cannot be retrieved; request a build', image_meta.distgit_key)
                 add_image_meta_change(image_meta, RebuildHint(RebuildHintCode.CONFIG_CHANGE, 'Unable to retrieve config_digest'))
 
     runtime.logger.debug(f'Will be assessing tagging changes between newest_image_event_ts:{newest_image_event_ts} and oldest_image_event_ts:{oldest_image_event_ts}')
