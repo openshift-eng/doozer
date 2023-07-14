@@ -236,7 +236,7 @@ class TestOutdatedRPMFinder(IsolatedAsyncioTestCase):
         finder = OutdatedRPMFinder()
         repodatas = []
         logger = MagicMock()
-        actual = await finder.find_non_latest_rpms(
+        actual = finder.find_non_latest_rpms(
             [Rpm.from_nevra(nevra).to_dict() for nevra in installed_rpms],
             repodatas,
             logger
@@ -274,7 +274,7 @@ class TestOutdatedRPMFinder(IsolatedAsyncioTestCase):
             ),
         ]
         logger = MagicMock()
-        actual = await finder.find_non_latest_rpms(
+        actual = finder.find_non_latest_rpms(
             [Rpm.from_nevra(nevra).to_dict() for nevra in installed_rpms],
             repodatas,
             logger
@@ -372,7 +372,7 @@ class TestOutdatedRPMFinder(IsolatedAsyncioTestCase):
             ),
         ]
         logger = MagicMock()
-        actual = await finder.find_non_latest_rpms(
+        actual = finder.find_non_latest_rpms(
             [Rpm.from_nevra(nevra).to_dict() for nevra in installed_rpms],
             repodatas,
             logger

@@ -601,7 +601,7 @@ class ArchiveImageInspector:
         rpms_to_check = rpms_to_check or self.get_installed_rpm_dicts()
 
         logger.info("Determining outdated rpms...")
-        results = await OutdatedRPMFinder().find_non_latest_rpms(rpms_to_check, repodatas, logger=cast(logging.Logger, logger))
+        results = OutdatedRPMFinder().find_non_latest_rpms(rpms_to_check, repodatas, logger=cast(logging.Logger, logger))
         return results
 
     def get_installed_rpm_dicts(self) -> List[Dict]:

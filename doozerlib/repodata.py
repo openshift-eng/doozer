@@ -212,7 +212,54 @@ class RepodataLoader:
 
 
 class OutdatedRPMFinder:
-    async def find_non_latest_rpms(self, rpms_to_check: List[Dict], repodatas: List[Repodata], logger: Optional[Logger] = None) -> List[Tuple[str, str, str]]:
+
+    @staticmethod
+    def _find_candidate_modular_rpms(all_modules, enabled_streams):
+        """ Finds all candidate modular rpms in enabled module streams
+        """
+        # Find the latest module versions for each enabled streams
+        latest_modules: Dict[str, Dict[str, Tuple[str, RpmModule]]] = {}  # module_stream => context => (repo_name, RpmModule)
+        for module_stream, allowed_contexts in enabled_streams.items():
+            module_versions = sorted(all_modules[module_stream].keys(), reverse=True)  # module versions are sorted from newest to oldest
+            latest_modules[module_stream] = {}
+            for version in module_versions:
+                for update_repo, update_module in all_modules[module_stream][version]:
+                    if update_module.context not in allowed_contexts:
+                        continue  # This module has a different "context"; ignoring
+                    if update_module.context in latest_modules[module_stream]:
+                        continue  # a newer version has been found
+                    latest_modules[module_stream][update_module.context] = (update_repo, update_module)
+        # Finally populate candidate_modular_rpms
+        candidate_modular_rpms: Dict[str, Tuple[str, Rpm]] = {}  # package_name => (repo_name, rpm)
+        for _, context_modules in latest_modules.items():
+            for _, repo_module in context_modules.items():
+                repo, module = repo_module
+                for nevra in module.rpms:
+                    rpm = Rpm.from_nevra(nevra)
+                    _, candidate = candidate_modular_rpms.get(rpm.name, (None, None))
+                    if not candidate or rpm.compare(candidate) > 0:
+                        candidate_modular_rpms[rpm.name] = (repo, rpm)
+        return candidate_modular_rpms
+
+    @staticmethod
+    def _find_candidate_non_modular_rpms(all_non_modular_rpms, candidate_modular_rpms, logger):
+        """ Finds all candidate non-modular rpms.
+        For each non-modular rpm, if there is another candidate modular rpm with the same package name,
+        the non-modular rpm will be exempted.
+        """
+        candidate_non_modulear_rpms: Dict[str, Tuple[str, Rpm]] = {}  # package_name => (repo_name, rpm)
+        for nevra, repo in all_non_modular_rpms.items():
+            rpm = Rpm.from_nevra(nevra)
+            _, candidate = candidate_non_modulear_rpms.get(rpm.name, (None, None))
+            if not candidate or rpm.compare(candidate) > 0:
+                if rpm.name in candidate_modular_rpms:
+                    modular_repo, modular_rpm = candidate_modular_rpms[rpm.name]
+                    logger.debug("Non-modular RPM %s from %s is shadowed by modular RPM %s from %s", nevra, repo, modular_rpm.nevra, modular_repo)
+                    continue  # This non-modular rpm is shadowed by a modular rpm
+                candidate_non_modulear_rpms[rpm.name] = (repo, rpm)
+        return candidate_non_modulear_rpms
+
+    def find_non_latest_rpms(self, rpms_to_check: List[Dict], repodatas: List[Repodata], logger: Optional[Logger] = None) -> List[Tuple[str, str, str]]:
         """
         Finds non-latest rpms.
 
@@ -244,61 +291,34 @@ class OutdatedRPMFinder:
                 for nevra in module.rpms:
                     all_modular_rpms.setdefault(nevra, {}).setdefault(repodata.name, {})[module.nsvca] = module
 
-        # Populate a dict to hold all non-modular rpms
-        available_nonmodular_rpms: Dict[str, str] = {}  # rpm_nvera => repo_name
-        for repodata in repodatas:
-            for rpm in repodata.primary_rpms:
-                if rpm.nevra in all_modular_rpms:
-                    continue  # It is a modular rpm
-                available_nonmodular_rpms[rpm.nevra] = repodata.name
-
-        # Populate a dict to hold enabled modules
-        enabled_modules: Dict[str, Set[str]] = {}  # module_stream => {context}
+        # Populate a dict to hold enabled module streams
+        enabled_streams: Dict[str, Set[str]] = {}  # module_stream => {context}
         for name, archive_rpm in archive_rpms.items():
             rpm = Rpm.from_dict(archive_rpm)
             if rpm.nevra in all_modular_rpms:
                 for repo_name, modules in all_modular_rpms[rpm.nevra].items():
                     for _, module in modules.items():
-                        enabled_modules.setdefault(module.name_stream, set()).add(module.context)
+                        enabled_streams.setdefault(module.name_stream, set()).add(module.context)
 
         # Populate candidate_modular_rpms, which will hold visible modular rpms that are latest among all configured repos
         candidate_modular_rpms: Dict[str, Tuple[str, Rpm]] = {}  # package_name => (repo_name, rpm)
-        if enabled_modules:
-            logger.info("Looks like module streams %s are enabled", sorted(enabled_modules))
-            # Find the latest module versions for each enabled module
-            latest_modules: Dict[str, Dict[str, Tuple[str, RpmModule]]] = {}  # module_stream => context => (repo_name, RpmModule)
-            for module_stream, contexts in enabled_modules.items():
-                latest_modules[module_stream] = {}
-                for version in sorted(all_modules[module_stream].keys(), reverse=True):
-                    for update_repo, update_module in all_modules[module_stream][version]:
-                        if update_module.context in contexts:
-                            if update_module.context not in latest_modules[module_stream]:
-                                latest_modules[module_stream][update_module.context] = (update_repo, update_module)
-            # Finally populate candidate_modular_rpms
-            for _, context_modules in latest_modules.items():
-                for _, repo_module in context_modules.items():
-                    repo, module = repo_module
-                    for nevra in module.rpms:
-                        rpm = Rpm.from_nevra(nevra)
-                        _, candidate = candidate_modular_rpms.get(rpm.name, (None, None))
-                        if not candidate or rpm.compare(candidate) > 0:
-                            candidate_modular_rpms[rpm.name] = (repo, rpm)
-        else:
+        if not enabled_streams:
             logger.info("Looks like no module streams are enabled")
+        else:
+            candidate_modular_rpms = self._find_candidate_modular_rpms(all_modules, enabled_streams)
+
+        # Populate a dict to hold all non-modular rpms
+        all_non_modular_rpms: Dict[str, str] = {}  # rpm_nvera => repo_name
+        for repodata in repodatas:
+            for rpm in repodata.primary_rpms:
+                if rpm.nevra in all_modular_rpms:
+                    continue  # It is a modular rpm
+                all_non_modular_rpms[rpm.nevra] = repodata.name
 
         # Populate candidate_non_modulear_rpms, which will hold all visible non-modular rpms that are latest among all configured repos
-        candidate_non_modulear_rpms: Dict[str, Tuple[str, Rpm]] = {}  # package_name => (repo_name, rpm)
-        for nevra, repo in available_nonmodular_rpms.items():
-            rpm = Rpm.from_nevra(nevra)
-            _, candidate = candidate_non_modulear_rpms.get(rpm.name, (None, None))
-            if not candidate or rpm.compare(candidate) > 0:
-                if rpm.name in candidate_modular_rpms:
-                    modular_repo, modular_rpm = candidate_modular_rpms[rpm.name]
-                    logger.debug("Non-modular RPM %s from %s is shadowed by modular RPM %s from %s", nevra, repo, modular_rpm.nevra, modular_repo)
-                    continue  # This non-modular rpm is shadowed by a modular rpm
-                candidate_non_modulear_rpms[rpm.name] = (repo, rpm)
+        candidate_non_modulear_rpms = self._find_candidate_non_modular_rpms(all_non_modular_rpms, candidate_modular_rpms, logger)
 
-        # Compare archive rpms to candidate rpms
+        # Compare archive rpms to all candidate rpms
         results: List[Tuple[str, str, str]] = []
         for name, archive_rpm in archive_rpms.items():
             archive_rpm = Rpm.from_dict(archive_rpm)

@@ -493,5 +493,5 @@ class RHCOSBuildInspector:
         ]
 
         logger.info("Determining outdated rpms...")
-        results = await OutdatedRPMFinder().find_non_latest_rpms(rpms_to_check, repodatas, logger=logger)
+        results = OutdatedRPMFinder().find_non_latest_rpms(rpms_to_check, repodatas, logger=logger)
         return results
