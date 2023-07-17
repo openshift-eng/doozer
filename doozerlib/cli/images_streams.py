@@ -790,7 +790,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
     prs_in_master = (major == master_major and minor == master_minor) and not ignore_ci_master
 
-    pr_links = {}  # map of distgit_key to PR URLs associated with updates
+    pr_dgk_map = {}  # map of distgit_key to PR URLs associated with updates
     new_pr_links = {}
     skipping_dgks = set()  # If a distgit key is skipped, it children will see it in this list and skip themselves.
     checked_upstream_images = set()  # A PR will not be opened unless the upstream image exists; keep track of ones we have checked.
@@ -1184,7 +1184,7 @@ If you have any questions about this pull request, please reach out to `@release
                     yellow_print(f'Image has parent {parent_meta.distgit_key} which was skipped; skipping self: {image_meta.distgit_key}')
                     continue
 
-                parent_pr_url = pr_links.get(parent_meta.distgit_key, None)
+                parent_pr_url = pr_dgk_map.get(parent_meta.distgit_key, None)
                 if parent_pr_url:
                     if parent_meta.config.content.source.ci_alignment.streams_prs.merge_first:
                         skipping_dgks.add(image_meta.distgit_key)
@@ -1211,7 +1211,7 @@ If you have any questions about this pull request, please reach out to `@release
                     # We are not admin on all repos
                     yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
-                pr_links[dgk] = existing_pr
+                pr_dgk_map[dgk] = existing_pr
 
                 # The pr_body may change and the base branch may change (i.e. at branch cut,
                 # a version 4.6 in master starts being tracked in release-4.6 and master tracks
@@ -1236,7 +1236,7 @@ If you have any questions about this pull request, please reach out to `@release
 
             # Otherwise, we need to create a pull request
             if moist_run:
-                pr_links[dgk] = f'MOIST-RUN-PR:{dgk}'
+                pr_dgk_map[dgk] = f'MOIST-RUN-PR:{dgk}'
                 green_print(f'Would have opened PR against: {public_source_repo.html_url}/blob/{public_branch}/{dockerfile_name}.')
                 yellow_print('PR body would have been:')
                 yellow_print(pr_body)
@@ -1275,7 +1275,7 @@ If you have any questions about this pull request, please reach out to `@release
                     yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
                 pr_msg = f'A new PR has been opened: {new_pr.html_url}'
-                pr_links[dgk] = new_pr
+                pr_dgk_map[dgk] = new_pr
                 new_pr_links[dgk] = new_pr.html_url
                 logger.info(pr_msg)
                 yellow_print(pr_msg)
@@ -1286,10 +1286,10 @@ If you have any questions about this pull request, please reach out to `@release
         print('Newly opened PRs:')
         print(yaml.safe_dump(new_pr_links))
 
-    if pr_links:
+    if pr_dgk_map:
         print('Currently open PRs:')
-        print(yaml.safe_dump({key: pr_links[key].html_url for key in pr_links}))
-        reconcile_jira_issues(runtime, pr_links, moist_run)
+        print(yaml.safe_dump({key: pr_dgk_map[key].html_url for key in pr_dgk_map}))
+        reconcile_jira_issues(runtime, pr_dgk_map, moist_run)
 
     if skipping_dgks:
         print('Some PRs were skipped; Exiting with return code 25 to indicate this')
