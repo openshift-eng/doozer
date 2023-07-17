@@ -616,25 +616,25 @@ def connect_issue_with_pr(pr: PullRequest.PullRequest, issue: str):
         pr: The PR to align with
         issue: JIRA issue key
     """
+    exist_issues = re.findall(r'OCPBUGS-[0-9]+', pr.title)
     if issue in pr.title:  # the issue already in pr title
         return
-    elif "OCPBUGS" in pr.title:  # another issue is in pr title, add comment
+    elif exist_issues:  # another issue is in pr title, add comment
         for comment in pr.get_issue_comments():
             if issue in comment.body:
                 return  # an exist comment already have the issue
-        matches = re.findall(r'OCPBUGS-[0-9]+', pr.title)
         pr.create_issue_comment(f"ART wants to connect issue [{issue}](https://issues.redhat.com/browse/{issue}) to this PR, \
-                                but found it is currently hooked up to {matches}. Please consult with #aos-art if it is not clear what there is to do.")
+                                but found it is currently hooked up to {exist_issues}. Please consult with #aos-art if it is not clear what there is to do.")
     else:  # update pr title
         pr.edit(title=f"{issue}: {pr.title}")
 
 
-def reconcile_jira_issues(runtime, pr_links: Dict[str, PullRequest.PullRequest], dry_run: bool):
+def reconcile_jira_issues(runtime, pr_map: Dict[str, PullRequest.PullRequest], dry_run: bool):
     """
     Ensures there is a Jira issue open for reconciliation PRs.
     Args:
         runtime: The doozer runtime
-        pr_links: a map of distgit_keys->pr_url to open reconciliation PRs
+        pr_map: a map of distgit_keys->pr_object to open reconciliation PRs
         dry_run: If true, new desired jira issues would only be printed to the console.
     """
     major, minor = runtime.get_major_minor_fields()
@@ -652,7 +652,7 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, PullRequest.PullRequest],
     jira_project_names = set([project.name for project in jira_projects])
     jira_project_components: Dict[str, Set[str]] = dict()  # Maps project names to the components they expose
 
-    for distgit_key, pr in pr_links.items():
+    for distgit_key, pr in pr_map.items():
         image_meta: ImageMetadata = runtime.image_map[distgit_key]
         potential_project, potential_component = image_meta.get_jira_info()
         summary = f"Update {release_version} {image_meta.name} image to be consistent with ART"
@@ -1211,7 +1211,6 @@ If you have any questions about this pull request, please reach out to `@release
                     # We are not admin on all repos
                     yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
-                pr_url = existing_pr.html_url
                 pr_links[dgk] = existing_pr
 
                 # The pr_body may change and the base branch may change (i.e. at branch cut,
@@ -1219,9 +1218,9 @@ If you have any questions about this pull request, please reach out to `@release
                 # 4.7.
                 if moist_run:
                     if existing_pr.base.sha != public_branch_commit:
-                        yellow_print(f'Would have changed PR {pr_url} to use base {public_branch} ({public_branch_commit}) vs existing {existing_pr.base.sha}')
+                        yellow_print(f'Would have changed PR {existing_pr.html_url} to use base {public_branch} ({public_branch_commit}) vs existing {existing_pr.base.sha}')
                     if existing_pr.body != pr_body:
-                        yellow_print(f'Would have changed PR {pr_url} to use body "{pr_body}" vs existing "{existing_pr.body}"')
+                        yellow_print(f'Would have changed PR {existing_pr.html_url} to use body "{pr_body}" vs existing "{existing_pr.body}"')
                     if not existing_pr.assignees and assignee:
                         yellow_print(f'Would have changed PR assignee to {assignee}')
                 else:
@@ -1230,9 +1229,9 @@ If you have any questions about this pull request, please reach out to `@release
                             existing_pr.add_to_assignees(assignee)
                         except Exception as access_issue:
                             # openshift-bot does not have admin on *all* repositories; permit this error.
-                            yellow_print(f'Unable to set assignee for {pr_url}: {access_issue}')
+                            yellow_print(f'Unable to set assignee for {existing_pr.html_url}: {access_issue}')
                     existing_pr.edit(body=pr_body, base=public_branch)
-                    yellow_print(f'A PR is already open requesting desired reconciliation with ART: {pr_url}')
+                    yellow_print(f'A PR is already open requesting desired reconciliation with ART: {existing_pr.html_url}')
                 continue
 
             # Otherwise, we need to create a pull request
