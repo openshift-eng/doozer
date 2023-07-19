@@ -1,21 +1,20 @@
-#!/usr/bin/env python
-"""
-Test the ImageMetadata class
-"""
-import unittest
-import os
 import logging
-import tempfile
+import os
 import shutil
+import tempfile
+import unittest
 from unittest import IsolatedAsyncioTestCase, mock
+
 from flexmock import flexmock
 
+from doozerlib.repodata import Repodata, Rpm
 from doozerlib.repos import Repos
+
 try:
     from importlib import reload
 except ImportError:
     pass
-from doozerlib import image, exectools, model
+from doozerlib import exectools, image, model
 
 TEST_YAML = """---
 name: 'openshift/test'
@@ -166,14 +165,14 @@ class TestImageMetadata(unittest.TestCase):
 
 
 class TestArchiveImageInspector(IsolatedAsyncioTestCase):
-    @mock.patch("doozerlib.repos.Repo.list_rpms")
+    @mock.patch("doozerlib.repos.Repo.get_repodata_threadsafe")
     @mock.patch("doozerlib.image.ArchiveImageInspector.get_installed_rpm_dicts")
     @mock.patch("doozerlib.image.ArchiveImageInspector.image_arch")
     @mock.patch("doozerlib.image.ArchiveImageInspector.get_image_meta")
     @mock.patch("doozerlib.image.ArchiveImageInspector.get_brew_build_id")
     async def test_find_non_latest_rpms(self, get_brew_build_id: mock.Mock, get_image_meta: mock.Mock,
                                         image_arch: mock.Mock, get_installed_rpm_dicts: mock.Mock,
-                                        list_rpms: mock.AsyncMock):
+                                        get_repodata_threadsafe: mock.AsyncMock):
         runtime = mock.MagicMock(repos=Repos({
             "rhel-8-baseos-rpms": {"conf": {"baseurl": {"x86_64": "fake_url"}}, "content_set": {"default": "fake"}},
             "rhel-8-appstream-rpms": {"conf": {"baseurl": {"x86_64": "fake_url"}}, "content_set": {"default": "fake"}},
@@ -187,10 +186,13 @@ class TestArchiveImageInspector(IsolatedAsyncioTestCase):
             "enabled_repos": ["rhel-8-baseos-rpms", "rhel-8-appstream-rpms"]
         })
         image_arch.return_value = "x86_64"
-        list_rpms.return_value = [
-            {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
-            {'name': 'bar', 'version': '1.1.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'bar-1.1.0-1.el9'},
-        ]
+        get_repodata_threadsafe.return_value = Repodata(
+            name='rhel-8-appstream-rpms',
+            primary_rpms=[
+                Rpm.from_dict({'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'}),
+                Rpm.from_dict({'name': 'bar', 'version': '1.1.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'bar-1.1.0-1.el9'}),
+            ]
+        )
         get_installed_rpm_dicts.return_value = [
             {'name': 'foo', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'foo-1.0.0-1.el9'},
             {'name': 'bar', 'version': '1.0.0', 'release': '1.el9', 'epoch': '0', 'arch': 'x86_64', 'nvr': 'bar-1.0.0-1.el9'},
@@ -199,9 +201,5 @@ class TestArchiveImageInspector(IsolatedAsyncioTestCase):
         actual = await inspector.find_non_latest_rpms()
         get_image_meta.assert_called_once_with()
         get_installed_rpm_dicts.assert_called_once_with()
-        list_rpms.assert_awaited()
-        self.assertEqual(actual, [('bar-1.0.0-1.el9', 'bar-1.1.0-1.el9', 'rhel-8-appstream-rpms')])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        get_repodata_threadsafe.assert_awaited()
+        self.assertEqual(actual, [('bar-0:1.0.0-1.el9.x86_64', 'bar-0:1.1.0-1.el9.x86_64', 'rhel-8-appstream-rpms')])
