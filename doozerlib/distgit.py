@@ -48,7 +48,7 @@ OIT_END = '##OIT_END'
 
 CONTAINER_YAML_HEADER = """
 # This file is managed by doozer: https://github.com/openshift-eng/doozer
-# operated by the OpenShift Automated Release Tooling team (#aos-art on CoreOS Slack).
+# operated by the OpenShift Automated Release Tooling team (#forum-ocp-art on CoreOS Slack).
 
 # Any manual changes will be overwritten by doozer on the next build.
 #
