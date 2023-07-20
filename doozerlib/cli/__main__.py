@@ -1535,8 +1535,19 @@ def get_releases(runtime) -> dict:
 
     owner = runtime.data_path.split('/')[-2]
     api = GhApi(owner=owner, repo='ocp-build-data', token=github_token)
-    files = api.list_files(branch=runtime.group_commitish)
-    releases_yaml = files.get('releases.yml')
+    commitish = runtime.group_commitish
+
+    # TODO: this assumes commitish is a branch it doesn't work for tags/shasum. fix it
+    # api.git.get_ref(shasum) doesn't work
+    ref = api.git.get_ref(f'heads/{commitish}')
+    tree = api.git.get_tree(ref.object.sha).tree
+    releases_file, releases_yaml = 'releases.yml', None
+    for f in tree:
+        if f.path == releases_file:
+            releases_yaml = f
+    if not releases_yaml:
+        raise DoozerFatalError(f'Cannot find {releases_file} in {runtime.group_commitish}')
+
     blob = api.git.get_blob(file_sha=releases_yaml['sha'])
     return yaml.safe_load(base64.b64decode(blob['content']))
 
