@@ -7,9 +7,10 @@ import hashlib
 import time
 import datetime
 import random
+import re
 from typing import Dict, Set
 
-from github import Github, UnknownObjectException, GithubException
+from github import Github, UnknownObjectException, GithubException, PullRequest
 
 from jira import JIRA, Issue
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -608,12 +609,32 @@ def images_upstreampulls(runtime):
     print(yaml.dump(retdata, default_flow_style=False, width=10000))
 
 
-def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
+def connect_issue_with_pr(pr: PullRequest.PullRequest, issue: str):
+    """
+    Aligns an existing Jira issue with a PR. Put the issue number in the title of the github pr.
+    Args:
+        pr: The PR to align with
+        issue: JIRA issue key
+    """
+    exist_issues = re.findall(r'OCPBUGS-[0-9]+', pr.title)
+    if issue in pr.title:  # the issue already in pr title
+        return
+    elif exist_issues:  # another issue is in pr title, add comment
+        for comment in pr.get_issue_comments():
+            if issue in comment.body:
+                return  # an exist comment already have the issue
+        pr.create_issue_comment(f"ART wants to connect issue [{issue}](https://issues.redhat.com/browse/{issue}) to this PR, \
+                                but found it is currently hooked up to {exist_issues}. Please consult with #aos-art if it is not clear what there is to do.")
+    else:  # update pr title
+        pr.edit(title=f"{issue}: {pr.title}")
+
+
+def reconcile_jira_issues(runtime, pr_map: Dict[str, PullRequest.PullRequest], dry_run: bool):
     """
     Ensures there is a Jira issue open for reconciliation PRs.
     Args:
         runtime: The doozer runtime
-        pr_links: a map of distgit_keys->pr_url to open reconciliation PRs
+        pr_map: a map of distgit_keys->pr_object to open reconciliation PRs
         dry_run: If true, new desired jira issues would only be printed to the console.
     """
     major, minor = runtime.get_major_minor_fields()
@@ -631,7 +652,7 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
     jira_project_names = set([project.name for project in jira_projects])
     jira_project_components: Dict[str, Set[str]] = dict()  # Maps project names to the components they expose
 
-    for distgit_key, pr_url in pr_links.items():
+    for distgit_key, pr in pr_map.items():
         image_meta: ImageMetadata = runtime.image_map[distgit_key]
         potential_project, potential_component = image_meta.get_jira_info()
         summary = f"Update {release_version} {image_meta.name} image to be consistent with ART"
@@ -661,12 +682,13 @@ def reconcile_jira_issues(runtime, pr_links: Dict[str, str], dry_run: bool):
         open_issues = search_issues(query)
 
         if open_issues:
-            print(f'A JIRA issue is already open for {pr_url}: {open_issues[0]}')
+            print(f'A JIRA issue is already open for {pr.html_url}: {open_issues[0]}')
             existing_issues[distgit_key] = open_issues[0]
+            connect_issue_with_pr(pr, open_issues[0].id)
             continue
 
         description = f'''
-Please review the following PR: {pr_url}
+Please review the following PR: {pr.html_url}
 
 The PR has been automatically opened by ART (#aos-art) team automation and indicates
 that the image(s) being used downstream for production builds are not consistent
@@ -722,10 +744,11 @@ Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.
                 fields
             )
             new_issues[distgit_key] = issue
-            print(f'A JIRA issue has been opened for {pr_url}: {issue}')
+            print(f'A JIRA issue has been opened for {pr.html_url}: {issue}')
+            connect_issue_with_pr(pr, issue.id)
         else:
             new_issues[distgit_key] = 'NEW!'
-            print(f'Would have created JIRA issue for {distgit_key} / {pr_url}:\n{fields}\n')
+            print(f'Would have created JIRA issue for {distgit_key} / {pr.html_url}:\n{fields}\n')
 
     if new_issues:
         print('Newly opened JIRA issues:')
@@ -767,7 +790,7 @@ def images_streams_prs(runtime, github_access_token, bug, interstitial, ignore_c
 
     prs_in_master = (major == master_major and minor == master_minor) and not ignore_ci_master
 
-    pr_links = {}  # map of distgit_key to PR URLs associated with updates
+    pr_dgk_map = {}  # map of distgit_key to PR URLs associated with updates
     new_pr_links = {}
     skipping_dgks = set()  # If a distgit key is skipped, it children will see it in this list and skip themselves.
     checked_upstream_images = set()  # A PR will not be opened unless the upstream image exists; keep track of ones we have checked.
@@ -1161,7 +1184,7 @@ If you have any questions about this pull request, please reach out to `@release
                     yellow_print(f'Image has parent {parent_meta.distgit_key} which was skipped; skipping self: {image_meta.distgit_key}')
                     continue
 
-                parent_pr_url = pr_links.get(parent_meta.distgit_key, None)
+                parent_pr_url = pr_dgk_map.get(parent_meta.distgit_key, None)
                 if parent_pr_url:
                     if parent_meta.config.content.source.ci_alignment.streams_prs.merge_first:
                         skipping_dgks.add(image_meta.distgit_key)
@@ -1188,17 +1211,16 @@ If you have any questions about this pull request, please reach out to `@release
                     # We are not admin on all repos
                     yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
-                pr_url = existing_pr.html_url
-                pr_links[dgk] = pr_url
+                pr_dgk_map[dgk] = existing_pr
 
                 # The pr_body may change and the base branch may change (i.e. at branch cut,
                 # a version 4.6 in master starts being tracked in release-4.6 and master tracks
                 # 4.7.
                 if moist_run:
                     if existing_pr.base.sha != public_branch_commit:
-                        yellow_print(f'Would have changed PR {pr_url} to use base {public_branch} ({public_branch_commit}) vs existing {existing_pr.base.sha}')
+                        yellow_print(f'Would have changed PR {existing_pr.html_url} to use base {public_branch} ({public_branch_commit}) vs existing {existing_pr.base.sha}')
                     if existing_pr.body != pr_body:
-                        yellow_print(f'Would have changed PR {pr_url} to use body "{pr_body}" vs existing "{existing_pr.body}"')
+                        yellow_print(f'Would have changed PR {existing_pr.html_url} to use body "{pr_body}" vs existing "{existing_pr.body}"')
                     if not existing_pr.assignees and assignee:
                         yellow_print(f'Would have changed PR assignee to {assignee}')
                 else:
@@ -1207,14 +1229,14 @@ If you have any questions about this pull request, please reach out to `@release
                             existing_pr.add_to_assignees(assignee)
                         except Exception as access_issue:
                             # openshift-bot does not have admin on *all* repositories; permit this error.
-                            yellow_print(f'Unable to set assignee for {pr_url}: {access_issue}')
+                            yellow_print(f'Unable to set assignee for {existing_pr.html_url}: {access_issue}')
                     existing_pr.edit(body=pr_body, base=public_branch)
-                    yellow_print(f'A PR is already open requesting desired reconciliation with ART: {pr_url}')
+                    yellow_print(f'A PR is already open requesting desired reconciliation with ART: {existing_pr.html_url}')
                 continue
 
             # Otherwise, we need to create a pull request
             if moist_run:
-                pr_links[dgk] = f'MOIST-RUN-PR:{dgk}'
+                pr_dgk_map[dgk] = f'MOIST-RUN-PR:{dgk}'
                 green_print(f'Would have opened PR against: {public_source_repo.html_url}/blob/{public_branch}/{dockerfile_name}.')
                 yellow_print('PR body would have been:')
                 yellow_print(pr_body)
@@ -1237,8 +1259,6 @@ If you have any questions about this pull request, please reach out to `@release
                         # In one execution to date, get_pulls did not find the open PR and the code repeatedly hit this
                         # branch -- attempting to recreate the PR. Everything seems right, but the github api is not
                         # returning it. So catch the error and try to move on.
-                        pr_url = f'UnknownPR-{fork_branch_head}'
-                        pr_links[dgk] = pr_url
                         yellow_print('Issue attempting to find it, but a PR is already open requesting desired reconciliation with ART')
                         continue
                     raise
@@ -1255,7 +1275,7 @@ If you have any questions about this pull request, please reach out to `@release
                     yellow_print(f'Unable to add labels to {existing_pr.html_url}: {str(pr_e)}')
 
                 pr_msg = f'A new PR has been opened: {new_pr.html_url}'
-                pr_links[dgk] = new_pr.html_url
+                pr_dgk_map[dgk] = new_pr
                 new_pr_links[dgk] = new_pr.html_url
                 logger.info(pr_msg)
                 yellow_print(pr_msg)
@@ -1266,10 +1286,10 @@ If you have any questions about this pull request, please reach out to `@release
         print('Newly opened PRs:')
         print(yaml.safe_dump(new_pr_links))
 
-    if pr_links:
+    if pr_dgk_map:
         print('Currently open PRs:')
-        print(yaml.safe_dump(pr_links))
-        reconcile_jira_issues(runtime, pr_links, moist_run)
+        print(yaml.safe_dump({key: pr_dgk_map[key].html_url for key in pr_dgk_map}))
+        reconcile_jira_issues(runtime, pr_dgk_map, moist_run)
 
     if skipping_dgks:
         print('Some PRs were skipped; Exiting with return code 25 to indicate this')
