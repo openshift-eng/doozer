@@ -12,10 +12,7 @@ setup(
     name="rh-doozer",
     author="AOS ART Team",
     author_email="aos-team-art@redhat.com",
-    use_scm_version={
-        'write_to': 'doozerlib/_version.py',
-    },
-    setup_requires=['setuptools_scm'],
+    setup_requires=[],
     description="CLI tool for managing and automating Red Hat software releases",
     long_description=open('README.md').read(),
     url="https://github.com/openshift-eng/doozer",
