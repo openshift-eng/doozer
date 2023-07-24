@@ -442,14 +442,19 @@ def isolate_assembly_in_release(release: str) -> Optional[str]:
     an assembly name. If it does, it returns the assembly
     name. If it is not found, None is returned.
     """
-    # Because RPM release fields will have .el? as their suffix, we cannot
-    # assume that endswith(.assembly.<name>). Strip off .el?
-    prefix, _ = split_el_suffix_in_release(release)
-    asm_pos = prefix.rfind('.assembly.')
+    assembly_prefix = '.assembly.'
+    asm_pos = release.rfind(assembly_prefix)
     if asm_pos == -1:
         return None
 
-    return prefix[asm_pos + len('.assembly.'):]
+    # Our rpm release fields will usually have ".el?" after ".assembly.name"
+    # But some of our base images can have ".el?" before ".assembly.name"
+    # If ".el?" appears after assembly name, then strip it off
+    el_pos = release.rfind('.el')
+    if el_pos > asm_pos:
+        release, _ = split_el_suffix_in_release(release)
+
+    return release[asm_pos + len(assembly_prefix):]
 
 
 def isolate_el_version_in_release(release: str) -> Optional[int]:
