@@ -690,14 +690,14 @@ def reconcile_jira_issues(runtime, pr_map: Dict[str, PullRequest.PullRequest], d
         description = f'''
 Please review the following PR: {pr.html_url}
 
-The PR has been automatically opened by ART (#aos-art) team automation and indicates
+The PR has been automatically opened by ART (#forum-ocp-art) team automation and indicates
 that the image(s) being used downstream for production builds are not consistent
 with the images referenced in this component's github repository.
 
 Differences in upstream and downstream builds impact the fidelity of your CI signal.
 
 If you disagree with the content of this PR, please contact @release-artists
-in #aos-art to discuss the discrepancy.
+in #forum-ocp-art to discuss the discrepancy.
 
 Closing this issue without addressing the difference will cause the issue to
 be reopened automatically.
@@ -709,7 +709,7 @@ Important: ART has recorded in their product data that bugs for
 this component should be opened against Jira project "{potential_project}" and
 component "{potential_component}". This project or component does not exist. Jira
 should either be updated to include this component or @release-artists should be
-notified of the proper mapping in the #aos-art Slack channel.
+notified of the proper mapping in the #forum-ocp-art Slack channel.
 
 Component name: {image_meta.get_component_name()} .
 Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.yml
@@ -720,7 +720,7 @@ Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.
 Important: ART maintains a mapping of OpenShift software components to
 Jira components. This component does not currently have an entry defined
 within that data.
-Contact @release-artists in the #aos-art Slack channel to inform them of
+Contact @release-artists in the #forum-ocp-art Slack channel to inform them of
 the Jira project and component to use for this image.
 
 Until this is done, ART issues against this component will be opened
@@ -1154,7 +1154,7 @@ architecture team and communicated to the ART team.
 __Roles & Responsibilities__:
 - Component owners are responsible for ensuring these alignment PRs merge with passing
   tests OR that necessary metadata changes are reported to the ART team: `@release-artists`
-  in `#aos-art` on Slack. If necessary, the changes required by this pull request can be
+  in `#forum-ocp-art` on Slack. If necessary, the changes required by this pull request can be
   introduced with a separate PR opened by the component team. Once the repository is aligned,
   this PR will be closed automatically.
 - Patch-manager or those with sufficient privileges within this repository may add
@@ -1173,7 +1173,7 @@ build_root:
 """
 
             pr_body += """
-If you have any questions about this pull request, please reach out to `@release-artists` in the `#aos-art` coreos slack channel.
+If you have any questions about this pull request, please reach out to `@release-artists` in the `#forum-ocp-art` coreos slack channel.
 """
 
             parent_pr_url = None

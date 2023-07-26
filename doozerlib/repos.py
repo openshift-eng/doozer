@@ -226,7 +226,7 @@ name = {0}
 # Base header for all content_sets.yml output
 CONTENT_SETS = """
 # This file is managed by the doozer build tool: https://github.com/openshift-eng/doozer,
-# by the OpenShift Automated Release Team (#aos-art on CoreOS Slack).
+# by the OpenShift Automated Release Team (#forum-ocp-art on CoreOS Slack).
 # Any manual changes will be overwritten by doozer on the next build.
 #
 # This is a file defining which content sets (yum repositories) are needed to
