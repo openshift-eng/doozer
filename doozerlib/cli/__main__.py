@@ -1533,11 +1533,10 @@ def get_releases(runtime) -> dict:
         raise DoozerFatalError('A GITHUB_TOKEN environment variable must be defined!')
     github_token = os.environ['GITHUB_TOKEN']
 
+    # TODO: data_path can be a local path in which case this will fail
     owner = runtime.data_path.split('/')[-2]
     api = GhApi(owner=owner, repo='ocp-build-data', token=github_token)
-    files = api.list_files(branch=runtime.group_commitish)
-    releases_yaml = files.get('releases.yml')
-    blob = api.git.get_blob(file_sha=releases_yaml['sha'])
+    blob = api.repos.get_content('releases.yml', ref=runtime.group_commitish)
     return yaml.safe_load(base64.b64decode(blob['content']))
 
 
