@@ -7,15 +7,23 @@ from doozerlib.model import Model
 class TestUtil(unittest.TestCase):
 
     def test_isolate_assembly_in_release(self):
-        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1'), None)
-        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly'), None)
-        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.x'), 'x')
-        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.xyz'), 'xyz')
-        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.xyz.el7'), 'xyz')
-        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.4.9.99.el7'), '4.9.99')
-        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.4.9.el700.hi'), '4.9')
-        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.art12398.el10'), 'art12398')
-        self.assertEqual(util.isolate_assembly_in_release('1.2.3-y.p.p1.assembly.art12398.el10'), 'art12398')
+        test_cases = [
+            ('1.2.3-y.p.p1', None),
+            ('1.2.3-y.p.p1.assembly', None),
+            ('1.2.3-y.p.p1.assembly.x', 'x'),
+            ('1.2.3-y.p.p1.assembly.xyz', 'xyz'),
+            ('1.2.3-y.p.p1.assembly.xyz.el7', 'xyz'),
+            ('1.2.3-y.p.p1.assembly.4.9.99.el7', '4.9.99'),
+            ('1.2.3-y.p.p1.assembly.4.9.el700.hi', '4.9'),
+            ('1.2.3-y.p.p1.assembly.art12398.el10', 'art12398'),
+            ('1.2.3-y.p.p1.assembly.art12398.el10', 'art12398'),
+            ('1.2.3-y.el9.p1.assembly.test', 'test')
+        ]
+
+        for t in test_cases:
+            actual = util.isolate_assembly_in_release(t[0])
+            expected = t[1]
+            self.assertEqual(actual, expected)
 
     def test_isolate_el_version_in_release(self):
         test_cases = [
