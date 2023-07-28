@@ -111,7 +111,11 @@ class RPMMetadata(Metadata):
             "component_name": self.name,
             "kind": "spec",
             "content": new_specfile_data,
-            "set_env": {"PATH": path},
+            "set_env": {
+                "PATH": path,
+                "BREW_EVENT": f'{self.runtime.brew_event}',
+                "BREW_TAG": f'{self.candidate_brew_tag()}'
+            },
             "runtime_assembly": self.runtime.assembly,
             "release_name": "",
         }
