@@ -30,6 +30,23 @@ from doozerlib.model import Model
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import find_manifest_list_sha
 
+@cli.command("inspect-assembly:rhcos")
+@pass_runtime
+def inspect_assembly_rhcos_cli(runtime):
+    runtime.initialize(mode=None, clone_distgits=False, clone_source=False, prevent_cloning=True)
+    assembly_inspector = AssemblyInspector(runtime, runtime.build_retrying_koji_client(), lookup_mode=None)
+    rhcos_build_ids = set()
+    for arch in runtime.arches:
+        rhcos_members, issues = PayloadGenerator._find_rhcos_payload_entries(assembly_inspector, arch)
+        if issues:
+            runtime.logger.warning(issues)
+
+        # Almost all the time, all payload tags for an arch will have the same build
+        rhcos_build_ids.update({str(entry.rhcos_build) for tag, entry in rhcos_members.items()})
+
+    if len(rhcos_build_ids) > len(runtime.arches):
+        raise ValueError("Not all payload tags have the same rhcos build, command does not support that usecase")
+    click.echo(sorted(rhcos_build_ids))
 
 @cli.command("release:gen-payload", short_help="Mirror release images to quay and release-controller")
 @click.option("--is-name", metavar="NAME", required=False,

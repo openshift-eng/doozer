@@ -29,6 +29,7 @@ from doozerlib import metadata
 from doozerlib.config import MetaDataConfig as mdc
 from doozerlib.cli import cli, pass_runtime, validate_semver_major_minor_patch
 
+from doozerlib.cli.release_gen_payload import assembly_rhcos_cli
 from doozerlib.cli.release_gen_payload import release_gen_payload
 from doozerlib.cli.get_nightlies import get_nightlies
 from doozerlib.cli.detect_embargo import detect_embargo
