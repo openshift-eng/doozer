@@ -30,6 +30,7 @@ from doozerlib.model import Model
 from doozerlib.exceptions import DoozerFatalError
 from doozerlib.util import find_manifest_list_sha
 
+
 @cli.command("inspect-assembly:rhcos")
 @pass_runtime
 def inspect_assembly_rhcos_cli(runtime):
@@ -47,6 +48,7 @@ def inspect_assembly_rhcos_cli(runtime):
     if len(rhcos_build_ids) > len(runtime.arches):
         raise ValueError("Not all payload tags have the same rhcos build, command does not support that usecase")
     click.echo(sorted(rhcos_build_ids))
+
 
 @cli.command("release:gen-payload", short_help="Mirror release images to quay and release-controller")
 @click.option("--is-name", metavar="NAME", required=False,
