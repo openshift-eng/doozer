@@ -22,7 +22,7 @@ from doozerlib.cli import cli, pass_runtime
 from doozerlib import brew, state, exectools, model, constants
 from doozerlib.image import ImageMetadata
 from doozerlib.util import get_docker_config_json, convert_remote_git_to_ssh, \
-    split_git_url, remove_prefix, green_print,\
+    split_git_url, remove_prefix, green_print, \
     yellow_print, red_print, convert_remote_git_to_https, \
     what_is_in_master, extract_version_fields, convert_remote_git_to_https
 
