@@ -181,7 +181,7 @@ def db_select(runtime, operation, attribute, match, like, where, sort_by, limit,
 
     runtime.initialize(clone_distgits=False, no_group=True)
     if not runtime.datastore:
-        print('--datastore must be specified')
+        red_print('--datastore must be specified')
         exit(1)
 
     if not attribute:  # No attribute names identified? return everything.
@@ -1492,7 +1492,7 @@ def config_read_group(runtime, key, as_len, as_yaml, permit_missing_group, defau
         # but that branch does not exist yet. Caller must specify --permit-missing to allow
         # this behavior.
         if permit_missing_group and default:
-            print(default)
+            red_print(default)
             exit(0)
         raise
 
@@ -1503,7 +1503,7 @@ def config_read_group(runtime, key, as_len, as_yaml, permit_missing_group, defau
         value = dict_get(group_primitive, key, None)
         if value is None:
             if default is not None:
-                print(default)
+                red_print(default)
                 exit(0)
             raise DoozerFatalError('No default specified and unable to find key: {}'.format(key))
 
@@ -1814,7 +1814,7 @@ def config_rhcos_src(runtime: Runtime, version, output, brew_root, arch):
     brew_packages_path = brew_root_path.joinpath('packages')
 
     if not brew_packages_path.is_dir():
-        print(f'Brewroot packages must be a directory: {str(brew_packages_path)}')
+        red_print(f'Brewroot packages must be a directory: {str(brew_packages_path)}')
         exit(1)
 
     output_path = pathlib.Path(output)
@@ -1829,10 +1829,10 @@ def config_rhcos_src(runtime: Runtime, version, output, brew_root, arch):
         out_src_dir = out_base_dir_path.joinpath('src')
         if out_src_dir.exists():
             if out_src_dir.is_symlink():
-                print(f'Output directory already contains a symlink for {package_nvr}. Skipping.')
+                runtime.logger.info(f'Output directory already contains a symlink for {package_nvr}. Skipping.')
                 continue
             else:
-                print(f'File already exists; cannot replace with brewroot content: {str(out_src_dir)}')
+                red_print(f'File already exists; cannot replace with brewroot content: {str(out_src_dir)}')
                 exit(1)
 
         out_src_dir.symlink_to(str(src_dir_path.absolute()))
