@@ -79,12 +79,14 @@ class AddModifier(object):
         :param path: Destination path to the dist-git repo.
         :param overwriting: True to allow to overwrite if path exists.
           Setting to false to prevent from accidently overwriting files from in-tree source.
+        :param doozer_source: Relative source path within doozer
 
         """
         self.source = kwargs["source"]
         self.path = kwargs["path"]
         self.overwriting = kwargs.get("overwriting", False)
         self.validate = kwargs.get("validate", None)
+        self.doozer_source = kwargs.get("doozer_source", None)
 
     def act(self, *args, **kwargs):
         """ Run the modification action
@@ -93,38 +95,42 @@ class AddModifier(object):
         :param session: If not None, a requests.Session object for HTTP requests
         """
         LOGGER.debug("Running 'add' modification action...")
-        context = kwargs["context"]
-        distgit_path = context['distgit_path']
-        source = urlparse(self.source)
-        if source.scheme not in self.SUPPORTED_URL_SCHEMES:
-            raise ValueError(
-                "Unsupported URL scheme {} used in 'add' action.".format(source.scheme))
-        source_url = source.geturl()  # normalized URL
-        path = str(distgit_path.joinpath(self.path))
         ceiling_dir = kwargs.get("ceiling_dir")
-        session = kwargs.get("session") or requests.session()
-        if ceiling_dir and not is_in_directory(path, ceiling_dir):
-            raise ValueError("Writing to a file out of {} is not allowed.".format(ceiling_dir))
-        # NOTE: `overwriting` is checked before writing.
+        dest_path = str(kwargs["context"]['distgit_path'].joinpath(self.path))
+        if self.doozer_source and self.source:
+            raise ValueError("Can't support source and doozersource at the same time")
+        # Note: `overwriting` is checked before writing.
         # Data race might happen but it should suffice for prevent from accidently overwriting in-tree sources.
-        if not self.overwriting and os.path.exists(path):
+        if not self.overwriting and os.path.exists(dest_path):
             raise IOError(
                 "Destination path {} exists. Use 'overwriting: true' to overwrite.".format(self.path))
-        LOGGER.debug("Getting out-of-tree source {}...".format(source_url))
-        response = session.get(source_url)
-        response.raise_for_status()
-        content = response.content
-        if self.validate:
-            if self.validate == "yaml":
-                yml = yaml.safe_load(content.decode("utf-8"))  # will raise an Error if invalid
-                if yml is None:
-                    raise IOError(f"Yaml file {source_url} is empty.")
-            else:
-                raise ValueError("Unknown 'validate' value: {self.validate}")
-        mkdirs(os.path.dirname(path))
-        with io.open(path, "wb") as dest_file:
+        if ceiling_dir and not is_in_directory(dest_path, ceiling_dir):
+            raise ValueError("Writing to a file out of {} is not allowed.".format(ceiling_dir))
+        if self.source:
+            source = urlparse(self.source)
+            if source.scheme not in self.SUPPORTED_URL_SCHEMES:
+                raise ValueError(
+                    "Unsupported URL scheme {} used in 'add' action.".format(source.scheme))
+            source_address = source.geturl()  # normalized URL
+            LOGGER.debug("Getting out-of-tree source {}...".format(source_address))
+            session = kwargs.get("session") or requests.session()
+            response = session.get(source_address)
+            response.raise_for_status()
+            content = response.content
+            if self.validate:
+                if self.validate == "yaml":
+                    yml = yaml.safe_load(content.decode("utf-8"))  # will raise an Error if invalid
+                    if yml is None:
+                        raise IOError(f"Yaml file {source_address} is empty.")
+                else:
+                    raise ValueError("Unknown 'validate' value: {self.validate}")
+        else:  # use doozer local source
+            content = Path(Path(__file__).parent, self.doozer_source).read_text()
+
+        mkdirs(os.path.dirname(dest_path))
+        with io.open(dest_path, "wb") as dest_file:
             dest_file.write(content)
-        LOGGER.debug("Out-of-tree source saved: {} -> {}".format(source_url, path))
+        LOGGER.debug(f"Out-of-tree source saved: {dest_path}")
 
 
 SourceModifierFactory.MODIFICATIONS["add"] = AddModifier
