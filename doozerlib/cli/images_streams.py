@@ -682,9 +682,9 @@ def reconcile_jira_issues(runtime, pr_map: Dict[str, PullRequest.PullRequest], d
         open_issues = search_issues(query)
 
         if open_issues:
-            print(f'A JIRA issue is already open for {pr.html_url}: {open_issues[0]}')
+            print(f'A JIRA issue is already open for {pr.html_url}: {open_issues[0].key}')
             existing_issues[distgit_key] = open_issues[0]
-            connect_issue_with_pr(pr, open_issues[0].id)
+            connect_issue_with_pr(pr, open_issues[0].key)
             continue
 
         description = f'''
@@ -744,8 +744,8 @@ Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.
                 fields
             )
             new_issues[distgit_key] = issue
-            print(f'A JIRA issue has been opened for {pr.html_url}: {issue}')
-            connect_issue_with_pr(pr, issue.id)
+            print(f'A JIRA issue has been opened for {pr.html_url}: {issue.key}')
+            connect_issue_with_pr(pr, issue.key)
         else:
             new_issues[distgit_key] = 'NEW!'
             print(f'Would have created JIRA issue for {distgit_key} / {pr.html_url}:\n{fields}\n')
