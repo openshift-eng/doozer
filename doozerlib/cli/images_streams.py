@@ -744,6 +744,10 @@ Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.
             issue = jira_client.create_issue(
                 fields
             )
+            # check depend issues and set depend to a higher version issue if ture
+            depend_issues = search_issues(f"Update {major}.{minor+1} {image_meta.name} image to be consistent with ART")
+            if depend_issues:
+                jira_client.create_issue_link("Depend", issue.key, depend_issues[0].key)
             new_issues[distgit_key] = issue
             print(f'A JIRA issue has been opened for {pr.html_url}: {issue.key}')
             connect_issue_with_pr(pr, issue.key)
