@@ -1,4 +1,3 @@
-import imp
 from unittest import TestCase
 from doozerlib import rpm_utils
 
