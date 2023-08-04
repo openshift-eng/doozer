@@ -16,10 +16,10 @@ from jira import JIRA, Issue
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from dockerfile_parse import DockerfileParser
-from doozerlib.model import Missing
+from doozerlib.model import Model, Missing
 from doozerlib.pushd import Dir
 from doozerlib.cli import cli, pass_runtime
-from doozerlib import brew, state, exectools, model, constants
+from doozerlib import brew, state, exectools, constants
 from doozerlib.image import ImageMetadata
 from doozerlib.util import get_docker_config_json, convert_remote_git_to_ssh, \
     split_git_url, remove_prefix, green_print, \
@@ -222,7 +222,7 @@ def _get_upstreaming_entries(runtime, stream_names=None):
     # other images without being in streams.yml.
     for image_meta in runtime.ordered_image_metas():
         if image_meta.config.content.source.ci_alignment.upstream_image is not Missing:
-            upstream_entry = model.Model(dict_to_model=image_meta.config.content.source.ci_alignment.primitive())  # Make a copy
+            upstream_entry = Model(dict_to_model=image_meta.config.content.source.ci_alignment.primitive())  # Make a copy
             upstream_entry['image'] = image_meta.pull_url()  # Make the image metadata entry match what would exist in streams.yml.
             if upstream_entry.final_user is Missing:
                 upstream_entry.final_user = image_meta.config.final_stage_user
@@ -734,6 +734,7 @@ Jira mapping: https://github.com/openshift-eng/ocp-build-data/blob/main/product.
             'project': {'key': project},
             'issuetype': {'name': 'Bug'},
             'versions': [{'name': release_version}],  # Affects Version/s
+            'customfield_12323140': [{'name': Model(runtime.gitdata.load_data(key='bug').data).jira_config.target_release[-1]}],  # customfield_12323140 is Target Version in jira
             'components': [{'name': component}],
             'summary': summary,
             'description': description
