@@ -77,7 +77,7 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
             if upstream_dest is Missing:
                 raise IOError(f'Unable to mirror {upstream_entry_name} since upstream_image is not defined')
 
-            # If the configuration specifies a upstream_image_base, then ART is responsible for mirroring
+            # If the configuration specifies an upstream_image_base, then ART is responsible for mirroring
             # that location and NOT the upstream_image. A buildconfig from gen-buildconfig is responsible
             # for transforming upstream_image_base to upstream_image.
             if config.upstream_image_base is not Missing:
@@ -105,7 +105,11 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
             if live_test_mode:
                 upstream_dest += '.test'
 
-            cmd = f'oc image mirror {brew_pullspec} {upstream_dest}'
+            as_manifest_list = ''
+            if config.mirror_manifest_list is True:
+                as_manifest_list = '--keep-manifest-list'
+
+            cmd = f'oc image mirror {as_manifest_list} {brew_pullspec} {upstream_dest}'
 
             if runtime.registry_config_dir is not None:
                 cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_dir)}"
