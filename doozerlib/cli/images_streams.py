@@ -128,6 +128,16 @@ def images_streams_mirror(runtime, streams, only_if_missing, live_test_mode, dry
                     print(f'For {upstream_entry_name}, would have run: {arm_cmd}')
                 else:
                     exectools.cmd_assert(arm_cmd, retries=3, realtime=True, timeout=1800)
+            # mirror builder image streams to priv namespace
+            if config.upstream_image_mirror is not Missing:
+                for upstream_image_mirror_dest in config.upstream_image_mirror:
+                    priv_cmd = f'oc image mirror {upstream_dest} {upstream_image_mirror_dest}'
+                    if runtime.registry_config_dir is not None:
+                        priv_cmd += f" --registry-config={get_docker_config_json(runtime.registry_config_dir)}"
+                    if dry_run:
+                        print(f'For {upstream_entry_name}, would have run: {priv_cmd}')
+                    else:
+                        exectools.cmd_assert(priv_cmd, retries=3, realtime=True)
 
 
 @images_streams.command('check-upstream', short_help='Dumps information about CI buildconfigs/mirrored images associated with this group.')
