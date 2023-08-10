@@ -659,7 +659,8 @@ def reconcile_jira_issues(runtime, pr_map: Dict[str, PullRequest.PullRequest], d
     for distgit_key, pr in pr_map.items():
         image_meta: ImageMetadata = runtime.image_map[distgit_key]
         potential_project, potential_component = image_meta.get_jira_info()
-        summary = f"Update {release_version} {image_meta.name} image to be consistent with ART"
+        summary = f"Update {release_version} {image_meta.get_component_name()} image to be consistent with ART"
+        old_summary_format = f"Update {release_version} {image_meta.name} image to be consistent with ART"
 
         project = potential_project
         if potential_project not in jira_project_names:
@@ -677,7 +678,7 @@ def reconcile_jira_issues(runtime, pr_map: Dict[str, PullRequest.PullRequest], d
             # If the component in prodsec data does not exist in the Jira project, use Unknown.
             component = 'Unknown'
 
-        query = f'project={project} AND summary ~ "{summary}" AND statusCategory in ("To Do", "In Progress")'
+        query = f'project={project} AND ( summary ~ "{summary}" OR summary ~ "{old_summary_format}" ) AND statusCategory in ("To Do", "In Progress")'
 
         @retry(reraise=True, stop=stop_after_attempt(10), wait=wait_fixed(3))
         def search_issues(query):
@@ -1046,7 +1047,7 @@ Fork build_root (in .ci-operator.yaml): {fork_ci_build_root_coordinate}
 
             yellow_print(f'Upstream dockerfile does not match desired state in {public_repo_url}/blob/{public_branch}/{dockerfile_name}')
 
-            first_commit_line = f"Updating {image_meta.name} images to be consistent with ART"
+            first_commit_line = f"Updating {image_meta.get_component_name()} image to be consistent with ART"
             reconcile_url = f'{convert_remote_git_to_https(runtime.gitdata.origin_url)}/tree/{runtime.gitdata.commit_hash}/images/{os.path.basename(image_meta.config_filename)}'
             reconcile_info = f"Reconciling with {reconcile_url}"
 
