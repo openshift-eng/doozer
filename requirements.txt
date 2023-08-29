@@ -5,6 +5,7 @@ dockerfile-parse >= 0.0.13
 defusedxml
 future
 koji
+pip_system_certs
 PyGitHub >= 1.46
 pyyaml >= 5.1
 requests
